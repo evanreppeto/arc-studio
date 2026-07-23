@@ -48,6 +48,47 @@ export function parseExternalMediaProvenance(value: unknown): ExternalMediaProve
   return out;
 }
 
+/**
+ * Human-readable lineage rows for an asset's stored provenance, for the asset
+ * detail card. First tuple element is the lineage-dot palette key the Library
+ * already styles ("ai" = generative steps, "upload" = source links). The
+ * generation prompt is returned separately — it's a paragraph, not a step.
+ * Alternate origin keys written by the ingest paths (`fetchedFrom` from the
+ * media API, `googleDriveWebUrl` from Drive import) fill the "Original" row
+ * when no explicit sourceUrl was declared.
+ */
+export function describeExternalMediaProvenance(value: unknown): {
+  rows: Array<[string, string]>;
+  prompt: string | null;
+} {
+  const parsed = parseExternalMediaProvenance(value);
+  const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const rows: Array<[string, string]> = [];
+
+  if (parsed.tool) rows.push(["ai", `Made in ${parsed.tool}${parsed.model ? ` · ${parsed.model}` : ""}`]);
+  else if (parsed.model) rows.push(["ai", `Model · ${parsed.model}`]);
+  if (parsed.jobId) rows.push(["ai", `Source job · ${parsed.jobId}`]);
+
+  const original =
+    parsed.sourceUrl ??
+    (typeof record.fetchedFrom === "string" && record.fetchedFrom
+      ? record.fetchedFrom
+      : typeof record.googleDriveWebUrl === "string" && record.googleDriveWebUrl
+        ? record.googleDriveWebUrl
+        : null);
+  if (original) {
+    let host = original;
+    try {
+      host = new URL(original).hostname;
+    } catch {
+      /* not a URL — show it as given */
+    }
+    rows.push(["upload", `Original · ${host}`]);
+  }
+
+  return { rows, prompt: parsed.prompt ?? null };
+}
+
 const TAG_STOPWORDS = new Set([
   "the", "and", "for", "with", "final", "copy", "new", "img", "image", "file",
   "untitled", "screenshot", "export", "version", "draft", "edit", "edited",

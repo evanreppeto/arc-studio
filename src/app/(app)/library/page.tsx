@@ -1,3 +1,4 @@
+import { describeExternalMediaProvenance } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
@@ -34,6 +35,7 @@ function scForKind(kind: string): string {
 function mapAsset(v: MediaAssetView, i: number): Asset {
   const pv = provFromSource(v.source);
   const label = v.badge || v.source;
+  const external = describeExternalMediaProvenance(v.provenance);
   return {
     id: i + 1,
     rid: v.id,
@@ -53,7 +55,8 @@ function mapAsset(v: MediaAssetView, i: number): Asset {
     risk: v.riskFlags.length ? v.riskFlags.join(" · ") : undefined,
     img: v.url && v.url !== "pending" ? v.url : undefined,
     src: label,
-    lineage: [[pv, label]],
+    lineage: [[pv, label], ...external.rows],
+    prompt: external.prompt ?? undefined,
     uses: v.usedInCount,
   };
 }

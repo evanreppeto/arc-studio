@@ -1,6 +1,38 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveMediaIngestTags, parseExternalMediaProvenance, parseMediaIngestPayload } from "../media-ingest";
+import { describeExternalMediaProvenance, deriveMediaIngestTags, parseExternalMediaProvenance, parseMediaIngestPayload } from "../media-ingest";
+
+describe("describeExternalMediaProvenance", () => {
+  it("builds lineage rows from declared tool lineage and separates the prompt", () => {
+    const described = describeExternalMediaProvenance({
+      tool: "Higgsfield",
+      model: "soul-x",
+      jobId: "hf_123",
+      sourceUrl: "https://higgsfield.ai/jobs/hf_123",
+      prompt: "storm sky over a roofline",
+    });
+    expect(described.rows).toEqual([
+      ["ai", "Made in Higgsfield · soul-x"],
+      ["ai", "Source job · hf_123"],
+      ["upload", "Original · higgsfield.ai"],
+    ]);
+    expect(described.prompt).toBe("storm sky over a roofline");
+  });
+
+  it("falls back to the ingest paths' origin keys for the Original row", () => {
+    expect(describeExternalMediaProvenance({ origin: "api_import", fetchedFrom: "https://cdn.example.com/a.png" }).rows).toEqual([
+      ["upload", "Original · cdn.example.com"],
+    ]);
+    expect(describeExternalMediaProvenance({ googleDriveWebUrl: "https://drive.google.com/file/d/x" }).rows).toEqual([
+      ["upload", "Original · drive.google.com"],
+    ]);
+  });
+
+  it("returns nothing for assets with no external lineage", () => {
+    expect(describeExternalMediaProvenance({ origin: "operator_upload" })).toEqual({ rows: [], prompt: null });
+    expect(describeExternalMediaProvenance(null)).toEqual({ rows: [], prompt: null });
+  });
+});
 
 describe("parseExternalMediaProvenance", () => {
   it("keeps declared lineage, trims, and drops empties and junk", () => {
