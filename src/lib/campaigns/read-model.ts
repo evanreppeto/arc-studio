@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore } from "@/domain";
+import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { canonicalIndustryKey } from "@/lib/product-language";
@@ -47,6 +47,11 @@ export type CampaignMediaAsset = {
   /** Virality prediction (video) or computed creative-quality proxy (image),
    *  carried from the asset's audit_payload media block. Null when unscored. */
   virality: ViralityScore | null;
+  /** External lineage rows (same tuple shape as the Library card): tool/model,
+   *  source job, original location. Empty when the entry declared none. */
+  lineage: Array<[string, string]>;
+  /** Generation prompt when the source tool declared one. */
+  prompt: string | null;
 };
 
 /**
@@ -681,7 +686,7 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
 // identical to a populated DB view. No piece here is sendable.
 // ---------------------------------------------------------------------------
 
-type DemoMedia = { id: string; type: CampaignMediaAsset["type"]; title: string; seed: string };
+type DemoMedia = { id: string; type: CampaignMediaAsset["type"]; title: string; seed: string; lineage?: Array<[string, string]>; prompt?: string };
 
 type DemoPiece = {
   id: string;
@@ -752,6 +757,8 @@ function demoMedia(media: DemoMedia): CampaignMediaAsset {
     thumbnailUrl: `https://picsum.photos/seed/${media.seed}/240/160`,
     mimeType: media.type === "video" ? "video/mp4" : "image/jpeg",
     description: media.title,
+    lineage: media.lineage ?? [],
+    prompt: media.prompt ?? null,
     source: "Approved media",
     virality: null,
   };
@@ -1143,7 +1150,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
           preview: `${target.angle} ${action}.`,
           body: `${target.angle}\n\n${offer}\n\n${action} →`,
           compliance: "Audience, offer, and CTA require human review before dispatch.",
-          media: [{ id: `${id}-hero`, type: "image", title: `${name} campaign creative`, seed: id }],
+          media: [{ id: `${id}-hero`, type: "image", title: `${name} campaign creative`, seed: id, lineage: [["ai", "Made in Higgsfield · seedream"], ["ai", "Source job · hf_20260722_0917"]], prompt: "Campaign hero creative in the workspace brand style, photoreal, no embedded text." }],
         },
         {
           id: `${id}-social`,
@@ -2362,6 +2369,11 @@ function buildPreviewCampaignPieces(updatedAt: string): CampaignWorkspaceAsset[]
           thumbnailUrl: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80",
           mimeType: "image/jpeg",
           description: "Demo preview image for a launch social creative.",
+          lineage: [
+            ["ai", "Made in Higgsfield · seedream"],
+            ["ai", "Source job · hf_20260722_0917"],
+          ],
+          prompt: "Product manager reviewing a team dashboard on a laptop in a bright modern office, photoreal, no text.",
           source: "Preview data",
           virality: null,
         },
@@ -3070,6 +3082,18 @@ function mapMediaAsset(value: unknown, source: string, origin: CampaignMediaOrig
 
   const virality = isObject(value.virality) ? (value.virality as unknown as ViralityScore) : null;
 
+  // Carry the generation lineage, not just the "generated" badge it implies —
+  // the reviewer approving this media should see tool/model/job/prompt. Entry
+  // keys arrive snake_cased from audit payloads and camelCased from newer
+  // ingest provenance; accept both.
+  const external = describeExternalMediaProvenance({
+    tool: value.tool,
+    model: value.model,
+    prompt: value.prompt,
+    jobId: value.job_id ?? value.jobId ?? value.generation_id,
+    sourceUrl: value.source_url ?? value.sourceUrl,
+  });
+
   return createMediaAsset({
     url,
     source,
@@ -3080,6 +3104,8 @@ function mapMediaAsset(value: unknown, source: string, origin: CampaignMediaOrig
     mimeType: getString(value.mime_type) ?? getString(value.mimeType) ?? null,
     hintedType: getString(value.type) ?? getString(value.asset_type) ?? getString(value.media_type) ?? undefined,
     virality,
+    lineage: external.rows,
+    prompt: external.prompt,
   });
 }
 
@@ -3096,6 +3122,8 @@ function createMediaAsset(input: {
   mimeType?: string | null;
   hintedType?: string;
   virality?: ViralityScore | null;
+  lineage?: Array<[string, string]>;
+  prompt?: string | null;
 }): CampaignMediaAsset {
   const type = classifyMediaAsset(input.url, input.mimeType, input.hintedType);
   return {
@@ -3109,6 +3137,8 @@ function createMediaAsset(input: {
     description: input.description ?? null,
     source: input.source,
     virality: input.virality ?? null,
+    lineage: input.lineage ?? [],
+    prompt: input.prompt ?? null,
   };
 }
 

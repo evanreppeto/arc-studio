@@ -122,6 +122,7 @@
 .arc-campaign .mediatile .mtbadge.ai { color: #201808; background: var(--accent); }
 .arc-campaign .mediatile .mtbadge.real { color: var(--text-2); background: rgba(20, 20, 24, 0.72); }
 .arc-campaign .mediatile .mttitle { position: absolute; left: 7px; right: 7px; bottom: 6px; font-size: 9.5px; font-weight: 600; color: #ecebe6; line-height: 1.3; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+.arc-campaign .mediatile .mtlineage { display: block; font-family: var(--mono); font-size: 8px; font-weight: 500; font-style: normal; color: #cfc9ba; opacity: 0.9; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* attach approved Library media to a deliverable */
 .arc-campaign .addmedia { display: inline-flex; align-items: center; gap: 6px; height: 30px; margin-top: 10px; padding: 0 12px; border-radius: 8px; border: 1px dashed var(--line-3); background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: 0.14s; }

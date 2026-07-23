@@ -85,13 +85,23 @@ function lifecycleTone(lifecycle: string): Tone {
 
 function MediaTile({ media }: { media: CampaignMediaAsset }) {
   const bg = media.thumbnailUrl || (media.type === "image" ? media.url : null);
+  // First lineage row ("Made in Higgsfield · soul-x") captions the tile; the
+  // full lineage + prompt ride the native tooltip — a 4:3 tile has no room for
+  // a paragraph, but the reviewer hovering an AI tile should get the whole story.
+  const lineageLine = media.lineage[0]?.[1] ?? null;
+  const tooltip = [...media.lineage.map(([, text]) => text), media.prompt ? `Prompt: ${media.prompt}` : null]
+    .filter(Boolean)
+    .join("\n");
   return (
-    <div className="mediatile" style={bg ? { backgroundImage: `url(${bg})` } : undefined}>
+    <div className="mediatile" title={tooltip || undefined} style={bg ? { backgroundImage: `url(${bg})` } : undefined}>
       <div className="mtscrim" />
       <span className={`mtbadge ${media.origin === "generated" ? "ai" : "real"}`}>
         {media.origin === "generated" ? "AI" : media.type}
       </span>
-      <span className="mttitle">{media.title}</span>
+      <span className="mttitle">
+        {media.title}
+        {lineageLine ? <em className="mtlineage">{lineageLine}</em> : null}
+      </span>
     </div>
   );
 }
@@ -463,6 +473,8 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       id: `attach-${item.id}`,
       type: item.kind === "video" ? "video" : "image",
       origin: "attached",
+      lineage: [],
+      prompt: null,
       title: item.fileName,
       url: item.url,
       thumbnailUrl: item.url,
