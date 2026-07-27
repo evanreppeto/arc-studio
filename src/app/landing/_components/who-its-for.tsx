@@ -6,12 +6,7 @@ import { Reveal } from "./reveal";
 // Arc is vertical-agnostic (the creative desk below shows a roaster, a run club
 // and a hotel), so the thing that actually predicts fit is who owns marketing
 // and how much time they have. The three shapes mirror the account types the
-// product actually supports at sign-up: in-house team, agency, solo.
-//
-// Each card leads with a fragment of the actual product rather than an
-// illustration: the argument for "this is for you" is more convincing shown
-// than described, which is why the product tour and creative desk land.
-
+// product actually supports at sign-up: solo, in-house team, agency.
 const AUDIENCES = [
   {
     tag: "Solo",
@@ -23,7 +18,7 @@ const AUDIENCES = [
     tag: "In-house team",
     photo: "/brand/landing/who/team.jpg",
     title: "More pipeline than hours",
-    body: "One or two marketers and a CRM full of signals nobody has time to work. Arc turns those records into specific, evidence-backed openings.",
+    body: "One or two marketers and a CRM full of signals nobody has time to work. Arc turns those records into evidence-backed openings.",
   },
   {
     tag: "Agency",
@@ -37,58 +32,65 @@ export function WhoItsFor() {
   return (
     <section id="who" className="border-y border-[color:var(--border-panel)] bg-[var(--canvas-deep)]">
       <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-        <div className="grid items-start gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
-          <Reveal className="lg:sticky lg:top-28">
-            <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
+        {/* Header reads across the top so the three cards can take the full
+            width below. Stacked in a side column they read as a list and made
+            the section roughly twice as tall as it needed to be. */}
+        <Reveal>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between lg:gap-12">
+            <h2 className="max-w-[16ch] font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
               Who Arc is for
             </h2>
-            <p className="mt-4 max-w-[44ch] text-[0.975rem] leading-relaxed text-[var(--text-secondary)]">
+            <p className="max-w-[52ch] text-[0.975rem] leading-relaxed text-[var(--text-secondary)] lg:text-right">
               Not an industry — a situation. The same loop runs for a coffee
               roaster, a run club and a B2B software team. What matters is that
               someone owns marketing and doesn&rsquo;t have enough hours for it.
             </p>
-            <div className="mt-7 rounded-xl border border-[color:var(--border-panel)] bg-[var(--surface-panel)] p-5">
-              <p className="text-[0.875rem] font-semibold text-[var(--text-primary)]">
-                Who it isn&rsquo;t for
-              </p>
-              <p className="mt-1.5 max-w-[40ch] text-[0.85rem] leading-relaxed text-[var(--text-secondary)]">
-                Anyone who wants marketing to run itself completely. Every send
-                waits for a human, by design — if you&rsquo;re looking for full
-                autopilot, that isn&rsquo;t what Arc does.
-              </p>
-            </div>
-          </Reveal>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-            {AUDIENCES.map((a, i) => (
-              <Reveal key={a.tag} delay={0.08 * i}>
-                <figure className="group relative h-full overflow-hidden rounded-xl border border-[color:var(--border-panel)] transition-colors duration-300 hover:border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)]">
-                  <div className="relative aspect-[16/10] sm:aspect-[16/11] lg:aspect-[16/7]">
-                    <img
-                      src={a.photo}
-                      alt=""
-                      loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.04]"
-                    />
-                    {/* Scrim: the copy sits on the image like the ad units do. */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-[var(--canvas-deep)] via-[color:color-mix(in_srgb,var(--canvas-deep)_72%,transparent)] to-transparent" />
-                    <span className="absolute left-5 top-5 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--canvas-deep)_70%,transparent)] px-2.5 py-0.5 font-[family-name:var(--font-mono)] text-[0.65rem] tracking-[0.02em] text-[var(--accent)] backdrop-blur-md">
-                      {a.tag}
-                    </span>
-                    <figcaption className="absolute inset-x-0 bottom-0 p-6">
-                      <h3 className="font-serif text-[1.4rem] font-semibold leading-snug text-[var(--text-primary)]">
-                        {a.title}
-                      </h3>
-                      <p className="mt-2 max-w-[52ch] text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
-                        {a.body}
-                      </p>
-                    </figcaption>
-                  </div>
-                </figure>
-              </Reveal>
-            ))}
           </div>
+        </Reveal>
+
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {AUDIENCES.map((a, i) => (
+            <Reveal key={a.tag} delay={0.09 * i}>
+              <figure className="group flex h-full flex-col overflow-hidden rounded-xl border border-[color:var(--border-panel)] bg-[var(--surface-panel)] transition-colors duration-300 hover:border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)]">
+                <div className="relative aspect-[4/3] overflow-hidden">
+                  <img
+                    src={a.photo}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.05]"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface-panel)] via-transparent to-transparent" />
+                  <span className="absolute left-4 top-4 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--canvas-deep)_72%,transparent)] px-2.5 py-0.5 font-[family-name:var(--font-mono)] text-[0.65rem] tracking-[0.02em] text-[var(--accent)] backdrop-blur-md">
+                    {a.tag}
+                  </span>
+                </div>
+                <figcaption className="flex flex-1 flex-col p-6 pt-5">
+                  <h3 className="font-serif text-[1.3rem] font-semibold leading-snug text-[var(--text-primary)]">
+                    {a.title}
+                  </h3>
+                  <p className="mt-2.5 text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
+                    {a.body}
+                  </p>
+                </figcaption>
+              </figure>
+            </Reveal>
+          ))}
         </div>
+
+        {/* The honest note sits under the row as a single quiet line rather than
+            a fourth box competing with the cards. */}
+        <Reveal delay={0.2}>
+          <div className="mt-10 flex flex-col gap-2 border-t border-[color:var(--border-panel)] pt-6 sm:flex-row sm:items-baseline sm:gap-5">
+            <p className="shrink-0 font-[family-name:var(--font-mono)] text-[0.72rem] tracking-[0.02em] text-[var(--accent)]">
+              Who it isn&rsquo;t for
+            </p>
+            <p className="max-w-[70ch] text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
+              Anyone who wants marketing to run itself completely. Every send
+              waits for a human, by design — if you&rsquo;re looking for full
+              autopilot, that isn&rsquo;t what Arc does.
+            </p>
+          </div>
+        </Reveal>
       </div>
     </section>
   );
