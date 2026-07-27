@@ -6754,44 +6754,56 @@ export type Database = {
       }
       workspaces: {
         Row: {
+          accent_key: string | null
           created_at: string
           created_by: string | null
           id: string
           key: string
+          logo_url: string | null
           metadata: Json
           name: string
           org_id: string
           settings: Json
+          short_label: string | null
           slug: string
           status: string
+          subtitle: string | null
           updated_at: string
           workspace_type: string
         }
         Insert: {
+          accent_key?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
           key?: string
+          logo_url?: string | null
           metadata?: Json
           name: string
           org_id: string
           settings?: Json
+          short_label?: string | null
           slug: string
           status?: string
+          subtitle?: string | null
           updated_at?: string
           workspace_type?: string
         }
         Update: {
+          accent_key?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
           key?: string
+          logo_url?: string | null
           metadata?: Json
           name?: string
           org_id?: string
           settings?: Json
+          short_label?: string | null
           slug?: string
           status?: string
+          subtitle?: string | null
           updated_at?: string
           workspace_type?: string
         }

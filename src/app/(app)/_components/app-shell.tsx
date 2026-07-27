@@ -4,16 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 
+import { type BillingNotice } from "@/domain";
 import { getProductLanguage } from "@/lib/product-language";
 
 import { AccountMenu } from "./account-menu";
+import { BillingNoticeBar } from "./billing-notice";
 import { ComingSoonToasts } from "./coming-soon";
-import { type TrialBanner } from "@/lib/billing/trial-banner";
-
 import { CommandPalette, type CommandItem } from "./command-palette";
 import { NavProgress } from "./nav-progress";
 import { RoutePrewarm } from "./route-prewarm";
-import { TrialNotice } from "./trial-notice";
 import { WorkspaceSwitcher, type WorkspaceOption } from "./workspace-switcher";
 
 function initials(name: string): string {
@@ -118,6 +117,9 @@ const CRUMBS: Record<string, string> = {
 export function AppShell({
   workspaceName,
   orgName,
+  workspaceSubtitle,
+  workspaceShortLabel,
+  workspaceAccentColor = null,
   userName,
   userEmail,
   logoUrl = null,
@@ -125,11 +127,15 @@ export function AppShell({
   industry = "general",
   workspaces = [],
   navBadges = {},
-  trialBanner = null,
+  billingNotice = null,
   children,
 }: {
   workspaceName: string;
   orgName: string;
+  /** Resolved rail identity — see resolveWorkspaceIdentity in @/domain. */
+  workspaceSubtitle: string;
+  workspaceShortLabel: string;
+  workspaceAccentColor?: string | null;
   userName: string;
   userEmail: string;
   logoUrl?: string | null;
@@ -137,7 +143,7 @@ export function AppShell({
   industry?: string | null;
   workspaces?: WorkspaceOption[];
   navBadges?: Record<string, number>;
-  trialBanner?: TrialBanner | null;
+  billingNotice?: BillingNotice | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -194,10 +200,20 @@ export function AppShell({
           onClick={() => setNavOpen(false)}
         />
         <aside className="rail" data-open={navOpen}>
-          <WorkspaceSwitcher workspaceName={workspaceName} orgName={orgName} logoUrl={logoUrl} workspaces={workspaces} />
-          <div className="indtag">
+          <WorkspaceSwitcher
+            workspaceName={workspaceName}
+            orgName={orgName}
+            subtitle={workspaceSubtitle}
+            logoUrl={logoUrl}
+            accentColor={workspaceAccentColor}
+            workspaces={workspaces}
+          />
+          <div
+            className="indtag"
+            style={workspaceAccentColor ? ({ "--ws-accent": workspaceAccentColor } as React.CSSProperties) : undefined}
+          >
             <i />
-            {orgName.split(/\s+/)[0]?.toUpperCase()} workspace
+            {workspaceShortLabel}
           </div>
           <div className="navwrap">
             {navGroups.slice(0, 1).map((g) => (
@@ -305,7 +321,7 @@ export function AppShell({
             </span>
           </header>
           <CommandPalette items={commandItems} />
-          <TrialNotice banner={trialBanner} />
+          <BillingNoticeBar banner={billingNotice} />
           {children}
         </div>
       </div>

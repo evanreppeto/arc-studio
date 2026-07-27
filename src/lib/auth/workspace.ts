@@ -5,6 +5,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 import { getAuthMode, getSupabaseAnonKey, getSupabaseAuthUrl } from "./auth-mode";
+import { isWorkspaceAccentKey, type WorkspaceAccentKey } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -32,6 +33,16 @@ export type WorkspaceContext = {
   workspaceKey: string;
   workspaceSlug: string;
   workspaceName: string;
+  /**
+   * Stored per-workspace display identity, straight off the row (all nullable).
+   * `resolveWorkspaceIdentity` from @/domain turns these into what the rail
+   * renders — a workspace that has customized nothing resolves to the org-name
+   * fallbacks the shell has always shown.
+   */
+  workspaceSubtitle: string | null;
+  workspaceShortLabel: string | null;
+  workspaceAccentKey: WorkspaceAccentKey | null;
+  workspaceLogoUrl: string | null;
   role: WorkspaceRole | null;
   userId: string | null;
   source: "membership" | "default-org" | "legacy-org";
@@ -49,6 +60,10 @@ type WorkspaceRow = {
   key: string;
   slug: string;
   name: string;
+  subtitle: string | null;
+  short_label: string | null;
+  accent_key: string | null;
+  logo_url: string | null;
 };
 
 type WorkspaceMembershipRow = {
@@ -86,6 +101,20 @@ async function getSupabaseSessionUserId(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** Row → the context's identity fields, with the accent narrowed to a known key. */
+function identityFrom(row: WorkspaceRow | null): Pick<
+  WorkspaceContext,
+  "workspaceSubtitle" | "workspaceShortLabel" | "workspaceAccentKey" | "workspaceLogoUrl"
+> {
+  const accentKey = row?.accent_key ?? null;
+  return {
+    workspaceSubtitle: row?.subtitle ?? null,
+    workspaceShortLabel: row?.short_label ?? null,
+    workspaceAccentKey: isWorkspaceAccentKey(accentKey) ? accentKey : null,
+    workspaceLogoUrl: row?.logo_url ?? null,
+  };
 }
 
 async function fetchOrgById(client: QueryClient, orgId: string): Promise<OrgRow | null> {
@@ -174,7 +203,7 @@ export async function resolveSoleOrgId(client: QueryClient = getSupabaseAdminCli
 async function fetchWorkspaceById(client: QueryClient, workspaceId: string): Promise<WorkspaceRow | null> {
   const { data, error } = await client
     .from("workspaces")
-    .select("id,org_id,key,slug,name")
+    .select("id,org_id,key,slug,name,subtitle,short_label,accent_key,logo_url")
     .eq("id", workspaceId)
     .eq("status", "active")
     .maybeSingle<WorkspaceRow>();
@@ -225,7 +254,7 @@ export async function resolveWorkspaceScopeById(
 async function fetchDefaultWorkspace(client: QueryClient, org: OrgRow): Promise<WorkspaceContext> {
   const { data, error } = await client
     .from("workspaces")
-    .select("id,org_id,key,slug,name")
+    .select("id,org_id,key,slug,name,subtitle,short_label,accent_key,logo_url")
     .eq("org_id", org.id)
     .eq("status", "active")
     .limit(2)
@@ -250,6 +279,7 @@ async function fetchDefaultWorkspace(client: QueryClient, org: OrgRow): Promise<
       workspaceKey: DEFAULT_WORKSPACE_KEY,
       workspaceSlug: org.slug,
       workspaceName: org.name,
+      ...identityFrom(null),
       role: null,
       userId: null,
       source: "legacy-org",
@@ -264,6 +294,7 @@ async function fetchDefaultWorkspace(client: QueryClient, org: OrgRow): Promise<
     workspaceKey: row?.key ?? DEFAULT_WORKSPACE_KEY,
     workspaceSlug: row?.slug ?? org.slug,
     workspaceName: row?.name ?? org.name,
+    ...identityFrom(row),
     role: null,
     userId: null,
     source: row ? "default-org" : "legacy-org",
@@ -324,6 +355,7 @@ export async function resolveWorkspaceContextForUser(
           workspaceKey: workspace.key,
           workspaceSlug: workspace.slug,
           workspaceName: workspace.name,
+          ...identityFrom(workspace),
           role: membership.role,
           userId,
           source: "membership",
@@ -373,6 +405,7 @@ function buildDemoWorkspaceContext(): WorkspaceContext {
     workspaceKey: DEFAULT_WORKSPACE_KEY,
     workspaceSlug: DEFAULT_ORG_SLUG,
     workspaceName: name,
+    ...identityFrom(null),
     role: "owner",
     userId: null,
     source: "default-org",

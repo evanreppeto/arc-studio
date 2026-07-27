@@ -46,6 +46,10 @@ describe("arcGuard", () => {
       workspaceKey: "default",
       workspaceSlug: "fallback",
       workspaceName: "Fallback Workspace",
+      workspaceSubtitle: null,
+      workspaceShortLabel: null,
+      workspaceAccentKey: null,
+      workspaceLogoUrl: null,
       role: null,
       userId: null,
       source: "default-org",
@@ -71,6 +75,50 @@ describe("arcGuard", () => {
       },
     });
     expect(getCurrentWorkspaceContextMock).not.toHaveBeenCalled();
+  });
+
+  // A scoped token pins the request to its own workspace — but the runner also
+  // states which workspace each wake is for, and this branch used to discard
+  // that. One shared runner holding one workspace's token would then accept
+  // another tenant's work and file it here, with no error and the wrong tenant.
+  it("refuses when a database token is scoped to a different workspace than the request asserts", async () => {
+    checkAgentBearerMock.mockResolvedValue({
+      ok: true,
+      tokenSource: "database",
+      orgId: "org-token",
+      workspaceId: "00000000-0000-4000-8000-000000000001",
+    });
+
+    const result = await arcGuard(
+      assertedRequest({ "x-arc-workspace-id": "00000000-0000-4000-8000-0000000000ff" }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected a refusal");
+    expect(result.response.status).toBe(409);
+    await expect(result.response.json()).resolves.toMatchObject({ status: "workspace_mismatch" });
+  });
+
+  it("accepts a database token when the asserted workspace agrees with it", async () => {
+    checkAgentBearerMock.mockResolvedValue({
+      ok: true,
+      tokenSource: "database",
+      orgId: "org-token",
+      workspaceId: "00000000-0000-4000-8000-000000000001",
+    });
+
+    const result = await arcGuard(
+      assertedRequest({ "x-arc-workspace-id": "00000000-0000-4000-8000-000000000001" }),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      scope: {
+        orgId: "org-token",
+        workspaceId: "00000000-0000-4000-8000-000000000001",
+        source: "agent-token",
+      },
+    });
   });
 
   it("resolves a database token workspace key to the workspace uuid", async () => {
