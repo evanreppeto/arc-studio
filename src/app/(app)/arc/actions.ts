@@ -67,7 +67,7 @@ import { getCreationTenancy } from "@/lib/arc-chat/sharing";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
-import { checkUsageAllowed, formatCentsUsd } from "@/lib/billing/entitlements";
+import { checkUsageAllowed, usageBlockMessage } from "@/lib/billing/entitlements";
 import { storeGeneratedMedia } from "@/lib/media/storage";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
@@ -219,7 +219,7 @@ export async function sendArcMessageAction(input: {
   if (!gate.allowed) {
     return {
       ok: false,
-      error: `You've reached this month's plan limit (${formatCentsUsd(gate.capCents)} on the ${gate.tier} plan). It resets next cycle — or upgrade to keep going.`,
+      error: usageBlockMessage(gate),
     };
   }
 
@@ -367,7 +367,7 @@ export async function regenerateArcReplyAction(replyMessageId: string): Promise<
     await assertConversationAccess(reply.conversationId, "collaborate");
     const gate = await checkUsageAllowed(await getCurrentOrgId());
     if (!gate.allowed) {
-      return { ok: false, error: `You've reached this month's plan limit (${formatCentsUsd(gate.capCents)} on the ${gate.tier} plan). It resets next cycle — or upgrade to keep going.` };
+      return { ok: false, error: usageBlockMessage(gate) };
     }
     const operatorMessage = await getPrecedingOperatorMessage(reply.conversationId, reply.createdAt);
     if (!operatorMessage) return { ok: false, error: "Couldn't find the message to regenerate from." };
@@ -397,7 +397,7 @@ export async function editAndResendArcMessageAction(input: { messageId: string; 
     await assertConversationAccess(message.conversationId, "collaborate");
     const gate = await checkUsageAllowed(await getCurrentOrgId());
     if (!gate.allowed) {
-      return { ok: false, error: `You've reached this month's plan limit (${formatCentsUsd(gate.capCents)} on the ${gate.tier} plan). It resets next cycle — or upgrade to keep going.` };
+      return { ok: false, error: usageBlockMessage(gate) };
     }
     const updated = await updateOperatorMessageBody(input.messageId, body);
     if (!updated) return { ok: false, error: "That message can't be edited." };

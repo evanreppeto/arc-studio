@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { parseArcRoute } from "@/domain";
 
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
-import { checkUsageAllowed, formatCentsUsd } from "@/lib/billing/entitlements";
+import { checkUsageAllowed, usageBlockMessage } from "@/lib/billing/entitlements";
 import { getMediaProviderWithKey } from "@/lib/media";
 import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
 import { meterConnectorCall } from "@/lib/connectors/metering";
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     // that cost is already incurred). Non-blocking until enforcement is armed.
     const gate = await checkUsageAllowed(allowed.scope.orgId);
     if (!gate.allowed) {
-      return fail("plan_limit", `This month's plan limit (${formatCentsUsd(gate.capCents)}) is reached. Upgrade or wait for the next cycle.`, 402);
+      return fail("plan_limit", usageBlockMessage(gate), 402);
     }
     const aspectRatio =
       typeof body.aspect_ratio === "string" && body.aspect_ratio.trim() ? body.aspect_ratio.trim() : "16:9";
