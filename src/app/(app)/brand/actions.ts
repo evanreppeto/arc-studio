@@ -14,6 +14,7 @@ import {
   type BrandKnowledgeSyncSummary,
   type BrandKnowledgeSyncTotals,
 } from "@/lib/brand-knowledge/sync-summary";
+import { uploadBrandingImage } from "@/lib/branding/images";
 import { getBusinessProfile, upsertBusinessProfile } from "@/lib/brand-kit/persistence";
 import { fetchBrandSignalFromUrl } from "@/lib/brand-kit/website-fetch";
 import { insertAssetWithUrl, loadAssetForLearning } from "@/lib/media-library/persistence";
@@ -59,6 +60,66 @@ export async function updateBrandIdentity(input: BrandIdentityInput): Promise<Br
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save brand changes." };
   }
+}
+
+/**
+ * The brand mark Arc stamps on generated creative.
+ *
+ * This is `business_profiles.logo_url` — the field `toBrandTokens` feeds to
+ * `renderCreative`, so it lands on every composed ad. It was already read by the
+ * renderer but had no way in: the only writer was `buildBusinessProfileFromForm`,
+ * which nothing calls. Distinct from the workspace logo in Settings, which is
+ * chrome (the nav rail); this one goes out on creative, so it gets its own
+ * control on the Brand screen rather than sharing that one.
+ *
+ * Storage is the same operator-gated `uploadBrandingImage` path Settings uses
+ * (type/size checked there). Nothing outbound — a creative carrying this logo
+ * still goes through the normal approval gate.
+ */
+export type BrandLogoResult = { ok: true; url: string | null } | { ok: false; error: string };
+
+async function saveProfileLogo(orgId: string, logoUrl: string | null): Promise<void> {
+  const current = (await getBusinessProfile(orgId)) ?? NEUTRAL_DEFAULTS;
+  await upsertBusinessProfile(orgId, { ...current, logoUrl });
+  revalidatePath("/brand");
+  // The Studio preview renders from the same tokens.
+  revalidatePath("/studio");
+}
+
+export async function saveBrandLogo(formData: FormData): Promise<BrandLogoResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect a workspace to upload a logo." };
+
+  const image = formData.get("file");
+  if (!(image instanceof File) || image.size === 0) return { ok: false, error: "Choose an image first." };
+
+  const ctx = await getCurrentWorkspaceContext();
+  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+
+  const uploaded = await uploadBrandingImage(`org/${ctx.orgId}/brand`, image);
+  if (!uploaded.ok) return { ok: false, error: uploaded.error };
+
+  try {
+    await saveProfileLogo(ctx.orgId, uploaded.url);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save the logo." };
+  }
+  return { ok: true, url: uploaded.url };
+}
+
+export async function removeBrandLogo(): Promise<BrandLogoResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect a workspace first." };
+
+  const ctx = await getCurrentWorkspaceContext();
+  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+
+  try {
+    await saveProfileLogo(ctx.orgId, null);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not remove the logo." };
+  }
+  return { ok: true, url: null };
 }
 
 /**

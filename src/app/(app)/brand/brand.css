@@ -17,6 +17,11 @@
 .arc-brand .brandhero { display: flex; align-items: center; gap: 18px; padding: 22px clamp(20px, 2.6vw, 30px); border-bottom: 1px solid var(--line-2); background: linear-gradient(180deg, color-mix(in srgb, var(--bbrand) 9%, transparent), transparent 90%); }
 .arc-brand .mk2 { width: 62px; height: 62px; border-radius: 16px; background: linear-gradient(150deg, #6c93ff, var(--bbrand) 58%, #2f57d6); display: grid; place-items: center; flex-shrink: 0; box-shadow: 0 14px 34px -12px color-mix(in srgb, var(--bbrand) 75%, transparent); }
 .arc-brand .mk2 svg { width: 32px; height: 32px; stroke: #fff; fill: none; stroke-width: 2.3; }
+/* An uploaded mark replaces the gradient tile entirely — a logo carries its own
+   background, and tinting it would misrepresent what lands on the creative. */
+.arc-brand .mk2:has(img) { background: var(--inset); border: 1px solid var(--line-2); box-shadow: none; }
+.arc-brand .mk2 img { width: 100%; height: 100%; object-fit: contain; border-radius: 15px; padding: 7px; }
+.arc-brand .blogoerr { font-size: 11px; color: #e0a3a3; max-width: 210px; }
 .arc-brand .bid { min-width: 0; }
 .arc-brand .bname { font-family: var(--serif); font-weight: 600; font-size: 29px; letter-spacing: -0.02em; line-height: 1; display: flex; align-items: center; gap: 12px; }
 .arc-brand .bstatus { font-family: var(--sans); font-weight: 600; font-size: 10.5px; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); border-radius: 99px; padding: 3px 9px; letter-spacing: 0.01em; }
