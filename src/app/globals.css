@@ -256,8 +256,15 @@ html[data-motion="reduced"] *::after {
 }
 
 
-* {
-  border-color: var(--border-hairline);
+/* Default border colour for every element. This MUST stay inside `@layer base`:
+   an unlayered `*` rule outranks the whole `@layer utilities` block regardless of
+   specificity, which silently killed every `border-[color:…]` utility in the app.
+   Inside `base` it sits below both components and utilities, so it only applies
+   where nothing else has asked for a border colour. */
+@layer base {
+  * {
+    border-color: var(--border-hairline);
+  }
 }
 
 body {
