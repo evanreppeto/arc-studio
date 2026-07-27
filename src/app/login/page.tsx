@@ -15,6 +15,14 @@ const SIGN_IN_ERRORS: Record<string, string> = {
   rate_limited: "Too many attempts. Wait a moment, then try again.",
   provision: "You're signed in, but setup didn't finish. Try again.",
   config: "Sign-in isn't switched on yet. Try again shortly.",
+  // Email links land here when the token can't be redeemed — expired, already
+  // used, or opened in a different browser than it was requested from. The
+  // address is confirmed by the time Supabase redirects, so signing in with a
+  // password is the way through; the old copy ("Something went wrong") sent
+  // people back to their inbox to click the same dead link again.
+  link: "That link couldn't be used — it may have expired, or already been opened. Sign in with your password below.",
+  oauth: "That sign-in link couldn't be completed. Sign in with your password below.",
+  oauth_cancelled: "Sign-in was cancelled. Try again, or use your password below.",
   "1": "That email or password didn't match. Try again.",
 };
 
