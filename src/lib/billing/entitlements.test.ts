@@ -58,35 +58,49 @@ describe("resolveOrgPlan", () => {
 
 describe("checkUsageAllowed", () => {
   it("does not block when enforcement is disarmed, even over cap", async () => {
-    // free cap is $10 (1000c); usage 5000c is over — but enforcement is off.
+    // No plan row → free tier; usage is deliberately over its cap — but enforcement is off.
+    const overFreeCap = PLANS.free.monthlyCapCents * 5;
     const gate = await checkUsageAllowed(
       "org-1",
-      makeClient({ plan: null, usageRows: [{ cost_estimate_cents: 5_000 }] }),
+      makeClient({ plan: null, usageRows: [{ cost_estimate_cents: overFreeCap }] }),
     );
     expect(isBillingEnforcementEnabled()).toBe(false);
-    expect(gate).toMatchObject({ allowed: true, enforced: false, overCap: true, usedCents: 5_000, capCents: 1_000 });
+    expect(gate).toMatchObject({
+      allowed: true,
+      enforced: false,
+      overCap: true,
+      usedCents: overFreeCap,
+      capCents: PLANS.free.monthlyCapCents,
+    });
   });
 
   it("blocks when enforcement is armed AND the org is over its cap", async () => {
     process.env.ARC_BILLING_ENFORCEMENT = "1";
+    // Two rows summing to exactly 4c over the starter cap — proves the ledger is
+    // summed, and that the boundary is inclusive (>= cap blocks).
+    const starterCap = PLANS.starter.monthlyCapCents;
     const gate = await checkUsageAllowed(
       "org-1",
-      makeClient({ plan: { plan_tier: "starter", monthly_cap_cents: null }, usageRows: [{ cost_estimate_cents: 9_999 }, { cost_estimate_cents: 5 }] }),
+      makeClient({
+        plan: { plan_tier: "starter", monthly_cap_cents: null },
+        usageRows: [{ cost_estimate_cents: starterCap - 1 }, { cost_estimate_cents: 5 }],
+      }),
     );
     expect(gate.enforced).toBe(true);
-    expect(gate.usedCents).toBe(10_004);
+    expect(gate.usedCents).toBe(starterCap + 4);
     expect(gate.overCap).toBe(true);
     expect(gate.allowed).toBe(false);
   });
 
   it("allows when armed and under cap, reporting remaining headroom", async () => {
     process.env.ARC_BILLING_ENFORCEMENT = "1";
+    const used = Math.floor(PLANS.pro.monthlyCapCents / 2); // comfortably under the pro cap
     const gate = await checkUsageAllowed(
       "org-1",
-      makeClient({ plan: { plan_tier: "pro", monthly_cap_cents: null }, usageRows: [{ cost_estimate_cents: 12_000 }] }),
+      makeClient({ plan: { plan_tier: "pro", monthly_cap_cents: null }, usageRows: [{ cost_estimate_cents: used }] }),
     );
     expect(gate.allowed).toBe(true);
     expect(gate.capCents).toBe(PLANS.pro.monthlyCapCents);
-    expect(gate.remainingCents).toBe(PLANS.pro.monthlyCapCents - 12_000);
+    expect(gate.remainingCents).toBe(PLANS.pro.monthlyCapCents - used);
   });
 });
