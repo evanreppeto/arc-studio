@@ -25,7 +25,7 @@ export function GoldCta({
   const sizing =
     size === "lg"
       ? "min-h-[48px] whitespace-nowrap px-7 text-[0.95rem]"
-      : "min-h-[38px] whitespace-nowrap px-4 text-[0.875rem]";
+      : "min-h-[44px] whitespace-nowrap px-4 text-[0.875rem] sm:min-h-[38px]";
   return (
     <Link
       href={href}
@@ -65,7 +65,7 @@ export function GhostCta({
   const sizing =
     size === "lg"
       ? "min-h-[48px] whitespace-nowrap px-7 text-[0.95rem]"
-      : "min-h-[38px] whitespace-nowrap px-4 text-[0.875rem]";
+      : "min-h-[44px] whitespace-nowrap px-4 text-[0.875rem] sm:min-h-[38px]";
   return (
     <Link
       href={href}

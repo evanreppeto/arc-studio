@@ -48,7 +48,7 @@ export function SiteNav({
             <img src="/brand/arc-studio-wordmark.png" alt="Arc Studio" className="h-[1.15rem] w-auto" />
           </a>
         ) : (
-          <Link href={homeHref} className="flex items-center gap-2.5" aria-label="Arc Studio — home">
+          <Link href={homeHref} className="flex min-h-[44px] items-center gap-2.5 sm:min-h-0" aria-label="Arc Studio — home">
             <img src="/icon.png" alt="" className="h-7 w-auto" />
             <img src="/brand/arc-studio-wordmark.png" alt="Arc Studio" className="h-[1.15rem] w-auto" />
           </Link>
@@ -81,7 +81,7 @@ export function SiteNav({
               the footer on every page. */}
           <Link
             href="/login"
-            className="hidden min-h-[38px] items-center rounded-lg px-3.5 text-[0.875rem] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] sm:flex"
+            className="hidden min-h-[44px] items-center rounded-lg px-3.5 sm:min-h-[38px] text-[0.875rem] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] sm:flex"
           >
             Sign in
           </Link>
