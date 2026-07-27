@@ -1,8 +1,15 @@
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
-/** Friendly labels for the workspace audit actions we record. */
+/**
+ * Friendly labels for the workspace audit actions we record.
+ *
+ * `workspace.renamed` is no longer emitted — updateWorkspaceIdentity replaced the
+ * coupled rename — but historical rows still carry it, so it keeps its label.
+ */
 export const WORKSPACE_AUDIT_LABELS: Record<string, string> = {
   "workspace.created": "Workspace created",
+  "workspace.renamed": "Workspace renamed",
+  "workspace.identity_updated": "Workspace identity updated",
   "member.role_changed": "Role changed",
   "member.removed": "Member removed",
   "invite.created": "Invite created",
