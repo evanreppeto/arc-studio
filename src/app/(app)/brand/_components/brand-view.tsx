@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import type { BrandProfileView } from "@/lib/brand-kit/profile-view";
 import type { BrandKnowledgeSyncSummary } from "@/lib/brand-knowledge/sync-summary";
 
-import { resyncBrandSources, updateBrandIdentity, uploadBrandDocuments, type BrandUploadResult } from "../actions";
+import { analyzeBrandWebsite, resyncBrandSources, updateBrandIdentity, uploadBrandDocuments, type BrandUploadResult, type BrandWebsiteAnalysis } from "../actions";
 import { EditIdentityModal } from "./edit-identity-modal";
 
 const STUDIO = "/studio";
@@ -65,6 +65,24 @@ export function BrandView({ view }: { view: BrandProfileView }) {
     });
   }
 
+  // Website analysis. Read-only: it fetches the page and shows what it found;
+  // nothing is saved until the operator acts on it.
+  const websiteInput = useRef<HTMLInputElement>(null);
+  const [analyzing, startAnalyze] = useTransition();
+  const [analysis, setAnalysis] = useState<BrandWebsiteAnalysis | null>(null);
+
+  function onAnalyze() {
+    const url = websiteInput.current?.value ?? "";
+    setAnalysis(null);
+    startAnalyze(async () => {
+      try {
+        setAnalysis(await analyzeBrandWebsite(url));
+      } catch {
+        setAnalysis({ ok: false, error: "Could not reach that site. Check the address and try again." });
+      }
+    });
+  }
+
   function onFilesPicked(files: FileList | null) {
     if (!files || files.length === 0) return;
     const fd = new FormData();
@@ -115,9 +133,33 @@ export function BrandView({ view }: { view: BrandProfileView }) {
         </div>
         <div className="sources">
           <div className="isrc">
-            <span className="tg est">preview</span>
-            <div className="si"><span className="ic bl"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" /></svg></span><div><div className="nm">Website</div><div className="ds">Crawls up to 6 pages → logo, colors, fonts, voice, proof</div></div></div>
-            <div className="urow"><input defaultValue={identity.website ?? ""} placeholder="https://yourbrand.com" spellCheck={false} /><span className="ibtn" data-soon="Website analysis is coming soon">Analyze</span></div>
+            <span className="tg ok">wired</span>
+            <div className="si"><span className="ic bl"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" /></svg></span><div><div className="nm">Website</div><div className="ds">Reads the page — title, description, icon, and copy for Arc</div></div></div>
+            <div className="urow">
+              <input
+                ref={websiteInput}
+                defaultValue={identity.website ?? ""}
+                placeholder="https://yourbrand.com"
+                spellCheck={false}
+                onKeyDown={(e) => { if (e.key === "Enter") onAnalyze(); }}
+              />
+              <button type="button" className="ibtn" onClick={onAnalyze} disabled={analyzing}>
+                {analyzing ? "Reading…" : "Analyze"}
+              </button>
+            </div>
+            {analysis && (
+              analysis.ok ? (
+                <div className="wsresult">
+                  <div className="wsrow"><span className="wsl">Title</span><span className="wsv">{analysis.title ?? "—"}</span></div>
+                  <div className="wsrow"><span className="wsl">Description</span><span className="wsv">{analysis.description ?? "—"}</span></div>
+                  <div className="wsrow"><span className="wsl">Copy read</span><span className="wsv">{analysis.excerpt.length.toLocaleString()} characters</span></div>
+                  {analysis.excerpt && <div className="wsexcerpt">{analysis.excerpt}</div>}
+                  <div className="wsnote">Nothing saved yet — add what you want Arc to keep as a brand document or in your profile.</div>
+                </div>
+              ) : (
+                <div className="wserror">{analysis.error}</div>
+              )
+            )}
           </div>
           <div className="isrc">
             <span className="tg ok">wired · Brain</span>

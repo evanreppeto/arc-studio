@@ -1,7 +1,8 @@
 import { type ArcMention, type MentionType } from "@/domain";
-import { OFFICIAL_PERSONA_MAPPINGS } from "@/domain";
+import { OFFICIAL_PERSONA_MAPPINGS, personaInspectHref } from "@/domain";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
 import { getCrmMentionSamples, type CrmObjectKey } from "@/lib/crm/read-model";
+import { listPersonas } from "@/lib/personas/console";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { listVaultNotes } from "@/lib/vault/persistence";
@@ -35,19 +36,22 @@ function personaLabel(key: string): string {
  * available (static); the rest require Supabase.
  */
 export async function getMentionables(): Promise<MentionGroup[]> {
-  const personas: MentionGroup = {
+  // Offline/demo fallback only. Personas are per-org (the `personas` table is the
+  // authority), so mentioning one of these static keys in a workspace that
+  // doesn't use them would deep-link to a persona it doesn't have.
+  const fallbackPersonas: MentionGroup = {
     type: "persona",
     label: "Personas",
     items: OFFICIAL_PERSONA_MAPPINGS.map((key) => ({
       type: "persona" as const,
       id: key,
       label: personaLabel(key),
-      href: `/personas?inspect=${key}`,
+      href: personaInspectHref(key),
     })),
   };
 
   if (!isSupabaseAdminConfigured()) {
-    return [personas];
+    return [fallbackPersonas];
   }
 
   const client = getSupabaseAdminClient();
@@ -59,11 +63,25 @@ export async function getMentionables(): Promise<MentionGroup[]> {
   // concurrently. getCrmMentionSamples does a single table-bundle fetch instead
   // of one per CRM object. Each source self-recovers to empty so one slow/failing
   // read doesn't sink the rest.
-  const [campaignRefs, crmSamples, vaultNotes] = await Promise.all([
+  const [campaignRefs, crmSamples, vaultNotes, orgPersonas] = await Promise.all([
     listCampaignNames(orgId).catch(() => []),
     getCrmMentionSamples().catch(() => ({}) as Awaited<ReturnType<typeof getCrmMentionSamples>>),
     orgId ? listVaultNotes(client, orgId).catch(() => []) : Promise.resolve([]),
+    listPersonas().catch(() => []),
   ]);
+
+  const personas: MentionGroup = orgPersonas.length
+    ? {
+        type: "persona",
+        label: "Personas",
+        items: orgPersonas.map((persona) => ({
+          type: "persona" as const,
+          id: persona.slug,
+          label: persona.name,
+          href: personaInspectHref(persona.slug),
+        })),
+      }
+    : fallbackPersonas;
 
   const campaigns: MentionGroup = {
     type: "campaign",
@@ -82,6 +100,11 @@ export async function getMentionables(): Promise<MentionGroup[]> {
     })),
   }));
 
+  // Deliberately un-linked: there is no `/vault` route in this app (the vault is
+  // Arc-API-only), so `/vault/<slug>` rendered a 404 in the chat's Sources row.
+  // An empty href keeps the mention valid (ArcMention.href is required, and
+  // isArcMention would drop the mention entirely without it) while the Sources
+  // row renders it as a static chip instead of a broken link.
   const vault: MentionGroup = {
     type: "vault",
     label: "Vault notes",
@@ -89,7 +112,7 @@ export async function getMentionables(): Promise<MentionGroup[]> {
       type: "vault" as const,
       id: note.slug,
       label: note.title,
-      href: `/vault/${note.slug}`,
+      href: "",
     })),
   };
 

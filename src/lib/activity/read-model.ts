@@ -64,6 +64,94 @@ export type RecentActivity =
   | { status: "live"; entries: ActivityEntry[]; summary: ActivitySummary; groups: ActivityDayGroup[] }
   | { status: "unavailable"; message: string };
 
+/**
+ * Where an approval item or agent task can actually be opened.
+ *
+ * These entries used to link to `/approvals?item=…` and `/agent-operations/tasks/…`,
+ * neither of which is a route in this app — and `GET /api/v1/arc/activity` hands
+ * the same hrefs to Arc, which can cite them back to the operator. Both records
+ * carry a `campaign_id`, and the campaign detail page IS the review surface, so
+ * we resolve through it; an unresolvable approval links nowhere rather than
+ * somewhere wrong. Agent runs fall back to `/arc`, where agent work lives.
+ */
+export type ActivityLinks = {
+  approvalCampaign: Map<string, string>;
+  taskCampaign: Map<string, string>;
+};
+
+const NO_LINKS: ActivityLinks = { approvalCampaign: new Map(), taskCampaign: new Map() };
+
+/**
+ * Batch-resolve approval item and agent task ids to their campaign, in two
+ * queries regardless of feed size. Org-scoped like every other source here (the
+ * service-role client bypasses RLS). Failure is non-fatal: an unresolved id
+ * simply yields no link, never a wrong one.
+ */
+async function resolveActivityLinks(
+  supabase: SupabaseClient,
+  orgId: string | undefined,
+  approvalSources: Array<{ data: unknown }>,
+  taskSources: Array<{ data: unknown }>,
+): Promise<ActivityLinks> {
+  const approvalIds = new Set<string>();
+  const taskIds = new Set<string>();
+  for (const source of approvalSources) {
+    for (const row of rows(source?.data)) {
+      const id = str(row.approval_item_id) ?? (str(row.subject_type)?.toLowerCase() === "approval" ? str(row.subject_id) : null);
+      if (id) approvalIds.add(id);
+    }
+  }
+  for (const source of taskSources) {
+    for (const row of rows(source?.data)) {
+      const id = str(row.task_id) ?? (str(row.subject_type)?.toLowerCase() === "agent_task" ? str(row.subject_id) : null);
+      if (id) taskIds.add(id);
+    }
+  }
+
+  const links: ActivityLinks = { approvalCampaign: new Map(), taskCampaign: new Map() };
+  const lookups: Array<Promise<void>> = [];
+
+  if (approvalIds.size > 0) {
+    const sel = supabase.from("approval_items").select("id,campaign_id").in("id", [...approvalIds]);
+    lookups.push(
+      Promise.resolve(orgId ? sel.eq("org_id", orgId) : sel).then(({ data }) => {
+        for (const row of rows(data)) {
+          const id = str(row.id);
+          const campaignId = str(row.campaign_id);
+          if (id && campaignId) links.approvalCampaign.set(id, campaignId);
+        }
+      }, () => {}),
+    );
+  }
+  if (taskIds.size > 0) {
+    const sel = supabase.from("agent_tasks").select("id,campaign_id").in("id", [...taskIds]);
+    lookups.push(
+      Promise.resolve(orgId ? sel.eq("org_id", orgId) : sel).then(({ data }) => {
+        for (const row of rows(data)) {
+          const id = str(row.id);
+          const campaignId = str(row.campaign_id);
+          if (id && campaignId) links.taskCampaign.set(id, campaignId);
+        }
+      }, () => {}),
+    );
+  }
+
+  await Promise.all(lookups);
+  return links;
+}
+
+function approvalHref(links: ActivityLinks, approvalId: string | null): string | null {
+  if (!approvalId) return null;
+  const campaignId = links.approvalCampaign.get(approvalId);
+  return campaignId ? `/campaigns/${campaignId}` : null;
+}
+
+function taskHref(links: ActivityLinks, taskId: string | null): string | null {
+  if (!taskId) return null;
+  const campaignId = links.taskCampaign.get(taskId);
+  return campaignId ? `/campaigns/${campaignId}` : "/arc";
+}
+
 const SOURCE_LIMIT = 50;
 const NEEDS_REVIEW_SOURCE_LIMIT = 250;
 const DEFAULT_LIMIT = 100;
@@ -134,12 +222,16 @@ export async function getRecentActivity(
         .limit(sourceLimit),
     ]);
 
+    // Resolve the campaign behind every referenced approval item / agent task in
+    // one batched pass, so entries can link to a page that exists.
+    const links = await resolveActivityLinks(supabase, orgId, [decisions, outputs, campaignEvents, events], [runs, outputs]);
+
     const sources = [
-      collectSource("approval_decisions", decisions, mapDecision),
-      collectSource("agent_run_logs", runs, mapRun),
-      collectSource("agent_outputs", outputs, mapOutput),
-      collectSource("campaign_events", campaignEvents, mapCampaignEvent),
-      collectSource("events", events, mapEvent),
+      collectSource("approval_decisions", decisions, (row) => mapDecision(row, links)),
+      collectSource("agent_run_logs", runs, (row) => mapRun(row, links)),
+      collectSource("agent_outputs", outputs, (row) => mapOutput(row, links)),
+      collectSource("campaign_events", campaignEvents, (row) => mapCampaignEvent(row, links)),
+      collectSource("events", events, (row) => mapEvent(row, links)),
     ];
 
     // One drifted column or failing table must not blank the entire feed: each
@@ -265,7 +357,7 @@ function isNeedsReviewEntry(entry: ActivityEntry): boolean {
   return entry.insightLabel === "Needs review";
 }
 
-function mapDecision(row: Record<string, unknown>): ActivityEntry {
+export function mapDecision(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS): ActivityEntry {
   const decision = str(row.decision) ?? "decision";
   const approvalId = str(row.approval_item_id);
   const decidedBy = str(row.decided_by) ?? "Operator";
@@ -282,11 +374,11 @@ function mapDecision(row: Record<string, unknown>): ActivityEntry {
     insightLabel: insightForDecision(decision),
     relatedLabel: approvalId ? "Approval item" : null,
     occurredAt: str(row.decided_at) ?? "",
-    href: approvalId ? `/approvals?item=${approvalId}` : null,
+    href: approvalHref(links, approvalId),
   };
 }
 
-function mapRun(row: Record<string, unknown>): ActivityEntry {
+export function mapRun(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS): ActivityEntry {
   const status = str(row.run_status) ?? "queued";
   const taskId = str(row.task_id);
   const error = str(row.error_message);
@@ -304,11 +396,11 @@ function mapRun(row: Record<string, unknown>): ActivityEntry {
     insightLabel: error ? "Risk blocked" : "Agent work",
     relatedLabel: taskId ? "Agent task" : null,
     occurredAt: str(row.completed_at) ?? str(row.started_at) ?? str(row.created_at) ?? "",
-    href: taskId ? `/agent-operations/tasks/${taskId}` : null,
+    href: taskHref(links, taskId),
   };
 }
 
-function mapOutput(row: Record<string, unknown>): ActivityEntry {
+function mapOutput(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS): ActivityEntry {
   const approvalId = str(row.approval_item_id);
   const taskId = str(row.task_id);
   const compliance = str(row.compliance_status) ?? "";
@@ -328,11 +420,11 @@ function mapOutput(row: Record<string, unknown>): ActivityEntry {
     insightLabel: insightForOutput(approval, compliance, tone),
     relatedLabel: str(row.title) ?? titleize(str(row.output_type) ?? "Draft"),
     occurredAt: str(row.created_at) ?? "",
-    href: approvalId ? `/approvals?item=${approvalId}` : taskId ? `/agent-operations/tasks/${taskId}` : null,
+    href: approvalHref(links, approvalId) ?? taskHref(links, taskId),
   };
 }
 
-export function mapCampaignEvent(row: Record<string, unknown>): ActivityEntry {
+export function mapCampaignEvent(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS): ActivityEntry {
   const eventType = str(row.event_type) ?? "campaign_event";
   const approvalId = str(row.approval_item_id);
   const campaignId = str(row.campaign_id);
@@ -354,11 +446,11 @@ export function mapCampaignEvent(row: Record<string, unknown>): ActivityEntry {
     insightLabel: insightForCampaignEvent(eventType, tone),
     relatedLabel: detail ?? "Campaign update",
     occurredAt: str(row.occurred_at) ?? "",
-    href: approvalId ? `/approvals?item=${approvalId}` : campaignId ? `/campaigns/${campaignId}` : null,
+    href: campaignId ? `/campaigns/${campaignId}` : approvalHref(links, approvalId),
   };
 }
 
-export function mapEvent(row: Record<string, unknown>): ActivityEntry {
+export function mapEvent(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS): ActivityEntry {
   const subjectType = str(row.subject_type) ?? "record";
   const subjectId = str(row.subject_id);
   const eventType = str(row.type) ?? "record.updated";
@@ -379,7 +471,7 @@ export function mapEvent(row: Record<string, unknown>): ActivityEntry {
     insightLabel: insightForEvent(subjectType, eventType),
     relatedLabel: str(payload.relatedLabel) ?? titleize(subjectType),
     occurredAt: str(row.occurred_at) ?? "",
-    href: hrefForSubject(subjectType, subjectId),
+    href: hrefForSubject(subjectType, subjectId, links),
   };
 }
 
@@ -600,8 +692,10 @@ function subjectIncludes(subject: string, needles: string[]): boolean {
   return needles.some((needle) => subject.includes(needle));
 }
 
-function hrefForSubject(subjectType: string, subjectId: string | null): string | null {
+function hrefForSubject(subjectType: string, subjectId: string | null, links: ActivityLinks = NO_LINKS): string | null {
   if (!subjectId) return null;
+  if (subjectType.toLowerCase() === "approval") return approvalHref(links, subjectId);
+  if (subjectType.toLowerCase() === "agent_task") return taskHref(links, subjectId);
 
   const routes: Record<string, string> = {
     company: `/crm/companies/${subjectId}`,
@@ -611,8 +705,6 @@ function hrefForSubject(subjectType: string, subjectId: string | null): string |
     job: `/crm/jobs/${subjectId}`,
     outcome: `/crm/outcomes/${subjectId}`,
     campaign: `/campaigns/${subjectId}`,
-    approval: `/approvals?item=${subjectId}`,
-    agent_task: `/agent-operations/tasks/${subjectId}`,
   };
 
   return routes[subjectType.toLowerCase()] ?? null;

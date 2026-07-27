@@ -15,6 +15,7 @@ import {
   type BrandKnowledgeSyncTotals,
 } from "@/lib/brand-knowledge/sync-summary";
 import { getBusinessProfile, upsertBusinessProfile } from "@/lib/brand-kit/persistence";
+import { fetchBrandSignalFromUrl } from "@/lib/brand-kit/website-fetch";
 import { insertAssetWithUrl, loadAssetForLearning } from "@/lib/media-library/persistence";
 import { MAX_UPLOAD_BYTES, acceptUpload, kindForContentType } from "@/lib/media-library/upload-policy";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -58,6 +59,42 @@ export async function updateBrandIdentity(input: BrandIdentityInput): Promise<Br
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save brand changes." };
   }
+}
+
+/**
+ * Read a public website and return the brand signal it carries (title,
+ * description, favicon, readable text).
+ *
+ * The implementation already existed and was reachable by Arc
+ * (`POST /api/v1/arc/brand/analyze-website`) but never by the operator's own
+ * "Analyze" button, which was marked coming-soon. Same SSRF-guarded fetch, same
+ * limits — `fetchBrandSignalFromUrl` refuses private/loopback hosts, caps
+ * redirects and body size, and times out. Read-only: nothing is written and
+ * nothing goes outbound; the operator decides what to keep.
+ */
+export type BrandWebsiteAnalysis =
+  | { ok: true; title: string | null; description: string | null; faviconUrl: string | null; excerpt: string }
+  | { ok: false; error: string };
+
+const ANALYSIS_EXCERPT_CHARS = 1200;
+
+export async function analyzeBrandWebsite(url: string): Promise<BrandWebsiteAnalysis> {
+  await requireOperator();
+
+  const trimmed = url?.trim();
+  if (!trimmed) return { ok: false, error: "Enter a website address first." };
+
+  const result = await fetchBrandSignalFromUrl(trimmed);
+  if (!result.ok) return { ok: false, error: result.message };
+
+  const { title, description, faviconUrl, text } = result.signal;
+  return {
+    ok: true,
+    title,
+    description,
+    faviconUrl,
+    excerpt: text.slice(0, ANALYSIS_EXCERPT_CHARS),
+  };
 }
 
 // ---------------------------------------------------------------------------

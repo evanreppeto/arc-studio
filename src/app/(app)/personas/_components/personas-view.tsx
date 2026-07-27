@@ -92,11 +92,13 @@ function buildOptimisticPersona(slug: string, v: NewPersonaInput): PersonaVM {
   };
 }
 
-export function PersonasView({ personas }: { personas: PersonaVM[] }) {
+export function PersonasView({ personas, initialSlug }: { personas: PersonaVM[]; initialSlug?: string }) {
   const [view, setView] = useState<"roster" | "compare">("roster");
   const [segment, setSegment] = useState("all");
   const [q, setQ] = useState("");
-  const [slug, setSlug] = useState(personas[0]?.slug ?? "");
+  // `?inspect=` (Arc's @-mentions link here) selects a persona; otherwise the
+  // roster opens on the first one.
+  const [slug, setSlug] = useState(initialSlug ?? personas[0]?.slug ?? "");
   // Personas created this session, shown until a real write revalidates.
   const [localPersonas, setLocalPersonas] = useState<PersonaVM[]>([]);
   const [newOpen, setNewOpen] = useState(false);

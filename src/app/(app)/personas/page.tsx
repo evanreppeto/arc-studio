@@ -1,3 +1,4 @@
+import { matchPersonaSlug } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { listPersonas, type Persona } from "@/lib/personas/console";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -125,13 +126,15 @@ function toVM(p: Persona, perf: Map<string, PerfRow>, perfFailed: boolean): Pers
   };
 }
 
-export default async function PersonasPage() {
-  const ctx = await getCurrentWorkspaceContext().catch(() => null);
+export default async function PersonasPage({ searchParams }: { searchParams: Promise<{ inspect?: string }> }) {
+  const [sp, ctx] = await Promise.all([searchParams, getCurrentWorkspaceContext().catch(() => null)]);
   const [personas, perf] = await Promise.all([
     listPersonas().catch(() => [] as Persona[]),
     ctx
       ? personaPerf(ctx.orgId).catch(() => ({ rows: new Map<string, PerfRow>(), failed: true }))
       : Promise.resolve({ rows: new Map<string, PerfRow>(), failed: false }),
   ]);
-  return <PersonasView personas={personas.map((p) => toVM(p, perf.rows, perf.failed))} />;
+  const vms = personas.map((p) => toVM(p, perf.rows, perf.failed));
+  // `?inspect=` (Arc's @-mentions link here) opens the roster on that persona.
+  return <PersonasView personas={vms} initialSlug={matchPersonaSlug(sp.inspect, vms.map((p) => p.slug))} />;
 }
