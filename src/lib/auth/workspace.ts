@@ -130,18 +130,27 @@ async function fetchDefaultOrg(client: QueryClient): Promise<OrgRow> {
   const { data, error } = await client
     .from("organizations")
     .select("id,slug,name")
+    // ACTIVE only, mirroring the workspace half below. A retired tenant is not a
+    // candidate answer to "which org did this session-less caller mean?", but it
+    // was still counted — so archiving a demo/test org left the database
+    // permanently "ambiguous" and every session-less caller refused, with no way
+    // back short of deleting the rows. Status is how a tenant is retired; this is
+    // the query that has to honour it.
+    .eq("status", "active")
     .limit(2)
     .returns<OrgRow[]>();
   if (error) throw new WorkspaceUnavailableError(error.message);
 
   const orgs = data ?? [];
   if (orgs.length === 0) {
-    throw new WorkspaceUnavailableError("No organization exists, so no workspace can be resolved without a session.");
+    throw new WorkspaceUnavailableError(
+      "No active organization exists, so no workspace can be resolved without a session.",
+    );
   }
   if (orgs.length > 1) {
     throw new WorkspaceUnavailableError(
-      "This request has no session and this database has more than one organization, so the tenant is ambiguous. " +
-        "Authenticate as a user, or use a workspace-scoped agent token / assert a workspace on the request.",
+      "This request has no session and this database has more than one active organization, so the tenant is " +
+        "ambiguous. Authenticate as a user, or use a workspace-scoped agent token / assert a workspace on the request.",
     );
   }
   return orgs[0];

@@ -1447,6 +1447,10 @@
 .arc-app .arc-opps .triage-menu button { text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: .12s; }
 .arc-app .arc-opps .triage-menu button:hover { background: var(--inset); color: var(--text); }
 .arc-app .arc-opps .empty { padding: 60px 24px; color: var(--muted); font-size: 13px; }
+/* Empty inbox: the two-pane layout is gone, so this state carries the page title itself. */
+.arc-app .arc-opps .oempty { padding: 56px 34px; max-width: 62ch; }
+.arc-app .arc-opps .oempty .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
+.arc-app .arc-opps .oempty .psub { font-size: 12.5px; line-height: 1.55; color: var(--muted); margin: 6px 0 20px; }
 .arc-app .arc-opps .fade { animation: arcFade .3s var(--ease); }
 @keyframes arcFade { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
 

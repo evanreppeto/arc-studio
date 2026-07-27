@@ -72,6 +72,39 @@ describe("checkAgentBearer", () => {
     expect(result).toEqual({ ok: false, status: 503, reason: "not_configured" });
   });
 
+  // Scope was verified on the ingest routes and nowhere else, so a narrow token —
+  // the kind you hand to a website form or a partner — was accepted on the entire
+  // Arc Operations API for its workspace.
+  it("401s a narrow-scoped token on the Arc surface", async () => {
+    const result = await checkAgentBearer(req("sk_live_leads"), {
+      verify: async () => ({ ok: true, orgId: "org-1", workspaceId: "workspace-1", scopes: ["leads:ingest"] }),
+      anyConfigured: async () => true,
+      recordSeen: async () => undefined,
+    });
+
+    expect(result).toEqual({ ok: false, status: 401, reason: "unauthorized" });
+  });
+
+  it("accepts an arc:full token", async () => {
+    const result = await checkAgentBearer(req("sk_live_runner"), {
+      verify: async () => ({ ok: true, orgId: "org-1", workspaceId: "workspace-1", scopes: ["arc:full"] }),
+      anyConfigured: async () => true,
+      recordSeen: async () => undefined,
+    });
+
+    expect(result).toEqual({ ok: true, tokenSource: "database", orgId: "org-1", workspaceId: "workspace-1" });
+  });
+
+  it("accepts a legacy token whose scopes are null (unrestricted, pre-scoping)", async () => {
+    const result = await checkAgentBearer(req("sk_live_legacy"), {
+      verify: async () => ({ ok: true, orgId: "org-1", workspaceId: "workspace-1", scopes: null }),
+      anyConfigured: async () => true,
+      recordSeen: async () => undefined,
+    });
+
+    expect(result).toEqual({ ok: true, tokenSource: "database", orgId: "org-1", workspaceId: "workspace-1" });
+  });
+
   it("does not throw while checking DB tokens when Supabase is not configured", async () => {
     await expect(checkAgentBearer(req("sk_live_unknown"), { recordSeen: async () => undefined })).resolves.toEqual({
       ok: false,

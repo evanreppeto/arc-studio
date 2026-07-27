@@ -191,11 +191,18 @@ export function OpportunityInbox({
           (a, b) => URGENCY_RANK[a.urgencyTone] - URGENCY_RANK[b.urgencyTone] || b.confidence - a.confidence,
         );
 
+  // A new workspace lands here first, and the two-pane layout carries no page
+  // title of its own — so the empty state was a floating sentence on a blank
+  // screen. Name the page the way every other one does.
   if (visible.length === 0) {
     return (
       <div className="arc-opps" style={{ display: "block" }}>
-        <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-          <span>No open opportunities yet. Arc scans your CRM for source-backed signals — quiet leads worth re-engaging, and more.</span>
+        <div className="oempty">
+          <h1 className="pt">Opportunities</h1>
+          <div className="psub">
+            No open opportunities yet. Arc scans your CRM for source-backed signals — quiet leads worth re-engaging,
+            and more.
+          </div>
           <ScanForm subtle />
         </div>
       </div>
