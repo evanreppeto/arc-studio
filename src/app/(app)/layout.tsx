@@ -6,6 +6,7 @@ import { getSettingsWorkspacesView } from "@/lib/auth/workspaces-view";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getAppSettings } from "@/lib/settings/store";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
+import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getNavBadges } from "@/lib/workspace-summary/read-model";
 
@@ -56,7 +57,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // uploads, so it falls back to bundled sample branding — that's what makes the
   // rail show a company logo + operator photo instead of initials monograms in
   // the marketing screenshots. Never overrides a workspace's own logo.
-  const uploadedLogo = appSettings?.brandLogoUrl?.startsWith("http") ? appSettings.brandLogoUrl : null;
+  const uploadedLogo = resolveWorkspaceLogoUrl(businessProfile?.logoUrl, appSettings?.brandLogoUrl);
   const logoUrl = uploadedLogo ?? (isDemoDataEnabled() ? "/brand/demo/meridian-logo.png" : null);
   const industry = appSettings?.industry || businessProfile?.industry || "general";
 
