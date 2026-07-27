@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NEUTRAL_DEFAULTS } from "@/domain";
+import { NEUTRAL_DEFAULTS, type BusinessProfile } from "@/domain";
 
 /**
  * `business_profiles.logo_url` is the mark `toBrandTokens` hands to
@@ -8,8 +8,10 @@ import { NEUTRAL_DEFAULTS } from "@/domain";
  * it: the only writer was `buildBusinessProfileFromForm`, which has no callers.
  * These cover the write path the Brand screen's control now uses.
  */
-const upsert = vi.fn(async () => {});
-const upload = vi.fn(async () => ({ ok: true as const, url: "https://cdn.example/branding/logo.png" }));
+// Params are declared so `mock.calls[n][i]` is typed — a bare `vi.fn(async () => …)`
+// infers a zero-arg tuple and indexing it fails typecheck.
+const upsert = vi.fn(async (_orgId: string, _profile: BusinessProfile) => {});
+const upload = vi.fn(async (_prefix: string, _file: File) => ({ ok: true as const, url: "https://cdn.example/branding/logo.png" }));
 const state = { configured: true, orgId: "org-1" as string | null };
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
