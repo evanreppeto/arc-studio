@@ -73,4 +73,24 @@ describe("isPublicPath", () => {
       expect(isPublicPath(pathname, "supabase")).toBe(false);
     }
   });
+
+  it("keeps /pricing public in every mode", () => {
+    // A prospect has to read pricing before they have an account. If the gate
+    // ever swallows this, the page 302s to /login and the pricing link on the
+    // landing page becomes a dead end for exactly the audience it's for.
+    for (const mode of ["open", "operator", "supabase"] as const) {
+      expect(isPublicPath("/pricing", mode)).toBe(true);
+      expect(isPublicPath("/pricing/", mode)).toBe(true);
+    }
+  });
+
+  it("does not let a public marketing path leak neighbouring routes by prefix", () => {
+    // The exposure this guards against: a bare-prefix match on a page name also
+    // exempts every route that merely STARTS with it, so an unrelated gated page
+    // silently renders to signed-out visitors. Only the exact path and real
+    // sub-paths may be public.
+    for (const pathname of ["/pricing-internal", "/pricingsecret", "/pricing-admin/rates"]) {
+      expect(isPublicPath(pathname, "supabase")).toBe(false);
+    }
+  });
 });
