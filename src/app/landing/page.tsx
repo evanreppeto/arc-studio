@@ -1,4 +1,5 @@
 import { LandingView } from "./_components/landing-view";
+import { StructuredData } from "./_components/structured-data";
 
 export const metadata = {
   title: "Arc Studio — The marketing operator that never sends without you",
@@ -30,5 +31,10 @@ export const metadata = {
 // Public marketing landing page. Signed-out visitors on `/` are routed here by
 // the proxy; the page itself is exempted from the auth gate (see proxy matcher).
 export default function LandingPage() {
-  return <LandingView />;
+  return (
+    <>
+      <StructuredData />
+      <LandingView />
+    </>
+  );
 }
