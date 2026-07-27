@@ -11,7 +11,6 @@ import { SiteNav } from "@/app/landing/_components/site-nav";
 import {
   PRICING_PLANS,
   TRIAL_DAYS,
-  allowanceUsd,
   annualPerMonthUsd,
   type PricingPlan,
 } from "./plans";
@@ -97,18 +96,12 @@ function PlanCard({
         {annual ? "Billed annually · two months free" : "Billed monthly · cancel anytime"}
       </p>
 
-      <div className="mt-6 rounded-lg border border-[color:var(--border-panel)] bg-[var(--surface-inset)] px-4 py-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[0.8rem] text-[var(--text-secondary)]">Included agent work</span>
-          <span className="font-[family-name:var(--font-mono)] text-[0.95rem] font-semibold text-[var(--text-primary)] tabular-nums">
-            ${allowanceUsd(plan.tier)}/mo
-          </span>
-        </div>
-        <p className="mt-1.5 text-[0.75rem] leading-relaxed text-[var(--text-muted)]">
-          What the agent can spend on your behalf each month. You see the running
-          total, and nothing is charged beyond your plan.
-        </p>
-      </div>
+      {/* The per-tier monthly allowance is deliberately NOT published here.
+          It is the enforced spend cap from the plan catalog, i.e. our cost of
+          goods — printing "$25/mo" beside a $99 price discloses the margin on
+          every plan. The limit still exists and is explained in plain terms by
+          LimitsSection and the FAQ; what's withheld is the dollar figure. Don't
+          reintroduce `allowanceUsd` here. */}
 
       <ul className="mt-6 flex flex-1 flex-col gap-2.5">
         {plan.features.map((feature) => (

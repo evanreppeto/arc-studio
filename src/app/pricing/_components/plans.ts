@@ -1,15 +1,19 @@
-import { PLANS, type PlanTier } from "@/domain";
+import { type PlanTier } from "@/domain";
 
-// The customer-facing pricing catalog.
+// The customer-facing pricing catalog. List prices live here.
 //
-// List prices live here; the monthly AI allowance is read from the enforced
-// catalog (`src/domain/plans.ts`) rather than retyped, so the page can never
-// advertise an allowance the entitlements layer doesn't actually grant.
+// Two things are deliberately NOT stated on the page, for different reasons:
 //
-// Deliberately NOT stated on the page: any "up to N campaigns / drafts / images
-// per month" equivalent. The usage meter has never been reconciled against real
-// provider bills (BSR-502), so any such number would be invented. The allowance
-// is quoted as what it actually is — a spend allowance — until we can measure.
+// - The per-tier monthly spend cap, in dollars. It's the enforced cap from
+//   `src/domain/plans.ts` and it is our cost of goods, so printing it beside
+//   the list price disclosed the gross margin on every plan. The cap still
+//   governs usage; only the figure is withheld.
+// - Any "up to N campaigns / drafts / images per month" equivalent. The usage
+//   meter has never been reconciled against real provider bills (BSR-502), so
+//   any such number would be invented.
+//
+// What's left is qualitative: higher plans include more agent work, the running
+// total is visible in-app, and the exact limit is settled during onboarding.
 
 export type PricingPlan = {
   tier: Exclude<PlanTier, "free">;
@@ -76,10 +80,12 @@ export const PRICING_PLANS: PricingPlan[] = [
   },
 ];
 
-/** The enforced monthly AI allowance for a tier, in whole dollars. */
-export function allowanceUsd(tier: PricingPlan["tier"]): number {
-  return Math.round(PLANS[tier].monthlyCapCents / 100);
-}
+// `allowanceUsd` used to live here and rendered the tier's enforced spend cap
+// on each card. It was removed deliberately: that cap is our cost of goods, so
+// publishing it beside the list price disclosed the gross margin on every plan.
+// The cap still governs usage and is described qualitatively on the page — it
+// just isn't quoted as a dollar figure. Read it from `PLANS[tier]` if you need
+// it for internal/in-app surfaces, where disclosure isn't a concern.
 
 export function annualUsd(plan: PricingPlan): number {
   return plan.monthlyUsd * ANNUAL_MONTHS_CHARGED;
