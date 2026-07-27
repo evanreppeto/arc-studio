@@ -50,7 +50,7 @@ export type PartnerCard = {
   jobs: number;
   outcomes: number;
   campaigns: Array<{ id: string; name: string; status: string; href: string }>;
-  approvals: Array<{ id: string; title: string; status: string; riskLevel: string; href: string }>;
+  approvals: Array<{ id: string; title: string; status: string; riskLevel: string; href: string | null }>;
   openApprovals: number;
   openActions: number;
   revenue: string;
@@ -393,7 +393,7 @@ function buildPartnerCards(input: {
           title: approvalTitle(approval),
           status: humanize(approval.status ?? "pending_approval"),
           riskLevel: humanize(approval.risk_level ?? "medium"),
-          href: `/approvals?item=${approval.id}`,
+          href: approval.campaign_id ? `/campaigns/${approval.campaign_id}` : null,
         })),
         openApprovals,
         openActions: input.actions.filter((item) => item.company_id === company.id && ["open", "queued", "pending"].includes(item.status ?? "open")).length,
@@ -421,23 +421,23 @@ function buildNextAction(input: {
     return {
       text: input.action.recommendation ?? input.action.title ?? `Review ${agentName}'s recommended partner action.`,
       source: "next_best_actions",
-      href: input.action.approval_required && input.action.approval_item_id ? `/approvals?item=${input.action.approval_item_id}` : "/agent-operations",
+      href: input.action.campaign_id ? `/campaigns/${input.action.campaign_id}` : "/arc",
     };
   }
   if (input.health?.recommended_action) {
-    return { text: input.health.recommended_action, source: "partner_health_snapshots", href: "/agent-operations" };
+    return { text: input.health.recommended_action, source: "partner_health_snapshots", href: "/arc" };
   }
   if (input.approvals > 0) {
-    return { text: `Review the open approval packet before ${agentName} prepares anything else.`, source: "approval queue", href: "/approvals" };
+    return { text: `Review the open approval packet before ${agentName} prepares anything else.`, source: "approval queue", href: "/campaigns" };
   }
   if (input.contacts === 0) {
-    return { text: `Ask ${agentName} to enrich a decision-maker and evidence before outreach copy.`, source: "missing contact", href: "/agent-operations" };
+    return { text: `Ask ${agentName} to enrich a decision-maker and evidence before outreach copy.`, source: "missing contact", href: "/arc" };
   }
   if (input.evidence === 0) {
-    return { text: `Ask ${agentName} to attach source evidence and classify the partner fit.`, source: "missing evidence", href: "/agent-operations" };
+    return { text: `Ask ${agentName} to attach source evidence and classify the partner fit.`, source: "missing evidence", href: "/arc" };
   }
   if (typeof input.score !== "number") {
-    return { text: `Ask ${agentName} to score partner fit and create an approval-gated recommendation.`, source: "missing score", href: "/agent-operations" };
+    return { text: `Ask ${agentName} to score partner fit and create an approval-gated recommendation.`, source: "missing score", href: "/arc" };
   }
   return { text: "Prepare an approval-gated partner campaign brief. No outbound execution.", source: "safe default", href: "/campaigns" };
 }

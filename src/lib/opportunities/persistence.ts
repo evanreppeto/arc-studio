@@ -7,6 +7,7 @@ import {
   type OpportunityCandidate,
 } from "@/domain";
 import { getCurrentOrgId } from "@/lib/auth/org";
+import { type Database } from "@/lib/supabase/database.types";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 /**
@@ -140,9 +141,12 @@ export async function upsertOpportunities(
   return persisted(rows.length, filtered);
 }
 
+/** Typed against the generated row so the update can't drift from the table. */
+type OpportunityPatch = Database["public"]["Tables"]["opportunities"]["Update"];
+
 async function setStatus(
   id: string,
-  patch: Record<string, unknown>,
+  patch: OpportunityPatch,
   client?: SupabaseClient,
   scope?: OpportunityScope,
 ): Promise<MutateResult> {

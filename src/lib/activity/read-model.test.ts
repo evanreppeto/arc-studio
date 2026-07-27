@@ -7,7 +7,9 @@ import {
   getRecentActivity,
   groupActivityEntriesByDay,
   mapCampaignEvent,
+  mapDecision,
   mapEvent,
+  mapRun,
   mergeActivityEntries,
   sourceLimitForQuery,
   type ActivityEntry,
@@ -434,8 +436,31 @@ describe("mapCampaignEvent", () => {
       tone: "amber",
       category: "campaign",
       insightLabel: "Needs review",
-      href: "/approvals?item=approval_4",
+      // The campaign detail page is the review surface. `/approvals?item=…` was
+      // never a route in this app, and Arc cites these hrefs back to operators.
+      href: "/campaigns/camp_1",
     });
+  });
+
+  it("links approval and agent-task entries only where the record resolves", () => {
+    const links = {
+      approvalCampaign: new Map([["approval_9", "camp_9"]]),
+      taskCampaign: new Map([["task_9", "camp_9"]]),
+    };
+
+    expect(mapDecision({ id: "d1", approval_item_id: "approval_9", decision: "approved" }, links).href).toBe("/campaigns/camp_9");
+    // Unresolvable approval: no link beats a link to a page that 404s.
+    expect(mapDecision({ id: "d2", approval_item_id: "approval_x", decision: "approved" }, links).href).toBeNull();
+    expect(mapDecision({ id: "d3", decision: "approved" }, links).href).toBeNull();
+
+    expect(mapRun({ id: "r1", task_id: "task_9", run_status: "completed" }, links).href).toBe("/campaigns/camp_9");
+    // A run with no campaign still has a real home: Arc.
+    expect(mapRun({ id: "r2", task_id: "task_x", run_status: "completed" }, links).href).toBe("/arc");
+    expect(mapRun({ id: "r3", run_status: "completed" }, links).href).toBeNull();
+
+    expect(mapEvent({ id: "e1", subject_type: "approval", subject_id: "approval_9", type: "approval.updated" }, links).href).toBe("/campaigns/camp_9");
+    expect(mapEvent({ id: "e2", subject_type: "agent_task", subject_id: "task_x", type: "task.updated" }, links).href).toBe("/arc");
+    expect(mapEvent({ id: "e3", subject_type: "lead", subject_id: "lead_1", type: "lead.created" }, links).href).toBe("/crm/leads/lead_1");
   });
 });
 

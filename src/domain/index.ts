@@ -1,6 +1,7 @@
 export * from "./lead-ingestion";
 export * from "./loss-classification";
 export * from "./personas";
+export * from "./persona-links";
 export * from "./persona-profile";
 export * from "./scoring";
 export * from "./events";
