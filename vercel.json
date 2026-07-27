@@ -1,5 +1,12 @@
 {
   "crons": [
-    { "path": "/api/cron/opportunity-scan", "schedule": "0 13 * * *" }
+    {
+      "path": "/api/cron/opportunity-scan",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/billing-notices",
+      "schedule": "0 14 * * *"
+    }
   ]
 }

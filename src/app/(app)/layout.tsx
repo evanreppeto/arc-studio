@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 
+import { resolveWorkspaceIdentity } from "@/domain";
 import { getAuthMode } from "@/lib/auth/auth-mode";
 import { getViewerAvatarUrl, resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getSettingsWorkspacesView } from "@/lib/auth/workspaces-view";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
-import { getTrialBannerView } from "@/lib/billing/trial-banner";
+import { getBillingNoticeView } from "@/lib/billing/billing-notice";
 import { getAppSettings } from "@/lib/settings/store";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
@@ -52,9 +53,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Rail attention counts from the shared summary — same source the screens
   // render, so a badge never disagrees with the page it points at.
   const navBadges = await getNavBadges(ctx.orgId).catch(() => ({}));
-  // Trial position drives the console-wide notice. Never throws — a billing read
-  // must not be able to take down every signed-in screen.
-  const { banner: trialBanner } = await getTrialBannerView();
+  // Trial position + quota pressure resolve to ONE console-wide notice, so the
+  // operator never gets two stacked strips. Never throws — a billing read must
+  // not be able to take down every signed-in screen.
+  const { notice: billingNotice } = await getBillingNoticeView();
   // Workspaces the viewer can switch between — powers the rail's workspace menu.
   const workspacesView = await getSettingsWorkspacesView().catch(() => ({ isDemo: false, workspaces: [] }));
   // Branding: workspace logo (org-scoped) + the viewer's profile photo, rendered
@@ -70,13 +72,33 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // rail show a company logo + operator photo instead of initials monograms in
   // the marketing screenshots. Never overrides a workspace's own logo.
   const uploadedLogo = resolveWorkspaceLogoUrl(businessProfile?.logoUrl, appSettings?.brandLogoUrl);
-  const logoUrl = uploadedLogo ?? (isDemoDataEnabled() ? "/brand/demo/meridian-logo.png" : null);
   const industry = appSettings?.industry || businessProfile?.industry || "general";
+
+  // The workspace's own display identity, with the org-name fallbacks applied.
+  // A workspace that has customized nothing resolves to exactly what the rail
+  // rendered before these columns existed.
+  const identity = resolveWorkspaceIdentity(
+    {
+      name: ctx.workspaceName,
+      subtitle: ctx.workspaceSubtitle,
+      shortLabel: ctx.workspaceShortLabel,
+      accentKey: ctx.workspaceAccentKey,
+      logoUrl: ctx.workspaceLogoUrl,
+    },
+    ctx.orgName,
+  );
+  // A workspace logo beats the org logo in the rail — it is the more specific
+  // choice — and both beat the bundled demo sample.
+  const logoUrl =
+    identity.logoUrl ?? uploadedLogo ?? (isDemoDataEnabled() ? "/brand/demo/meridian-logo.png" : null);
 
   return (
     <AppShell
-      workspaceName={ctx.workspaceName}
+      workspaceName={identity.name}
       orgName={ctx.orgName}
+      workspaceSubtitle={identity.subtitle}
+      workspaceShortLabel={identity.shortLabel}
+      workspaceAccentColor={identity.accentColor}
       userName={userName}
       userEmail={user?.email ?? (isDemoDataEnabled() ? "maya@meridian.example" : "")}
       logoUrl={logoUrl}
@@ -84,7 +106,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       industry={industry}
       workspaces={workspacesView.workspaces}
       navBadges={navBadges}
-      trialBanner={trialBanner}
+      billingNotice={billingNotice}
     >
       {children}
     </AppShell>

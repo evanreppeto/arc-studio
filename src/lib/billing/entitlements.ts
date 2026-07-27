@@ -6,6 +6,7 @@ import {
   TRIAL_TIER,
   normalizePlanTier,
   planCapCents,
+  resolveBillingNotice,
   resolveTrialState,
   type PlanTier,
   type TrialState,
@@ -171,12 +172,27 @@ export async function checkUsageAllowed(orgId: string, client?: SupabaseClient):
   };
 }
 
-/** The message to show when `checkUsageAllowed` refuses. */
+/**
+ * The message to show when `checkUsageAllowed` refuses.
+ *
+ * Derived from the same `resolveBillingNotice` copy the console banner renders,
+ * so the wall a customer hits and the banner above it can't tell them different
+ * things — including the reset date, which is the question they actually have.
+ */
 export function usageBlockMessage(gate: UsageGate): string {
-  if (gate.reason === "trial_expired") {
-    return "Your free trial has ended. Your data is all still here — add a plan to start Arc working again.";
+  const notice = resolveBillingNotice({
+    trial: gate.trial,
+    usedCents: gate.usedCents,
+    capCents: gate.capCents,
+    tier: gate.tier,
+    now: new Date(),
+  });
+  if (notice && (notice.kind === "trial_expired" || notice.kind === "over_cap")) {
+    return `${notice.label}. ${notice.detail}`;
   }
-  return `You've reached this month's plan limit (${formatCentsUsd(gate.capCents)} on the ${gate.tier} plan). It resets next cycle — or upgrade to keep going.`;
+  // Defensive: only reached if the gate refused for a reason the notice doesn't
+  // model. Say something true rather than nothing.
+  return `You've reached this month's plan limit (${formatCentsUsd(gate.capCents)} on the ${gate.tier} plan).`;
 }
 
 /** Human-facing dollar string for a cents amount (e.g. plan-limit messages). */

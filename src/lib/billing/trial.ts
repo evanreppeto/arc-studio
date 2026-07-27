@@ -96,4 +96,37 @@ export async function markTrialNoticeSent(
   }
 }
 
+/**
+ * Record that a usage (quota) notice has gone out this billing period.
+ *
+ * Separate column from trial notices because the two have different lifetimes —
+ * see the migration comment. Keys are period-scoped, so this array naturally
+ * re-arms each month rather than needing to be cleared.
+ */
+export async function markUsageNoticeSent(
+  input: { orgId: string; noticeKey: string },
+  client?: SupabaseClient,
+): Promise<{ ok: boolean; reason?: string }> {
+  const db = client ?? getSupabaseAdminClient();
+  try {
+    const { data, error: readError } = await db
+      .from("org_plans")
+      .select("usage_notices_sent")
+      .eq("org_id", input.orgId)
+      .maybeSingle<{ usage_notices_sent: string[] | null }>();
+    if (readError) return { ok: false, reason: readError.message };
+
+    const current = data?.usage_notices_sent ?? [];
+    if (current.includes(input.noticeKey)) return { ok: true };
+
+    const { error } = await db
+      .from("org_plans")
+      .update({ usage_notices_sent: [...current, input.noticeKey], updated_at: new Date().toISOString() })
+      .eq("org_id", input.orgId);
+    return error ? { ok: false, reason: error.message } : { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
 export { TRIAL_DAYS };
