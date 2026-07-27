@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import type { User } from "@supabase/supabase-js";
 
+import { startTrialForOrg } from "@/lib/billing/trial";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured, type TypedSupabaseClient } from "@/lib/supabase/server";
 import { seedDefaultMediaFolders } from "@/lib/media-library/persistence";
@@ -317,6 +318,11 @@ async function createWorkspaceDefaults(
 
   await seedDefaultMediaFolders({ orgId: org.id, client });
   await seedDefaultPersonas({ orgId: org.id, client, industry });
+
+  // Start the free trial. Best-effort and non-renewing: a failure must not fail
+  // workspace creation, and a workspace with no trial dates is fully usable
+  // rather than locked out (see src/domain/trial.ts).
+  await startTrialForOrg({ orgId: org.id }, client);
 
   await client.from("audit_events").insert({
     org_id: org.id,

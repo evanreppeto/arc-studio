@@ -84,6 +84,7 @@ export * from "./audience-resolution";
 export * from "./virality";
 
 export * from "./plans";
+export * from "./trial";
 
 export * from "./oauth-refresh";
 

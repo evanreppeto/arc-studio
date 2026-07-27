@@ -43,6 +43,11 @@ vi.mock("@/lib/billing/entitlements", () => ({
     allowed: true, enforced: false, tier: "free", usedCents: 0, capCents: 1000, remainingCents: 1000, overCap: false,
   }),
   formatCentsUsd: (c: number) => `$${(c / 100).toFixed(0)}`,
+  // Mirrors the real helper closely enough for the 402 assertions.
+  usageBlockMessage: (g: { reason?: string | null; capCents: number }) =>
+    g.reason === "trial_expired"
+      ? "Your free trial has ended."
+      : `This month's plan limit ($${(g.capCents / 100).toFixed(0)}) is reached.`,
 }));
 vi.mock("@/lib/media/storage", () => ({
   storeGeneratedMedia,

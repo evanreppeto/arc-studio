@@ -8,9 +8,12 @@ import { getProductLanguage } from "@/lib/product-language";
 
 import { AccountMenu } from "./account-menu";
 import { ComingSoonToasts } from "./coming-soon";
+import { type TrialBanner } from "@/lib/billing/trial-banner";
+
 import { CommandPalette, type CommandItem } from "./command-palette";
 import { NavProgress } from "./nav-progress";
 import { RoutePrewarm } from "./route-prewarm";
+import { TrialNotice } from "./trial-notice";
 import { WorkspaceSwitcher, type WorkspaceOption } from "./workspace-switcher";
 
 function initials(name: string): string {
@@ -112,6 +115,7 @@ export function AppShell({
   industry = "general",
   workspaces = [],
   navBadges = {},
+  trialBanner = null,
   children,
 }: {
   workspaceName: string;
@@ -123,6 +127,7 @@ export function AppShell({
   industry?: string | null;
   workspaces?: WorkspaceOption[];
   navBadges?: Record<string, number>;
+  trialBanner?: TrialBanner | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -290,6 +295,7 @@ export function AppShell({
             </span>
           </header>
           <CommandPalette items={commandItems} />
+          <TrialNotice banner={trialBanner} />
           {children}
         </div>
       </div>
