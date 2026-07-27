@@ -13,6 +13,7 @@ import {
 import { AppWindow } from "./app-window";
 import { GoldCta } from "./cta";
 import { Faq } from "./faq";
+import { FounderNote } from "./founder-note";
 import {
   FinalCta,
   HowItWorks,
@@ -244,6 +245,7 @@ export function LandingView() {
       <StudioShowcase />
       <TrustBand />
       <Faq />
+      <FounderNote />
       <FinalCta />
       <LandingFooter />
     </main>
