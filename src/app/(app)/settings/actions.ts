@@ -6,7 +6,12 @@ import { revalidatePath } from "next/cache";
 import { type MediaConfig, parseMediaConfig } from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { sendWorkspaceInviteEmail } from "@/lib/auth/send-invite-email";
-import { changeWorkspaceMemberRole, listWorkspacesForUser, removeWorkspaceMember, renameWorkspace } from "@/lib/auth/workspace-admin";
+import {
+  changeWorkspaceMemberRole,
+  listWorkspacesForUser,
+  removeWorkspaceMember,
+  updateWorkspaceIdentity,
+} from "@/lib/auth/workspace-admin";
 import { ACTIVE_WORKSPACE_COOKIE, getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { canonicalIndustryKey } from "@/lib/product-language";
 import { cancelWorkspaceInvite, issueWorkspaceInviteCode } from "@/lib/auth/workspace-invites";
@@ -210,6 +215,60 @@ function humanizeMemberError(status: string, message?: string): string {
   }
 }
 
+function humanizeIdentityError(status: string, message?: string): string {
+  switch (status) {
+    case "not_authenticated":
+      return "Sign in to edit this workspace.";
+    case "not_authorized":
+      return "Only owners and admins can edit a workspace’s name and look.";
+    default:
+      return message ?? "The workspace could not be updated.";
+  }
+}
+
+/**
+ * Save a workspace's display identity — the name, the subtitle under it, the
+ * rail's short label, and its accent color. Works on ANY workspace the caller
+ * owns or administers (the guard is keyed on workspaceId), which is what makes
+ * the Settings list's per-row Edit possible rather than active-workspace-only.
+ *
+ * `organizationName` is separate from `name` on purpose: the org name is the
+ * legal/brand name Arc uses as its outbound from-name, the workspace name is
+ * what the rail shows. They were the same field until now.
+ */
+export async function updateWorkspaceIdentityAction(input: {
+  workspaceId: string;
+  name?: string;
+  organizationName?: string;
+  subtitle?: string | null;
+  shortLabel?: string | null;
+  accentKey?: string | null;
+}): Promise<SettingsWriteResult> {
+  await requireOperator();
+
+  const workspaceId = input.workspaceId?.trim();
+  if (!workspaceId) return { ok: false, error: "A workspace is required." };
+  if (input.name !== undefined && !input.name.trim()) return { ok: false, error: "A workspace name is required." };
+
+  // Offline/demo: no DB. Report success-but-unpersisted so the UI updates
+  // optimistically and the Status line says so honestly.
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const result = await updateWorkspaceIdentity({
+    workspaceId,
+    name: input.name,
+    orgName: input.organizationName,
+    subtitle: input.subtitle,
+    shortLabel: input.shortLabel,
+    accentKey: input.accentKey,
+  });
+  if (!result.ok) return { ok: false, error: humanizeIdentityError(result.status, result.message) };
+
+  // The rail renders this on every signed-in screen.
+  revalidatePath("/", "layout");
+  return { ok: true, persisted: true, message: "Saved." };
+}
+
 export async function changeMemberRole(input: {
   workspaceId: string;
   membershipId: string;
@@ -357,6 +416,7 @@ export async function saveRunnerDisplayName(input: { assistantName: string }): P
 
 export async function saveGeneralSettings(input: {
   workspaceName?: string;
+  organizationName?: string;
   workspaceProfile: string;
   industry: string;
   supportEmail: string;
@@ -371,12 +431,22 @@ export async function saveGeneralSettings(input: {
   const ctx = await getCurrentWorkspaceContext();
   if (!ctx.orgId) return { ok: false, error: "No active workspace to save settings for." };
 
-  // Renaming the workspace touches the org/workspace identity rows (owner/admin
-  // gated), so it runs first — if it fails we surface that before saving prefs.
+  // Renaming touches the org/workspace identity rows (owner/admin gated), so it
+  // runs first — if it fails we surface that before saving prefs. The two names
+  // are independent now: the workspace name is what the rail shows, the
+  // organization name is the brand/from-name. Only send what actually changed so
+  // a viewer saving unrelated prefs never trips the owner/admin guard.
   const desiredName = input.workspaceName?.trim();
-  if (desiredName && ctx.workspaceId && desiredName !== ctx.orgName?.trim()) {
-    const renamed = await renameWorkspace({ workspaceId: ctx.workspaceId, name: desiredName });
-    if (!renamed.ok) return { ok: false, error: humanizeMemberError(renamed.status, renamed.message) };
+  const desiredOrgName = input.organizationName?.trim();
+  const renameWorkspaceRow = Boolean(desiredName) && desiredName !== ctx.workspaceName?.trim();
+  const renameOrgRow = Boolean(desiredOrgName) && desiredOrgName !== ctx.orgName?.trim();
+  if (ctx.workspaceId && (renameWorkspaceRow || renameOrgRow)) {
+    const renamed = await updateWorkspaceIdentity({
+      workspaceId: ctx.workspaceId,
+      ...(renameWorkspaceRow ? { name: desiredName } : {}),
+      ...(renameOrgRow ? { orgName: desiredOrgName } : {}),
+    });
+    if (!renamed.ok) return { ok: false, error: humanizeIdentityError(renamed.status, renamed.message) };
   }
 
   try {

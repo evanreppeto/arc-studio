@@ -94,3 +94,5 @@ export * from "./exemplar-skills";
 export * from "./auto-draft-selection";
 
 export * from "./support";
+
+export * from "./workspace-identity";
