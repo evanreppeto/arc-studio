@@ -356,14 +356,18 @@ export function LandingFooter() {
           <img src="/brand/arc-studio-wordmark.png" alt="Arc Studio" className="h-[1.35rem] w-auto" />
         </div>
         <nav className="flex flex-wrap items-center gap-x-7 gap-y-2 text-[0.85rem] text-[var(--text-secondary)]">
-          <a href="#product" className="transition-colors hover:text-[var(--text-primary)]">Product</a>
-          <a href="#how" className="transition-colors hover:text-[var(--text-primary)]">How it works</a>
-          <a href="#approvals" className="transition-colors hover:text-[var(--text-primary)]">Approvals</a>
-          <a href="#faq" className="transition-colors hover:text-[var(--text-primary)]">FAQ</a>
+          {/* Root-relative hashes, not bare ones: this footer also renders on
+              /pricing, where a bare "#product" would be a dead link. On the
+              landing itself these are still a same-document scroll. */}
+          <Link href="/#product" className="transition-colors hover:text-[var(--text-primary)]">Product</Link>
+          <Link href="/#how" className="transition-colors hover:text-[var(--text-primary)]">How it works</Link>
+          <Link href="/#approvals" className="transition-colors hover:text-[var(--text-primary)]">Approvals</Link>
+          <Link href="/pricing" className="transition-colors hover:text-[var(--text-primary)]">Pricing</Link>
+          <Link href="/#faq" className="transition-colors hover:text-[var(--text-primary)]">FAQ</Link>
           <Link href="/login" className="transition-colors hover:text-[var(--text-primary)]">Sign in</Link>
-          <a href="#waitlist" className="font-medium text-[var(--accent)] transition-colors hover:text-[color:color-mix(in_srgb,var(--accent)_85%,white)]">
+          <Link href="/#waitlist" className="font-medium text-[var(--accent)] transition-colors hover:text-[color:color-mix(in_srgb,var(--accent)_85%,white)]">
             Join the waitlist
-          </a>
+          </Link>
         </nav>
       </div>
       <div className="border-t border-[color:var(--border-panel)]">
