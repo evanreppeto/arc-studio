@@ -6,7 +6,7 @@ import { getViewerAvatarUrl, resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getSettingsWorkspacesView } from "@/lib/auth/workspaces-view";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
-import { getTrialBannerView } from "@/lib/billing/trial-banner";
+import { getBillingNoticeView } from "@/lib/billing/billing-notice";
 import { getAppSettings } from "@/lib/settings/store";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
@@ -53,9 +53,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Rail attention counts from the shared summary — same source the screens
   // render, so a badge never disagrees with the page it points at.
   const navBadges = await getNavBadges(ctx.orgId).catch(() => ({}));
-  // Trial position drives the console-wide notice. Never throws — a billing read
-  // must not be able to take down every signed-in screen.
-  const { banner: trialBanner } = await getTrialBannerView();
+  // Trial position + quota pressure resolve to ONE console-wide notice, so the
+  // operator never gets two stacked strips. Never throws — a billing read must
+  // not be able to take down every signed-in screen.
+  const { notice: billingNotice } = await getBillingNoticeView();
   // Workspaces the viewer can switch between — powers the rail's workspace menu.
   const workspacesView = await getSettingsWorkspacesView().catch(() => ({ isDemo: false, workspaces: [] }));
   // Branding: workspace logo (org-scoped) + the viewer's profile photo, rendered
@@ -105,7 +106,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       industry={industry}
       workspaces={workspacesView.workspaces}
       navBadges={navBadges}
-      trialBanner={trialBanner}
+      billingNotice={billingNotice}
     >
       {children}
     </AppShell>
