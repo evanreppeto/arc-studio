@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { type sendBrandedEmail } from "@/lib/email";
 
-import { runTrialNotices } from "./trial-notices";
+import { runTrialNotices, runUsageNotices } from "./billing-notices";
 
 /** Typed so assertions on the mailer's arguments keep their types. */
 type SendInput = Parameters<typeof sendBrandedEmail>[0];
@@ -164,5 +164,92 @@ describe("runTrialNotices", () => {
     expect(summary.failed).toBe(1);
     expect(summary.sent).toBe(0);
     expect(summary.outcomes[0]!.reason).toBe("resend down");
+  });
+});
+
+describe("runUsageNotices", () => {
+  /** Stub covering the three reads the usage pass makes per org. */
+  function usageClient(rows: Array<{ org_id: string; usage_notices_sent?: string[] | null }>, opts: {
+    plan?: { plan_tier: string; monthly_cap_cents: number | null; trial_ends_at?: string | null };
+    usedCents?: number;
+  } = {}) {
+    return {
+      from(table: string) {
+        const chain: Record<string, unknown> = {};
+        for (const m of ["select", "eq", "gte", "not", "in", "order"]) chain[m] = () => chain;
+        chain.maybeSingle = async () => ({
+          data: opts.plan ?? { plan_tier: "starter", monthly_cap_cents: null },
+          error: null,
+        });
+        chain.update = () => ({
+          eq: async (_c: string, orgId: string) => {
+            const row = rows.find((r) => r.org_id === orgId);
+            if (row) row.usage_notices_sent = [...(row.usage_notices_sent ?? []), "marked"];
+            return { error: null };
+          },
+        });
+        chain.then = (resolve: (v: unknown) => unknown) => {
+          if (table === "ai_usage_events") {
+            return Promise.resolve({
+              data: [{ cost_estimate_cents: opts.usedCents ?? 0 }],
+              error: null,
+            }).then(resolve);
+          }
+          return Promise.resolve({ data: rows, error: null }).then(resolve);
+        };
+        return chain;
+      },
+    } as never;
+  }
+
+  it("stays silent well under the allowance", async () => {
+    const send = mailer();
+    const summary = await runUsageNotices(
+      { send, recipientsFor: async () => ["owner@example.com"], now: NOW },
+      usageClient([{ org_id: "o1" }], { usedCents: 500 }), // 20% of the 2500 starter cap
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(summary.sent).toBe(0);
+  });
+
+  it("warns at 80% and names the reset date", async () => {
+    const send = mailer();
+    await runUsageNotices(
+      { send, recipientsFor: async () => ["owner@example.com"], now: NOW },
+      usageClient([{ org_id: "o1" }], { usedCents: 2_000 }),
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0]![0].subject).toContain("80%");
+    expect(send.mock.calls[0]![0].bodyBlocks.join(" ")).toContain("1 Aug");
+  });
+
+  it("sends the wall notice at 100% and says what still works", async () => {
+    const send = mailer();
+    await runUsageNotices(
+      { send, recipientsFor: async () => ["owner@example.com"], now: NOW },
+      usageClient([{ org_id: "o1" }], { usedCents: 2_500 }),
+    );
+    expect(send.mock.calls[0]![0].heading).toContain("paused new work");
+    // The degrade-order promise, in the customer's inbox.
+    expect(send.mock.calls[0]![0].bodyBlocks.join(" ")).toContain("scheduled sends are unaffected");
+  });
+
+  // A lapsed trial already got the more actionable message; telling them they're
+  // at 80% of an allowance they can't spend is noise.
+  it("skips a workspace whose trial has lapsed", async () => {
+    const send = mailer();
+    const summary = await runUsageNotices(
+      { send, recipientsFor: async () => ["owner@example.com"], now: NOW },
+      usageClient([{ org_id: "o1" }], {
+        plan: {
+          plan_tier: "free",
+          monthly_cap_cents: null,
+          trial_ends_at: new Date(NOW.getTime() - DAY).toISOString(),
+        },
+        usedCents: 99_999,
+      }),
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(summary.skipped).toBe(1);
   });
 });

@@ -1,17 +1,19 @@
 import Link from "next/link";
 
-import { type TrialBanner } from "@/lib/billing/trial-banner";
+import { type BillingNotice } from "@/domain";
 
-// The in-app trial signal. Deliberately restrained per BSR-500: persistent but
-// not nagging.
+// The console-wide billing signal — trial AND quota, resolved to one message by
+// `resolveBillingNotice` so two strips can never stack. Deliberately restrained:
+// persistent but not nagging.
 //
-//  - active      → a single quiet line. Present, ignorable.
-//  - ending_soon → a bordered warn strip with the date and the reassurance.
-//  - expired     → a blocked strip explaining that nothing was lost.
+//  - quiet   → a single ambient line (healthy trial). Present, ignorable.
+//  - warn    → a bordered strip while there is still time to act (near cap,
+//              trial ending).
+//  - blocked → work has actually stopped (allowance spent, trial lapsed).
 //
-// A paying workspace and a pre-trial workspace render nothing at all.
+// A paying workspace under its allowance renders nothing at all.
 
-export function TrialNotice({ banner }: { banner: TrialBanner | null }) {
+export function BillingNoticeBar({ banner }: { banner: BillingNotice | null }) {
   if (!banner) return null;
 
   if (banner.tone === "quiet") {
