@@ -128,15 +128,21 @@ function HeroProductShot() {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: ref,
-    offset: ["start 95%", "start 35%"],
+    offset: ["start 100%", "start 60%"],
   });
-  const rotateX = useTransform(scrollYProgress, [0, 1], [14, 0]);
-  const scale = useTransform(scrollYProgress, [0, 1], [0.94, 1]);
-  const opacity = useTransform(scrollYProgress, [0, 0.4], [0.55, 1]);
+  // Resting state must look finished, not half-animated. The window used to
+  // start at opacity 0.55 and a 14deg lean, so if the scroll value never
+  // advanced — landing with it already in view, or a backgrounded tab that
+  // froze the listener — it sat there washed out with the hero film showing
+  // straight through it, reading as a rendering glitch. Now only a slight
+  // tilt animates, it resolves as soon as the window is meaningfully in
+  // view, and the shot is fully opaque at every point.
+  const rotateX = useTransform(scrollYProgress, [0, 1], [7, 0]);
+  const scale = useTransform(scrollYProgress, [0, 1], [0.975, 1]);
 
   return (
     <div ref={ref} className="relative mt-24 [perspective:1400px]">
-      <motion.div style={reduced ? undefined : { rotateX, scale, opacity, transformOrigin: "center top" }}>
+      <motion.div style={reduced ? undefined : { rotateX, scale, transformOrigin: "center top" }}>
         <div className="relative">
           <HeroApprovalCard />
           <AppWindow
