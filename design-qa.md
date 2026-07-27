@@ -1,51 +1,53 @@
-# Arc thinking and response metadata design QA
+# App shell design QA
 
-## Evidence
-
-- Source visual truth — live run: `/var/folders/2g/05frnm2118b30sj5k5_zmcqm0000gn/T/codex-clipboard-68e72fa4-b3d9-40f5-acac-a2e0477d105e.png`
-- Source visual truth — assistant identity mark: `/var/folders/2g/05frnm2118b30sj5k5_zmcqm0000gn/T/codex-clipboard-f2624cc9-d1d0-4ad2-889b-20bf6565b4d6.png`
-- Browser-rendered live implementation: `/tmp/arc-thinking-simplified.jpg`
-- Browser-rendered settled response: `/tmp/arc-response-footer.jpg`
-- Full live-state comparison: `/tmp/arc-thinking-comparison.jpg`
-- Focused assistant-metadata comparison: `/tmp/arc-assistant-meta-comparison.jpg`
-- Viewport: 1280 × 720
-- State: demo Storm Rapid Response conversation, user message sent, active reasoning and tool activity, then settled response
-
-## Findings
-
-No actionable P0, P1, or P2 issue remains in the tested state.
-
-The implementation intentionally removes two parts of the source problem state: the pending “Read only · 4 sources” contract strip and the assistant avatar/name header. The live view now presents one status row, streamed reasoning, and chronological activity without repeating internal permissions. Settled replies begin directly with the response and place their timestamp quietly at the lower edge.
+- Source visual truth: `/var/folders/2g/05frnm2118b30sj5k5_zmcqm0000gn/T/codex-clipboard-ff8cf5a7-e7b4-470e-8771-2cc1588d0ad6.png`
+- Mobile implementation: `/Users/evanreppeto/.codex/visualizations/2026/07/27/019fa3d1-53a2-7c40-ac14-f2c065dc9111/app-shell-mobile-open.png`
+- Desktop implementation: `/Users/evanreppeto/.codex/visualizations/2026/07/27/019fa3d1-53a2-7c40-ac14-f2c065dc9111/app-shell-desktop.png`
+- Combined comparison: `/Users/evanreppeto/.codex/visualizations/2026/07/27/019fa3d1-53a2-7c40-ac14-f2c065dc9111/sidebar-comparison.png`
+- Reference pixels: 446 × 992. The source is a cropped raster without viewport metadata; its type scale is consistent with a likely 2× capture, but that density cannot be confirmed from the file.
+- Mobile implementation pixels and CSS viewport: 445 × 954 at device scale factor 1.
+- Desktop implementation pixels and CSS viewport: 1440 × 900 at device scale factor 1.
+- Comparison normalization: the reference and mobile capture were top-aligned and displayed at 445 × 954. The bottom 38 source pixels were cropped so the visible navigation region could be compared at the same rendered frame. Because the reference density is unknown, the comparison judges hierarchy, rhythm, icon consistency, color, copy, and interaction affordances rather than claiming pixel-perfect type-size parity.
+- State: dark theme, Home selected, demo workspace, mobile drawer open; desktop shell captured with menus closed.
 
 ## Full-view comparison evidence
 
-The combined comparison shows the original pending run above and the revised browser state below. The original spends a full bordered row on an unexplained permission label while reporting only one placeholder activity. The revised state uses that space for actual reasoning and four distinct activity rows, while retaining the thinking indicator, elapsed duration, Stop action, and progress states.
+The combined comparison shows that the implementation preserves the reference's simple outline icon language, muted section labels, compact rows, dark neutral rail, right-aligned attention counts, and restrained selected state. It adds the product shell elements needed by the live app: Arc Chat, workspace identity, explicit mobile close control, help, account access, and a backdrop over the current page.
 
-## Focused comparison evidence
+## Focused-region evidence
 
-The focused comparison places the supplied sparkle/avatar crop beside the revised settled reply. The identity badge and “Arc” label are absent; the response hierarchy now starts with useful content. The timestamp remains available below the response as subdued monospace metadata.
+A separate crop was not necessary: at 445 pixels wide the combined comparison keeps every changed sidebar row, section label, badge, close control, and account control legible. The desktop capture separately verifies the docked rail's proportions and its relationship to the top bar and page content.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: existing Arc serif, interface sans, and monospace metadata styles remain unchanged. The timestamp uses the established muted monospace treatment at 9.5px.
-- Spacing and layout rhythm: removing the live contract strip eliminates an unnecessary 43px row and border. Removing the assistant header eliminates the 24px identity block without changing response width.
-- Colors and tokens: existing canvas, line, muted text, gold activity, success, and error tokens are preserved.
-- Image quality and assets: no raster assets are needed. The user-requested sparkle identity icon is removed; existing Lucide activity and state icons remain.
-- Copy and content: “Read only” and redundant “Arc” identity copy are removed from chat messages. Reasoning, work activity, completed receipts, and source citations remain available.
+- Fonts and typography: existing product font tokens remain in use. Navigation weight, hierarchy, casing, and truncation are consistent; workspace text truncates safely instead of colliding with its chevron.
+- Spacing and layout rhythm: row rhythm and section spacing remain close to the reference. Mobile controls meet a 44 × 44 CSS-pixel minimum without inflating desktop density.
+- Colors and visual tokens: the implementation stays on the app's existing dark, muted, and gold-accent tokens. Selected, hover, and focus states have clear but restrained contrast.
+- Image quality and asset fidelity: the merged outline icon assets remain sharp and stylistically consistent. No placeholder or improvised icon asset was introduced by this change.
+- Copy and content: “Arc Chat” clarifies the destination. Campaign and opportunity badges now expose their meaning instead of announcing an unexplained count. Duplicate workspace subtitles and the generic derived workspace label are suppressed; an intentionally customized short label remains visible.
 
-## Interactions and runtime checks
+## Findings
 
-- Sent a message from the demo conversation and inspected the active thinking state.
-- Confirmed Thinking, elapsed duration, Stop, streamed commentary, and live activity remain visible.
-- Confirmed no pending “Read only” row is rendered.
-- Waited for completion and confirmed no Arc/avatar header is rendered.
-- Confirmed the response timestamp is rendered after the response content.
-- No error overlay, browser runtime failure, or server-side error appeared during the interaction.
+No actionable P0, P1, or P2 visual differences remain for this enhancement scope.
+
+The source is a desktop-rail crop rather than a mobile-drawer specification, so the explicit close control, wider touch targets, scrim, help link, and account footer are intentional product additions rather than fidelity defects.
+
+## Interaction and accessibility verification
+
+- Opened the mobile drawer from the hamburger.
+- Confirmed focus moves to the close control.
+- Dismissed the drawer with Escape and confirmed focus returns to the hamburger.
+- Opened the account menu from the top-bar avatar and confirmed focus moves to the first menu item.
+- Confirmed the hidden drawer and covered main content are removed from keyboard and accessibility interaction with `inert` and `aria-hidden`.
+- Confirmed campaign and opportunity badges expose descriptive accessible names.
+- Checked browser console warnings and errors after desktop and mobile interaction: none.
 
 ## Comparison history
 
-- Earlier P1: The pending contract strip exposed an implementation term (“Read only”) that did not help the user understand progress. Fix: remove the pending contract surface while preserving the completed run receipt and underlying safety contract.
-- Earlier P2: Every assistant response repeated a sparkle badge, “Arc,” and timestamp above the useful content. Fix: remove the identity header and render only the timestamp below completed response content.
-- Post-fix evidence: the live comparison shows a shorter, activity-first thinking state; the focused comparison shows content-first settled responses with quiet bottom metadata.
+- Pass 1: no P0/P1/P2 findings. No visual fix iteration was required after the combined comparison.
+
+## Follow-up polish
+
+- P3: a future product-wide pass could align all top-bar and rail icon optical weights at multiple device-pixel ratios, but the current assets are coherent and production-ready.
 
 final result: passed

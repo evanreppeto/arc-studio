@@ -35,6 +35,23 @@ export function AccountMenu({
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    function onOpenAccountMenu() {
+      setOpen(true);
+    }
+    function onCloseAccountMenu() {
+      setOpen(false);
+    }
+    window.addEventListener("arc:open-account-menu", onOpenAccountMenu);
+    window.addEventListener("arc:close-account-menu", onCloseAccountMenu);
+    return () => {
+      window.removeEventListener("arc:open-account-menu", onOpenAccountMenu);
+      window.removeEventListener("arc:close-account-menu", onCloseAccountMenu);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -42,11 +59,18 @@ export function AccountMenu({
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        window.requestAnimationFrame(() => triggerRef.current?.focus());
+      }
     }
+    const focusFrame = window.requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    });
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
@@ -55,7 +79,7 @@ export function AccountMenu({
   return (
     <div className="acct" ref={rootRef} data-open={open ? "true" : undefined}>
       {open && (
-        <div className="acct-menu" role="menu">
+        <div id="account-menu" ref={menuRef} className="acct-menu" role="menu" aria-label="Account">
           <div className="acct-id">
             <Avatar url={avatarUrl} initials={initials} alt={displayName} />
             <div className="acct-id-t">
@@ -94,10 +118,13 @@ export function AccountMenu({
         </div>
       )}
       <button
+        id="account-menu-trigger"
+        ref={triggerRef}
         type="button"
         className="user"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls="account-menu"
         onClick={() => setOpen((value) => !value)}
       >
         <Avatar url={avatarUrl} initials={initials} alt={displayName} />
