@@ -57,6 +57,7 @@ export function WorkspaceSwitcher({
   const [pending, startSwitch] = useTransition();
   const rootRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const showSubtitle = subtitle.trim().toLocaleLowerCase() !== workspaceName.trim().toLocaleLowerCase();
 
   useEffect(() => {
     if (!open) return;
@@ -84,9 +85,9 @@ export function WorkspaceSwitcher({
           workspaceInitials(workspaceName || orgName)
         )}
       </span>
-      <div>
+      <div className="ws-copy">
         <div className="nm">{workspaceName}</div>
-        <div className="pl">{subtitle}</div>
+        {showSubtitle && <div className="pl">{subtitle}</div>}
       </div>
     </>
   );
