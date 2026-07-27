@@ -135,8 +135,23 @@ const SESSION: { id: string; tag: string; item: Item }[] = [
 type CampaignRef = { id: string; name: string; href: string };
 type StudioDraft = { campaignId: string; assetId: string; url: string; source: string; format: string; title: string; status: string };
 
+/**
+ * Starting copy for the canvas text layers. The sample set is restoration
+ * flavoured because the backend-less preview needs a composed-looking creative
+ * to be worth looking at — but it is one tenant's marketing copy, and a real
+ * workspace that has never drafted anything must not open on it. Live starts
+ * empty and the canvas shows placeholders instead.
+ */
+const SAMPLE_COPY = {
+  kicker: "Storm season",
+  headline: "Your roof, ready before the next storm.",
+  sub: "Free assessment · same-week scheduling",
+  cta: "Get my free quote",
+};
+const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
+
 export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, brandPalette = [] }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; brandPalette?: string[] }) {
-  const initial = "Storm season";
+  const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
   // The "Approved media" source shows the workspace's real media_assets. Live, it
   // shows ONLY those — never the built-in samples, which would present stock art as
   // the workspace's approved media and let an operator compose over it believing it
@@ -172,10 +187,10 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     [brandPalette],
   );
   const [accent, setAccent] = useState(swatches[0] ?? "#c8a24a");
-  const [kicker, setKicker] = useState(initial);
-  const [headline, setHeadline] = useState("Your roof, ready before the next storm.");
-  const [sub, setSub] = useState("Free assessment · same-week scheduling");
-  const [cta, setCta] = useState("Get my free quote");
+  const [kicker, setKicker] = useState(startingCopy.kicker);
+  const [headline, setHeadline] = useState(startingCopy.headline);
+  const [sub, setSub] = useState(startingCopy.sub);
+  const [cta, setCta] = useState(startingCopy.cta);
   const [safe, setSafe] = useState(false);
   // Per-layer visibility for the canvas. The Layers panel eye toggles drive this;
   // a hidden layer isn't rendered on the canvas, and a hidden text layer is left
@@ -481,11 +496,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="cplay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div>
                 {shown("Logo") && <div className="clogo"><span className="lm" style={{ background: accent }}>{logoInitial}</span> {brandName}</div>}
                 {bg && <div className="cprov">{PVLABEL[bg.p]}</div>}
+                {/* Empty text layers render as muted placeholders rather than
+                    collapsed nothing, so a workspace starting from scratch still
+                    sees where the copy lands. The CTA is a filled pill — an empty
+                    one is just a coloured smudge, so it sits out entirely. */}
                 <div className="ctext">
-                  {shown("Kicker") && <div className="ckick" style={{ color: accent === "#f1ede2" ? "#f1ede2" : accent }}>{kicker}</div>}
-                  {shown("Headline") && <div className="chead">{headline}</div>}
-                  <div className="csub">{sub}</div>
-                  {shown("CTA button") && <div className="ccta" style={{ background: accent, color: accent === "#f1ede2" ? "#201808" : "#1a1505" }}>{cta}</div>}
+                  {shown("Kicker") && (kicker
+                    ? <div className="ckick" style={{ color: accent === "#f1ede2" ? "#f1ede2" : accent }}>{kicker}</div>
+                    : <div className="ckick cplace">Kicker</div>)}
+                  {shown("Headline") && (headline
+                    ? <div className="chead">{headline}</div>
+                    : <div className="chead cplace">Your headline goes here.</div>)}
+                  <div className={`csub${sub ? "" : " cplace"}`}>{sub || "Supporting line"}</div>
+                  {shown("CTA button") && cta && <div className="ccta" style={{ background: accent, color: accent === "#f1ede2" ? "#201808" : "#1a1505" }}>{cta}</div>}
                 </div>
                 <div className="safez"><div className="szb szt"><span className="szl">caption / UI safe area</span></div><div className="szb szbo" /></div>
               </div>
@@ -508,15 +531,24 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           )}
 
           <div className="strip">
+            {/* Version thumbs and the awaiting-drafts count are sample art. Live
+                they'd claim this workspace has variations and drafts pending
+                approval that do not exist, so live shows the empty truth. */}
             <span className="sl">This session</span>
-            {SESSION.slice(0, 3).map((v) => (
-              <span key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></span>
-            ))}
-            <span className="vsdiv" />
-            <span className="sl">Drafts · 3 awaiting</span>
-            {SESSION.slice(3).map((v) => (
-              <span key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></span>
-            ))}
+            {live ? (
+              <span className="sl" style={{ textTransform: "none", letterSpacing: 0 }}>No variations yet</span>
+            ) : (
+              <>
+                {SESSION.slice(0, 3).map((v) => (
+                  <span key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></span>
+                ))}
+                <span className="vsdiv" />
+                <span className="sl">Drafts · 3 awaiting</span>
+                {SESSION.slice(3).map((v) => (
+                  <span key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></span>
+                ))}
+              </>
+            )}
             <button className="vgen" onClick={() => { setTab("arc"); setMsg((m) => m || "Make a few on-brand variations of this creative."); }}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>Ask Arc for variations</button>
           </div>
         </section>
@@ -535,24 +567,34 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   <div className="bh"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Campaign context</div>
                   <div className="bn">{campaigns.find((c) => c.id === campaignId)?.name ?? "No campaign selected"}</div>
                   <div className="bmeta">generated drafts attach here → pending approval</div>
-                  <div className="brow"><b>Angle:</b> Act before the next storm — protect the home you&rsquo;ve already invested in.</div>
-                  <div className="bchips"><span className="bchip per">Homeowners · storm-exposed</span><span className="bchip">Proof: before/after</span><span className="bchip">Proof: 4.9★ reviews</span><span className="bchip">Same-week scheduling</span></div>
+                  {/* The angle and proof chips are sample brief copy — there is no
+                      wired source for a campaign's angle here yet. Showing them
+                      live would put another tenant's positioning on this canvas
+                      and read as this workspace's own brief. */}
+                  {live ? (
+                    <div className="brow">Attach this creative to a campaign to work from its angle and proof points.</div>
+                  ) : (
+                    <>
+                      <div className="brow"><b>Angle:</b> Act before the next storm — protect the home you&rsquo;ve already invested in.</div>
+                      <div className="bchips"><span className="bchip per">Homeowners · storm-exposed</span><span className="bchip">Proof: before/after</span><span className="bchip">Proof: 4.9★ reviews</span><span className="bchip">Same-week scheduling</span></div>
+                    </>
+                  )}
                 </div>
 
                 <div className="psec">
                   <h3 className="ph2">Layers</h3>
                   <div className="layer sel" style={shown("Background") ? undefined : { opacity: 0.5 }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">Background</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
                   {[["Kicker", kicker], ["Headline", headline], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
-                    <div className="layer" key={lt} style={shown(lt) ? undefined : { opacity: 0.5 }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{lt}</div><div className="ld">{ld}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
+                    <div className="layer" key={lt} style={shown(lt) ? undefined : { opacity: 0.5 }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
                   ))}
                 </div>
 
                 <div className="psec">
                   <h3 className="ph2">Edit copy</h3>
-                  <div className="fieldl"><span>Kicker</span><span>eyebrow</span></div><input className="input" value={kicker} onChange={(e) => setKicker(e.target.value)} />
-                  <div className="field"><div className="fieldl"><span>Headline</span></div><input className="input" value={headline} onChange={(e) => setHeadline(e.target.value)} /></div>
-                  <div className="field"><div className="fieldl"><span>Subhead</span></div><input className="input" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
-                  <div className="field"><div className="fieldl"><span>CTA</span></div><input className="input" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
+                  <div className="fieldl"><span>Kicker</span><span>eyebrow</span></div><input className="input" placeholder="Short eyebrow" value={kicker} onChange={(e) => setKicker(e.target.value)} />
+                  <div className="field"><div className="fieldl"><span>Headline</span></div><input className="input" placeholder="The one line that has to land" value={headline} onChange={(e) => setHeadline(e.target.value)} /></div>
+                  <div className="field"><div className="fieldl"><span>Subhead</span></div><input className="input" placeholder="Supporting detail or offer" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
+                  <div className="field"><div className="fieldl"><span>CTA</span></div><input className="input" placeholder="Button text" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
                 </div>
 
                 <div className="psec">

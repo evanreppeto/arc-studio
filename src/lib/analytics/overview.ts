@@ -152,7 +152,9 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
 
   const funnelMax = Math.max(1, curLeads);
   const funnel: FunnelStage[] = [
-    { label: "Leads", count: curLeads, width: 100, note: "" },
+    // Width 100 is the top of the funnel only when there IS a top: a workspace
+    // with no leads yet was drawing a full-width bar over the number 0.
+    { label: "Leads", count: curLeads, width: curLeads > 0 ? 100 : 0, note: "" },
     { label: "Booked jobs", count: curJobs, width: Math.round((curJobs / funnelMax) * 100), note: `${((curJobs / curLeads) * 100).toFixed(1)}%` },
     { label: "Won", count: curWon, width: Math.round((curWon / funnelMax) * 100), note: `${((curWon / curLeads) * 100).toFixed(1)}%` },
   ];
@@ -307,7 +309,9 @@ export async function getAnalyticsOverview(
   // Funnel (current window): leads -> booked -> won.
   const funnelMax = Math.max(1, curLeads);
   const funnel: FunnelStage[] = [
-    { label: "Leads", count: curLeads, width: 100, note: "" },
+    // Width 100 is the top of the funnel only when there IS a top: a workspace
+    // with no leads yet was drawing a full-width bar over the number 0.
+    { label: "Leads", count: curLeads, width: curLeads > 0 ? 100 : 0, note: "" },
     { label: "Booked jobs", count: curJobs, width: Math.round((curJobs / funnelMax) * 100), note: curLeads ? `${((curJobs / curLeads) * 100).toFixed(1)}%` : "" },
     { label: "Won", count: curWon, width: Math.round((curWon / funnelMax) * 100), note: curLeads ? `${((curWon / curLeads) * 100).toFixed(1)}%` : "" },
   ];
