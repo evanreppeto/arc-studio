@@ -157,15 +157,11 @@ function Hero() {
   const artY = useTransform(scrollY, [0, 720], [0, 130]);
   const fadeOut = useTransform(scrollY, [0, 600], [1, 0.45]);
 
-  const entrance = (delay: number) =>
-    reduced
-      ? {}
-      : {
-          initial: { opacity: 0, y: 26, filter: "blur(6px)" },
-          animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-          transition: { delay, duration: 0.8, ease: [0.22, 0.61, 0.36, 1] as const },
-        };
-
+  // The hero's entrance is CSS (`.rise-in` + `.rise-d*` from globals.css), not
+  // Motion. A JS-driven entrance server-renders the headline at opacity:0, so
+  // on a slow connection the hero stays blank until the bundle hydrates —
+  // measured at ~6.4s LCP on throttled 4G. CSS animates on first paint instead,
+  // and the same stylesheet already disables it under reduced motion.
   return (
     <section id="top" className="relative overflow-hidden">
       {/* Higgsfield-generated molten-gold ribbon, parallaxed behind the
@@ -203,24 +199,22 @@ function Hero() {
       </motion.div>
 
       <div className="relative mx-auto flex max-w-6xl flex-col justify-center px-6 pb-10 pt-40">
-        <motion.h1
-          {...entrance(0.08)}
-          className="max-w-[17ch] font-serif text-[2.9rem] font-semibold leading-[1.06] text-[var(--text-primary)] sm:text-[3.9rem] lg:text-[4.6rem]"
+        <h1
+          className="rise-in rise-d1 max-w-[17ch] font-serif text-[2.9rem] font-semibold leading-[1.06] text-[var(--text-primary)] sm:text-[3.9rem] lg:text-[4.6rem]"
         >
           Marketing that runs itself.{" "}
           <span className="text-[var(--accent)]">Decisions that stay yours.</span>
-        </motion.h1>
+        </h1>
 
-        <motion.p
-          {...entrance(0.22)}
-          className="mt-7 max-w-[58ch] text-[1.05rem] leading-relaxed text-[var(--text-secondary)]"
+        <p
+          className="rise-in rise-d2 mt-7 max-w-[58ch] text-[1.05rem] leading-relaxed text-[var(--text-secondary)]"
         >
           Arc finds source-backed opportunities, drafts complete campaigns, and
           prepares the creative — then brings everything to you for approval.
           Nothing reaches a customer until you say so.
-        </motion.p>
+        </p>
 
-        <motion.div {...entrance(0.36)} id="waitlist" className="mt-10 scroll-mt-28">
+        <div id="waitlist" className="rise-in rise-d3 mt-10 scroll-mt-28">
           <WaitlistForm source="landing-hero" />
           <p className="mt-4 text-[0.85rem] text-[var(--text-secondary)]">
             Already have a workspace?{" "}
@@ -228,7 +222,7 @@ function Hero() {
               Sign in
             </Link>
           </p>
-        </motion.div>
+        </div>
 
         <HeroProductShot />
       </div>
