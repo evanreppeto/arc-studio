@@ -4,8 +4,18 @@
 //
 // Model: the platform pays all provider API credits (Claude + Gemini) and bills
 // each tenant. A plan sets a monthly spend cap (in cents, matching the ledger's
-// estimated `cost_estimate_cents`). Amounts are placeholders — tune freely; the
-// enforcement mechanism doesn't change.
+// estimated `cost_estimate_cents`).
+//
+// The cap is COGS, not price — it is the provider spend a tenant is allowed to
+// incur, sized so that a tenant who maxes it still leaves ~75% gross margin at
+// the list price. List prices (BSR-497): Starter $99, Pro $299, Scale $899 per
+// month, flat per workspace. `free` is the default/lapsed state, not a sold
+// tier, so its cap is deliberately small — every org without an `org_plans` row
+// resolves to it, making this value the blast radius for misconfigured state.
+//
+// These caps are reasoned, not measured: the usage meter has never been
+// reconciled against real provider bills (BSR-502). Re-check them against real
+// cost data before arming ARC_BILLING_ENFORCEMENT.
 
 export type PlanTier = "free" | "starter" | "pro" | "scale";
 
@@ -19,10 +29,10 @@ export type PlanDefinition = {
 export const PLAN_TIERS: readonly PlanTier[] = ["free", "starter", "pro", "scale"];
 
 export const PLANS: Record<PlanTier, PlanDefinition> = {
-  free: { tier: "free", label: "Free", monthlyCapCents: 1_000 }, // $10
-  starter: { tier: "starter", label: "Starter", monthlyCapCents: 10_000 }, // $100
-  pro: { tier: "pro", label: "Pro", monthlyCapCents: 50_000 }, // $500
-  scale: { tier: "scale", label: "Scale", monthlyCapCents: 200_000 }, // $2,000
+  free: { tier: "free", label: "Free", monthlyCapCents: 200 }, // $2 — default/lapsed state
+  starter: { tier: "starter", label: "Starter", monthlyCapCents: 2_500 }, // $25 — sold at $99/mo
+  pro: { tier: "pro", label: "Pro", monthlyCapCents: 7_500 }, // $75 — sold at $299/mo
+  scale: { tier: "scale", label: "Scale", monthlyCapCents: 25_000 }, // $250 — sold at $899/mo
 };
 
 /** Tier assumed for an org with no explicit plan row. */

@@ -10,6 +10,7 @@ vi.mock("@/lib/auth/workspace", () => ({ getCurrentWorkspaceContext: vi.fn() }))
 vi.mock("@/lib/demo/demo-mode", () => ({ isDemoDataEnabled: vi.fn(() => false) }));
 vi.mock("./entitlements", () => ({ resolveOrgPlan: vi.fn() }));
 
+import { PLANS } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -35,7 +36,7 @@ describe("getSettingsBillingView", () => {
   it("lets an owner/admin manage and reflects the resolved plan", async () => {
     cfg.mockReturnValue(true);
     ctx.mockResolvedValue({ orgId: "org-1", role: "admin" } as never);
-    plan.mockResolvedValue({ tier: "pro", capCents: 50_000 });
+    plan.mockResolvedValue({ tier: "pro", capCents: PLANS.pro.monthlyCapCents });
     const view = await getSettingsBillingView();
     expect(view).toMatchObject({ configured: true, canManage: true, tier: "pro", planLabel: "Pro" });
   });
@@ -43,7 +44,7 @@ describe("getSettingsBillingView", () => {
   it("shows the plan read-only to a non-admin member", async () => {
     cfg.mockReturnValue(true);
     ctx.mockResolvedValue({ orgId: "org-1", role: "marketer" } as never);
-    plan.mockResolvedValue({ tier: "starter", capCents: 10_000 });
+    plan.mockResolvedValue({ tier: "starter", capCents: PLANS.starter.monthlyCapCents });
     const view = await getSettingsBillingView();
     expect(view.canManage).toBe(false);
     expect(view.tier).toBe("starter");
