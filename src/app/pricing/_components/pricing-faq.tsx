@@ -16,16 +16,17 @@ import { TRIAL_DAYS } from "./plans";
 function faqs(signupOpen: boolean): Array<{ q: string; a: React.ReactNode }> {
   return [
     {
-      q: "What counts as 'included agent work'?",
+      q: "How is monthly usage measured?",
       a: (
         <>
-          Everything the agent does on your behalf that costs us model
-          usage — scanning for opportunities, drafting campaigns, generating
-          creative, and answering you in chat. We show the running total in the
-          app as it accrues. We quote it as a spend allowance rather than
-          &ldquo;N campaigns a month&rdquo; because a one-line revision and a
-          video render are not the same amount of work, and we&rsquo;d rather
-          give you a real number than a flattering one.
+          By the work the agent actually does on your behalf — scanning for
+          opportunities, drafting campaigns, generating creative, and answering
+          you in chat. Higher plans include more of it. We measure the real
+          work rather than promising &ldquo;N campaigns a month&rdquo;, because
+          a one-line revision and a video render are nothing like the same
+          amount of work and any single number would flatter one and punish the
+          other. Your running total is visible in the app as it accrues, and
+          where your plan lands is confirmed with you during onboarding.
         </>
       ),
     },

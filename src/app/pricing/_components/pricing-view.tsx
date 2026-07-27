@@ -11,7 +11,6 @@ import { SiteNav } from "@/app/landing/_components/site-nav";
 import {
   PRICING_PLANS,
   TRIAL_DAYS,
-  allowanceUsd,
   annualPerMonthUsd,
   type PricingPlan,
 } from "./plans";
@@ -56,11 +55,26 @@ function PlanCard({
   const Cta = plan.featured ? GoldCta : GhostCta;
 
   return (
+    // Hover: the card lifts and its border warms toward gold, on the same long
+    // ease the landing page uses. Three things worth knowing before editing:
+    //
+    // - Borders rely on #651, which moved globals.css's universal
+    //   `* { border-color: ... }` into @layer base. While it sat unlayered it
+    //   beat every @layer utilities rule regardless of specificity, so these
+    //   border classes silently never applied — Pro's accent border was
+    //   declared but never drawn. If a bare `border-color` rule ever escapes a
+    //   layer again, this is the first place it will show.
+    // - Tailwind v4 applies the lift via the standalone `translate` property,
+    //   so the reduced-motion guard must be `translate-none`; `transform-none`
+    //   would not cancel it.
+    // - No `group` here on purpose: GoldCta/GhostCta are themselves groups and
+    //   drive their sheen and arrow off `group-hover`, so a group on the card
+    //   makes the button animate whenever the pointer is anywhere on the card.
     <div
-      className={`relative flex h-full flex-col rounded-2xl border p-7 transition-[border-color,box-shadow] duration-300 ${
+      className={`relative flex h-full flex-col rounded-2xl border p-7 transition-[translate,border-color,box-shadow] duration-300 ease-out hover:-translate-y-1 motion-reduce:translate-none ${
         plan.featured
-          ? "border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--surface-panel)_92%,var(--accent))] shadow-[0_28px_70px_-30px_rgba(200,162,74,0.45)] lg:-my-4 lg:py-11"
-          : "border-[color:var(--border-panel)] bg-[var(--surface-panel)]"
+          ? "border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--surface-panel)_92%,var(--accent))] shadow-[0_28px_70px_-30px_rgba(200,162,74,0.45)] hover:border-[color:color-mix(in_srgb,var(--accent)_80%,transparent)] hover:shadow-[0_34px_80px_-28px_rgba(200,162,74,0.55)] lg:-my-4 lg:py-11"
+          : "border-[color:var(--border-panel)] bg-[var(--surface-panel)] hover:border-[color:color-mix(in_srgb,var(--accent)_50%,transparent)] hover:shadow-[0_24px_60px_-28px_rgba(0,0,0,0.85)]"
       }`}
     >
       {plan.featured && (
@@ -82,18 +96,12 @@ function PlanCard({
         {annual ? "Billed annually · two months free" : "Billed monthly · cancel anytime"}
       </p>
 
-      <div className="mt-6 rounded-lg border border-[color:var(--border-panel)] bg-[var(--surface-inset)] px-4 py-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[0.8rem] text-[var(--text-secondary)]">Included agent work</span>
-          <span className="font-[family-name:var(--font-mono)] text-[0.95rem] font-semibold text-[var(--text-primary)] tabular-nums">
-            ${allowanceUsd(plan.tier)}/mo
-          </span>
-        </div>
-        <p className="mt-1.5 text-[0.75rem] leading-relaxed text-[var(--text-muted)]">
-          What the agent can spend on your behalf each month. You see the running
-          total, and nothing is charged beyond your plan.
-        </p>
-      </div>
+      {/* The per-tier monthly allowance is deliberately NOT published here.
+          It is the enforced spend cap from the plan catalog, i.e. our cost of
+          goods — printing "$25/mo" beside a $99 price discloses the margin on
+          every plan. The limit still exists and is explained in plain terms by
+          LimitsSection and the FAQ; what's withheld is the dollar figure. Don't
+          reintroduce `allowanceUsd` here. */}
 
       <ul className="mt-6 flex flex-1 flex-col gap-2.5">
         {plan.features.map((feature) => (
