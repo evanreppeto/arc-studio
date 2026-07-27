@@ -50,6 +50,7 @@ export type MediaAssetView = {
   source: string;
   tags: string[];
   riskFlags: string[];
+  provenance: Record<string, unknown>;
   availableToArc: boolean;
   uploadedBy: string | null;
   usedInCount: number;

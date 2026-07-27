@@ -90,6 +90,7 @@ export async function attachMediaToCampaignAsset(
 function buildMediaEntry(library: LibraryAssetRow): Record<string, unknown> {
   const provenance = isRecord(library.provenance) ? library.provenance : {};
   const generated = library.source === "ai_generated";
+  const jobId = typeof provenance.job_id === "string" ? provenance.job_id : typeof provenance.jobId === "string" ? provenance.jobId : null;
   return {
     url: library.public_url,
     path: library.storage_path,
@@ -97,8 +98,13 @@ function buildMediaEntry(library: LibraryAssetRow): Record<string, unknown> {
     ...(library.source ? { source: library.source } : {}),
     ...(library.risk_flags?.length ? { risk_flags: library.risk_flags } : {}),
     ...(generated ? { generated_by: "library" } : {}),
+    // External lineage (BYO-tool ingest stores camelCase; carry it snake_cased
+    // like the rest of the audit payload) so the campaign card can show it.
+    ...(typeof provenance.tool === "string" ? { tool: provenance.tool } : {}),
     ...(typeof provenance.model === "string" ? { model: provenance.model } : {}),
-    ...(typeof provenance.job_id === "string" ? { job_id: provenance.job_id } : {}),
+    ...(typeof provenance.prompt === "string" ? { prompt: provenance.prompt } : {}),
+    ...(jobId ? { job_id: jobId } : {}),
+    ...(typeof provenance.sourceUrl === "string" ? { source_url: provenance.sourceUrl } : {}),
   };
 }
 

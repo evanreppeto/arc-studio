@@ -210,6 +210,7 @@
 .arc-library .toggle.on .sw { background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-library .toggle.on .sw::after { left: 16px; background: var(--accent); }
 .arc-library .isec { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 18px 0 9px; }
+.arc-library .iprompt { font-size: 11.5px; line-height: 1.55; color: var(--text-2); background: var(--inset); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow-y: auto; }
 .arc-library .lineage { display: flex; flex-direction: column; gap: 0; position: relative; padding-left: 6px; }
 .arc-library .lstep { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; position: relative; }
 .arc-library .lstep .ld { width: 9px; height: 9px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; z-index: 1; }

@@ -38,6 +38,7 @@ export function toAssetView(row: MediaAssetRow, usedIn: number): MediaAssetView 
     source: row.source,
     tags: row.tags ?? [],
     riskFlags: row.risk_flags ?? [],
+    provenance: row.provenance ?? {},
     availableToArc: row.available_to_arc,
     uploadedBy: row.uploaded_by,
     usedInCount: usedIn,
