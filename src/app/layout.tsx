@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 
 import { getCurrentOrgId } from "@/lib/auth/org";
@@ -31,10 +32,36 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
+// Canonical origin for absolute URLs in social cards. Falls back to the live
+// domain so a share from any preview still resolves a real image.
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL?.startsWith("http")
+  ? process.env.NEXT_PUBLIC_APP_URL
+  : "https://arc-studio.ai";
+
+const OG_TITLE = "Arc Studio — Marketing operations, with your approval";
+const OG_DESCRIPTION =
+  "Arc finds source-backed opportunities, drafts approval-gated campaigns, and prepares creative — and never sends without your sign-off.";
+
 export const metadata: Metadata = {
-  title: "Arc Studio — Marketing operations, with your approval",
-  description:
-    "Arc finds source-backed opportunities, drafts approval-gated campaigns, and prepares creative — and never sends without your sign-off.",
+  metadataBase: new URL(SITE_URL),
+  title: OG_TITLE,
+  description: OG_DESCRIPTION,
+  // Social sharing card. Without these, a link pasted into LinkedIn, X, Slack
+  // or iMessage renders as a bare URL with no image or title.
+  openGraph: {
+    type: "website",
+    siteName: "Arc Studio",
+    url: SITE_URL,
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
+    images: [{ url: "/brand/og-card.jpg", width: 1200, height: 630, alt: "Arc Studio — marketing that runs itself, decisions that stay yours" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
+    images: ["/brand/og-card.jpg"],
+  },
   // Browser-tab + bookmark/home-screen icon: the gold "A" mark on the brand's
   // dark ground. A full set (favicon.ico, PNG favicon, apple-touch-icon, web
   // manifest) so every surface is branded — not just the tab. The static gallery
@@ -75,7 +102,13 @@ export default async function RootLayout({
       // --ff-editorial aliases the serif; --ff-display falls back to body in globals.
       style={{ ["--ff-editorial" as string]: "var(--ff-serif)" }}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Page-view + conversion analytics for the public site. No cookies, no
+            PII; respects Do Not Track. Mounted at the root so the landing page
+            and the signed-in app are both covered. */}
+        <Analytics />
+      </body>
     </html>
   );
 }
