@@ -1,17 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import Link from "next/link";
-import {
-  motion,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-  useTransform,
-} from "motion/react";
+import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 
 import { AppWindow } from "./app-window";
-import { GoldCta } from "./cta";
 import { Faq } from "./faq";
 import { FounderNote } from "./founder-note";
 import {
@@ -22,6 +15,7 @@ import {
   TrustBand,
 } from "./landing-sections";
 import { ScrollSequence } from "./scroll-sequence";
+import { SiteNav } from "./site-nav";
 import { WaitlistForm } from "./waitlist-form";
 import { ShowcaseTabs } from "./showcase-tabs";
 import { StudioShowcase } from "./studio-showcase";
@@ -32,53 +26,9 @@ const NAV_LINKS = [
   { href: "#how", label: "How it works" },
   { href: "#intelligence", label: "Intelligence" },
   { href: "#approvals", label: "Approvals" },
+  { href: "/pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" },
 ];
-
-function LandingNav() {
-  const [scrolled, setScrolled] = useState(false);
-  const { scrollY } = useScroll();
-  useMotionValueEvent(scrollY, "change", (v) => setScrolled(v > 12));
-
-  return (
-    <header
-      className={`fixed inset-x-0 top-0 z-40 transition-[background-color,border-color,backdrop-filter] duration-300 ${
-        scrolled
-          ? "border-b border-[color:var(--border-panel)] bg-[color:color-mix(in_srgb,var(--canvas)_82%,transparent)] backdrop-blur-md"
-          : "border-b border-transparent"
-      }`}
-    >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-6">
-        <a href="#top" className="flex items-center gap-2.5" aria-label="Arc Studio — back to top">
-          <img src="/icon.png" alt="" className="h-7 w-auto" />
-          <img src="/brand/arc-studio-wordmark.png" alt="Arc Studio" className="h-[1.15rem] w-auto" />
-        </a>
-        <nav className="hidden items-center gap-7 md:flex" aria-label="Page sections">
-          {NAV_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className="text-[0.875rem] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
-        <div className="flex items-center gap-2.5">
-          <Link
-            href="/login"
-            className="flex min-h-[38px] items-center rounded-lg px-3.5 text-[0.875rem] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-          >
-            Sign in
-          </Link>
-          <GoldCta href="#waitlist" size="sm">
-            Join waitlist
-          </GoldCta>
-        </div>
-      </div>
-    </header>
-  );
-}
 
 // The floating approval card: Arc's signature object, drifting gently over the
 // hero's product screenshot. Reduced motion pins it in place.
@@ -241,7 +191,7 @@ function Hero() {
 export function LandingView() {
   return (
     <main className="min-h-screen bg-[var(--canvas)] text-[var(--text-primary)]">
-      <LandingNav />
+      <SiteNav links={NAV_LINKS} ctaHref="#waitlist" ctaLabel="Join waitlist" />
       <Hero />
       <ScrollSequence />
       <ShowcaseTabs />
