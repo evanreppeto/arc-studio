@@ -24,6 +24,7 @@ import { ScrollSequence } from "./scroll-sequence";
 import { WaitlistForm } from "./waitlist-form";
 import { ShowcaseTabs } from "./showcase-tabs";
 import { StudioShowcase } from "./studio-showcase";
+import { WhoItsFor } from "./who-its-for";
 
 const NAV_LINKS = [
   { href: "#product", label: "Product" },
@@ -237,6 +238,7 @@ export function LandingView() {
       <Hero />
       <ScrollSequence />
       <ShowcaseTabs />
+      <WhoItsFor />
       <HowItWorks />
       <Intelligence />
       <StudioShowcase />
