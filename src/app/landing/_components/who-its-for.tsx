@@ -7,24 +7,29 @@ import { Reveal } from "./reveal";
 // and a hotel), so the thing that actually predicts fit is who owns marketing
 // and how much time they have. The three shapes mirror the account types the
 // product actually supports at sign-up: in-house team, agency, solo.
+//
+// Each card leads with a fragment of the actual product rather than an
+// illustration: the argument for "this is for you" is more convincing shown
+// than described, which is why the product tour and creative desk land.
+
 const AUDIENCES = [
   {
     tag: "Solo",
-    art: "/brand/landing/who/solo.jpg",
+    photo: "/brand/landing/who/solo.jpg",
     title: "You are the marketing team",
-    body: "You own marketing between everything else you own. Arc does the legwork — watching for openings, drafting the campaign, preparing the creative — and leaves you the part only you can do: deciding.",
+    body: "You own marketing between everything else you own. Arc does the legwork and leaves you the part only you can do: deciding.",
   },
   {
     tag: "In-house team",
-    art: "/brand/landing/who/team.jpg",
+    photo: "/brand/landing/who/team.jpg",
     title: "More pipeline than hours",
-    body: "One or two marketers and a CRM full of signals nobody has time to work. Arc turns those records into specific, evidence-backed opportunities so the week starts with drafts instead of a blank page.",
+    body: "One or two marketers and a CRM full of signals nobody has time to work. Arc turns those records into specific, evidence-backed openings.",
   },
   {
     tag: "Agency",
-    art: "/brand/landing/who/agency.jpg",
+    photo: "/brand/landing/who/agency.jpg",
     title: "Several brands, one operator",
-    body: "Each client gets its own workspace — its own voice, personas, approvals and audit trail. Arc scales the production work without blurring the brands together.",
+    body: "Each client gets its own workspace. Arc scales the production work without blurring the brands together.",
   },
 ];
 
@@ -57,30 +62,29 @@ export function WhoItsFor() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
             {AUDIENCES.map((a, i) => (
               <Reveal key={a.tag} delay={0.08 * i}>
-                <div className="group h-full overflow-hidden rounded-xl border border-[color:var(--border-panel)] bg-[var(--surface-panel)] transition-colors duration-300 hover:border-[color:color-mix(in_srgb,var(--accent)_38%,transparent)]">
-                  {/* Each audience gets its own mark: one thread, three
-                      converging, five running in parallel. */}
-                  <div className="relative h-[104px] overflow-hidden border-b border-[color:var(--border-panel)]">
+                <figure className="group relative h-full overflow-hidden rounded-xl border border-[color:var(--border-panel)] transition-colors duration-300 hover:border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)]">
+                  <div className="relative aspect-[16/10] sm:aspect-[16/11] lg:aspect-[16/7]">
                     <img
-                      src={a.art}
+                      src={a.photo}
                       alt=""
                       loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+                      className="h-full w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.04]"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface-panel)] via-transparent to-transparent" />
-                    <span className="absolute left-4 top-4 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--canvas-deep)_78%,transparent)] px-2.5 py-0.5 font-[family-name:var(--font-mono)] text-[0.65rem] tracking-[0.02em] text-[var(--accent)] backdrop-blur-md">
+                    {/* Scrim: the copy sits on the image like the ad units do. */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[var(--canvas-deep)] via-[color:color-mix(in_srgb,var(--canvas-deep)_72%,transparent)] to-transparent" />
+                    <span className="absolute left-5 top-5 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--canvas-deep)_70%,transparent)] px-2.5 py-0.5 font-[family-name:var(--font-mono)] text-[0.65rem] tracking-[0.02em] text-[var(--accent)] backdrop-blur-md">
                       {a.tag}
                     </span>
+                    <figcaption className="absolute inset-x-0 bottom-0 p-6">
+                      <h3 className="font-serif text-[1.4rem] font-semibold leading-snug text-[var(--text-primary)]">
+                        {a.title}
+                      </h3>
+                      <p className="mt-2 max-w-[52ch] text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
+                        {a.body}
+                      </p>
+                    </figcaption>
                   </div>
-                  <div className="p-6">
-                    <h3 className="font-serif text-xl font-semibold leading-snug text-[var(--text-primary)]">
-                      {a.title}
-                    </h3>
-                    <p className="mt-2 max-w-[58ch] text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
-                      {a.body}
-                    </p>
-                  </div>
-                </div>
+                </figure>
               </Reveal>
             ))}
           </div>
