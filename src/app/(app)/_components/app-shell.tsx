@@ -27,19 +27,29 @@ function initials(name: string): string {
   );
 }
 
-const IconArc = <span className="nav-arc-icon" aria-hidden="true" />;
-const IconHome = <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>;
-const IconCampaigns = <svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>;
-const IconCrm = <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M4 20c0-3 2-5 5-5s5 2 5 5" /><path d="M16 6h5M16 10h5" /></svg>;
-const IconOpp = <svg viewBox="0 0 24 24"><path d="M12 3l2.5 5 5.5.8-4 4 1 5.5L12 21l-5-2.7 1-5.5-4-4 5.5-.8z" /></svg>;
-const IconAnalytics = <svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-5M12 16V8M16 16v-8" /></svg>;
-const IconBrain = <svg viewBox="0 0 24 24"><path d="M12 4a4 4 0 00-4 4 3 3 0 00-1 6 3 3 0 003 3 3 3 0 006 0 3 3 0 003-3 3 3 0 00-1-6 4 4 0 00-4-4z" /></svg>;
-const IconPersonas = <svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.5" /><circle cx="16" cy="9" r="2.5" /><path d="M3 19c0-3 2-4.5 5-4.5M21 19c0-3-2-4.5-5-4.5M9 19c0-2 1.5-3 3-3s3 1 3 3" /></svg>;
-const IconJourneys = <svg viewBox="0 0 24 24"><path d="M6 6h6a3 3 0 0 1 0 6H8a3 3 0 0 0 0 6h10" /><circle cx="6" cy="6" r="1.7" /><circle cx="18" cy="18" r="1.7" /></svg>;
-const IconStudio = <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M4 14l5-4 4 3 3-2 4 3" /><circle cx="9" cy="9" r="1.4" /></svg>;
-const IconLibrary = <svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>;
-const IconBrand = <svg viewBox="0 0 24 24"><path d="M12 3l8 4v6c0 4-3.5 7-8 8-4.5-1-8-4-8-8V7z" /></svg>;
-const IconOutbox = <svg viewBox="0 0 24 24"><path d="M3 12l18-8-8 18-2-7z" /></svg>;
+function NavIcon({ src }: { src: string }) {
+  return (
+    <span
+      className="nav-image-icon"
+      aria-hidden="true"
+      style={{ "--nav-icon": `url(${src})` } as React.CSSProperties}
+    />
+  );
+}
+
+const IconArc = <NavIcon src="/brand/nav-icons/arc-chat-icon.png" />;
+const IconHome = <NavIcon src="/brand/nav-icons/sidebar-v2/home.png" />;
+const IconCampaigns = <NavIcon src="/brand/nav-icons/sidebar-v2/campaigns.png" />;
+const IconCrm = <NavIcon src="/brand/nav-icons/sidebar-v2/relationships.png" />;
+const IconOpp = <NavIcon src="/brand/nav-icons/sidebar-v2/opportunities.png" />;
+const IconAnalytics = <NavIcon src="/brand/nav-icons/sidebar-v2/analytics.png" />;
+const IconJourneys = <NavIcon src="/brand/nav-icons/sidebar-v2/journeys.png" />;
+const IconBrain = <NavIcon src="/brand/nav-icons/sidebar-v2/brain.png" />;
+const IconPersonas = <NavIcon src="/brand/nav-icons/sidebar-v2/personas.png" />;
+const IconStudio = <NavIcon src="/brand/nav-icons/sidebar-v2/studio.png" />;
+const IconLibrary = <NavIcon src="/brand/nav-icons/sidebar-v2/library.png" />;
+const IconBrand = <NavIcon src="/brand/nav-icons/sidebar-v2/brand.png" />;
+const IconOutbox = <NavIcon src="/brand/nav-icons/sidebar-v2/outbox.png" />;
 
 type NavGroup = { group: string; items: { label: string; href: string; icon: React.ReactNode }[] };
 
