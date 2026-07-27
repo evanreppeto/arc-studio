@@ -25,6 +25,12 @@ export type BrandProfileView = {
     website: string | null;
     legalName: string | null;
     published: boolean;
+    /**
+     * The brand mark Arc stamps on generated creative (`toBrandTokens` →
+     * `renderCreative`). Only http(s) URLs are surfaced — the renderer fetches
+     * this, so a relative or data: value would either 404 or bloat the render.
+     */
+    logoUrl: string | null;
   };
   palette: BrandSwatch[];
   headingFont: string | null;
@@ -73,6 +79,7 @@ export function toBrandProfileView(profile: BusinessProfile, sources: BrandSourc
       website: profile.websiteUrl,
       legalName: profile.legalName,
       published: profile.status === "active",
+      logoUrl: profile.logoUrl?.startsWith("http") ? profile.logoUrl : null,
     },
     palette,
     headingFont: profile.brandPalette.headingFont || null,
