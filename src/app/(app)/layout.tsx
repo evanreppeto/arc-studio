@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { getAuthMode } from "@/lib/auth/auth-mode";
 import { getViewerAvatarUrl, resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getSettingsWorkspacesView } from "@/lib/auth/workspaces-view";
@@ -35,6 +36,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!ctx.workspaceId) redirect("/onboarding");
 
   const user = await getSupabaseAuthenticatedUser();
+  // Defense in depth. The edge gate in proxy.ts is the primary check, but it is
+  // driven by a path matcher, and a matcher entry that accidentally covers a page
+  // silently unprotects it — the layout still renders, so nothing looks wrong.
+  // In account mode no signed-in screen may render without a session, whatever
+  // the matcher says. Open/demo mode has no session by design and is unaffected.
+  if (getAuthMode() === "supabase" && !user) redirect("/login");
+
   const resolvedName = await resolveViewerName(ctx.orgId, user);
   // Offline demo has no signed-in identity, so the account row would read the
   // literal "Account". Name the sample operator instead (demo only — a real
