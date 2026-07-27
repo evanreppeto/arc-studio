@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { DEFAULT_PLAN_TIER, type PlanTier } from "@/domain";
+import { DEFAULT_PLAN_TIER, PAID_SUBSCRIPTION_STATUSES, type PlanTier } from "@/domain";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
 
 import { tierForPriceId } from "./stripe-plans";
@@ -29,8 +29,10 @@ export type OrgPlanUpdate = {
 };
 
 // Statuses that KEEP the paid tier (past_due gets a grace window); anything else
-// (canceled, unpaid, incomplete_expired, …) falls back to free.
-const PAID_STATUSES = new Set(["active", "trialing", "past_due"]);
+// (canceled, unpaid, incomplete_expired, …) falls back to free. Shared with the
+// trial logic via the domain catalog so the two can never disagree about whether
+// a workspace is paying.
+const PAID_STATUSES = PAID_SUBSCRIPTION_STATUSES;
 
 /** Map a Stripe subscription to the org_plans update we persist. Pure. */
 export function planUpdateForSubscription(sub: SubscriptionState): OrgPlanUpdate {

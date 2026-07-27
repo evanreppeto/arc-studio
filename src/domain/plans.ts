@@ -38,6 +38,22 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
 /** Tier assumed for an org with no explicit plan row. */
 export const DEFAULT_PLAN_TIER: PlanTier = "free";
 
+/**
+ * Stripe subscription statuses that mean the customer is entitled to their paid
+ * tier. `past_due` is deliberately included — dunning gets a grace window rather
+ * than an instant downgrade.
+ *
+ * Single source of truth: the Stripe webhook sync uses it to decide which status
+ * keeps a paid tier, and the trial logic uses it to decide whether a workspace
+ * has converted. If those two ever disagreed, a paying customer could be shown
+ * an expired trial.
+ */
+export const PAID_SUBSCRIPTION_STATUSES: ReadonlySet<string> = new Set([
+  "active",
+  "trialing",
+  "past_due",
+]);
+
 /** Coerce an untrusted value (DB text, input) to a known tier, else the default. */
 export function normalizePlanTier(value: unknown): PlanTier {
   return typeof value === "string" && (PLAN_TIERS as readonly string[]).includes(value)
