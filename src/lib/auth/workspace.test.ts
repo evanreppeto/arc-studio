@@ -55,7 +55,7 @@ describe("resolveWorkspaceContextForUser", () => {
             status: "active",
           },
         ],
-        organizations: [{ id: "org-1", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration" }],
+        organizations: [{ id: "org-1", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration", status: "active" }],
       }),
       "user-1",
     );
@@ -75,7 +75,7 @@ describe("resolveWorkspaceContextForUser", () => {
     // that isn't BSR used to throw outright here.
     const context = await resolveWorkspaceContextForUser(
       fakeClient({
-        organizations: [{ id: "org-acme", slug: "acme-roofing", name: "Acme Roofing" }],
+        organizations: [{ id: "org-acme", slug: "acme-roofing", name: "Acme Roofing", status: "active" }],
         workspaces: [
           {
             id: "workspace-acme",
@@ -98,8 +98,8 @@ describe("resolveWorkspaceContextForUser", () => {
       resolveWorkspaceContextForUser(
         fakeClient({
           organizations: [
-            { id: "org-1", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration" },
-            { id: "org-2", slug: "acme-roofing", name: "Acme Roofing" },
+            { id: "org-1", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration", status: "active" },
+            { id: "org-2", slug: "acme-roofing", name: "Acme Roofing", status: "active" },
           ],
           workspaces: [
             { id: "workspace-1", org_id: "org-1", key: "default", slug: "bsr", name: "BSR", status: "active" },
@@ -111,6 +111,41 @@ describe("resolveWorkspaceContextForUser", () => {
     ).rejects.toThrow(/ambiguous/i);
   });
 
+  // Retiring a tenant is what `status` is for. Counting archived orgs when
+  // deciding ambiguity made the refusal permanent — archive a demo tenant and
+  // every session-less caller kept refusing, with no way back but deleting rows.
+  it("ignores archived orgs when deciding whether the tenant is ambiguous", async () => {
+    const context = await resolveWorkspaceContextForUser(
+      fakeClient({
+        organizations: [
+          { id: "org-demo", slug: "seeded-demo", name: "Seeded Demo", status: "archived" },
+          { id: "org-real", slug: "acme-roofing", name: "Acme Roofing", status: "active" },
+        ],
+        workspaces: [
+          { id: "ws-demo", org_id: "org-demo", key: "default", slug: "demo", name: "Demo", status: "active" },
+          { id: "ws-real", org_id: "org-real", key: "default", slug: "acme", name: "Acme", status: "active" },
+        ],
+      }),
+      null,
+    );
+
+    expect(context).toMatchObject({ orgId: "org-real", workspaceId: "ws-real" });
+  });
+
+  it("refuses when every org is archived, rather than resolving a retired tenant", async () => {
+    await expect(
+      resolveWorkspaceContextForUser(
+        fakeClient({
+          organizations: [{ id: "org-demo", slug: "seeded-demo", name: "Seeded Demo", status: "archived" }],
+          workspaces: [
+            { id: "ws-demo", org_id: "org-demo", key: "default", slug: "demo", name: "Demo", status: "active" },
+          ],
+        }),
+        null,
+      ),
+    ).rejects.toThrow(/no active organization/i);
+  });
+
   it("does not silently pick the historic BSR org when a second tenant exists", async () => {
     // The regression that matters: BSR present + another tenant must NOT resolve
     // to BSR. Asserting a non-BSR org can't pass vacuously here.
@@ -118,8 +153,8 @@ describe("resolveWorkspaceContextForUser", () => {
       resolveWorkspaceContextForUser(
         fakeClient({
           organizations: [
-            { id: "org-bsr", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration" },
-            { id: "org-other", slug: "other-tenant", name: "Other Tenant" },
+            { id: "org-bsr", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration", status: "active" },
+            { id: "org-other", slug: "other-tenant", name: "Other Tenant", status: "active" },
           ],
           workspaces: [
             { id: "ws-bsr", org_id: "org-bsr", key: "default", slug: "bsr", name: "BSR", status: "active" },
@@ -135,7 +170,7 @@ describe("resolveWorkspaceContextForUser", () => {
     // workspaceId (a 409) despite having exactly one possible answer.
     const context = await resolveWorkspaceContextForUser(
       fakeClient({
-        organizations: [{ id: "org-1", slug: "acme-roofing", name: "Acme Roofing" }],
+        organizations: [{ id: "org-1", slug: "acme-roofing", name: "Acme Roofing", status: "active" }],
         workspaces: [
           { id: "ws-1", org_id: "org-1", key: "acme-marketing", slug: "acme", name: "Acme", status: "active" },
         ],
@@ -150,7 +185,7 @@ describe("resolveWorkspaceContextForUser", () => {
     await expect(
       resolveWorkspaceContextForUser(
         fakeClient({
-          organizations: [{ id: "org-1", slug: "acme-roofing", name: "Acme Roofing" }],
+          organizations: [{ id: "org-1", slug: "acme-roofing", name: "Acme Roofing", status: "active" }],
           workspaces: [
             { id: "ws-default", org_id: "org-1", key: "default", slug: "a", name: "A", status: "active" },
             { id: "ws-second", org_id: "org-1", key: "second-team", slug: "b", name: "B", status: "active" },
@@ -167,7 +202,7 @@ describe("resolveWorkspaceContextForUser", () => {
     await expect(
       resolveWorkspaceContextForUser(
         fakeClient({
-          organizations: [{ id: "org-1", slug: "acme-roofing", name: "Acme Roofing" }],
+          organizations: [{ id: "org-1", slug: "acme-roofing", name: "Acme Roofing", status: "active" }],
           workspaces: [
             { id: "ws-default", org_id: "org-1", key: "default", slug: "a", name: "A", status: "active" },
             { id: "ws-other", org_id: "org-1", key: "other", slug: "b", name: "B", status: "active" },
@@ -181,7 +216,7 @@ describe("resolveWorkspaceContextForUser", () => {
   it("ignores inactive workspaces when deciding whether the answer is ambiguous", async () => {
     const context = await resolveWorkspaceContextForUser(
       fakeClient({
-        organizations: [{ id: "org-1", slug: "acme-roofing", name: "Acme Roofing" }],
+        organizations: [{ id: "org-1", slug: "acme-roofing", name: "Acme Roofing", status: "active" }],
         workspaces: [
           { id: "ws-live", org_id: "org-1", key: "live", slug: "a", name: "A", status: "active" },
           { id: "ws-dead", org_id: "org-1", key: "dead", slug: "b", name: "B", status: "archived" },
@@ -202,7 +237,7 @@ describe("resolveWorkspaceContextForUser", () => {
   it("falls back to the seeded default workspace before users are assigned", async () => {
     const context = await resolveWorkspaceContextForUser(
       fakeClient({
-        organizations: [{ id: "org-1", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration" }],
+        organizations: [{ id: "org-1", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration", status: "active" }],
         workspaces: [
           {
             id: "workspace-1",
@@ -231,7 +266,7 @@ describe("resolveWorkspaceContextForUser", () => {
     await expect(
       resolveWorkspaceContextForUser(
         fakeClient({
-          organizations: [{ id: "org-1", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration" }],
+          organizations: [{ id: "org-1", slug: "big-shoulders-restoration", name: "Big Shoulders Restoration", status: "active" }],
           workspaces: [
             {
               id: "workspace-1",

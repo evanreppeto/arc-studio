@@ -53,6 +53,18 @@ async function ensureAuthUser({ email, password, full_name }) {
 
 async function main() {
   const now = new Date().toISOString();
+
+  // The org row itself. The baseline migration is a schema-only dump and no
+  // migration inserts tenant rows any more (20260716140000 removed the last
+  // hardcoded BSR reference), so on a freshly reset database this org does not
+  // exist and every seed below fails its org_id foreign key. Create it here —
+  // seeds own their data, migrations own the schema.
+  const { error: orgErr } = await sb.from("organizations").upsert(
+    { id: ORG_ID, name: "Big Shoulders Restoration", slug: "big-shoulders-restoration", status: "active" },
+    { onConflict: "id" },
+  );
+  if (orgErr) throw new Error(`organization: ${orgErr.message}`);
+
   const users = [];
   for (const u of USERS) {
     const user = await ensureAuthUser(u);

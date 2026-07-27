@@ -1464,9 +1464,18 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
     setStatus({
       tone: "ok",
       text: res.persisted
-        ? res.message ?? "Workspace created."
+        ? `${res.message ?? "Workspace created."} Reloading…`
         : "Workspace added — connect your account (Supabase) to provision it for real.",
     });
+    if (res.persisted) {
+      // createWorkspace pins the new workspace as active (it repoints the
+      // active-workspace cookie), so the optimistic row is both stale — it still
+      // says "Switch" next to the workspace you are already in — and carries a
+      // local placeholder id that no real switch could target. Reload for the
+      // server's list, exactly as switchTo does.
+      setWorkspaces((prev) => prev.map((w) => ({ ...w, active: w.id === tempId })));
+      window.location.assign("/settings?s=workspaces");
+    }
     return { ok: true };
   }
 
