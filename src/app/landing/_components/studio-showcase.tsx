@@ -102,7 +102,7 @@ export function StudioShowcase() {
       <Reveal delay={0.08}>
         <div className="mt-10 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[color:var(--border-panel)] pb-4">
           <span className="text-[0.95rem] font-semibold text-[var(--text-primary)]">Draft creative</span>
-          <span className="font-[family-name:var(--font-mono)] text-[0.68rem] text-[var(--text-muted)]">
+          <span className="font-[family-name:var(--font-mono)] text-[0.78rem] sm:text-[0.68rem] text-[var(--text-muted)]">
             3 workspaces · 3 formats
           </span>
           <span className="ml-auto rounded-full border border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--accent)_12%,transparent)] px-2.5 py-0.5 text-[0.65rem] font-medium text-[var(--accent)]">

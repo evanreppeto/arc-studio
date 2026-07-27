@@ -9,9 +9,11 @@ import { Reveal } from "@/app/landing/_components/reveal";
 import { SiteNav } from "@/app/landing/_components/site-nav";
 
 import {
+  EVERY_PLAN_INCLUDES,
   PRICING_PLANS,
   TRIAL_DAYS,
   annualPerMonthUsd,
+  volumeLabel,
   type PricingPlan,
 } from "./plans";
 import { PricingFaq } from "./pricing-faq";
@@ -96,21 +98,33 @@ function PlanCard({
         {annual ? "Billed annually · two months free" : "Billed monthly · cancel anytime"}
       </p>
 
-      {/* The per-tier monthly allowance is deliberately NOT published here.
-          It is the enforced spend cap from the plan catalog, i.e. our cost of
-          goods — printing "$25/mo" beside a $99 price discloses the margin on
-          every plan. The limit still exists and is explained in plain terms by
-          LimitsSection and the FAQ; what's withheld is the dollar figure. Don't
-          reintroduce `allowanceUsd` here. */}
+      {/* Volume, not a feature list. The tiers differ only by how much agent
+          work they include, because that is the only difference the code
+          enforces — the capability list is shared and lives in one place below.
+          The volume is a RATIO, never the cap in dollars: that figure is our
+          cost of goods and publishing it beside the price discloses the margin.
+          Don't reintroduce `allowanceUsd` here. */}
+      <div className="mt-6 flex-1 border-t border-[color:var(--border-panel)] pt-5">
+        <p className="text-[0.95rem] font-semibold text-[var(--text-primary)]">
+          {volumeLabel(plan.tier)}
+        </p>
+        <p className="mt-1.5 text-[0.85rem] leading-relaxed text-[var(--text-secondary)]">
+          Opportunities found, campaigns drafted, creative prepared. Every
+          capability below is included on every plan — only the monthly volume
+          changes.
+        </p>
 
-      <ul className="mt-6 flex flex-1 flex-col gap-2.5">
-        {plan.features.map((feature) => (
-          <li key={feature} className="flex items-start gap-2.5 text-[0.875rem] leading-relaxed text-[var(--text-secondary)]">
-            <Check />
-            <span>{feature}</span>
-          </li>
-        ))}
-      </ul>
+        {plan.alsoIncluded && (
+          <ul className="mt-5 flex flex-col gap-2.5">
+            {plan.alsoIncluded.map((item) => (
+              <li key={item} className="flex items-start gap-2.5 text-[0.875rem] leading-relaxed text-[var(--text-secondary)]">
+                <Check />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <p className="mt-6 border-t border-[color:var(--border-panel)] pt-4 text-[0.8rem] leading-relaxed text-[var(--text-muted)]">
         {plan.bestFor}
@@ -139,7 +153,7 @@ function BillingToggle({ annual, onChange }: { annual: boolean; onChange: (v: bo
           type="button"
           onClick={() => onChange(opt.value)}
           aria-pressed={annual === opt.value}
-          className={`min-h-[38px] rounded-md px-4 text-[0.85rem] font-medium transition-colors ${
+          className={`min-h-[44px] rounded-md px-4 text-[0.85rem] font-medium transition-colors sm:min-h-[38px] ${
             annual === opt.value
               ? "bg-[var(--accent)] text-[var(--on-accent)]"
               : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -195,20 +209,51 @@ export function PricingView({ signupOpen }: { signupOpen: boolean }) {
             </Reveal>
           ))}
         </div>
-        <Reveal delay={0.2}>
-          <p className="mt-7 max-w-[70ch] text-[0.85rem] leading-relaxed text-[var(--text-muted)]">
-            Every plan has unlimited seats. We don&rsquo;t charge per person —
-            marketing is a team sport and billing your colleagues out of the room
-            makes the product worse.
-          </p>
-        </Reveal>
       </section>
+
+      <EveryPlanSection />
 
       <LimitsSection />
       <PricingFaq signupOpen={signupOpen} />
       <FinalCta ctaHref={ctaHref} ctaLabel={ctaLabel} signupOpen={signupOpen} />
       <LandingFooter />
     </main>
+  );
+}
+
+// One capability list, not three. The tiers are volume-based because that's the
+// only difference `entitlements.ts` enforces — there are no per-tier feature
+// gates anywhere in the codebase, so a ladder would promise a restriction that
+// doesn't exist and understate what a Starter customer already gets.
+function EveryPlanSection() {
+  return (
+    <section className="border-y border-[color:var(--border-panel)] bg-[var(--canvas-deep)]">
+      <div className="mx-auto max-w-6xl px-6 py-20">
+        <div className="grid items-start gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+          <Reveal>
+            <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
+              In every plan
+            </h2>
+            <p className="mt-4 max-w-[44ch] text-[0.975rem] leading-relaxed text-[var(--text-secondary)]">
+              No feature is held back to sell you the tier above. The things
+              that make Arc safe to put in front of your customers aren&rsquo;t
+              upsells — they&rsquo;re the product.
+            </p>
+          </Reveal>
+
+          <Reveal delay={0.08}>
+            <ul className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
+              {EVERY_PLAN_INCLUDES.map((item) => (
+                <li key={item} className="flex items-start gap-2.5 text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
+                  <Check />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+        </div>
+      </div>
+    </section>
   );
 }
 
