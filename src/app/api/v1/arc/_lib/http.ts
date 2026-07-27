@@ -103,6 +103,10 @@ export async function arcGuard(request: Request): Promise<ArcGuardResult> {
     return { ok: false, response: supabaseDenied };
   }
 
+  // Read once — both branches below need it, and the database branch used to
+  // ignore it entirely (see the mismatch check).
+  const assertedWorkspace = request.headers.get(ARC_WORKSPACE_HEADER)?.trim();
+
   if (auth.tokenSource === "database") {
     if (!auth.orgId || !auth.workspaceId) {
       return {
@@ -118,6 +122,23 @@ export async function arcGuard(request: Request): Promise<ArcGuardResult> {
         response: fail("workspace_required", "The Arc token is not tied to an active workspace.", 409),
       };
     }
+
+    // A scoped token pins this request to ITS workspace, which is the point. But
+    // the runner also states which workspace each wake is for, and this branch
+    // used to discard that: a shared runner holding one workspace's token would
+    // accept work destined for another and file it here — no error, wrong tenant.
+    // Disagreement means one of the two is wrong, and guessing which is exactly
+    // the failure mode scoped tokens exist to remove. Refuse instead.
+    if (assertedWorkspace && assertedWorkspace !== workspaceId) {
+      return {
+        ok: false,
+        response: fail(
+          "workspace_mismatch",
+          "This Arc token is scoped to a different workspace than the one asserted on the request.",
+          409,
+        ),
+      };
+    }
     return { ok: true, scope: { orgId: auth.orgId, workspaceId, source: "agent-token" } };
   }
 
@@ -127,9 +148,8 @@ export async function arcGuard(request: Request): Promise<ArcGuardResult> {
   // validate that workspace against the DB and derive the authoritative org, so a
   // spoofed ARC_ORG_HEADER can't widen scope. Absent the header, keep the historic
   // default-workspace resolution for single-runner / local back-compat.
-  const assertedWorkspaceId = request.headers.get(ARC_WORKSPACE_HEADER)?.trim();
-  if (assertedWorkspaceId) {
-    const resolved = await resolveWorkspaceScopeById(assertedWorkspaceId);
+  if (assertedWorkspace) {
+    const resolved = await resolveWorkspaceScopeById(assertedWorkspace);
     if (!resolved) {
       return {
         ok: false,
