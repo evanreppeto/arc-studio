@@ -99,14 +99,14 @@ function HeroApprovalCard() {
       >
         <div className="flex items-center justify-between gap-3">
           <span className="text-[0.82rem] font-semibold text-[var(--text-primary)]">
-            Storm-response campaign
+            Pricing-intent campaign
           </span>
           <span className="rounded-full border border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--accent)_12%,transparent)] px-2 py-0.5 text-[0.65rem] font-medium text-[var(--accent)]">
             Needs approval
           </span>
         </div>
         <p className="mt-1.5 text-[0.72rem] leading-relaxed text-[var(--text-muted)]">
-          Drafted from a weather signal · email + SMS · evidence attached
+          Drafted from a pricing-page surge · email + SMS · evidence attached
         </p>
         <div className="mt-3 flex items-center gap-2">
           <span className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-[0.72rem] font-semibold text-[var(--on-accent)]">

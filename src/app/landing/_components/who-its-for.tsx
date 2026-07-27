@@ -10,16 +10,19 @@ import { Reveal } from "./reveal";
 const AUDIENCES = [
   {
     tag: "Solo",
+    art: "/brand/landing/who/solo.jpg",
     title: "You are the marketing team",
     body: "You own marketing between everything else you own. Arc does the legwork — watching for openings, drafting the campaign, preparing the creative — and leaves you the part only you can do: deciding.",
   },
   {
     tag: "In-house team",
+    art: "/brand/landing/who/team.jpg",
     title: "More pipeline than hours",
     body: "One or two marketers and a CRM full of signals nobody has time to work. Arc turns those records into specific, evidence-backed opportunities so the week starts with drafts instead of a blank page.",
   },
   {
     tag: "Agency",
+    art: "/brand/landing/who/agency.jpg",
     title: "Several brands, one operator",
     body: "Each client gets its own workspace — its own voice, personas, approvals and audit trail. Arc scales the production work without blurring the brands together.",
   },
@@ -29,8 +32,8 @@ export function WhoItsFor() {
   return (
     <section id="who" className="border-y border-[color:var(--border-panel)] bg-[var(--canvas-deep)]">
       <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-        <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
-          <Reveal>
+        <div className="grid items-start gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+          <Reveal className="lg:sticky lg:top-28">
             <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
               Who Arc is for
             </h2>
@@ -54,16 +57,29 @@ export function WhoItsFor() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
             {AUDIENCES.map((a, i) => (
               <Reveal key={a.tag} delay={0.08 * i}>
-                <div className="h-full rounded-xl border border-[color:var(--border-panel)] bg-[var(--surface-panel)] p-6">
-                  <span className="inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--accent)_10%,transparent)] px-2.5 py-0.5 font-[family-name:var(--font-mono)] text-[0.65rem] tracking-[0.02em] text-[var(--accent)]">
-                    {a.tag}
-                  </span>
-                  <h3 className="mt-3 font-serif text-xl font-semibold leading-snug text-[var(--text-primary)]">
-                    {a.title}
-                  </h3>
-                  <p className="mt-2 max-w-[58ch] text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
-                    {a.body}
-                  </p>
+                <div className="group h-full overflow-hidden rounded-xl border border-[color:var(--border-panel)] bg-[var(--surface-panel)] transition-colors duration-300 hover:border-[color:color-mix(in_srgb,var(--accent)_38%,transparent)]">
+                  {/* Each audience gets its own mark: one thread, three
+                      converging, five running in parallel. */}
+                  <div className="relative h-[104px] overflow-hidden border-b border-[color:var(--border-panel)]">
+                    <img
+                      src={a.art}
+                      alt=""
+                      loading="lazy"
+                      className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface-panel)] via-transparent to-transparent" />
+                    <span className="absolute left-4 top-4 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--canvas-deep)_78%,transparent)] px-2.5 py-0.5 font-[family-name:var(--font-mono)] text-[0.65rem] tracking-[0.02em] text-[var(--accent)] backdrop-blur-md">
+                      {a.tag}
+                    </span>
+                  </div>
+                  <div className="p-6">
+                    <h3 className="font-serif text-xl font-semibold leading-snug text-[var(--text-primary)]">
+                      {a.title}
+                    </h3>
+                    <p className="mt-2 max-w-[58ch] text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
+                      {a.body}
+                    </p>
+                  </div>
                 </div>
               </Reveal>
             ))}
