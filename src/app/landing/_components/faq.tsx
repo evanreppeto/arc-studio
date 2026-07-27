@@ -92,8 +92,8 @@ const FAQS: Array<{ q: string; a: React.ReactNode }> = [
 export function Faq() {
   return (
     <section id="faq" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-      <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
-        <Reveal>
+      <div className="grid items-start gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+        <Reveal className="lg:sticky lg:top-28">
           <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
             Questions worth asking
           </h2>
