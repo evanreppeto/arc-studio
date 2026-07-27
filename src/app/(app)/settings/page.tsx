@@ -12,6 +12,8 @@ import { getEmailConnection } from "@/lib/connections/read-model";
 import { getConnectorSpendView } from "@/lib/connectors/spend-summary";
 import { isLiveSendEnabled } from "@/lib/dispatch/live-send";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
+import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
+import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getAppSettings } from "@/lib/settings/store";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWaitlistView } from "@/lib/waitlist/read-model";
@@ -48,6 +50,11 @@ export default async function SettingsPage() {
   // Empty is honest, and the view says so in place of showing a blank line.
   const email = user?.email ?? "";
   const avatarUrl = await getViewerAvatarUrl(user);
+  // One workspace logo, canonical on the brand record — the same image the rail
+  // draws and Arc stamps on creative. The legacy settings key is only a fallback
+  // for workspaces that uploaded before the two stores were unified.
+  const businessProfile = ctx?.orgId ? await getBusinessProfile(ctx.orgId).catch(() => null) : null;
+  const workspaceLogoUrl = resolveWorkspaceLogoUrl(businessProfile?.logoUrl, settings.brandLogoUrl);
   // The deployment-level send kill-switch. Read here (server-side env) so the
   // email card can tell the truth: an enabled Resend connection still sends
   // nothing while this is dark.
@@ -58,5 +65,5 @@ export default async function SettingsPage() {
   // Whether the deployment has a Google Cloud OAuth app configured — gates the
   // "Connect with Google" button on the reviews connector.
   const googleOAuthConfigured = isGoogleOAuthConfigured();
-  return <SettingsView brandName={brandName} email={email} avatarUrl={avatarUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} />;
+  return <SettingsView brandName={brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} />;
 }

@@ -5,14 +5,15 @@ import { revalidatePath } from "next/cache";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { uploadBrandingImage } from "@/lib/branding/images";
-import { saveAppSettings } from "@/lib/settings/store";
+import { setWorkspaceLogo } from "@/lib/branding/logo";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 /**
  * Image-upload actions for workspace + personal branding. Both persist a public
- * image URL — the workspace logo to app_settings (org-scoped, rendered in the
- * rail) and the user avatar to profiles.avatar_url (per-user, rendered app-wide).
+ * image URL — the workspace logo through `setWorkspaceLogo` (the single store,
+ * shared with the Brand screen: it shows in the rail AND on generated creative)
+ * and the user avatar to profiles.avatar_url (per-user, rendered app-wide).
  * Operator-gated; revalidate the root layout so the shell picks up the new image
  * on the next render. Nothing outbound.
  */
@@ -35,8 +36,13 @@ export async function saveWorkspaceLogoAction(formData: FormData): Promise<Brand
   const uploaded = await uploadBrandingImage(`org/${ctx.orgId}`, image);
   if (!uploaded.ok) return uploaded;
 
-  await saveAppSettings(getSupabaseAdminClient(), ctx.orgId, { brand_logo_url: uploaded.url });
+  try {
+    await setWorkspaceLogo(ctx.orgId, uploaded.url);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save the logo." };
+  }
   revalidatePath("/", "layout");
+  revalidatePath("/brand");
   return { ok: true, url: uploaded.url };
 }
 
@@ -46,8 +52,13 @@ export async function removeWorkspaceLogoAction(): Promise<BrandingResult> {
   const ctx = await getCurrentWorkspaceContext();
   if (!ctx.orgId) return { ok: false, error: "No active workspace." };
 
-  await saveAppSettings(getSupabaseAdminClient(), ctx.orgId, { brand_logo_url: "" });
+  try {
+    await setWorkspaceLogo(ctx.orgId, null);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not remove the logo." };
+  }
   revalidatePath("/", "layout");
+  revalidatePath("/brand");
   return { ok: true, url: null };
 }
 

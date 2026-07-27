@@ -560,7 +560,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, email, avatarUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null }: { brandName: string; email: string; avatarUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null }) {
+export function SettingsView({ brandName, email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null }: { brandName: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null }) {
   const [cur, setCur] = useState("overview");
   // The waitlist is platform-level, not workspace-level: the server sends null
   // unless the viewer is a platform admin, so the group is absent for everyone else.
@@ -814,7 +814,7 @@ export function SettingsView({ brandName, email, avatarUrl = null, team, usage, 
       <>
         <Head t="General" d="Your workspace identity and how Arc is named — both apply across the app and Arc’s outbound from-name." />
         {subBar}
-        {activeSub === "Agent" ? <AgentIdentityPanel settings={settings} /> : <GeneralPanel brandName={brandName} settings={settings} />}
+        {activeSub === "Agent" ? <AgentIdentityPanel settings={settings} /> : <GeneralPanel brandName={brandName} settings={settings} workspaceLogoUrl={workspaceLogoUrl} />}
       </>
     ),
     appearance: (
@@ -1504,7 +1504,7 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
 // Workspace name renames the org + workspace identity (owner/admin gated);
 // account type, industry, and support email persist to app_settings. Offline the
 // action returns persisted:false and Status says so honestly.
-function GeneralPanel({ brandName, settings }: { brandName: string; settings: AppSettings }) {
+function GeneralPanel({ brandName, settings, workspaceLogoUrl }: { brandName: string; settings: AppSettings; workspaceLogoUrl: string | null }) {
   const [name, setName] = useState(brandName);
   const [profile, setProfile] = useState<AppSettings["workspaceProfile"]>(settings.workspaceProfile);
   const [industry, setIndustry] = useState(canonicalIndustryKey(settings.industry));
@@ -1523,9 +1523,9 @@ function GeneralPanel({ brandName, settings }: { brandName: string; settings: Ap
   return (
       <Panel title="Workspace" tag={TGOK} foot="Renames the workspace + saves profile, industry, and support email">
         <Row label="Workspace name" desc="Shown across the app and in Arc’s outbound from-name."><input className="inp" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></Row>
-        <Row label="Workspace logo" desc="Shown in the sidebar in place of the initials. Square PNG or SVG works best.">
+        <Row label="Workspace logo" desc="One logo: shown in the sidebar in place of the initials, and stamped on creative Arc generates. Also editable on Brand. Square PNG or SVG works best.">
           <ImageUploadField
-            currentUrl={settings.brandLogoUrl?.startsWith("http") ? settings.brandLogoUrl : null}
+            currentUrl={workspaceLogoUrl}
             fallback={pinit(name || brandName)}
             uploadAction={saveWorkspaceLogoAction}
             removeAction={removeWorkspaceLogoAction}
