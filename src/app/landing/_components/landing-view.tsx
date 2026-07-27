@@ -91,7 +91,7 @@ function HeroProductShot() {
   const scale = useTransform(scrollYProgress, [0, 1], [0.975, 1]);
 
   return (
-    <div ref={ref} className="relative mt-24 [perspective:1400px]">
+    <div ref={ref} className="relative mt-14 sm:mt-24 [perspective:1400px]">
       <motion.div style={reduced ? undefined : { rotateX, scale, transformOrigin: "center top" }}>
         <div className="relative">
           <HeroApprovalCard />
@@ -160,7 +160,7 @@ function Hero() {
         <div className="absolute inset-0 bg-gradient-to-b from-[var(--canvas)]/95 via-[var(--canvas)]/70 to-[var(--canvas)] sm:from-[var(--canvas)]/90 sm:via-[var(--canvas)]/30" />
       </motion.div>
 
-      <div className="relative mx-auto flex max-w-6xl flex-col justify-center px-6 pb-10 pt-40">
+      <div className="relative mx-auto flex max-w-6xl flex-col justify-center px-6 pb-10 pt-32 sm:pt-40">
         <h1
           className="rise-in rise-d1 max-w-[17ch] font-serif text-[2.9rem] font-semibold leading-[1.06] text-[var(--text-primary)] sm:text-[3.9rem] lg:text-[4.6rem]"
         >

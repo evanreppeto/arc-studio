@@ -157,7 +157,7 @@ export function ShowcaseTabs() {
   const tab = TABS.find((t) => t.key === active)!;
 
   return (
-    <section id="product" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
+    <section id="product" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
       <Reveal>
         <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
           One system, every surface of marketing
@@ -169,7 +169,7 @@ export function ShowcaseTabs() {
         </p>
       </Reveal>
 
-      <Reveal delay={0.1} className="mt-9">
+      <Reveal delay={0.1} className="mt-7 sm:mt-9">
         <div
           role="tablist"
           aria-label="Product areas"
