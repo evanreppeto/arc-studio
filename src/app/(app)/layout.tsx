@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { resolveWorkspaceIdentity } from "@/domain";
 import { getAuthMode } from "@/lib/auth/auth-mode";
 import { getViewerAvatarUrl, resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
@@ -70,13 +71,33 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // rail show a company logo + operator photo instead of initials monograms in
   // the marketing screenshots. Never overrides a workspace's own logo.
   const uploadedLogo = resolveWorkspaceLogoUrl(businessProfile?.logoUrl, appSettings?.brandLogoUrl);
-  const logoUrl = uploadedLogo ?? (isDemoDataEnabled() ? "/brand/demo/meridian-logo.png" : null);
   const industry = appSettings?.industry || businessProfile?.industry || "general";
+
+  // The workspace's own display identity, with the org-name fallbacks applied.
+  // A workspace that has customized nothing resolves to exactly what the rail
+  // rendered before these columns existed.
+  const identity = resolveWorkspaceIdentity(
+    {
+      name: ctx.workspaceName,
+      subtitle: ctx.workspaceSubtitle,
+      shortLabel: ctx.workspaceShortLabel,
+      accentKey: ctx.workspaceAccentKey,
+      logoUrl: ctx.workspaceLogoUrl,
+    },
+    ctx.orgName,
+  );
+  // A workspace logo beats the org logo in the rail — it is the more specific
+  // choice — and both beat the bundled demo sample.
+  const logoUrl =
+    identity.logoUrl ?? uploadedLogo ?? (isDemoDataEnabled() ? "/brand/demo/meridian-logo.png" : null);
 
   return (
     <AppShell
-      workspaceName={ctx.workspaceName}
+      workspaceName={identity.name}
       orgName={ctx.orgName}
+      workspaceSubtitle={identity.subtitle}
+      workspaceShortLabel={identity.shortLabel}
+      workspaceAccentColor={identity.accentColor}
       userName={userName}
       userEmail={user?.email ?? (isDemoDataEnabled() ? "maya@meridian.example" : "")}
       logoUrl={logoUrl}

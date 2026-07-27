@@ -12,6 +12,7 @@ import type { ConnectorSpendView } from "@/lib/connectors/spend-summary";
 
 import {
   connectorMatchesIndustry,
+  derivedShortLabel,
   describeConnectorCost,
   findConnector,
   formatFeedsInput,
@@ -22,9 +23,12 @@ import {
   parseWeatherCategories,
   parseWeatherServiceArea,
   WEATHER_CATEGORIES,
+  WORKSPACE_ACCENT_SWATCHES,
+  workspaceInitials,
   type ConnectorCostTier,
   type ConnectorStatus,
   type WeatherCategory,
+  type WorkspaceAccentKey,
 } from "@/domain";
 import type { ConnectorView } from "@/lib/connectors/read-model";
 import type { SettingsConnectorsView } from "@/lib/connectors/settings-connectors";
@@ -48,6 +52,7 @@ import {
   saveMediaDefaults,
   saveRunnerDisplayName,
   switchWorkspace,
+  updateWorkspaceIdentityAction,
 } from "../actions";
 import {
   removeUserAvatarAction,
@@ -63,6 +68,7 @@ import { Modal } from "../../_components/modal";
 import { BrandBadge } from "./brand-badge";
 import { ImageUploadField } from "./image-upload-field";
 import { NewWorkspaceModal, type NewWorkspaceValue } from "./new-workspace-modal";
+import { WorkspaceIdentityModal, type WorkspaceIdentityValue } from "./workspace-identity-modal";
 
 type SettingsWriteResult = { ok: true; persisted: boolean; message?: string } | { ok: false; error: string };
 
@@ -560,7 +566,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null }: { brandName: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null }) {
+export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null }) {
   const [cur, setCur] = useState("overview");
   // The waitlist is platform-level, not workspace-level: the server sends null
   // unless the viewer is a platform admin, so the group is absent for everyone else.
@@ -814,7 +820,7 @@ export function SettingsView({ brandName, email, avatarUrl = null, workspaceLogo
       <>
         <Head t="General" d="Your workspace identity and how Arc is named — both apply across the app and Arc’s outbound from-name." />
         {subBar}
-        {activeSub === "Agent" ? <AgentIdentityPanel settings={settings} /> : <GeneralPanel brandName={brandName} settings={settings} workspaceLogoUrl={workspaceLogoUrl} />}
+        {activeSub === "Agent" ? <AgentIdentityPanel settings={settings} /> : <GeneralPanel brandName={brandName} workspaceName={workspaceName || brandName} settings={settings} workspaceLogoUrl={workspaceLogoUrl} />}
       </>
     ),
     appearance: (
@@ -1417,15 +1423,48 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 // ---- Workspaces (wired) ----
 // Real memberships from listWorkspacesForUser (demo list offline). Switch
 // repoints the active-workspace cookie and reloads so the whole app re-tailors;
-// create goes through createWorkspace. Offline both resolve optimistically.
-type WorkspaceItem = { id: string; initial: string; name: string; meta: string; active: boolean };
-const toWorkspaceItem = (w: SettingsWorkspace): WorkspaceItem => ({ id: w.id, initial: (w.name || "W").charAt(0).toUpperCase(), name: w.name, meta: w.meta, active: w.active });
+// create goes through createWorkspace; Customize goes through
+// updateWorkspaceIdentityAction. Offline all three resolve optimistically.
+//
+// Customize works on ANY row you own or administer, not just the active one —
+// the identity guard is keyed on the row's workspaceId, so there is no need to
+// switch into a workspace just to rename it.
+type WorkspaceItem = SettingsWorkspace;
 
 function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
-  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>(view.workspaces.map(toWorkspaceItem));
+  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>(view.workspaces);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<WorkspaceItem | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+
+  async function saveIdentity(value: WorkspaceIdentityValue): Promise<{ ok: boolean; error?: string }> {
+    const res = await updateWorkspaceIdentityAction(value);
+    if (!res.ok) return { ok: false, error: res.error };
+    setWorkspaces((prev) =>
+      prev.map((w) =>
+        w.id === value.workspaceId
+          ? {
+              ...w,
+              name: value.name,
+              orgName: value.organizationName || w.orgName,
+              storedSubtitle: value.subtitle,
+              storedShortLabel: value.shortLabel,
+              subtitle: value.subtitle || value.organizationName || w.orgName,
+              accentKey: (value.accentKey as WorkspaceItem["accentKey"]) ?? null,
+              accentColor: value.accentKey ? WORKSPACE_ACCENT_SWATCHES[value.accentKey as WorkspaceAccentKey] : null,
+            }
+          : w,
+      ),
+    );
+    setStatus({
+      tone: "ok",
+      text: res.persisted ? `Saved ${value.name}.` : "Preview only here — connect your account to save for real.",
+    });
+    // The rail renders this too, and it is server-rendered.
+    if (res.persisted) window.location.assign("/settings?s=workspaces");
+    return { ok: true };
+  }
 
   async function switchTo(w: WorkspaceItem) {
     if (w.active) return;
@@ -1450,7 +1489,21 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
   async function create(value: NewWorkspaceValue): Promise<{ ok: boolean; error?: string }> {
     const tempId = `local-${crypto.randomUUID()}`;
     setWorkspaces((prev) => [
-      { id: tempId, initial: value.workspaceName.charAt(0).toUpperCase() || "W", name: value.workspaceName, meta: "Owner · New workspace", active: false },
+      {
+        id: tempId,
+        name: value.workspaceName,
+        meta: "Owner · New workspace",
+        active: false,
+        subtitle: value.organizationName || value.workspaceName,
+        shortLabel: derivedShortLabel(value.organizationName || value.workspaceName),
+        storedSubtitle: null,
+        storedShortLabel: null,
+        accentColor: null,
+        accentKey: null,
+        logoUrl: null,
+        orgName: value.organizationName || value.workspaceName,
+        canManage: true,
+      },
       ...prev,
     ]);
     setStatus(null);
@@ -1490,9 +1543,22 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
           <div className="me" style={{ padding: "6px 2px", color: "var(--muted)" }}>No workspaces yet.</div>
         ) : (
           workspaces.map((w) => (
-            <div className="mem" key={w.id}>
-              <span className="ma">{w.initial}</span>
-              <div className="mi"><div className="mn">{w.name}</div><div className="me">{w.meta}</div></div>
+            <div
+              className="mem"
+              key={w.id}
+              style={w.accentColor ? ({ "--ws-accent": w.accentColor } as React.CSSProperties) : undefined}
+            >
+              <span className="ma" style={w.accentColor ? { color: w.accentColor, background: `color-mix(in srgb, ${w.accentColor} 16%, transparent)`, borderColor: `color-mix(in srgb, ${w.accentColor} 32%, transparent)`, overflow: "hidden", padding: 0 } : undefined}>
+                {w.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo; next/image would need per-host remotePatterns
+                  <img src={w.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  // The shared monogram rule, so this row matches the rail.
+                  workspaceInitials(w.name)
+                )}
+              </span>
+              <div className="mi"><div className="mn">{w.name}</div><div className="me">{w.subtitle} · {w.meta}</div></div>
+              {w.canManage && <button className="btn sm" onClick={() => setEditing(w)}>Customize</button>}
               {w.active ? <Pill kind="ok">Active</Pill> : <button className="btn sm" disabled={busy === w.id} onClick={() => switchTo(w)}>{busy === w.id ? "Switching…" : "Switch"}</button>}
             </div>
           ))
@@ -1505,6 +1571,13 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
         )}
       </div>
       <NewWorkspaceModal key={open ? "open" : "closed"} open={open} onClose={() => setOpen(false)} onSubmit={create} />
+      <WorkspaceIdentityModal
+        key={editing ? `identity-${editing.id}` : "identity-closed"}
+        open={Boolean(editing)}
+        workspace={editing}
+        onClose={() => setEditing(null)}
+        onSubmit={saveIdentity}
+      />
     </>
   );
 }
@@ -1513,8 +1586,9 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
 // Workspace name renames the org + workspace identity (owner/admin gated);
 // account type, industry, and support email persist to app_settings. Offline the
 // action returns persisted:false and Status says so honestly.
-function GeneralPanel({ brandName, settings, workspaceLogoUrl }: { brandName: string; settings: AppSettings; workspaceLogoUrl: string | null }) {
-  const [name, setName] = useState(brandName);
+function GeneralPanel({ brandName, workspaceName, settings, workspaceLogoUrl }: { brandName: string; workspaceName: string; settings: AppSettings; workspaceLogoUrl: string | null }) {
+  const [name, setName] = useState(workspaceName);
+  const [orgName, setOrgName] = useState(brandName);
   const [profile, setProfile] = useState<AppSettings["workspaceProfile"]>(settings.workspaceProfile);
   const [industry, setIndustry] = useState(canonicalIndustryKey(settings.industry));
   const [email, setEmail] = useState(settings.supportEmail ?? "");
@@ -1524,18 +1598,19 @@ function GeneralPanel({ brandName, settings, workspaceLogoUrl }: { brandName: st
   async function save() {
     setPending(true);
     setStatus(null);
-    const res = await saveGeneralSettings({ workspaceName: name.trim(), workspaceProfile: profile, industry, supportEmail: email.trim() });
+    const res = await saveGeneralSettings({ workspaceName: name.trim(), organizationName: orgName.trim(), workspaceProfile: profile, industry, supportEmail: email.trim() });
     setPending(false);
     setStatus(toStatus(res, "Saved."));
   }
 
   return (
-      <Panel title="Workspace" tag={TGOK} foot="Renames the workspace + saves profile, industry, and support email">
-        <Row label="Workspace name" desc="Shown across the app and in Arc’s outbound from-name."><input className="inp" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></Row>
+      <Panel title="Workspace" tag={TGOK} foot="Renames the workspace + organization, and saves profile, industry, and support email">
+        <Row label="Workspace name" desc="The bold line in the sidebar. Its subtitle, label, and color live under Workspaces → Customize."><input className="inp" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></Row>
+        <Row label="Organization" desc="Your brand name — used in Arc’s outbound from-name and on generated creative. Separate from the workspace name, so a workspace can be labelled for what it does."><input className="inp" value={orgName} onChange={(e) => setOrgName(e.target.value)} maxLength={80} /></Row>
         <Row label="Workspace logo" desc="One logo: shown in the sidebar in place of the initials, and stamped on creative Arc generates. Also editable on Brand. Square PNG or SVG works best.">
           <ImageUploadField
             currentUrl={workspaceLogoUrl}
-            fallback={pinit(name || brandName)}
+            fallback={pinit(orgName || brandName)}
             uploadAction={saveWorkspaceLogoAction}
             removeAction={removeWorkspaceLogoAction}
           />

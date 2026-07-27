@@ -108,6 +108,9 @@ const CRUMBS: Record<string, string> = {
 export function AppShell({
   workspaceName,
   orgName,
+  workspaceSubtitle,
+  workspaceShortLabel,
+  workspaceAccentColor = null,
   userName,
   userEmail,
   logoUrl = null,
@@ -120,6 +123,10 @@ export function AppShell({
 }: {
   workspaceName: string;
   orgName: string;
+  /** Resolved rail identity — see resolveWorkspaceIdentity in @/domain. */
+  workspaceSubtitle: string;
+  workspaceShortLabel: string;
+  workspaceAccentColor?: string | null;
   userName: string;
   userEmail: string;
   logoUrl?: string | null;
@@ -184,10 +191,20 @@ export function AppShell({
           onClick={() => setNavOpen(false)}
         />
         <aside className="rail" data-open={navOpen}>
-          <WorkspaceSwitcher workspaceName={workspaceName} orgName={orgName} logoUrl={logoUrl} workspaces={workspaces} />
-          <div className="indtag">
+          <WorkspaceSwitcher
+            workspaceName={workspaceName}
+            orgName={orgName}
+            subtitle={workspaceSubtitle}
+            logoUrl={logoUrl}
+            accentColor={workspaceAccentColor}
+            workspaces={workspaces}
+          />
+          <div
+            className="indtag"
+            style={workspaceAccentColor ? ({ "--ws-accent": workspaceAccentColor } as React.CSSProperties) : undefined}
+          >
             <i />
-            {orgName.split(/\s+/)[0]?.toUpperCase()} workspace
+            {workspaceShortLabel}
           </div>
           <div className="navwrap">
             {navGroups.slice(0, 1).map((g) => (

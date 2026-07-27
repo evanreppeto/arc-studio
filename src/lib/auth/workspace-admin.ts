@@ -1,3 +1,11 @@
+import {
+  isEmptyIdentityPatch,
+  isWorkspaceAccentKey,
+  normalizeWorkspaceIdentityPatch,
+  type NormalizedWorkspaceIdentityPatch,
+  type WorkspaceAccentKey,
+  type WorkspaceIdentityPatch,
+} from "@/domain";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured, type TypedSupabaseClient } from "@/lib/supabase/server";
 
@@ -12,6 +20,11 @@ export type UserWorkspace = {
   orgId: string;
   orgName: string;
   role: string;
+  /** Stored display identity — nullable; resolveWorkspaceIdentity applies the fallbacks. */
+  subtitle: string | null;
+  shortLabel: string | null;
+  accentKey: WorkspaceAccentKey | null;
+  logoUrl: string | null;
 };
 
 export type WorkspaceActivityEntry = {
@@ -77,7 +90,10 @@ export async function listWorkspacesForUser(): Promise<UserWorkspace[]> {
   const orgIds = [...new Set(memberships.map((row) => row.org_id))];
 
   const [{ data: workspaces }, { data: orgs }] = await Promise.all([
-    client.from("workspaces").select("id,name,workspace_type,status").in("id", workspaceIds),
+    client
+      .from("workspaces")
+      .select("id,name,workspace_type,status,subtitle,short_label,accent_key,logo_url")
+      .in("id", workspaceIds),
     client.from("organizations").select("id,name").in("id", orgIds),
   ]);
 
@@ -96,6 +112,10 @@ export async function listWorkspacesForUser(): Promise<UserWorkspace[]> {
         orgId: row.org_id,
         orgName: orgById.get(row.org_id)?.name ?? "Organization",
         role: row.role,
+        subtitle: workspace.subtitle ?? null,
+        shortLabel: workspace.short_label ?? null,
+        accentKey: isWorkspaceAccentKey(workspace.accent_key) ? workspace.accent_key : null,
+        logoUrl: workspace.logo_url ?? null,
       } satisfies UserWorkspace;
     })
     .filter((value): value is UserWorkspace => value !== null);
@@ -240,44 +260,115 @@ export async function removeWorkspaceMember(input: {
 }
 
 /**
- * Rename the active workspace (and its organization, which is the name shown
- * across the app and used as Arc's outbound from-name). Owner/admin only. The
- * organization + workspace rows carry the display identity that
- * getCurrentWorkspaceContext() resolves, so both are kept in sync here.
+ * Update any workspace's display identity — the four fields the rail renders
+ * plus, optionally, the organization name.
+ *
+ * Workspace name and organization name are deliberately *separate* inputs here.
+ * They used to be one: the old renameWorkspace wrote the same string to both
+ * rows, which is why the rail's bold line and the grey line under it were always
+ * the same text. A caller that genuinely wants the legacy coupled rename passes
+ * both fields with the same value.
+ *
+ * Owner/admin of the target workspace only — the guard takes the workspaceId, so
+ * this works for any workspace the caller administers, not just the active one.
+ * Nothing here is outbound; it is display chrome.
  */
-export async function renameWorkspace(input: {
-  workspaceId: string;
-  name: string;
-}): Promise<MemberMutationResult> {
+export async function updateWorkspaceIdentity(
+  input: { workspaceId: string } & WorkspaceIdentityPatch,
+): Promise<MemberMutationResult> {
   const workspaceId = input.workspaceId.trim();
-  const name = input.name.trim().slice(0, 80);
   if (!workspaceId) return { ok: false, status: "invalid_input", message: "A workspace is required." };
-  if (!name) return { ok: false, status: "invalid_input", message: "A workspace name is required." };
+
+  const normalized = normalizeWorkspaceIdentityPatch(input);
+  if (!normalized.ok) return { ok: false, status: "invalid_input", message: normalized.error };
+  const { patch } = normalized;
+  if (isEmptyIdentityPatch(patch)) return { ok: true };
 
   try {
     const access = await requireWorkspaceAdmin(workspaceId);
     if (!access.ok) return access;
 
-    const [{ error: orgError }, { error: wsError }] = await Promise.all([
-      access.client.from("organizations").update({ name }).eq("id", access.orgId),
-      access.client.from("workspaces").update({ name }).eq("id", workspaceId),
-    ]);
-    if (orgError) throw orgError;
-    if (wsError) throw wsError;
+    const workspaceUpdate: {
+      name?: string;
+      subtitle?: string | null;
+      short_label?: string | null;
+      accent_key?: string | null;
+    } = {};
+    if (patch.name !== undefined) workspaceUpdate.name = patch.name;
+    if (patch.subtitle !== undefined) workspaceUpdate.subtitle = patch.subtitle;
+    if (patch.shortLabel !== undefined) workspaceUpdate.short_label = patch.shortLabel;
+    if (patch.accentKey !== undefined) workspaceUpdate.accent_key = patch.accentKey;
+
+    const writes: PromiseLike<{ error: { message: string } | null }>[] = [];
+    if (Object.keys(workspaceUpdate).length) {
+      writes.push(access.client.from("workspaces").update(workspaceUpdate).eq("id", workspaceId));
+    }
+    if (patch.orgName !== undefined) {
+      writes.push(access.client.from("organizations").update({ name: patch.orgName }).eq("id", access.orgId));
+    }
+
+    for (const { error } of await Promise.all(writes)) {
+      if (error) throw error;
+    }
 
     await recordWorkspaceAudit({
       orgId: access.orgId,
       workspaceId,
       actorUserId: access.user.id,
-      action: "workspace.renamed",
-      summary: `Renamed the workspace to ${name}`,
+      action: "workspace.identity_updated",
+      summary: summarizeIdentityPatch(patch),
       subjectTable: "workspaces",
       subjectId: workspaceId,
-      metadata: { name },
+      metadata: { ...patch },
     });
 
     return { ok: true };
   } catch (error) {
-    return { ok: false, status: "failed", message: error instanceof Error ? error.message : "The workspace could not be renamed." };
+    return { ok: false, status: "failed", message: error instanceof Error ? error.message : "The workspace could not be updated." };
+  }
+}
+
+/** Human-readable audit line: what actually changed, not just "updated". */
+function summarizeIdentityPatch(patch: NormalizedWorkspaceIdentityPatch): string {
+  const parts: string[] = [];
+  if (patch.name !== undefined) parts.push(`name to ${patch.name}`);
+  if (patch.orgName !== undefined) parts.push(`organization to ${patch.orgName}`);
+  if (patch.subtitle !== undefined) parts.push(patch.subtitle ? `subtitle to ${patch.subtitle}` : "cleared the subtitle");
+  if (patch.shortLabel !== undefined) parts.push(patch.shortLabel ? `label to ${patch.shortLabel}` : "cleared the label");
+  if (patch.accentKey !== undefined) parts.push(patch.accentKey ? `color to ${patch.accentKey}` : "reset the color");
+  return parts.length ? `Set the workspace ${parts.join(", ")}` : "Updated the workspace identity";
+}
+
+/**
+ * Set or clear the workspace-level logo. Kept apart from the identity patch
+ * because the URL comes from an upload round-trip rather than a form field, and
+ * apart from business_profiles.logo_url because *that* logo is org-scoped and
+ * gets stamped on generated creative. This one is app chrome.
+ */
+export async function setWorkspaceRowLogo(workspaceId: string, url: string | null): Promise<MemberMutationResult> {
+  const id = workspaceId.trim();
+  if (!id) return { ok: false, status: "invalid_input", message: "A workspace is required." };
+
+  try {
+    const access = await requireWorkspaceAdmin(id);
+    if (!access.ok) return access;
+
+    const { error } = await access.client.from("workspaces").update({ logo_url: url }).eq("id", id);
+    if (error) throw error;
+
+    await recordWorkspaceAudit({
+      orgId: access.orgId,
+      workspaceId: id,
+      actorUserId: access.user.id,
+      action: "workspace.identity_updated",
+      summary: url ? "Set the workspace logo" : "Removed the workspace logo",
+      subjectTable: "workspaces",
+      subjectId: id,
+      metadata: { logoUrl: url },
+    });
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, status: "failed", message: error instanceof Error ? error.message : "The logo could not be saved." };
   }
 }
