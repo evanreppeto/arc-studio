@@ -12,6 +12,7 @@ import {
 
 import { AppWindow } from "./app-window";
 import { GoldCta } from "./cta";
+import { Faq } from "./faq";
 import {
   FinalCta,
   HowItWorks,
@@ -29,6 +30,7 @@ const NAV_LINKS = [
   { href: "#how", label: "How it works" },
   { href: "#intelligence", label: "Intelligence" },
   { href: "#approvals", label: "Approvals" },
+  { href: "#faq", label: "FAQ" },
 ];
 
 function LandingNav() {
@@ -245,6 +247,7 @@ export function LandingView() {
       <Intelligence />
       <StudioShowcase />
       <TrustBand />
+      <Faq />
       <FinalCta />
       <LandingFooter />
     </main>
