@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { derivedShortLabel, type BillingNotice } from "@/domain";
+import type { ArcRecentConversationVM } from "@/lib/arc-chat/read-model";
 import { getProductLanguage } from "@/lib/product-language";
 
 import { AccountMenu } from "./account-menu";
@@ -151,6 +152,7 @@ export function AppShell({
   industry = "general",
   workspaces = [],
   navBadges = {},
+  recentConversations = [],
   billingNotice = null,
   children,
 }: {
@@ -167,6 +169,7 @@ export function AppShell({
   industry?: string | null;
   workspaces?: WorkspaceOption[];
   navBadges?: Record<string, number>;
+  recentConversations?: ArcRecentConversationVM[];
   billingNotice?: BillingNotice | null;
   children: React.ReactNode;
 }) {
@@ -318,6 +321,7 @@ export function AppShell({
               {workspaceShortLabel}
             </div>
           )}
+          <div className="rail-divider" aria-hidden="true" />
           <nav className="navwrap" aria-label="Workspace destinations">
             {navGroups.slice(0, 1).map((g) => (
               <div key={g.group} className="nav-primary">
@@ -373,6 +377,37 @@ export function AppShell({
                 })}
               </div>
             ))}
+            <section className="rail-recents" aria-labelledby="rail-recents-title">
+              <div className="rail-recents-head">
+                <h2 id="rail-recents-title">Recent chats</h2>
+                <Link
+                  href="/arc?new=1"
+                  prefetch={false}
+                  onClick={() => closeMobileNav(false)}
+                >
+                  New
+                </Link>
+              </div>
+              {recentConversations.length > 0 ? (
+                <div className="rail-recents-list">
+                  {recentConversations.map((conversation) => (
+                    <Link
+                      key={conversation.id}
+                      href={`/arc?c=${encodeURIComponent(conversation.id)}`}
+                      className="rail-recent"
+                      prefetch={false}
+                      onClick={() => closeMobileNav(false)}
+                    >
+                      <span className="rail-recent-dot" aria-hidden="true" />
+                      <span className="rail-recent-title">{conversation.title}</span>
+                      <time>{conversation.when}</time>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="rail-recents-empty">Start a chat to keep active work close by.</p>
+              )}
+            </section>
           </nav>
           {/* Pinned above the account control: when something is broken, the way
               to reach a human has to be visible without hunting through a menu. */}
