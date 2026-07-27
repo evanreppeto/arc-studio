@@ -141,11 +141,11 @@
   & .grp:first-child { padding-top: 2px; }
   & .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; color: var(--text-2); font-size: 13px; font-weight: 500; position: relative; cursor: pointer; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
   & .nav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; opacity: 0.85; }
-  & .nav .nav-arc-icon { width: 16px; height: 16px; flex: 0 0 16px; color: currentColor; background: currentColor; opacity: 0.85; -webkit-mask: url("/brand/nav-icons/arc-chat-icon.png") center / contain no-repeat; mask: url("/brand/nav-icons/arc-chat-icon.png") center / contain no-repeat; }
+  & .nav .nav-image-icon { width: 16px; height: 16px; flex: 0 0 16px; color: currentColor; background: currentColor; opacity: 0.85; -webkit-mask: var(--nav-icon) center / contain no-repeat; mask: var(--nav-icon) center / contain no-repeat; }
   & .nav:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
   & .nav.on { color: var(--text); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); }
   & .nav.on svg { color: var(--accent); opacity: 1; }
-  & .nav.on .nav-arc-icon { color: var(--accent); opacity: 1; }
+  & .nav.on .nav-image-icon { color: var(--accent); opacity: 1; }
   & .nav .tick { position: absolute; left: -12px; top: 50%; transform: translateY(-50%); width: 2px; height: 18px; border-radius: 2px; background: var(--accent); }
   /* attention count — quiet by default, warms to the accent when the item is active/hovered */
   & .nav .navbadge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.07); transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease); }
