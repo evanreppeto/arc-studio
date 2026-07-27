@@ -15,6 +15,7 @@ import {
   type BrandKnowledgeSyncTotals,
 } from "@/lib/brand-knowledge/sync-summary";
 import { uploadBrandingImage } from "@/lib/branding/images";
+import { setWorkspaceLogo } from "@/lib/branding/logo";
 import { getBusinessProfile, upsertBusinessProfile } from "@/lib/brand-kit/persistence";
 import { fetchBrandSignalFromUrl } from "@/lib/brand-kit/website-fetch";
 import { insertAssetWithUrl, loadAssetForLearning } from "@/lib/media-library/persistence";
@@ -63,26 +64,21 @@ export async function updateBrandIdentity(input: BrandIdentityInput): Promise<Br
 }
 
 /**
- * The brand mark Arc stamps on generated creative.
+ * The workspace logo — one image, used in the nav rail AND stamped on generated
+ * creative (`toBrandTokens` → `renderCreative`).
  *
- * This is `business_profiles.logo_url` — the field `toBrandTokens` feeds to
- * `renderCreative`, so it lands on every composed ad. It was already read by the
- * renderer but had no way in: the only writer was `buildBusinessProfileFromForm`,
- * which nothing calls. Distinct from the workspace logo in Settings, which is
- * chrome (the nav rail); this one goes out on creative, so it gets its own
- * control on the Brand screen rather than sharing that one.
- *
- * Storage is the same operator-gated `uploadBrandingImage` path Settings uses
- * (type/size checked there). Nothing outbound — a creative carrying this logo
- * still goes through the normal approval gate.
+ * The same store backs the Settings control; `setWorkspaceLogo` is the single
+ * writer, so uploading from either screen changes both places. Storage is the
+ * operator-gated `uploadBrandingImage` path (type/size checked there). Nothing
+ * outbound — creative carrying this logo still goes through approval.
  */
 export type BrandLogoResult = { ok: true; url: string | null } | { ok: false; error: string };
 
 async function saveProfileLogo(orgId: string, logoUrl: string | null): Promise<void> {
-  const current = (await getBusinessProfile(orgId)) ?? NEUTRAL_DEFAULTS;
-  await upsertBusinessProfile(orgId, { ...current, logoUrl });
+  await setWorkspaceLogo(orgId, logoUrl);
   revalidatePath("/brand");
-  // The Studio preview renders from the same tokens.
+  // The rail and the Studio preview render from the same value.
+  revalidatePath("/", "layout");
   revalidatePath("/studio");
 }
 

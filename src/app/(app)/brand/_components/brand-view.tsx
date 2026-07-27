@@ -68,8 +68,9 @@ export function BrandView({ view }: { view: BrandProfileView }) {
     });
   }
 
-  // Brand logo. This is the mark Arc stamps on generated creative, so the
-  // preview here reflects what a rendered ad will carry.
+  // The workspace logo — one image, shared with the Settings control: it draws
+  // in the nav rail AND is stamped on generated creative, so the preview here
+  // reflects both.
   const logoInput = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(identity.logoUrl);
   const [logoBusy, setLogoBusy] = useState(false);
@@ -165,6 +166,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             <svg viewBox="0 0 24 24"><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3M8 9l4-4 4 4M12 5v10" /></svg>
             {logoBusy ? "Uploading…" : logoUrl ? "Replace logo" : "Add logo"}
           </button>
+          <span className="blogohint" title="The same logo is editable in Settings → Workspace">Used in the sidebar &amp; on creative</span>
           {logoUrl && !logoBusy && (
             <button type="button" className="gbtn sm" onClick={onLogoRemove}>Remove</button>
           )}

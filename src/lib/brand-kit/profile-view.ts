@@ -8,7 +8,9 @@
 // ---------------------------------------------------------------------------
 
 import { NEUTRAL_DEFAULTS, type BusinessProfile, type ProofPoint } from "@/domain";
+import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+import { getAppSettings } from "@/lib/settings/store";
 
 import { getBusinessProfile } from "./persistence";
 import { isSupabaseAdminConfigured } from "../supabase/server";
@@ -155,8 +157,8 @@ export async function getBrandProfileView(orgId: string, fallbackName: string): 
   if (isSupabaseAdminConfigured()) {
     const profile = await getBusinessProfile(orgId).catch(() => null);
     if (profile) {
-      const sources = await loadLiveSources(orgId);
-      return toBrandProfileView(profile, sources, false, fallbackName);
+      const [sources, logoUrl] = await Promise.all([loadLiveSources(orgId), resolveLegacyLogo(orgId, profile.logoUrl)]);
+      return toBrandProfileView({ ...profile, logoUrl }, sources, false, fallbackName);
     }
   }
 
@@ -165,6 +167,18 @@ export async function getBrandProfileView(orgId: string, fallbackName: string): 
   }
 
   return toBrandProfileView(NEUTRAL_DEFAULTS, [], false, fallbackName);
+}
+
+/**
+ * Workspaces that uploaded a logo from Settings before the two stores were
+ * unified still carry it in `app_settings.brand_logo_url`. Their Brand screen
+ * should show the same mark the rail does — the next write from either screen
+ * moves it to the canonical field and clears the legacy key.
+ */
+async function resolveLegacyLogo(orgId: string, profileLogoUrl: string | null): Promise<string | null> {
+  if (profileLogoUrl?.startsWith("http")) return profileLogoUrl;
+  const settings = await getAppSettings(orgId).catch(() => null);
+  return resolveWorkspaceLogoUrl(profileLogoUrl, settings?.brandLogoUrl);
 }
 
 const EXT_COLOR: Record<string, string> = { DOCX: "#2b78c4", MD: "#5a5f6b" };
