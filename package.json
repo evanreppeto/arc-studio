@@ -65,6 +65,7 @@
     "@supabase/supabase-js": "^2.108.2",
     "@tanstack/react-table": "^8.21.3",
     "@types/cytoscape": "^3.31.0",
+    "@vercel/analytics": "^2.0.1",
     "ai": "^6.0.206",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
