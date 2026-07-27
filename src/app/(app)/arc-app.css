@@ -155,6 +155,14 @@
   & .nav-more:hover { color: var(--text-2); }
   & .nav-more svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; transition: transform 0.2s var(--ease); }
   & .nav-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+  /* help link — pinned above the account control. Quieter than a nav item (it's
+     not a workspace destination) but always visible, because the moment someone
+     needs it is the moment the rest of the app isn't working. */
+  & .railhelp { display: flex; align-items: center; gap: 9px; margin-top: 8px; padding: 8px 10px; border-radius: 8px; color: var(--muted); font-size: 12px; font-weight: 500; text-decoration: none; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
+  & .railhelp svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; opacity: 0.9; }
+  & .railhelp:hover { background: rgba(255, 255, 255, 0.035); color: var(--text-2); }
+  & .railhelp.on { color: var(--text); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); }
+  & .railhelp.on svg { color: var(--accent); opacity: 1; }
   /* account control — pinned to the bottom of the rail; toggles the menu below */
   & .acct { position: relative; margin-top: 8px; border-top: 1px solid var(--line); }
   & .user { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 8px; transition: background 0.15s var(--ease); }
