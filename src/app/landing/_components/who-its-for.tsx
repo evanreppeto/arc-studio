@@ -12,114 +12,22 @@ import { Reveal } from "./reveal";
 // illustration: the argument for "this is for you" is more convincing shown
 // than described, which is why the product tour and creative desk land.
 
-/** Solo: Arc worked while you were doing the job. */
-function QueueFragment() {
-  const rows = [
-    ["High-intent follow-up — email", "2h"],
-    ["Customer next-step adoption — social", "9h"],
-    ["Win-back sequence — email", "16h"],
-  ] as const;
-  return (
-    <div className="space-y-1.5">
-      {rows.map(([label, when]) => (
-        <div
-          key={label}
-          className="flex items-center gap-2.5 rounded-lg border border-[color:var(--border-panel)] bg-[var(--surface-inset)] px-3 py-2"
-        >
-          <span className="shrink-0 rounded-full border border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--accent)_12%,transparent)] px-2 py-px text-[0.6rem] font-medium text-[var(--accent)]">
-            Needs you
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[0.78rem] text-[var(--text-primary)]">{label}</span>
-          <span className="shrink-0 font-[family-name:var(--font-mono)] text-[0.62rem] text-[var(--text-muted)]">
-            {when}
-          </span>
-        </div>
-      ))}
-      <p className="pt-1 font-[family-name:var(--font-mono)] text-[0.62rem] text-[var(--text-muted)]">
-        3 waiting · drafted while you were on the job
-      </p>
-    </div>
-  );
-}
-
-/** In-house team: a record turned into a specific, evidenced opportunity. */
-function OpportunityFragment() {
-  return (
-    <div className="rounded-lg border border-[color:color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--surface-inset)] p-3.5">
-      <p className="font-[family-name:var(--font-mono)] text-[0.58rem] tracking-[0.14em] text-[var(--accent)]">
-        TOP OPPORTUNITY
-      </p>
-      <p className="mt-2 font-serif text-[0.95rem] font-semibold leading-snug text-[var(--text-primary)]">
-        New lead returned to the pricing page three times
-      </p>
-      <div className="mt-3 flex items-center gap-2">
-        <span className="font-[family-name:var(--font-mono)] text-[0.58rem] tracking-[0.08em] text-[var(--text-muted)]">
-          EVIDENCE
-        </span>
-        {[1, 2, 3].map((n) => (
-          <span
-            key={n}
-            className="flex h-4 w-4 items-center justify-center rounded border border-[color:var(--border-panel)] font-[family-name:var(--font-mono)] text-[0.58rem] text-[var(--text-secondary)]"
-          >
-            {n}
-          </span>
-        ))}
-        <span className="ml-auto font-[family-name:var(--font-mono)] text-[0.62rem] text-[var(--accent)]">91%</span>
-      </div>
-    </div>
-  );
-}
-
-/** Agency: one operator, several client workspaces, kept apart. */
-function WorkspacesFragment() {
-  const clients = [
-    ["NR", "Northline Roasting", "4 waiting"],
-    ["KR", "Kestrel Run Club", "2 waiting"],
-    ["CE", "Cove & Ember Hotel", "1 waiting"],
-  ] as const;
-  return (
-    <div className="space-y-1.5">
-      {clients.map(([initials, name, waiting], i) => (
-        <div
-          key={name}
-          className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${
-            i === 0
-              ? "border-[color:color-mix(in_srgb,var(--accent)_38%,transparent)] bg-[color:color-mix(in_srgb,var(--accent)_7%,transparent)]"
-              : "border-[color:var(--border-panel)] bg-[var(--surface-inset)]"
-          }`}
-        >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--accent)_10%,transparent)] font-[family-name:var(--font-mono)] text-[0.55rem] text-[var(--accent)]">
-            {initials}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[0.78rem] text-[var(--text-primary)]">{name}</span>
-          <span className="shrink-0 font-[family-name:var(--font-mono)] text-[0.62rem] text-[var(--text-muted)]">
-            {waiting}
-          </span>
-        </div>
-      ))}
-      <p className="pt-1 font-[family-name:var(--font-mono)] text-[0.62rem] text-[var(--text-muted)]">
-        separate voice, personas and audit trail each
-      </p>
-    </div>
-  );
-}
-
 const AUDIENCES = [
   {
     tag: "Solo",
-    fragment: <QueueFragment />,
+    photo: "/brand/landing/who/solo.jpg",
     title: "You are the marketing team",
     body: "You own marketing between everything else you own. Arc does the legwork and leaves you the part only you can do: deciding.",
   },
   {
     tag: "In-house team",
-    fragment: <OpportunityFragment />,
+    photo: "/brand/landing/who/team.jpg",
     title: "More pipeline than hours",
     body: "One or two marketers and a CRM full of signals nobody has time to work. Arc turns those records into specific, evidence-backed openings.",
   },
   {
     tag: "Agency",
-    fragment: <WorkspacesFragment />,
+    photo: "/brand/landing/who/agency.jpg",
     title: "Several brands, one operator",
     body: "Each client gets its own workspace. Arc scales the production work without blurring the brands together.",
   },
@@ -154,23 +62,29 @@ export function WhoItsFor() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
             {AUDIENCES.map((a, i) => (
               <Reveal key={a.tag} delay={0.08 * i}>
-                <div className="group flex h-full flex-col overflow-hidden rounded-xl border border-[color:var(--border-panel)] bg-[var(--surface-panel)] transition-colors duration-300 hover:border-[color:color-mix(in_srgb,var(--accent)_38%,transparent)]">
-                  {/* A fragment of the real product, not an illustration. */}
-                  <div className="border-b border-[color:var(--border-panel)] bg-[color:color-mix(in_srgb,var(--canvas-deep)_55%,transparent)] p-4">
-                    {a.fragment}
-                  </div>
-                  <div className="p-6">
-                    <span className="inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--accent)_10%,transparent)] px-2.5 py-0.5 font-[family-name:var(--font-mono)] text-[0.65rem] tracking-[0.02em] text-[var(--accent)]">
+                <figure className="group relative h-full overflow-hidden rounded-xl border border-[color:var(--border-panel)] transition-colors duration-300 hover:border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)]">
+                  <div className="relative aspect-[16/10] sm:aspect-[16/11] lg:aspect-[16/7]">
+                    <img
+                      src={a.photo}
+                      alt=""
+                      loading="lazy"
+                      className="h-full w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.04]"
+                    />
+                    {/* Scrim: the copy sits on the image like the ad units do. */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[var(--canvas-deep)] via-[color:color-mix(in_srgb,var(--canvas-deep)_72%,transparent)] to-transparent" />
+                    <span className="absolute left-5 top-5 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--canvas-deep)_70%,transparent)] px-2.5 py-0.5 font-[family-name:var(--font-mono)] text-[0.65rem] tracking-[0.02em] text-[var(--accent)] backdrop-blur-md">
                       {a.tag}
                     </span>
-                    <h3 className="mt-3 font-serif text-xl font-semibold leading-snug text-[var(--text-primary)]">
-                      {a.title}
-                    </h3>
-                    <p className="mt-2 max-w-[58ch] text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
-                      {a.body}
-                    </p>
+                    <figcaption className="absolute inset-x-0 bottom-0 p-6">
+                      <h3 className="font-serif text-[1.4rem] font-semibold leading-snug text-[var(--text-primary)]">
+                        {a.title}
+                      </h3>
+                      <p className="mt-2 max-w-[52ch] text-[0.9rem] leading-relaxed text-[var(--text-secondary)]">
+                        {a.body}
+                      </p>
+                    </figcaption>
                   </div>
-                </div>
+                </figure>
               </Reveal>
             ))}
           </div>
