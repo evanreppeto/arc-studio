@@ -10,6 +10,7 @@ type AccountMenuProps = {
   initials: string;
   avatarUrl?: string | null;
   settingsHref: string;
+  supportHref?: string;
 };
 
 function Avatar({ url, initials, alt }: { url: string | null | undefined; initials: string; alt: string }) {
@@ -23,7 +24,15 @@ function Avatar({ url, initials, alt }: { url: string | null | undefined; initia
  * settings, Sign out). Sign out is a real form POST to /api/auth/sign-out so it
  * works without JS and clears the Supabase session before redirecting to /login.
  */
-export function AccountMenu({ firstName, displayName, email, initials, avatarUrl, settingsHref }: AccountMenuProps) {
+export function AccountMenu({
+  firstName,
+  displayName,
+  email,
+  initials,
+  avatarUrl,
+  settingsHref,
+  supportHref,
+}: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -62,6 +71,16 @@ export function AccountMenu({ firstName, displayName, email, initials, avatarUrl
             </svg>
             Team &amp; settings
           </Link>
+          {supportHref && (
+            <Link href={supportHref} className="acct-item" role="menuitem" onClick={() => setOpen(false)}>
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <circle cx="12" cy="12" r="9" />
+                <path d="M9.6 9.4a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.8-.9 1.4v.4" />
+                <path d="M12 17h.01" />
+              </svg>
+              Help &amp; support
+            </Link>
+          )}
           <form action="/api/auth/sign-out" method="post">
             <button type="submit" className="acct-item danger" role="menuitem">
               <svg viewBox="0 0 24 24" aria-hidden>
