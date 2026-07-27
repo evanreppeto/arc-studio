@@ -108,8 +108,24 @@ add a `field_definitions` + `field_values` layer plus per-tenant object *labels*
 Lower risk, preserves today's typed model and read-models. Cannot add whole new
 objects self-serve — but covers most "I need to track one more thing" needs.
 
-A pragmatic path is **B first** (custom fields + relabeling on the objects you
-already have), then A later *only if* tenants genuinely need net-new object types.
+### Decided: Option B (2026-07-27)
+
+**We keep the typed tables and add a per-tenant field layer**
+(`field_definitions` + `field_values`) plus per-tenant object *labels*. We are
+**not** building the metadata/JSONB generic-object engine.
+
+Why: the typed tables are load-bearing — every read-model, board, filter, and Arc
+tool path is built on typed columns, and Option A rewrites all of them for a
+capability no tenant has asked for yet. Option B ships in weeks and covers the
+request that actually recurs ("I need to track one more thing"). Most of the
+perceived gap is naming, not schema: a law firm needs "Properties" to say
+"Matters", which is a presentation layer.
+
+Accepted limitation: a tenant **cannot** self-serve a net-new object type.
+Option A gets revisited only on real, repeated demand for net-new objects — not
+on speculation — and would be its own epic.
+
+Tracked as BSR-489 (decision), BSR-493 (custom fields), BSR-494 (object labels).
 
 ---
 
@@ -163,7 +179,8 @@ fork).
 
 - **Persona column type:** plain `text` (simplest) vs. FK to `persona_definitions`
   (referential integrity, slightly more migration work).
-- **CRM customization model:** Option A (metadata/JSONB objects) vs. Option B
-  (custom fields on fixed tables) — the fork above.
 - **Where industry templates live:** a code-side catalog vs. seedable DB rows an
   operator can edit.
+
+*Resolved: the CRM customization model — **Option B**, custom fields on the fixed
+tables. See "Decided: Option B" under Problem 2.*

@@ -33,6 +33,38 @@ describe("proxy matcher", () => {
     expect(matched(path)).toBe(true);
   });
 
+  /**
+   * Matcher entries are path PREFIXES, so an exemption named after a public/
+   * directory also covers any page sharing that name — and an unprotected page
+   * renders exactly like a protected one, which is why this needs a test rather
+   * than a review. Assets bypass; pages never do.
+   */
+  it("gates every page route, exempting only the asset directories", () => {
+    expect(matched("/brand")).toBe(true);
+    expect(matched("/brand/")).toBe(true);
+    expect(matched("/effects")).toBe(true);
+
+    // …while the assets those entries exist for still bypass the gate.
+    expect(matched("/brand/arc-mark.png")).toBe(false);
+    expect(matched("/brand/demo/meridian-logo.png")).toBe(false);
+    expect(matched("/effects/grain.png")).toBe(false);
+  });
+
+  it("has no exemption that would swallow a page route", () => {
+    // Any entry without a trailing slash or a file extension is a prefix that
+    // could cover a future page. The auth pages are deliberately public; the
+    // rest must be scoped.
+    const PUBLIC_PAGES = ["landing", "login", "sign-in", "sign-up", "forgot-password", "reset-password"];
+    const INFRA = ["api", "monitoring", "auth/callback", "_next/static", "_next/image"];
+    const entries = config.matcher[0].match(/\(\?!([^)]+)\)/)?.[1].split("|") ?? [];
+    expect(entries.length).toBeGreaterThan(0);
+
+    const risky = entries.filter(
+      (entry) => !entry.endsWith("/") && !entry.includes(".") && !PUBLIC_PAGES.includes(entry) && !INFRA.includes(entry),
+    );
+    expect(risky, `unscoped matcher exemptions: ${risky.join(", ")}`).toEqual([]);
+  });
+
   it("keeps the tunnel exemption in step with next.config's tunnelRoute", async () => {
     // Two files have to agree; if someone renames tunnelRoute and not this, error
     // reporting goes quiet again with nothing failing.

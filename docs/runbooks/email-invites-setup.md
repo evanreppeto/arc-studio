@@ -13,6 +13,32 @@ In the Supabase dashboard for your project, go to **Authentication → URL Confi
 
 Without this, Supabase will reject the `redirectTo` parameter and the invite link in the email will not work.
 
+### 1b. Symptom: the confirmation link points at `localhost`
+
+If a link in a **production** email opens `http://localhost:3000/...`, the cause is
+always this section — never the email template. Both `{{ .ConfirmationURL }}` and
+`{{ .SiteURL }}` are derived from the project's **Site URL**, and Supabase silently
+falls back to Site URL whenever the app's `emailRedirectTo` isn't on the **Redirect
+URLs** allow-list. So a stale Site URL produces a localhost link *and* swallows the
+app's own redirect, in one move.
+
+Fix, in the Supabase dashboard → **Authentication → URL Configuration**:
+
+1. **Site URL** → `https://arc-studio.ai` (it ships defaulted to `http://localhost:3000`).
+2. **Redirect URLs** → must contain `https://arc-studio.ai/auth/callback` and
+   `https://arc-studio.ai/auth/confirm`. Keep `http://localhost:3000/**` as a
+   separate entry for local dev — extra entries are harmless, a missing one is not.
+
+The app pins its side of this: `authEmailRedirectOrigin` (`src/lib/auth/email-redirect.ts`)
+builds `emailRedirectTo` from `NEXT_PUBLIC_APP_URL` rather than the incoming request
+host, so per-deployment `*.vercel.app` hosts and apex/www variants can't each need
+their own allow-list entry. **`NEXT_PUBLIC_APP_URL` must be set on the Vercel
+production environment** for that to hold; unset, it falls back to the request origin.
+
+Verify after changing: sign up with a throwaway address and confirm the link's host
+is `arc-studio.ai`. Existing unconfirmed sign-ups keep their old (bad) link — they
+need a fresh email via **Resend the email** on the confirmation screen.
+
 ### 1a. Invite email template (OPTIONAL — only with custom SMTP)
 
 You do **not** need to touch the template for invites to work. `/auth/confirm` accepts
@@ -73,13 +99,33 @@ then renders the branded invite (shared shell in `src/domain/email-templates.ts`
 sends it via Resend with `RESEND_FROM`. The code-only fallback is unchanged: any link or
 send failure still returns `ok:true` with the shareable `code` and `emailed:false`.
 
-## 2c. Branded hosted templates (magic link / recovery / signup confirm)
+## 2c. Branded hosted templates (signup confirm / magic link / recovery)
 
-These remain Supabase-sent. Run `pnpm email:export` to regenerate
-`docs/email-templates/*.html` from the same brand shell, then paste each into its
-Supabase dashboard editor (Authentication -> Email Templates). Re-run + re-paste when the
-shell changes. Optionally set `EMAIL_EXPORT_APP_NAME` / `EMAIL_EXPORT_LOGO_URL` before
-running to brand the exported HTML.
+These remain Supabase-sent, so until they're pasted in, **new signups get Supabase's
+default "Confirm Your Signup / Follow this link to confirm your user" email**. That's
+the plain email in the wild today — it isn't a bug in the app, it's an uninstalled
+template. Template editing unlocks once custom SMTP (§2) is on, which it is.
+
+Run `pnpm email:export` to regenerate `docs/email-templates/*.html` from Arc's auth-email
+shell (`renderAuthEmail` in `src/domain/email-templates.ts` — obsidian card, gold CTA,
+serif headline, preheader, expiry note, copy/paste fallback link). The script prints the
+subject line to use beside each file. Then, in **Authentication → Email Templates**, for
+each of the three, replace the body with the file's contents and set the subject:
+
+| Dashboard template | File | Subject |
+|---|---|---|
+| Confirm signup | `signup-confirm.html` | Confirm your email to finish setting up Arc Studio |
+| Magic Link | `magic-link.html` | Your Arc Studio sign-in link |
+| Reset Password | `recovery.html` | Reset your Arc Studio password |
+
+Also set **Sender name** to `Arc Studio` (it currently sends as `Arc`).
+
+Keep `{{ .ConfirmationURL }}` as the link target. It carries the `next` intent the app
+passed to `signUp` / `resetPasswordForEmail` — password recovery depends on it to land on
+`/reset-password` instead of dropping the user into the app. Hard-coding
+`{{ .SiteURL }}/auth/confirm` would throw that away and would *not* fix a localhost link
+(§1b). Re-run + re-paste whenever the shell changes; set `EMAIL_EXPORT_APP_NAME` /
+`EMAIL_EXPORT_SITE_URL` / `EMAIL_EXPORT_LOGO_URL` first to override the defaults.
 
 ## 3. How Acceptance Works
 

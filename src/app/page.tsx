@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getAuthMode } from "@/lib/auth/auth-mode";
 
 import { LandingView } from "./landing/_components/landing-view";
+import { StructuredData } from "./landing/_components/structured-data";
 
 export const metadata = {
   title: "Arc Studio — The marketing operator that never sends without you",
@@ -40,5 +41,10 @@ export default function RootPage() {
   if (getAuthMode() !== "supabase") {
     redirect("/home");
   }
-  return <LandingView />;
+  return (
+    <>
+      <StructuredData />
+      <LandingView />
+    </>
+  );
 }
