@@ -26,9 +26,10 @@ pnpm lint           # eslint (flat config in eslint.config.mjs)
   - `/api/auth/sign-in`, `/api/auth/sign-in/passkey`, `/api/auth/sign-out` — operator session cookie management.
 - `src/lib/supabase/server.ts` — admin client, lazily created from `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Guard every persistence call with `isSupabaseAdminConfigured()`; without env vars the app degrades gracefully instead of throwing.
 - `src/lib/repos/` — thin repository layer over Supabase (currently `leads`). Use/extend this for new typed table access rather than hand-rolling queries in routes.
-- `src/app/_components/page-header.tsx` is the shared UI primitives module — exports `PageHeader`, `Panel`, `StatusPill`, `OperatorBar`, `ActionFeedback`, `EmptyState`. Reuse these before adding new layout components.
-- The rendered nav rail lives in `src/app/_components/console-frame.tsx` (not `growth-engine.ts`); current top-level nav: Home `/`, Arc `/arc`, then **Work** (Campaigns, CRM, Opportunities), **Studio** (Brand & Files `/library/brand`, Gallery, Board), **Intelligence** (Analytics, Brain, Personas), and Settings. Activity is a view tab on Analytics, Outbox a view tab on Board, Usage a Settings section. Adding a top-level page = add an entry to the nav array in `console-frame.tsx`.
-- `src/app/crm/_components/{crm-command-header,crm-object-page,crm-record-page}.tsx` are shared across all six CRM subroutes (companies, contacts, properties, leads, jobs, outcomes). `[recordId]` pages are dynamic; list pages are static.
+- Signed-in screens live under the `src/app/(app)/` route group. `src/app/(app)/layout.tsx` is the auth boundary (`force-dynamic`; resolves the workspace once via `getCurrentWorkspaceContext()`) and renders the shell. Marketing/auth routes (`landing`, `login`, `sign-up`, `onboarding`, …) sit outside the group.
+- Shared UI primitives live in `src/app/(app)/_components/`: `modal.tsx` (`Modal`), `kpi-strip.tsx` (`KpiStrip`, `KpiCell`), `sparkline.tsx` (`Sparkline`), `share-dialog.tsx` (`ShareDialog`), `command-palette.tsx` (`CommandPalette`, `CommandItem`), `coming-soon.tsx` (`ComingSoonToasts`). Reuse these before adding new ones. The rest of that directory is shell machinery, not page-level primitives (`app-shell`, `account-menu`, `workspace-switcher`, `nav-progress`, `route-prewarm`). There is **no** `page-header.tsx` and no `PageHeader`/`Panel`/`StatusPill`/`OperatorBar`/`ActionFeedback`/`EmptyState` component — page chrome is composed per-route with the CSS classes in `src/app/(app)/arc-app.css` (see `DESIGN.md`).
+- The rendered nav rail lives in `src/app/(app)/_components/app-shell.tsx` (a `"use client"` component). Two arrays drive it: `PRIMARY_NAV_ITEMS` — Arc `/arc`, Home `/home`, Campaigns `/campaigns`, Relationships `/crm`, Opportunities `/opportunities` — rendered under the **Workspace** group, and `ADVANCED_NAV_GROUPS` — **Measure** (Analytics), **Intelligence** (Journeys, Brain, Personas), **Create & manage** (Studio, Library, Brand, Outbox). Settings is *not* in the nav arrays: it's reached through `AccountMenu` at the bottom of the rail, alongside a Help & support (`/support`) link. Adding a top-level route means touching three things in `app-shell.tsx` — the nav array, the `CRUMBS` map, and the `commandItems` (⌘K) list.
+- CRM is a single dynamic tree, not six hand-written subroutes: `src/app/(app)/crm/page.tsx` (object index) → `[objectKey]/page.tsx` (list) → `[objectKey]/[recordId]/page.tsx` (record), with shared pieces in `crm/_components/` (`crm-board.tsx`, `add-record-modal.tsx`) and `[objectKey]/[recordId]/_components/` (`record-view.tsx`, `edit-record-modal.tsx`). Everything under `(app)` is dynamic — the route group forces it.
 - `supabase/migrations/` — ordered, timestamp-prefixed migrations applied in sequence (initial 6-object CRM + `persona_mapping` enum, then phase-1 activity/routing/integrity, hyper-personalization, agent-operations scaffold, Arc backend foundation, data-API role grants, vault notes, approval-decision `reverted` state). Add a new timestamped file; don't edit shipped ones.
 
 ## Operator Auth & API Tokens
@@ -38,21 +39,18 @@ Two independent auth mechanisms — don't conflate them:
 - **Operator gate (human UI).** Opt-in via `OPERATOR_ACCESS_TOKEN`: when unset (local dev) everything is open; when set, page routes require a `signal_operator` cookie. Enforced at the edge by `src/proxy.ts` — this is **Next.js 16's renamed middleware** (`middleware` → `proxy`), not a custom file. Its `config.matcher` skips API routes, Next internals, the auth pages, and brand assets. Because `proxy.ts` runs on the edge it can only import `src/lib/auth/operator-shared.ts` (no `next/headers`); the cookie/redirect helpers live there. Server actions and mutating server components call `requireOperator()` from `src/lib/auth/operator.ts` for defense-in-depth.
 - **API bearer tokens (programmatic callers).** API routes are *not* covered by the operator gate. They validate their own bearer tokens via `checkBearerToken(request, "ENV_VAR")` in `src/lib/auth/api-token.ts` (e.g. `ARC_AGENT_API_TOKEN`).
 
-## Wired Persistence vs. Scaffold-Mode
+## Feature Wiring Pattern
 
-Two features are now fully wired and serve as reference implementations of the same shape — real `"use server"` actions gated by `requireOperator()` + `isSupabaseAdminConfigured()`, persisting through a `src/lib/<feature>/` layer + `revalidatePath`:
+**The app is wired, not scaffold-mode.** Every top-level route under `src/app/(app)/` has real `"use server"` actions in a colocated `actions.ts` — arc, home, campaigns, crm, opportunities, analytics, journeys, brain, personas, studio, library, brand, outbox, settings, support. The old preview-only pattern this file used to describe (async pages destructuring `searchParams.action`, paired with `<OperatorBar>` + `<ActionFeedback>` and `href="?action=foo"` links that wrote nothing) is **gone** — those components never existed under those names any more, and there is not one `href="?action=` left in the tree. Don't reintroduce it, and don't assume a page is preview-only because this doc once said so — check its `actions.ts`.
 
-- **Vault notebook** (`src/app/vault/`, `src/lib/vault/`, `src/domain/notebook.ts`) — actions in `vault/actions.ts`, persistence in `src/lib/vault/persistence.ts`. Models the Obsidian-style vault (frontmatter parsing, backlinks, collections, live Arc/record signals).
-- **Campaigns** (`src/app/campaigns/`, `src/lib/campaigns/`, `src/domain/campaign-revisions.ts`) — actions in `campaigns/actions.ts`; persistence split across `src/lib/campaigns/{read-model,decisions,revisions}.ts`. This is the ContentEngine-style approval flow in practice: Arc drafts assets, the operator approves / declines / archives or requests a revision, and outbound stays locked until approved.
-- **CRM interactions** (`src/app/crm/_components/record-interactions/`, `src/lib/interactions/`, `src/domain/interactions.ts`) — record-attached notes, follow-up tasks, and activity timeline. Org-scoped via `getCurrentOrgId()` (`src/lib/auth/org.ts`); the same persistence path serves humans (server actions) and Arc (`POST /api/v1/arc/crm/interactions`).
+The shape to follow when adding a feature: a `"use server"` action gated by `requireOperator()` (`src/lib/auth/operator.ts`) + `isSupabaseAdminConfigured()`, persisting through a `src/lib/<feature>/` layer, then `revalidatePath`. Org-scope every write via `getCurrentOrgId()` (`src/lib/auth/org.ts`).
 
-Follow this shape when wiring other features. The remaining `src/lib/<feature>/` dirs (e.g. `activity`, `approvals`, `partners`, `performance`, `persona-intelligence`, `loss-routing`, `agent-operations`) are mostly read-models feeding still-scaffold pages.
+Reference implementations:
 
-**Other pages are still scaffold-mode (preview-only).** Most are async server components that destructure `searchParams.action` and pair two primitives:
-- `<OperatorBar primary={<Link href="?action=foo" />} />` — page-level task with action buttons that just set a query param.
-- `<ActionFeedback action={action} messages={{ foo: "Preview: ..." }} />` — inline preview banner keyed by the active `action`.
+- **Campaigns** (`src/app/(app)/campaigns/`, `src/lib/campaigns/`, `src/domain/campaign-revisions.ts`) — actions in `campaigns/actions.ts`, `campaigns/sharing-actions.ts`, and `campaigns/[campaignId]/actions.ts`; persistence split across `src/lib/campaigns/{read-model,decisions,revisions,create,launch,queue,external-send,attach-media,draft-editing}.ts`. This is the ContentEngine-style approval flow in practice: Arc drafts assets, the operator approves / declines / archives or requests a revision, and outbound stays locked until approved.
+- **CRM interactions** (`src/app/(app)/crm/[objectKey]/[recordId]/`, `src/lib/interactions/`, `src/domain/interactions.ts`) — record-attached notes, follow-up tasks, and activity timeline, rendered by `_components/record-view.tsx`. The same persistence path serves humans (server actions in `crm/actions.ts` + `[objectKey]/[recordId]/actions.ts`) and Arc (`POST /api/v1/arc/crm/interactions`).
 
-These write no data, intentionally, until each feature is wired. Don't convert scaffold links to mutations casually — wire the persistence layer + auth gate (as the vault does) first.
+Some `src/lib/<feature>/` dirs are backend-only on purpose — reached by Arc's API routes with no operator UI: `vault` (`src/lib/vault/` + `src/domain/notebook.ts`, served by `/api/v1/arc/vault`; there is no `/vault` page), plus `activity`, `approvals`, `partners`, `persona-intelligence`. `loss-routing` and `agent-operations` currently have **no consumer at all** under `src/app/` — treat them as unwired, and confirm before building on them.
 
 When wiring approval actions, make them real backend state transitions. Use the ContentEngine-style pattern for campaigns and ads: Arc creates a draft, the item enters approval with prompt inputs/source records/output/risk flags, and the human can approve, decline, request revision, or archive. Approved items unlock the next backend step; declined or blocked items stay unavailable.
 
@@ -90,7 +88,7 @@ The durable architecture is a shared **Persona Revenue Intelligence Layer** that
 
 - The UI must make **evidence, approval state, media, and next actions obvious**. Campaign cards should not look empty when assets exist.
 - Arc-created work must be **reviewable by humans before anything goes outbound** — visible, auditable, easy to approve/reject/revise.
-- Before modifying the frontend: inspect existing app structure; reuse existing components and styling patterns (`page-header.tsx` primitives, `DESIGN.md`).
+- Before modifying the frontend: inspect existing app structure; reuse the existing components and styling patterns (the `src/app/(app)/_components/` primitives listed under Architecture, the `arc-app.css` classes, `DESIGN.md`).
 - If backend fields/routes are missing, **document the required schema/API additions** (new `supabase/migrations/` file, `src/lib/<feature>/` layer, route) instead of faking frontend-only data. Wire persistence + the `requireOperator()` gate following the vault/campaigns reference shape above.
 
 ## Lead Ingestion Contract (don't break this)
@@ -102,7 +100,7 @@ The durable architecture is a shared **Persona Revenue Intelligence Layer** that
 
 ## Design System
 
-UI work must follow `DESIGN.md` (Command Charcoal / Canvas White / Restoration Red palette; no emojis, no purple/neon AI aesthetic, no equal 3-column dashboard rows).
+UI work must follow `DESIGN.md` — the warm obsidian + antique gold palette (`--canvas` `#16161a`, `--accent` `#c8a24a`, red `--priority` `#cc6666` for destructive only); no emojis, no purple/neon AI aesthetic, no equal 3-column dashboard rows.
 
 ## Env
 
