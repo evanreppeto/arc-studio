@@ -90,8 +90,8 @@ const TIMELINE_TONES: Record<TimelineTone, string> = {
 export function HowItWorks() {
   return (
     <section id="how" className="border-y border-[color:var(--border-panel)] bg-[var(--canvas-deep)]">
-      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-        <div className="grid gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:gap-16">
+      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
+        <div className="grid gap-8 sm:gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:gap-16">
           <div>
             <Reveal>
               <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
@@ -102,7 +102,10 @@ export function HowItWorks() {
                 and your week narrows to the decisions that matter.
               </p>
             </Reveal>
-            <div className="mt-9 space-y-6">
+            {/* Hidden on mobile: stacked, this restates the week timeline
+                directly below it. Side by side on desktop the pairing reads;
+                one under the other it is the same story twice. */}
+            <div className="mt-7 hidden space-y-5 sm:mt-9 sm:block sm:space-y-6">
               {STEPS.map((step, i) => (
                 <Reveal key={step.number} delay={0.08 * i}>
                   <div className="flex items-start gap-4">
@@ -126,7 +129,10 @@ export function HowItWorks() {
             <div className="overflow-hidden rounded-xl border border-[color:var(--border-panel)] bg-[var(--surface-panel)] shadow-[0_24px_64px_-32px_rgba(0,0,0,0.8)]">
               <div className="flex items-center justify-between border-b border-[color:var(--border-panel)] px-5 py-3.5">
                 <span className="text-[0.9rem] font-semibold text-[var(--text-primary)]">One week, one campaign</span>
-                <span className="font-[family-name:var(--font-mono)] text-[0.78rem] sm:text-[0.68rem] text-[var(--text-muted)]">
+                {/* Decorative chrome. At 375px the title fills the row and the
+                    two labels collided with no gap — this one is the expendable
+                    half, so it sits out on mobile. */}
+                <span className="hidden font-[family-name:var(--font-mono)] text-[0.68rem] text-[var(--text-muted)] sm:inline">
                   sample timeline
                 </span>
               </div>
@@ -208,8 +214,8 @@ export function HowItWorks() {
 
 export function Intelligence() {
   return (
-    <section id="intelligence" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-      <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
+    <section id="intelligence" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
+      <div className="grid items-center gap-8 sm:gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
         <Reveal>
           <Constellation />
         </Reveal>
@@ -255,8 +261,8 @@ export function Intelligence() {
 export function TrustBand() {
   return (
     <section id="approvals" className="border-y border-[color:var(--border-panel)] bg-[var(--canvas-deep)]">
-      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-        <div className="grid gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
+      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
+        <div className="grid gap-8 sm:gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
           <Reveal>
             <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
               Nothing reaches the outside world without you
@@ -340,7 +346,7 @@ export function FinalCta() {
             We&rsquo;re onboarding teams gradually — join the waitlist and
             we&rsquo;ll reach out when your spot opens.
           </p>
-          <div className="mt-9">
+          <div className="mt-7 sm:mt-9">
             <WaitlistForm source="landing-cta" align="center" />
           </div>
         </Reveal>

@@ -85,7 +85,7 @@ function StoryVideo({ src, poster, alt }: { src: string; poster: string; alt: st
 
 export function StudioShowcase() {
   return (
-    <section id="studio" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
+    <section id="studio" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
       <Reveal>
         <h2 className="max-w-[22ch] font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
           Creative that shows up ready for review
