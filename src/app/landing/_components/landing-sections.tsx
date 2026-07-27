@@ -359,6 +359,7 @@ export function LandingFooter() {
           <a href="#product" className="transition-colors hover:text-[var(--text-primary)]">Product</a>
           <a href="#how" className="transition-colors hover:text-[var(--text-primary)]">How it works</a>
           <a href="#approvals" className="transition-colors hover:text-[var(--text-primary)]">Approvals</a>
+          <a href="#faq" className="transition-colors hover:text-[var(--text-primary)]">FAQ</a>
           <Link href="/login" className="transition-colors hover:text-[var(--text-primary)]">Sign in</Link>
           <a href="#waitlist" className="font-medium text-[var(--accent)] transition-colors hover:text-[color:color-mix(in_srgb,var(--accent)_85%,white)]">
             Join the waitlist
