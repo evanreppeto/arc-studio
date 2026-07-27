@@ -24,9 +24,7 @@ function initials(name: string): string {
   );
 }
 
-const IconArc = (
-  <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M8 9h8M8 12.5h5" /></svg>
-);
+const IconArc = <span className="nav-arc-icon" aria-hidden="true" />;
 const IconHome = <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>;
 const IconCampaigns = <svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>;
 const IconCrm = <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M4 20c0-3 2-5 5-5s5 2 5 5" /><path d="M16 6h5M16 10h5" /></svg>;
