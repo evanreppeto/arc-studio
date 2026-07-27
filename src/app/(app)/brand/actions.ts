@@ -14,7 +14,10 @@ import {
   type BrandKnowledgeSyncSummary,
   type BrandKnowledgeSyncTotals,
 } from "@/lib/brand-knowledge/sync-summary";
+import { uploadBrandingImage } from "@/lib/branding/images";
+import { setWorkspaceLogo } from "@/lib/branding/logo";
 import { getBusinessProfile, upsertBusinessProfile } from "@/lib/brand-kit/persistence";
+import { fetchBrandSignalFromUrl } from "@/lib/brand-kit/website-fetch";
 import { insertAssetWithUrl, loadAssetForLearning } from "@/lib/media-library/persistence";
 import { MAX_UPLOAD_BYTES, acceptUpload, kindForContentType } from "@/lib/media-library/upload-policy";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -58,6 +61,97 @@ export async function updateBrandIdentity(input: BrandIdentityInput): Promise<Br
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save brand changes." };
   }
+}
+
+/**
+ * The workspace logo — one image, used in the nav rail AND stamped on generated
+ * creative (`toBrandTokens` → `renderCreative`).
+ *
+ * The same store backs the Settings control; `setWorkspaceLogo` is the single
+ * writer, so uploading from either screen changes both places. Storage is the
+ * operator-gated `uploadBrandingImage` path (type/size checked there). Nothing
+ * outbound — creative carrying this logo still goes through approval.
+ */
+export type BrandLogoResult = { ok: true; url: string | null } | { ok: false; error: string };
+
+async function saveProfileLogo(orgId: string, logoUrl: string | null): Promise<void> {
+  await setWorkspaceLogo(orgId, logoUrl);
+  revalidatePath("/brand");
+  // The rail and the Studio preview render from the same value.
+  revalidatePath("/", "layout");
+  revalidatePath("/studio");
+}
+
+export async function saveBrandLogo(formData: FormData): Promise<BrandLogoResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect a workspace to upload a logo." };
+
+  const image = formData.get("file");
+  if (!(image instanceof File) || image.size === 0) return { ok: false, error: "Choose an image first." };
+
+  const ctx = await getCurrentWorkspaceContext();
+  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+
+  const uploaded = await uploadBrandingImage(`org/${ctx.orgId}/brand`, image);
+  if (!uploaded.ok) return { ok: false, error: uploaded.error };
+
+  try {
+    await saveProfileLogo(ctx.orgId, uploaded.url);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save the logo." };
+  }
+  return { ok: true, url: uploaded.url };
+}
+
+export async function removeBrandLogo(): Promise<BrandLogoResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect a workspace first." };
+
+  const ctx = await getCurrentWorkspaceContext();
+  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+
+  try {
+    await saveProfileLogo(ctx.orgId, null);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not remove the logo." };
+  }
+  return { ok: true, url: null };
+}
+
+/**
+ * Read a public website and return the brand signal it carries (title,
+ * description, favicon, readable text).
+ *
+ * The implementation already existed and was reachable by Arc
+ * (`POST /api/v1/arc/brand/analyze-website`) but never by the operator's own
+ * "Analyze" button, which was marked coming-soon. Same SSRF-guarded fetch, same
+ * limits — `fetchBrandSignalFromUrl` refuses private/loopback hosts, caps
+ * redirects and body size, and times out. Read-only: nothing is written and
+ * nothing goes outbound; the operator decides what to keep.
+ */
+export type BrandWebsiteAnalysis =
+  | { ok: true; title: string | null; description: string | null; faviconUrl: string | null; excerpt: string }
+  | { ok: false; error: string };
+
+const ANALYSIS_EXCERPT_CHARS = 1200;
+
+export async function analyzeBrandWebsite(url: string): Promise<BrandWebsiteAnalysis> {
+  await requireOperator();
+
+  const trimmed = url?.trim();
+  if (!trimmed) return { ok: false, error: "Enter a website address first." };
+
+  const result = await fetchBrandSignalFromUrl(trimmed);
+  if (!result.ok) return { ok: false, error: result.message };
+
+  const { title, description, faviconUrl, text } = result.signal;
+  return {
+    ok: true,
+    title,
+    description,
+    faviconUrl,
+    excerpt: text.slice(0, ANALYSIS_EXCERPT_CHARS),
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -79,7 +79,7 @@ const SEEDS: Seed[] = [
     category: "agent",
     insightLabel: "Agent work",
     relatedLabel: "Agent task",
-    href: "/board",
+    href: "/arc",
     agoMs: 1 * HOUR + 32 * MIN,
   },
   {
@@ -107,7 +107,7 @@ const SEEDS: Seed[] = [
     category: "risk",
     insightLabel: "Risk blocked",
     relatedLabel: "Pricing-Intent Fast Track 2026",
-    href: "/board",
+    href: "/arc",
     agoMs: 2 * HOUR + 40 * MIN,
   },
   {
@@ -149,7 +149,7 @@ const SEEDS: Seed[] = [
     category: "approval",
     insightLabel: "Needs review",
     relatedLabel: "Team Admin Reactivation",
-    href: "/approvals",
+    href: "/campaigns",
     agoMs: 4 * HOUR + 50 * MIN,
   },
   {
@@ -177,7 +177,7 @@ const SEEDS: Seed[] = [
     category: "agent",
     insightLabel: "Agent work",
     relatedLabel: "Agent task",
-    href: "/board",
+    href: "/arc",
     agoMs: 7 * HOUR,
   },
   {
@@ -247,7 +247,7 @@ const SEEDS: Seed[] = [
     category: "agent",
     insightLabel: "Agent work",
     relatedLabel: "Agent task",
-    href: "/board",
+    href: "/arc",
     agoMs: 1 * DAY + 6 * HOUR,
   },
   {

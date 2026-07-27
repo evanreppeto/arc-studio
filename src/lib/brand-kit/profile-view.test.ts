@@ -59,5 +59,18 @@ describe("toBrandProfileView", () => {
     expect(view.identity.published).toBe(false);
     expect(view.palette).toEqual([]);
     expect(view.proofPoints).toEqual([]);
+    expect(view.identity.logoUrl).toBeNull();
+  });
+
+  it("surfaces only a fetchable logo — the creative renderer fetches this URL", () => {
+    const withLogo = toBrandProfileView({ ...PROFILE, logoUrl: "https://cdn.example/logo.png" }, [], false, "Fallback");
+    expect(withLogo.identity.logoUrl).toBe("https://cdn.example/logo.png");
+
+    // A relative path or a data: URL would 404 or bloat the render, so it is not
+    // presented as the brand mark.
+    for (const bad of ["/brand/logo.png", "data:image/png;base64,iVBORw0KGgo=", ""]) {
+      expect(toBrandProfileView({ ...PROFILE, logoUrl: bad }, [], false, "Fallback").identity.logoUrl).toBeNull();
+    }
+    expect(toBrandProfileView({ ...PROFILE, logoUrl: null }, [], false, "Fallback").identity.logoUrl).toBeNull();
   });
 });

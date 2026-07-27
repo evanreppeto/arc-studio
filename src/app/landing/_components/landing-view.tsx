@@ -13,6 +13,7 @@ import {
 import { AppWindow } from "./app-window";
 import { GoldCta } from "./cta";
 import { Faq } from "./faq";
+import { FounderNote } from "./founder-note";
 import {
   FinalCta,
   HowItWorks,
@@ -24,6 +25,7 @@ import { ScrollSequence } from "./scroll-sequence";
 import { WaitlistForm } from "./waitlist-form";
 import { ShowcaseTabs } from "./showcase-tabs";
 import { StudioShowcase } from "./studio-showcase";
+import { WhoItsFor } from "./who-its-for";
 
 const NAV_LINKS = [
   { href: "#product", label: "Product" },
@@ -97,14 +99,14 @@ function HeroApprovalCard() {
       >
         <div className="flex items-center justify-between gap-3">
           <span className="text-[0.82rem] font-semibold text-[var(--text-primary)]">
-            Storm-response campaign
+            Pricing-intent campaign
           </span>
           <span className="rounded-full border border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--accent)_12%,transparent)] px-2 py-0.5 text-[0.65rem] font-medium text-[var(--accent)]">
             Needs approval
           </span>
         </div>
         <p className="mt-1.5 text-[0.72rem] leading-relaxed text-[var(--text-muted)]">
-          Drafted from a weather signal · email + SMS · evidence attached
+          Drafted from a pricing-page surge · email + SMS · evidence attached
         </p>
         <div className="mt-3 flex items-center gap-2">
           <span className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-[0.72rem] font-semibold text-[var(--on-accent)]">
@@ -126,15 +128,21 @@ function HeroProductShot() {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: ref,
-    offset: ["start 95%", "start 35%"],
+    offset: ["start 100%", "start 60%"],
   });
-  const rotateX = useTransform(scrollYProgress, [0, 1], [14, 0]);
-  const scale = useTransform(scrollYProgress, [0, 1], [0.94, 1]);
-  const opacity = useTransform(scrollYProgress, [0, 0.4], [0.55, 1]);
+  // Resting state must look finished, not half-animated. The window used to
+  // start at opacity 0.55 and a 14deg lean, so if the scroll value never
+  // advanced — landing with it already in view, or a backgrounded tab that
+  // froze the listener — it sat there washed out with the hero film showing
+  // straight through it, reading as a rendering glitch. Now only a slight
+  // tilt animates, it resolves as soon as the window is meaningfully in
+  // view, and the shot is fully opaque at every point.
+  const rotateX = useTransform(scrollYProgress, [0, 1], [7, 0]);
+  const scale = useTransform(scrollYProgress, [0, 1], [0.975, 1]);
 
   return (
     <div ref={ref} className="relative mt-24 [perspective:1400px]">
-      <motion.div style={reduced ? undefined : { rotateX, scale, opacity, transformOrigin: "center top" }}>
+      <motion.div style={reduced ? undefined : { rotateX, scale, transformOrigin: "center top" }}>
         <div className="relative">
           <HeroApprovalCard />
           <AppWindow
@@ -157,15 +165,11 @@ function Hero() {
   const artY = useTransform(scrollY, [0, 720], [0, 130]);
   const fadeOut = useTransform(scrollY, [0, 600], [1, 0.45]);
 
-  const entrance = (delay: number) =>
-    reduced
-      ? {}
-      : {
-          initial: { opacity: 0, y: 26, filter: "blur(6px)" },
-          animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-          transition: { delay, duration: 0.8, ease: [0.22, 0.61, 0.36, 1] as const },
-        };
-
+  // The hero's entrance is CSS (`.rise-in` + `.rise-d*` from globals.css), not
+  // Motion. A JS-driven entrance server-renders the headline at opacity:0, so
+  // on a slow connection the hero stays blank until the bundle hydrates —
+  // measured at ~6.4s LCP on throttled 4G. CSS animates on first paint instead,
+  // and the same stylesheet already disables it under reduced motion.
   return (
     <section id="top" className="relative overflow-hidden">
       {/* Higgsfield-generated molten-gold ribbon, parallaxed behind the
@@ -203,24 +207,22 @@ function Hero() {
       </motion.div>
 
       <div className="relative mx-auto flex max-w-6xl flex-col justify-center px-6 pb-10 pt-40">
-        <motion.h1
-          {...entrance(0.08)}
-          className="max-w-[17ch] font-serif text-[2.9rem] font-semibold leading-[1.06] text-[var(--text-primary)] sm:text-[3.9rem] lg:text-[4.6rem]"
+        <h1
+          className="rise-in rise-d1 max-w-[17ch] font-serif text-[2.9rem] font-semibold leading-[1.06] text-[var(--text-primary)] sm:text-[3.9rem] lg:text-[4.6rem]"
         >
           Marketing that runs itself.{" "}
           <span className="text-[var(--accent)]">Decisions that stay yours.</span>
-        </motion.h1>
+        </h1>
 
-        <motion.p
-          {...entrance(0.22)}
-          className="mt-7 max-w-[58ch] text-[1.05rem] leading-relaxed text-[var(--text-secondary)]"
+        <p
+          className="rise-in rise-d2 mt-7 max-w-[58ch] text-[1.05rem] leading-relaxed text-[var(--text-secondary)]"
         >
           Arc finds source-backed opportunities, drafts complete campaigns, and
           prepares the creative — then brings everything to you for approval.
           Nothing reaches a customer until you say so.
-        </motion.p>
+        </p>
 
-        <motion.div {...entrance(0.36)} id="waitlist" className="mt-10 scroll-mt-28">
+        <div id="waitlist" className="rise-in rise-d3 mt-10 scroll-mt-28">
           <WaitlistForm source="landing-hero" />
           <p className="mt-4 text-[0.85rem] text-[var(--text-secondary)]">
             Already have a workspace?{" "}
@@ -228,7 +230,7 @@ function Hero() {
               Sign in
             </Link>
           </p>
-        </motion.div>
+        </div>
 
         <HeroProductShot />
       </div>
@@ -243,11 +245,13 @@ export function LandingView() {
       <Hero />
       <ScrollSequence />
       <ShowcaseTabs />
+      <WhoItsFor />
       <HowItWorks />
       <Intelligence />
       <StudioShowcase />
       <TrustBand />
       <Faq />
+      <FounderNote />
       <FinalCta />
       <LandingFooter />
     </main>

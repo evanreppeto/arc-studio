@@ -61,6 +61,13 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/", "supabase")).toBe(false);
   });
 
+  it("keeps robots.txt and sitemap.xml crawlable in supabase mode", () => {
+    // If the auth gate ever swallows these, search engines get a redirect to
+    // /login instead of the files, and the site silently drops out of the index.
+    expect(isPublicPath("/robots.txt", "supabase")).toBe(true);
+    expect(isPublicPath("/sitemap.xml", "supabase")).toBe(true);
+  });
+
   it("gates real app routes in supabase mode", () => {
     for (const pathname of ["/crm", "/arc", "/home"]) {
       expect(isPublicPath(pathname, "supabase")).toBe(false);

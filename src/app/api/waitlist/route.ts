@@ -4,6 +4,7 @@ import {
   isSupabaseAdminConfigured,
   persistWaitlistSignup,
 } from "@/lib/waitlist/persistence";
+import { notifyWaitlistSignup } from "@/lib/waitlist/notify";
 import { normalizeWaitlistEmail } from "@/lib/waitlist/validate";
 
 /**
@@ -41,5 +42,14 @@ export async function POST(request: Request) {
   if (!result.ok) {
     return NextResponse.json({ error: "Couldn't save your signup. Try again." }, { status: 502 });
   }
+
+  // Tell the operators — only for genuinely new signups, so re-submitting the
+  // form doesn't spam them. Awaited (serverless can freeze after the response)
+  // but never allowed to affect the outcome: the row is already saved, so a
+  // mail failure must not turn a successful signup into an error.
+  if (result.status === "created") {
+    await notifyWaitlistSignup({ email: parsed.email, source }).catch(() => undefined);
+  }
+
   return NextResponse.json({ status: result.status }, { status: result.status === "created" ? 201 : 200 });
 }

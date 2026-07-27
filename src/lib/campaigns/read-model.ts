@@ -205,7 +205,8 @@ export type CampaignWorkspaceApproval = {
   riskLevel: string;
   requestedBy: string;
   submittedAt: string;
-  href: string;
+  /** null when the approval has no campaign to open — `/approvals` is not a route. */
+  href: string | null;
   preview: string;
   media: CampaignMediaAsset[];
   promptInputs: Array<{ label: string; value: string }>;
@@ -2773,7 +2774,9 @@ function mapApproval(approval: ApprovalItemRow, agentName: string): CampaignWork
     riskLevel: humanize(approval.risk_level),
     requestedBy: approval.requested_by ?? agentName,
     submittedAt: formatDate(approval.submitted_at),
-    href: `/approvals?item=${approval.id}`,
+    // `/approvals` is not a route in this app — an approval item is reviewed on
+    // the campaign it belongs to.
+    href: approval.campaign_id ? `/campaigns/${approval.campaign_id}` : null,
     preview: buildReadablePreview(rawBody, approval.prompt_inputs, approval.reasoning_payload),
     media: collectMediaFromApproval(approval),
     promptInputs: promptInputEntries(approval.prompt_inputs),

@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import type { BrandProfileView } from "@/lib/brand-kit/profile-view";
 import type { BrandKnowledgeSyncSummary } from "@/lib/brand-knowledge/sync-summary";
 
-import { resyncBrandSources, updateBrandIdentity, uploadBrandDocuments, type BrandUploadResult } from "../actions";
+import { analyzeBrandWebsite, removeBrandLogo, resyncBrandSources, saveBrandLogo, updateBrandIdentity, uploadBrandDocuments, type BrandLogoResult, type BrandUploadResult, type BrandWebsiteAnalysis } from "../actions";
 import { EditIdentityModal } from "./edit-identity-modal";
 
 const STUDIO = "/studio";
@@ -21,6 +21,9 @@ const DOC = <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3
 // re-validates. `.md`/`.csv` are extension-only because browsers rarely type
 // them.
 const DOC_ACCEPT = ".docx,.pdf,.md,.markdown,.csv,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+// Mirrors uploadBrandingImage's EXT map — the action re-checks type and size.
+const LOGO_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
 
 /** Relative luminance test so swatch text stays legible on any palette color. */
 function isLight(hex: string): boolean {
@@ -65,6 +68,61 @@ export function BrandView({ view }: { view: BrandProfileView }) {
     });
   }
 
+  // The workspace logo — one image, shared with the Settings control: it draws
+  // in the nav rail AND is stamped on generated creative, so the preview here
+  // reflects both.
+  const logoInput = useRef<HTMLInputElement>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(identity.logoUrl);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const [, startLogo] = useTransition();
+
+  function runLogo(action: () => Promise<BrandLogoResult>) {
+    setLogoBusy(true);
+    setLogoError(null);
+    startLogo(async () => {
+      try {
+        const result = await action();
+        if (result.ok) setLogoUrl(result.url);
+        else setLogoError(result.error);
+      } catch {
+        setLogoError("Something went wrong. Try again.");
+      } finally {
+        setLogoBusy(false);
+      }
+    });
+  }
+
+  function onLogoPicked(chosen: File | null, event: React.ChangeEvent<HTMLInputElement>) {
+    event.target.value = ""; // let the same file be re-picked after a remove
+    if (!chosen) return;
+    const formData = new FormData();
+    formData.append("file", chosen);
+    runLogo(() => saveBrandLogo(formData));
+  }
+
+  function onLogoRemove() {
+    runLogo(() => removeBrandLogo());
+  }
+
+  // Website analysis. Read-only: it fetches the page and shows what it found;
+  // nothing is saved until the operator acts on it.
+  const websiteInput = useRef<HTMLInputElement>(null);
+  const [analyzing, startAnalyze] = useTransition();
+  const [analysis, setAnalysis] = useState<BrandWebsiteAnalysis | null>(null);
+
+  function onAnalyze() {
+    const url = websiteInput.current?.value ?? "";
+    setAnalysis(null);
+    startAnalyze(async () => {
+      try {
+        setAnalysis(await analyzeBrandWebsite(url));
+      } catch {
+        setAnalysis({ ok: false, error: "Could not reach that site. Check the address and try again." });
+      }
+    });
+  }
+
   function onFilesPicked(files: FileList | null) {
     if (!files || files.length === 0) return;
     const fd = new FormData();
@@ -80,7 +138,12 @@ export function BrandView({ view }: { view: BrandProfileView }) {
     <div className="arc-brand" style={{ ["--bactive" as string]: accent }}>
       {/* HERO */}
       <div className="brandhero">
-        <div className="mk2"><svg viewBox="0 0 24 24"><path d="M5 8l5 4-5 4M11 16h8" /></svg></div>
+        <div className="mk2">
+          {logoUrl
+            ? /* eslint-disable-next-line @next/next/no-img-element -- a tenant-uploaded URL on any host; next/image would need every storage domain allow-listed */
+              <img src={logoUrl} alt={`${identity.name} logo`} />
+            : <svg viewBox="0 0 24 24"><path d="M5 8l5 4-5 4M11 16h8" /></svg>}
+        </div>
         <div className="bid">
           <div className="bname"><span>{identity.name}</span> <span className="bstatus">{identity.published ? "Published" : "Draft"}</span></div>
           {tagline && <div className="btag">{tagline}</div>}
@@ -98,7 +161,16 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           </div>
         </div>
         <div className="bacts">
-          <span className="gbtn sm" data-soon="Replacing your logo is coming soon"><svg viewBox="0 0 24 24"><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3M8 9l4-4 4 4M12 5v10" /></svg>Replace logo</span>
+          <input ref={logoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={(e) => onLogoPicked(e.target.files?.[0] ?? null, e)} />
+          <button type="button" className="gbtn sm" onClick={() => logoInput.current?.click()} disabled={logoBusy}>
+            <svg viewBox="0 0 24 24"><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3M8 9l4-4 4 4M12 5v10" /></svg>
+            {logoBusy ? "Uploading…" : logoUrl ? "Replace logo" : "Add logo"}
+          </button>
+          <span className="blogohint" title="The same logo is editable in Settings → Workspace">Used in the sidebar &amp; on creative</span>
+          {logoUrl && !logoBusy && (
+            <button type="button" className="gbtn sm" onClick={onLogoRemove}>Remove</button>
+          )}
+          {logoError && <span className="blogoerr">{logoError}</span>}
           {saved && <span className="bsaved">Saved ✓</span>}
           <button type="button" className="gbtn gold sm" onClick={() => setEditOpen(true)}><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg>Edit identity</button>
         </div>
@@ -115,9 +187,33 @@ export function BrandView({ view }: { view: BrandProfileView }) {
         </div>
         <div className="sources">
           <div className="isrc">
-            <span className="tg est">preview</span>
-            <div className="si"><span className="ic bl"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" /></svg></span><div><div className="nm">Website</div><div className="ds">Crawls up to 6 pages → logo, colors, fonts, voice, proof</div></div></div>
-            <div className="urow"><input defaultValue={identity.website ?? ""} placeholder="https://yourbrand.com" spellCheck={false} /><span className="ibtn" data-soon="Website analysis is coming soon">Analyze</span></div>
+            <span className="tg ok">wired</span>
+            <div className="si"><span className="ic bl"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" /></svg></span><div><div className="nm">Website</div><div className="ds">Reads the page — title, description, icon, and copy for Arc</div></div></div>
+            <div className="urow">
+              <input
+                ref={websiteInput}
+                defaultValue={identity.website ?? ""}
+                placeholder="https://yourbrand.com"
+                spellCheck={false}
+                onKeyDown={(e) => { if (e.key === "Enter") onAnalyze(); }}
+              />
+              <button type="button" className="ibtn" onClick={onAnalyze} disabled={analyzing}>
+                {analyzing ? "Reading…" : "Analyze"}
+              </button>
+            </div>
+            {analysis && (
+              analysis.ok ? (
+                <div className="wsresult">
+                  <div className="wsrow"><span className="wsl">Title</span><span className="wsv">{analysis.title ?? "—"}</span></div>
+                  <div className="wsrow"><span className="wsl">Description</span><span className="wsv">{analysis.description ?? "—"}</span></div>
+                  <div className="wsrow"><span className="wsl">Copy read</span><span className="wsv">{analysis.excerpt.length.toLocaleString()} characters</span></div>
+                  {analysis.excerpt && <div className="wsexcerpt">{analysis.excerpt}</div>}
+                  <div className="wsnote">Nothing saved yet — add what you want Arc to keep as a brand document or in your profile.</div>
+                </div>
+              ) : (
+                <div className="wserror">{analysis.error}</div>
+              )
+            )}
           </div>
           <div className="isrc">
             <span className="tg ok">wired · Brain</span>

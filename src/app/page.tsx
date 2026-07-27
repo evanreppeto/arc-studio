@@ -8,6 +8,9 @@ export const metadata = {
   title: "Arc Studio — The marketing operator that never sends without you",
   description:
     "Arc finds source-backed opportunities, drafts complete campaign packages, and prepares creative — then waits for your approval before anything reaches the outside world.",
+  // Both "/" and "/landing" render this page, so both point at "/" as the
+  // canonical URL — otherwise they compete as duplicate content.
+  alternates: { canonical: "/" },
   // The landing is what actually gets shared, so it carries its own card copy.
   // (Images are inherited from the root layout's metadataBase + openGraph.)
   openGraph: {
