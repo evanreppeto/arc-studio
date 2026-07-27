@@ -36,6 +36,109 @@ function safeAccent(value: string): string {
   return /^#[0-9a-fA-F]{3,8}$/.test(value.trim()) ? value.trim() : "#0B0B0C";
 }
 
+// ---------------------------------------------------------------------------
+// Arc's own auth emails (confirm signup / magic link / password recovery).
+//
+// Deliberately a SEPARATE shell from `renderBrandedEmail` above: that one is
+// co-branded with the *customer's* workspace (their logo, their accent) because
+// it's their teammate being invited. These are Arc speaking as the product, so
+// they carry Arc's obsidian-and-gold identity instead. Same email-safety rules:
+// tables, inline styles, no external CSS, absolute image URLs.
+// ---------------------------------------------------------------------------
+
+export type AuthEmailInput = {
+  /** Editorial headline — the one serif moment, mirroring the auth screens. */
+  heading: string;
+  /** Inbox preview line. Shown in list view; hidden inside the message body. */
+  preheader: string;
+  bodyBlocks: string[];
+  cta: EmailCta;
+  /** Expiry / single-use note rendered under the button in muted type. */
+  metaNote?: string;
+  footerNote: string;
+  appName?: string;
+  /** Absolute URL to the square Arc mark. */
+  logoUrl?: string | null;
+};
+
+export function renderAuthEmail(input: AuthEmailInput): { html: string; text: string } {
+  const { heading, preheader, bodyBlocks, cta, metaNote, footerNote } = input;
+  const appName = input.appName?.trim() || "Arc Studio";
+  const sans = "-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif";
+  // Fraunces isn't available to mail clients; a Georgia-led serif stack is the
+  // closest widely-installed stand-in for the editorial headline.
+  const serif = "Georgia,'Times New Roman',Times,serif";
+
+  const canvas = "#0e0e11"; // outer canvas-deep
+  const panel = "#16161a"; // card surface
+  const hairline = "#292930";
+  const accent = "#c8a24a";
+  const onAccent = "#16161a";
+  const textPrimary = "#f4f1ea";
+  const textSecondary = "#b5b1a8";
+  const textMuted = "#83807a";
+
+  // Preheader: the inbox preview line. The trailing whitespace run stops clients
+  // from pulling body copy in after it.
+  const preheaderBlock = `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0">${escapeHtml(preheader)}${"&#847;&zwnj;&nbsp;".repeat(60)}</div>`;
+
+  const header = input.logoUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td valign="middle"><img src="${escapeHtml(input.logoUrl)}" alt="" width="28" height="28" style="width:28px;height:28px;display:block;border-radius:6px" /></td><td valign="middle" style="padding-left:10px;font-family:${sans};font-size:15px;font-weight:600;letter-spacing:0.01em;color:${textPrimary}">${escapeHtml(appName)}</td></tr></table>`
+    : `<span style="font-family:${sans};font-size:15px;font-weight:600;color:${textPrimary}">${escapeHtml(appName)}</span>`;
+
+  const paragraphs = bodyBlocks
+    .map(
+      (block) =>
+        `<p style="margin:0 0 14px;font-family:${sans};font-size:15px;line-height:1.65;color:${textSecondary}">${escapeHtml(block)}</p>`,
+    )
+    .join("");
+
+  // Bulletproof-ish button: a padded anchor inside its own table cell so Outlook
+  // keeps the fill rather than collapsing to bare link text.
+  const button = `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="${accent}" style="border-radius:8px"><a href="${escapeHtml(cta.url)}" style="display:inline-block;padding:13px 26px;font-family:${sans};font-size:15px;font-weight:600;color:${onAccent};text-decoration:none;border-radius:8px">${escapeHtml(cta.label)}</a></td></tr></table>`;
+
+  const meta = metaNote
+    ? `<p style="margin:18px 0 0;font-family:${sans};font-size:12.5px;line-height:1.55;color:${textMuted}">${escapeHtml(metaNote)}</p>`
+    : "";
+
+  // Copy/paste fallback for clients that strip or mangle the button.
+  const fallback = `<p style="margin:22px 0 0;font-family:${sans};font-size:12.5px;line-height:1.55;color:${textMuted}">Or paste this link into your browser:<br /><a href="${escapeHtml(cta.url)}" style="color:${accent};text-decoration:underline;word-break:break-all">${escapeHtml(cta.url)}</a></p>`;
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="color-scheme" content="dark light" /><meta name="supported-color-schemes" content="dark light" /></head>
+<body style="margin:0;padding:0;background:${canvas};font-family:${sans}">
+${preheaderBlock}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${canvas}" style="background:${canvas}"><tr><td align="center" style="padding:32px 20px">
+<table role="presentation" width="480" cellpadding="0" cellspacing="0" border="0" style="width:480px;max-width:100%;background:${panel};border:1px solid ${hairline};border-radius:14px">
+<tr><td style="padding:26px 32px 0">${header}</td></tr>
+<tr><td style="padding:26px 32px 0">
+<h1 style="margin:0 0 16px;font-family:${serif};font-size:27px;font-weight:400;line-height:1.2;color:${textPrimary}">${escapeHtml(heading)}</h1>
+${paragraphs}
+<div style="margin:24px 0 0">${button}</div>
+${meta}
+${fallback}
+</td></tr>
+<tr><td style="padding:26px 32px 28px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-top:1px solid ${hairline};padding-top:16px">
+<p style="margin:0;font-family:${sans};font-size:12px;line-height:1.55;color:${textMuted}">${escapeHtml(footerNote)}</p>
+</td></tr></table>
+</td></tr>
+</table>
+</td></tr></table></body></html>`;
+
+  const text = [
+    heading,
+    "",
+    ...bodyBlocks,
+    "",
+    `${cta.label}: ${cta.url}`,
+    ...(metaNote ? ["", metaNote] : []),
+    "",
+    footerNote,
+  ].join("\n");
+
+  return { html, text };
+}
+
 export function renderBrandedEmail(input: BrandedEmailInput): { html: string; text: string } {
   const { heading, bodyBlocks, cta, theme, footerNote, product } = input;
   const accent = safeAccent(theme.accentColor);
