@@ -100,8 +100,13 @@ const TABS: Array<{
     description:
       "Outcomes flow back into the system — which angle, which persona, which asset — so every approval teaches Arc what your audience actually responds to.",
     bullets: [
-      "Attribution by campaign, channel, persona, and asset",
-      "Engagement signals feed straight back into scoring",
+      // Was "Attribution by campaign, channel, persona, and asset". Removed for
+      // the same reason it came off the pricing page: attribution depends on
+      // the engagement pipeline, which is inert on production (no Resend
+      // webhook configured, `journey_touchpoints` empty). Performance grouped
+      // by campaign/persona/asset IS real, so that's what this now claims.
+      "Performance grouped by campaign, channel, persona, and asset",
+      "Approvals and outcomes feed straight back into scoring",
       "Arc recommends the next iteration, you decide",
     ],
     shot: "/brand/landing/app/analytics.png",

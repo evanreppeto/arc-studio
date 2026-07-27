@@ -14,6 +14,26 @@ import { type PlanTier } from "@/domain";
 //
 // What's left is qualitative: higher plans include more agent work, the running
 // total is visible in-app, and the exact limit is settled during onboarding.
+//
+// ── The bar for a feature bullet ────────────────────────────────────────────
+// A bullet may only claim something a customer on that plan gets TODAY, on
+// production. Not built-but-switched-off, and not roadmap. Three were removed
+// on 2026-07-27 after auditing each against the code and the prod database:
+//
+// - "Priority agent scheduling" — did not exist in any form. Nothing anywhere
+//   schedules or queues agent work by plan tier.
+// - "Journey tracking: delivery, opens, clicks, replies" — the receiver is
+//   built (#586) but inert: RESEND_WEBHOOK_SECRET is unset on production and
+//   no Resend endpoint is configured, so no delivery/open/click/reply event
+//   can arrive. The only engagement_events row on prod is an `outbound_send`
+//   the app writes itself at send time — hence the narrower bullet that
+//   replaced it, which is true.
+// - "Attribution from touchpoint through to booked work" — depends on the same
+//   dead pipeline; `journey_touchpoints` on prod is empty.
+//
+// Re-add the last two the moment the Resend webhook is live — they are real
+// code, not vapour, and they were removed for being switched off rather than
+// for being fictional.
 
 export type PricingPlan = {
   tier: Exclude<PlanTier, "free">;
@@ -53,13 +73,12 @@ export const PRICING_PLANS: PricingPlan[] = [
     name: "Pro",
     monthlyUsd: 299,
     tagline: "For a team that wants the loop closed.",
-    bestFor: "Marketing teams that need creative, journeys, and attribution in one place.",
+    bestFor: "Marketing teams that need the creative work and the record of it in one place.",
     featured: true,
     features: [
       "Everything in Starter",
       "Creative studio — generate and resize approved assets",
-      "Journey tracking: delivery, opens, clicks, replies",
-      "Attribution from touchpoint through to booked work",
+      "Every approved send recorded against the contact and campaign",
       "Performance learning — Arc improves on your own results",
       "Brand kit constrains every draft and asset",
     ],
@@ -73,7 +92,6 @@ export const PRICING_PLANS: PricingPlan[] = [
     features: [
       "Everything in Pro",
       "Highest monthly agent allowance",
-      "Priority agent scheduling",
       "Custom usage limits on request",
       "Onboarding support",
     ],
