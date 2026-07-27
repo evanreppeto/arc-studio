@@ -345,4 +345,42 @@ describe("createWorkspaceForUser", () => {
     if (!result.ok) return;
     expect(result.orgId).toBe("retried-org");
   });
+
+  // Nothing in the codebase inserted an `agents` row — every reference was a
+  // read. Only the originally seeded tenant had one, so a workspace created
+  // through this path got an Arc that could not be given a single instruction:
+  // chat, opportunity scans, drafts and campaign revisions all resolve
+  // agents by (org_id, key) and refuse when it's missing.
+  it("seeds the `agents` row Arc is enqueued against, scoped to the new org", async () => {
+    const responses = new Map<string, unknown[]>();
+
+    queue(responses, "workspace_memberships", "maybeSingle", { data: null, error: null });
+    queue(responses, "organizations", "maybeSingle", { data: null, error: null });
+    queue(responses, "organizations", "single", {
+      data: { id: "new-org", name: "Acme", slug: "acme" },
+      error: null,
+    });
+    queue(responses, "workspaces", "maybeSingle", { data: null, error: null });
+    queue(responses, "workspaces", "single", {
+      data: { id: "workspace-1", org_id: "new-org", key: "default", slug: "acme", name: "Acme" },
+      error: null,
+    });
+    queue(responses, "organization_memberships", "maybeSingle", { data: null, error: null });
+    queue(responses, "workspace_memberships", "maybeSingle", { data: null, error: null });
+
+    const client = createClient(responses);
+    getSupabaseAdminClientMock.mockReturnValue(client as never);
+
+    await createWorkspaceForUser(client as never, user(), { organizationName: "Acme" });
+
+    const agentsUpsert = client.builders
+      .filter((b) => b.table === "agents")
+      .flatMap((b) => b.calls)
+      .find((c) => c[0] === "upsert");
+
+    expect(agentsUpsert).toBeDefined();
+    // The key must match DEFAULT_CONNECTION.agentKey — a row under any other key
+    // is invisible to every enqueue path, which is the same as having none.
+    expect(agentsUpsert?.[1]).toMatchObject({ org_id: "new-org", key: "arc", status: "ready" });
+  });
 });

@@ -137,13 +137,21 @@ for (const scope of args.scopes) {
   issued.push({ scope, env, plaintext });
 }
 
-console.log("Shown once — only the sha256 is stored. Set each on Vercel (Production):");
+console.log("Shown once — only the sha256 is stored.");
+console.log("");
+console.log("Give each to the CALLER that presents it — the site posting leads, the");
+console.log("partner integration, the runner (its own ARC_AGENT_API_TOKEN).");
+console.log("");
+console.log("DO NOT paste these into the APP's env vars. checkWorkspaceBearer compares an");
+console.log("incoming token against the env var FIRST, and a match short-circuits to");
+console.log('tokenSource "env" — which carries no org. The token would resolve down the');
+console.log("anonymous path and lose the very scoping it was minted for.");
 console.log("");
 for (const { scope, env, plaintext } of issued) {
-  console.log(`# scope: ${scope}`);
-  console.log(`${env}=${plaintext}`);
+  console.log(`# scope: ${scope}   (the caller's ${env})`);
+  console.log(plaintext);
   console.log("");
 }
-console.log("Then redeploy so the running deployment picks the new values up, and");
-console.log("revoke the old shared env secrets you replaced.");
+console.log("Once every caller is switched over, remove the app's shared env secrets so the");
+console.log("DB path is the only one, and revoke any token you replaced (set revoked_at).");
 console.log("");
