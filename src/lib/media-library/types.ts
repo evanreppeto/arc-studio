@@ -55,6 +55,10 @@ export type MediaAssetView = {
   uploadedBy: string | null;
   /** ISO timestamp the asset was added. Drives the card's "added" line. */
   createdAt: string | null;
+  /** Latest review state from approval_items. Null = never reviewed. */
+  approvalStatus: string | null;
+  approvalReviewedBy: string | null;
+  approvalReviewedAt: string | null;
   usedInCount: number;
 };
 

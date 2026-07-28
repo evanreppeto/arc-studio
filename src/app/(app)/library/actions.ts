@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
+import { type AssetDecision } from "@/domain";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { removeMediaRecordFromBrain, syncMediaRecordToBrain } from "@/lib/brain-ingestion/sync";
 import { createFolder, deleteAsset, deleteFolder, insertAssetWithUrl, renameAsset, renameFolder, setAssetTags, setAvailableToArc } from "@/lib/media-library/persistence";
+import { decideAssetApproval } from "@/lib/media-library/approval";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { promoteAssetToCampaign } from "@/lib/campaigns/create";
 import { MAX_UPLOAD_BYTES, acceptUpload, kindForContentType } from "@/lib/media-library/upload-policy";
@@ -411,5 +413,57 @@ export async function addLibraryAssetsToCampaign(input: {
     return { ok: true, persisted: true, added, campaignName: campaign.name };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not add those assets to the campaign." };
+  }
+}
+
+/**
+ * Record a human decision on a media asset (BSR-538).
+ *
+ * Approval runs through `approval_items` — the same table, vocabulary and audit
+ * trail campaigns use — so there is exactly one approval concept and a reviewer
+ * asking "why did this go out?" finds assets and campaigns together.
+ *
+ * Approving marks the asset reviewed. It does NOT send, publish or unlock
+ * outbound; that invariant is unchanged.
+ *
+ * A flagged asset cannot be approved without an acknowledgement, and the gate
+ * reads the flags from the database rather than from this call — see
+ * `decideAssetApproval`.
+ */
+export type DecideAssetResult =
+  | { ok: true; persisted: boolean; status: AssetDecision }
+  | { ok: false; error: string; flags?: string[] };
+
+export async function decideLibraryAsset(input: {
+  assetId: string;
+  decision: AssetDecision;
+  notes?: string | null;
+  acknowledgement?: string | null;
+}): Promise<DecideAssetResult> {
+  await requireOperator();
+
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, status: input.decision };
+
+  const orgId = await getCurrentOrgId();
+  if (!orgId) return { ok: false, error: "No active workspace." };
+
+  try {
+    const result = await decideAssetApproval(
+      {
+        assetId: input.assetId,
+        orgId,
+        decision: input.decision,
+        operator: await getOperatorActor(),
+        notes: input.notes ?? null,
+        acknowledgement: input.acknowledgement ?? null,
+      },
+      getSupabaseAdminClient(),
+    );
+    if (!result.ok) return { ok: false, error: result.error, flags: result.flags };
+
+    revalidatePath("/library");
+    return { ok: true, persisted: true, status: result.status };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not record the decision." };
   }
 }
