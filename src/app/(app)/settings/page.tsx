@@ -17,6 +17,7 @@ import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getAppSettings } from "@/lib/settings/store";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWaitlistView } from "@/lib/waitlist/read-model";
+import { getHealthConsoleView } from "@/lib/observability/health-console";
 
 import { SettingsView } from "./_components/settings-view";
 import "./settings.css";
@@ -41,6 +42,10 @@ export default async function SettingsPage() {
   // Platform waitlist — null unless the viewer is on ARC_PLATFORM_ADMIN_EMAILS.
   // The gate runs server-side inside the read-model, so a non-admin never reads a row.
   const waitlist = await getWaitlistView().catch(() => null);
+  // Operator health console — same platform-admin gate as the waitlist, enforced
+  // server-side inside the read-model, so a non-admin never reads a connector row
+  // and the section never reaches their browser.
+  const health = await getHealthConsoleView().catch(() => null);
   // The workspace's own personas, for the connector "Default persona" picker.
   const personaOptions = await getOrgPersonaOptions(ctx?.orgId ?? undefined).catch(() => []);
   const brandName = ctx?.orgName?.trim() || "Your workspace";
@@ -65,5 +70,5 @@ export default async function SettingsPage() {
   // Whether the deployment has a Google Cloud OAuth app configured — gates the
   // "Connect with Google" button on the reviews connector.
   const googleOAuthConfigured = isGoogleOAuthConfigured();
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} />;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} />;
 }
