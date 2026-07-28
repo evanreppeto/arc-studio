@@ -140,9 +140,78 @@ test.describe("nightly prod smoke", () => {
     await page.goto("/campaigns", { waitUntil: "domcontentloaded" });
     await expect(page.locator("body"), "step 4: the campaigns list should render").toContainText(/campaign/i);
 
-    // The human gate must exist — outbound stays locked behind an approval, and
-    // a campaign list that lost its approval affordances is a real regression.
-    await expect(page.locator("body"), "step 4: the approval gate should be present").toContainText(/approv/i);
+    // Walk campaigns until one has an asset still awaiting a decision. Which
+    // campaigns hold actionable assets shifts as work is approved, so pinning a
+    // campaign id would rot; the shape ("some campaign has a reviewable asset")
+    // is the invariant worth asserting.
+    // The board hydrates client-side, so wait for a campaign row rather than
+    // reading at domcontentloaded (which returns only the nav shell).
+    const campaignLink = page.locator("a.campaign-link");
+    await campaignLink
+      .first()
+      .waitFor({ state: "visible", timeout: 20_000 })
+      .catch(() => {});
+
+    const links = await campaignLink.evaluateAll((nodes) =>
+      Array.from(new Set(nodes.map((n) => (n as HTMLAnchorElement).getAttribute("href")).filter((h): h is string => !!h))),
+    );
+
+    // Name the likely cause. An empty board here is usually the smoke tenant's
+    // monthly usage allowance being spent (the board renders "0 packages" behind
+    // the quota wall), not the approval gate disappearing — and a nightly check
+    // that blames the wrong thing costs more than it saves.
+    const body = (await page.locator("body").innerText()).toLowerCase();
+    const quotaBlocked = /used this month'?s .* allowance|won't start new work until it resets/i.test(body);
+    expect(
+      links.length,
+      quotaBlocked
+        ? "step 4: the campaigns board is empty because the smoke tenant has spent its monthly allowance — raise the cap on the smoke org rather than treating this as an app regression"
+        : "step 4: the campaigns list should link to at least one campaign",
+    ).toBeGreaterThan(0);
+
+    const revise = page.getByRole("button", { name: /request revision/i }).first();
+    let opened = false;
+    for (const href of links.slice(0, 8)) {
+      await page.goto(href, { waitUntil: "domcontentloaded" });
+      if (await revise.isVisible().catch(() => false)) {
+        opened = true;
+        break;
+      }
+    }
+    expect(opened, "step 4: no campaign had an asset awaiting a decision — the human gate may be gone").toBe(true);
+
+    // --- the write ---
+    await revise.click();
+    const instruction = page.getByPlaceholder(/tell arc what to change/i);
+    await expect(instruction, "step 4: the revision composer should open").toBeVisible();
+    await instruction.fill("Nightly smoke check — no action needed; this asset is reopened immediately.");
+    await page.getByRole("button", { name: /send to arc/i }).click();
+
+    // The assertion that matters is PERSISTENCE, not the optimistic UI: the view
+    // flips the pill locally before the server answers, so asserting without a
+    // reload would pass even if the write never landed.
+    await expect(async () => {
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(
+        page.locator("body"),
+        "step 4: the revision should still be recorded after a reload",
+      ).toContainText(/revision requested/i);
+    }).toPass({ timeout: 30_000, intervals: [2_000] });
+
+    // --- restore ---
+    // Nightly runs must be idempotent. Without this, every night consumes one
+    // reviewable asset until none are left and the check goes red for a reason
+    // that has nothing to do with the app being broken.
+    const reopen = page.getByRole("button", { name: /^reopen$/i }).first();
+    await expect(reopen, "step 4: a revised asset should offer Reopen").toBeVisible();
+    await reopen.click();
+    await expect(async () => {
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(
+        page.getByRole("button", { name: /request revision/i }).first(),
+        "step 4: the asset should be back under review after reopening",
+      ).toBeVisible();
+    }).toPass({ timeout: 30_000, intervals: [2_000] });
   });
 
   test("step 5: the smoke run sent nothing outbound", async ({ page, context }) => {
