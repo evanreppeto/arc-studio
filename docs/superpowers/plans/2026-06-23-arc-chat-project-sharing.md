@@ -23,7 +23,7 @@
 - **Wired-feature reference shape:** `src/app/campaigns/actions.ts` + `src/lib/campaigns/*` and `src/lib/vault/persistence.ts` + `src/app/vault/actions.ts` — `requireOperator()` → `isSupabaseAdminConfigured()` guard → persistence call (passing the admin client) → `revalidatePath`.
 - **Admin client:** `getSupabaseAdminClient()` / `isSupabaseAdminConfigured()` from `src/lib/supabase/server.ts`.
 - **Migrations are append-only.** Never edit a shipped migration. New file: `supabase/migrations/20260623090000_arc_conversations_tenancy_sharing.sql` (latest existing is `20260622180000_*`).
-- **Memory — prod release:** the marketing app auto-deploys to Vercel from `origin/main`, but **Supabase migrations are applied to the prod DB (`tegdgejiyxurgvgheshi`) manually**. The Supabase MCP cannot reach that project. This migration must be applied by hand as a release step.
+- **Memory — prod release:** the marketing app auto-deploys to Vercel from `origin/main`, but **Supabase migrations are applied to the prod DB (`qqbecyrhnowmooyjiztz`) manually**. This migration must be applied by hand as a release step, because Vercel does not run migrations. (This doc originally said the Supabase MCP could not reach prod; that is no longer true — `apply_migration` works against it.)
 - After any merge touching `src/domain/index.ts`, verify all exports from both sides survive and run `pnpm build` (web-merge has dropped export lines before).
 
 ---
@@ -1419,7 +1419,7 @@ The migration sets `owner_id` to the workspace's **owner** membership. Confirm t
 
 - [ ] **Step 3: Apply the migration to prod manually**
 
-Vercel deploys code from `origin/main` but does NOT run Supabase migrations. Apply `supabase/migrations/20260623090000_arc_conversations_tenancy_sharing.sql` to the prod DB (`tegdgejiyxurgvgheshi`) by hand, **before or together with** the deploy that ships the code selecting the new columns. Verify with a spot query (e.g. `select visibility, count(*) from arc_conversations group by 1;`).
+Vercel deploys code from `origin/main` but does NOT run Supabase migrations. Apply `supabase/migrations/20260623090000_arc_conversations_tenancy_sharing.sql` to the prod DB (`qqbecyrhnowmooyjiztz`) by hand, **before or together with** the deploy that ships the code selecting the new columns. Verify with a spot query (e.g. `select visibility, count(*) from arc_conversations group by 1;`).
 
 - [ ] **Step 4: Post-merge integrity check**
 

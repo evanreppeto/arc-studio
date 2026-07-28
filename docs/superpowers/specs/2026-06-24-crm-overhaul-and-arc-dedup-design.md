@@ -94,7 +94,7 @@ Two complementary layers: **read-before-write at the source** and a **persistenc
   - `contacts` unique on `(org_id, lower(email))` where `email is not null`.
   - `properties` unique on `(org_id, lower(address_line1), postal_code)` where `address_line1 is not null`.
   - Companies: **no hard unique** (legit same-name orgs exist); rely on app-layer matching.
-- The migration **de-duplicates existing rows first** (merge/relink children to the survivor) before adding indexes, or it will fail. New timestamped file; never edit shipped migrations. Must be applied to prod (`tegdgejiyxurgvgheshi`) manually — see memory `vercel-deploy`, `prod-schema-drift`.
+- The migration **de-duplicates existing rows first** (merge/relink children to the survivor) before adding indexes, or it will fail. New timestamped file; never edit shipped migrations. Must be applied to prod (`qqbecyrhnowmooyjiztz`) manually — see memory `vercel-deploy`, `prod-schema-drift`.
 
 ### F. Read-before-write tool + prompt (`apps/arc-runner/src/tools/`, `prompt.ts`)
 - Add a `search_crm` read tool: given a name/email/domain/address, returns matching existing companies/contacts/leads so Arc can decide to **update** rather than create.

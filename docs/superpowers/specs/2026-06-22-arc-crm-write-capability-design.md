@@ -114,6 +114,6 @@ Each reuses the substrate from §2: persona assignment/update (direct), brand fa
 
 ## Risks
 
-- **Schema drift in prod** (`tegdgejiyxurgvgheshi`) — migration must be applied manually; verify before relying on new columns.
+- **Schema drift in prod** (`qqbecyrhnowmooyjiztz`) — migration must be applied manually; verify before relying on new columns.
 - **Arc junk records** — mitigated by dedup + provenance + reversibility; proposed-queue gate for autonomous writes in phase 2.
 - **Runner/app version skew** — new tools call new routes; deploy app before/with runner.
