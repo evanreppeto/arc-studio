@@ -50,6 +50,7 @@ import {
   createWorkspace,
   removeMember,
   saveAppearanceSettings,
+  saveEmailIdentitySettings,
   saveGeneralSettings,
   saveMediaDefaults,
   saveRunnerDisplayName,
@@ -104,7 +105,7 @@ const DOTS: Record<string, string> = { connections: "var(--ok)", system: "var(--
 
 // Sections with in-section tabs. The breadcrumb + tab bar render from these.
 const SUBTABS: Record<string, string[]> = {
-  general: ["Organization", "Agent"],
+  general: ["Organization", "Agent", "Email"],
   team: ["Members", "Invites", "Roles", "Activity"],
   connections: ["Live", "Roadmap"],
   media: ["Defaults", "Roster"],
@@ -939,7 +940,13 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
       <>
         <Head t="Organization & brand" d="Set the organization identity used on generated creative and as the default across Arc. Workspace-only sidebar overrides live under Workspaces." />
         {subBar}
-        {activeSub === "Agent" ? <AgentIdentityPanel settings={settings} /> : <GeneralPanel brandName={brandName} workspaceName={workspaceName || brandName} settings={settings} workspaceLogoUrl={workspaceLogoUrl} />}
+        {activeSub === "Agent" ? (
+          <AgentIdentityPanel settings={settings} />
+        ) : activeSub === "Email" ? (
+          <EmailIdentityPanel settings={settings} />
+        ) : (
+          <GeneralPanel brandName={brandName} workspaceName={workspaceName || brandName} settings={settings} workspaceLogoUrl={workspaceLogoUrl} />
+        )}
       </>
     ),
     appearance: (
@@ -1663,6 +1670,58 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
 // Workspace name renames the org + workspace identity (owner/admin gated);
 // account type, industry, and support email persist to app_settings. Offline the
 // action returns persisted:false and Status says so honestly.
+// Sender identity for outbound marketing email. The postal address is legally
+// required (CAN-SPAM and equivalents) and has no safe default, so the send path
+// refuses while it is blank — this panel is where that gets unblocked, and the
+// copy says so rather than leaving an operator to discover it from a failure.
+function EmailIdentityPanel({ settings }: { settings: AppSettings }) {
+  const [senderName, setSenderName] = useState(settings.emailSenderName ?? "");
+  const [postalAddress, setPostalAddress] = useState(settings.emailPostalAddress ?? "");
+  const [reminder, setReminder] = useState(settings.emailPermissionReminder ?? "");
+  const [status, setStatus] = useState<SaveStatus>(null);
+  const [pending, setPending] = useState(false);
+
+  const missingAddress = !postalAddress.trim();
+
+  async function save() {
+    setPending(true);
+    setStatus(null);
+    const res = await saveEmailIdentitySettings({
+      senderName: senderName.trim(),
+      postalAddress: postalAddress.trim(),
+      permissionReminder: reminder.trim(),
+    });
+    setPending(false);
+    setStatus(toStatus(res, "Saved."));
+  }
+
+  return (
+    <Panel
+      title="Email sender identity"
+      foot="Stamped into the footer of every marketing email Arc sends, along with a working unsubscribe link."
+    >
+      {missingAddress && (
+        <div className="cerr" style={{ margin: "0 0 12px" }}>
+          Outbound email is blocked until a postal address is set. Commercial email legally requires one, so Arc refuses to send without it.
+        </div>
+      )}
+      <Row label="Sender name" desc="Shown in the email footer. Defaults to your organization name.">
+        <input className="inp" value={senderName} placeholder="Your business name" onChange={(e) => setSenderName(e.target.value)} maxLength={120} />
+      </Row>
+      <Row label="Postal address" desc="Required by law on commercial email. A PO box or registered office is fine.">
+        <textarea className="inp" rows={3} value={postalAddress} placeholder={"123 Example St\nChicago, IL 60601"} onChange={(e) => setPostalAddress(e.target.value)} maxLength={400} />
+      </Row>
+      <Row label="Permission reminder" desc="Optional line telling recipients why they're hearing from you. Reduces spam complaints.">
+        <input className="inp" value={reminder} placeholder="You're receiving this because you requested a quote." onChange={(e) => setReminder(e.target.value)} maxLength={300} />
+      </Row>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0 4px" }}>
+        <button className="btn gold" onClick={save} disabled={pending}>{pending ? "Saving…" : "Save changes"}</button>
+        <Status status={status} />
+      </div>
+    </Panel>
+  );
+}
+
 function GeneralPanel({ brandName, workspaceName, settings, workspaceLogoUrl }: { brandName: string; workspaceName: string; settings: AppSettings; workspaceLogoUrl: string | null }) {
   const [name, setName] = useState(workspaceName);
   const [orgName, setOrgName] = useState(brandName);
