@@ -2,10 +2,12 @@ import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getBrandProfileView } from "@/lib/brand-kit/profile-view";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
 import { resolveMediaGeneration } from "@/lib/media/enablement";
+import { getMediaSpendMeter } from "@/lib/media/spend-meter";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import type { MediaAssetView } from "@/lib/media-library/types";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
+import { MediaSpendMeterBar } from "./_components/media-spend-meter";
 import { StudioView, type Item } from "./_components/studio-view";
 import "./studio.css";
 
@@ -59,14 +61,21 @@ export default async function StudioPage() {
         .catch(() => [])
     : [];
 
+  // Spend meter: what generation has cost this period and what the next job
+  // costs, shown here rather than only in Settings (BSR-515). Never throws.
+  const spendMeter = await getMediaSpendMeter();
+
   return (
-    <StudioView
+    <>
+      <MediaSpendMeterBar meter={spendMeter} />
+      <StudioView
       brandName={brandName}
       libraryItems={libraryItems}
       live={live}
       campaigns={campaigns}
       mediaEnabled={mediaEnabled}
       brandPalette={brandPalette}
-    />
+      />
+    </>
   );
 }

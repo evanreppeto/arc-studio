@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { parseArcRoute } from "@/domain";
+import { MEDIA_UNITS, parseArcRoute } from "@/domain";
 
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
 import { checkUsageAllowed, usageBlockMessage } from "@/lib/billing/entitlements";
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     // Platform-credit generations are spend-capped; a workspace's own key bypasses.
     const metered = await meterConnectorCall(
       undefined,
-      { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: 1, costTier: access.costTier, context: { route: "generate-image" } },
+      { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: MEDIA_UNITS.image, costTier: access.costTier, context: { route: "generate-image" } },
       () => provider.generateImage({ prompt: finalPrompt, aspectRatio }),
     );
     if (!metered.ok) return fail("plan_limit", metered.refusal.message, 402);

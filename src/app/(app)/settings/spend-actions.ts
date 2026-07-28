@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { MAX_WORKSPACE_SPEND_CAP_CENTS, formatCents } from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -23,7 +24,20 @@ export async function setConnectorSpendCap(input: { capDollars: number }): Promi
   if (!Number.isFinite(dollars) || dollars < 0) {
     return { ok: false, error: "Enter a spend cap of $0 or more." };
   }
-  const capCents = Math.round(dollars * 100);
+  const requestedCents = Math.round(dollars * 100);
+
+  // Refuse above the platform ceiling rather than silently clamping. Someone
+  // typing a number far too large is usually making a units mistake, and quietly
+  // storing a different number than they typed would leave them believing a much
+  // higher cap is in force. `setSpendCapCents` clamps too — that's the backstop
+  // for non-UI callers; this is the one that tells a human.
+  if (requestedCents > MAX_WORKSPACE_SPEND_CAP_CENTS) {
+    return {
+      ok: false,
+      error: `The most a workspace can authorise is ${formatCents(MAX_WORKSPACE_SPEND_CAP_CENTS)} per period. Ask us if you genuinely need more.`,
+    };
+  }
+  const capCents = requestedCents;
 
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
 
