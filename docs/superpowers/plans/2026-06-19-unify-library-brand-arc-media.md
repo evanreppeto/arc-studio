@@ -780,4 +780,4 @@ git commit -m "feat(library): Assets/Brand segmented control across the unified 
 - [ ] Run `pnpm build` — expect a clean production build (catches typed-Supabase-enum / RSC prop errors that lint misses).
 - [ ] Rebase on fresh `origin/main` and regenerate the lockfile locally if needed (`pnpm install`) — never resolve `pnpm-lock.yaml` conflicts in GitHub's web editor.
 - [ ] After merging to main, run `pnpm build` (tsc) on main once more — shared payload types (`AssetMediaProvenance`, the Arc media DTO) can pass on a branch but break main's tsc on merge.
-- [ ] Remember prod Supabase is `tegdgejiyxurgvgheshi`; no migration ships in this plan, but confirm `available_to_arc` and `campaign_assets.audit_payload.library_asset_id` exist in prod before relying on the attach flow there.
+- [ ] Remember prod Supabase is `qqbecyrhnowmooyjiztz`; no migration ships in this plan, but confirm `available_to_arc` and `campaign_assets.audit_payload.library_asset_id` exist in prod before relying on the attach flow there.

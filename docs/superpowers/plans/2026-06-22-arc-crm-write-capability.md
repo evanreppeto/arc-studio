@@ -76,7 +76,7 @@ comment on column public.leads.agent_confidence is 'Arc self-rated confidence 0-
 
 Run (only if a local Supabase/psql is configured; otherwise skip and rely on review):
 `pnpm supabase db reset --debug` *(do NOT run against prod)*
-Expected: no syntax error on the new file. **Prod note:** this migration must be applied to prod (`tegdgejiyxurgvgheshi`) **manually** — Vercel does not run migrations.
+Expected: no syntax error on the new file. **Prod note:** this migration must be applied to prod (`qqbecyrhnowmooyjiztz`) **manually** — Vercel does not run migrations.
 
 - [ ] **Step 3: Commit**
 
