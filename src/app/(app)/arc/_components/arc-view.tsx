@@ -975,6 +975,7 @@ export function ArcView({
   mentionGroups = [],
   waiting = null,
   initialDraft,
+  initialDemoConversationId,
   connectorsConfigured = false,
   connectors = [],
   emailConnection = null,
@@ -994,6 +995,7 @@ export function ArcView({
   mentionGroups?: MentionGroup[];
   waiting?: ArcWaiting | null;
   initialDraft?: string;
+  initialDemoConversationId?: string;
   connectorsConfigured?: boolean;
   connectors?: ConnectorView[];
   emailConnection?: ConnectionView | null;
@@ -1033,7 +1035,13 @@ export function ArcView({
   // the inline package summary.
   const [reviewCards, setReviewCards] = useState<ArcActionCard[] | null>(null);
   const [assetStatuses, setAssetStatuses] = useState<Record<string, ArcAssetStatus>>({});
-  const [selectedDemoId, setSelectedDemoId] = useState("storm");
+  const resolvedDemoConversationId =
+    initialDemoConversationId &&
+    (initialDemoConversationId === "new" ||
+      DEMO_THREADS.some((group) => group.items.some((thread) => thread.id === initialDemoConversationId)))
+      ? initialDemoConversationId
+      : "storm";
+  const [selectedDemoId, setSelectedDemoId] = useState(resolvedDemoConversationId);
   const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
   const [demoTurns, setDemoTurns] = useState<DemoTurn[]>([]);
   const [demoPending, setDemoPending] = useState(false);

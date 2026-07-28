@@ -119,6 +119,13 @@ export type ArcThreadVM = {
 
 export type ArcThreadGroupVM = { group: string; items: ArcThreadVM[] };
 
+/** Compact conversation link for shared app-shell navigation. */
+export type ArcRecentConversationVM = {
+  id: string;
+  title: string;
+  when: string;
+};
+
 const DAY_MS = 86_400_000;
 
 /** Short, stable relative-time label. `nowMs` is passed in so callers stay pure. */
@@ -131,6 +138,47 @@ function relativeWhen(iso: string, nowMs: number): string {
   if (diff < DAY_MS) return `${Math.floor(diff / 3_600_000)}h`;
   const d = new Date(iso);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/**
+ * Lightweight, access-scoped conversation read for the shared app shell.
+ *
+ * `null` means no backend is configured, which lets the offline demo use its
+ * illustrative threads without ever masking a configured workspace read error.
+ */
+export async function getRecentArcConversations(
+  {
+    limit = 3,
+    nowMs = Date.now(),
+    orgId,
+    workspaceId,
+  }: {
+    limit?: number;
+    nowMs?: number;
+    orgId?: string;
+    workspaceId?: string | null;
+  } = {},
+): Promise<ArcRecentConversationVM[] | null> {
+  if (!isSupabaseAdminConfigured()) return null;
+
+  try {
+    const [viewer, operator] = await Promise.all([getShareViewer(), getOperatorActor()]);
+    const conversations = await listConversationsForViewer(viewer, operator);
+    const safeLimit = Math.max(0, Math.min(limit, 5));
+
+    return [...conversations]
+      .filter((conversation) => !orgId || conversation.orgId === orgId)
+      .filter((conversation) => !workspaceId || !conversation.workspaceId || conversation.workspaceId === workspaceId)
+      .sort((left, right) => Date.parse(right.lastMessageAt) - Date.parse(left.lastMessageAt))
+      .slice(0, safeLimit)
+      .map((conversation) => ({
+        id: conversation.id,
+        title: conversation.title.trim() || "Untitled chat",
+        when: relativeWhen(conversation.lastMessageAt, nowMs),
+      }));
+  } catch {
+    return [];
+  }
 }
 
 function bucket(iso: string, nowMs: number): string {

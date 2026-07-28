@@ -69,6 +69,7 @@ export default async function ArcPage({
 
   return (
     <ArcView
+      key={sp.new ? "new" : sp.c ?? "default"}
       brandName={brandName}
       operatorName={operatorName}
       live={live}
@@ -79,6 +80,7 @@ export default async function ArcPage({
       mentionGroups={mentionGroups}
       waiting={waiting}
       initialDraft={initialDraft}
+      initialDemoConversationId={sp.new ? "new" : sp.c}
       connectorsConfigured={connectors.configured}
       connectors={connectors.connectors}
       emailConnection={emailConnection}
