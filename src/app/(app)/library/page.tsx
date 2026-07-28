@@ -49,6 +49,17 @@ function addedLabel(iso: string | null): string {
   return months === 1 ? "1mo ago" : `${months}mo ago`;
 }
 
+/** approval_status → the word a reviewer recognises on a card. */
+function reviewLabel(status: string): string {
+  switch (status) {
+    case "approved": return "Approved";
+    case "declined": return "Declined";
+    case "needs_revision": return "Revision requested";
+    case "archived": return "Archived";
+    default: return "In review";
+  }
+}
+
 function mapAsset(v: MediaAssetView, i: number): Asset {
   const pv = provFromSource(v.source);
   const label = v.badge || v.source;
@@ -75,7 +86,21 @@ function mapAsset(v: MediaAssetView, i: number): Asset {
     risk: prov.riskFlags.length ? prov.riskFlags.join(" · ") : undefined,
     img: v.url && v.url !== "pending" ? v.url : undefined,
     src: label,
-    lineage: [[pv, label], ...external.rows],
+    lineage: [
+      [pv, label],
+      ...external.rows,
+      // Review state (BSR-538): an asset that has been decided on says so, and
+      // by whom — an unreviewed asset simply has no row rather than a
+      // reassuring-looking blank.
+      ...(v.approvalStatus
+        ? ([[
+            v.approvalStatus === "approved" ? "real" : "upload",
+            `${reviewLabel(v.approvalStatus)}${v.approvalReviewedBy ? ` · ${v.approvalReviewedBy}` : ""}${
+              v.approvalReviewedAt ? ` · ${addedLabel(v.approvalReviewedAt)}` : ""
+            }`,
+          ]] as [string, string][])
+        : []),
+    ],
     prompt: external.prompt ?? undefined,
     uses: v.usedInCount,
   };
