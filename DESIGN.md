@@ -4,7 +4,7 @@
 
 A warm, minimal operations command center: deep obsidian surfaces, an antique gold accent, and dense-but-readable operating modules. Surfaces step up in lightness (canvas → panel → inset → raised) so modules visibly lift off the background. Executive and field-aware, instrument-like — not developer-first, not a neon dashboard.
 
-Tokens live in `src/app/globals.css` (`:root`) and the reusable React class contract lives in `src/app/_components/theme.ts`. Always build from those sources rather than hard-coding new hex values, one-off tone aliases, or local button/pill class maps.
+Tokens live in `src/app/globals.css` (`:root`). There is **no `theme.ts`** and no React class-map module — the signed-in app's visual contract is **CSS**: `src/app/(app)/arc-app.css`, every rule scoped under `.arc-app` so it can't leak, plus per-route sheets (`arc/arc.css`, `settings/settings.css`, `studio/studio.css`, `brand/brand.css`, `library/library.css`, `support/support.css`, `campaigns/[campaignId]/campaign.css`, `crm/[objectKey]/[recordId]/record.css`). Pages compose short semantic class names (`card`, `btn gold`, `pill`, `mlabel`) under a per-route root class (`.arc-opps`, `.arc-campaigns`, …). Tailwind v4 is installed via PostCSS but the app screens are not built from utility classes — follow the CSS vocabulary already in the sheet you're editing rather than hard-coding new hex values or inventing a parallel class recipe.
 
 ## Palette — Obsidian & Gold
 
@@ -16,7 +16,7 @@ The app uses a warm, minimalist black-and-gold system (token values live in
 - **Text:** warm ivory `--text-primary` `#f1ede2`, secondary `#b9b9c0`, muted `#86868e`.
 - **Accent:** antique gold `--accent` `#c8a24a` (ink-on-gold via `--on-accent` `#16161a`).
 - **Status:** live/ok green `--ok` `#7fb89a`; "needs you"/warn gold `--warn` `#d8b65e`; destructive only red `--priority` `#cc6666`.
-- **Headlines:** serif (`--font-serif`, Fraunces) for page titles and Mark's voice; grotesk (`--font-display`) for metrics/labels; body `--font-sans`.
+- **Headlines:** serif (`--font-serif`, Fraunces) for page titles and Arc's voice; grotesk (`--font-display`) for metrics/labels; body `--font-sans`.
 
 Rules that carry over: **no emojis, no equal 3-column dashboard rows, no neon/purple "AI" aesthetic.** Premium, calm, low-fatigue.
 
@@ -24,44 +24,37 @@ Rules that carry over: **no emojis, no equal 3-column dashboard rows, no neon/pu
 
 Loaded via `next/font` in `src/app/layout.tsx`; exposed as Tailwind families.
 
-- **Editorial serif:** Fraunces (`font-editorial` / `--ff-editorial`, `font-optical-sizing: auto`) — the signature. Use for **display moments only**: page-title heroes (via `PageHeader`), the Today greeting, persona/record hero names, auth headlines. Fraunces is loaded at **weights 400, 500, 600** (normal + italic). Hero titles render at 600 (the global `h1,h2,h3` rule, which is unlayered and beats Tailwind weight utilities); body-editorial moments use 400/500. **Never 700+** — Fraunces isn't loaded there and would faux-bold. This is what makes the app read as "authored journal," not "AI dashboard."
+- **Editorial serif:** Fraunces (`--ff-serif`, aliased to `--ff-editorial` in `layout.tsx`; `font-optical-sizing: auto`) — the signature. Use for **display moments only**: page-title heroes, the Today greeting, persona/record hero names, auth headlines. Fraunces is loaded at **weights 400, 500, 600** (normal + italic). Hero titles render at 600 (the global `h1,h2,h3` rule, which is unlayered and beats Tailwind weight utilities); body-editorial moments use 400/500. **Never 700+** — Fraunces isn't loaded there and would faux-bold. This is what makes the app read as "authored journal," not "AI dashboard."
 - **Display + Body:** Geist (`font-display`/`--ff-display`, `font-sans`/`--ff-body`) — one modern product grotesk (Linear/Vercel-grade) carries headings, labels, body, and metrics so the workhorse UI reads as a single intentional system. Body copy ~65–74ch max. Reserve 600 for hero metrics/titles (see §7).
-- **Mono:** Geist Mono (`font-mono`, `--ff-mono`) — identifiers, scores, timestamps. Numbers use `tabular-nums` and animate up on first paint via the `CountUp` component (`src/app/_components/count-up.tsx`).
-- **Banned:** Inter, system-default-only stacks, gradient text, monospace as lazy "tech" shorthand, **uppercase letter-spaced kicker/eyebrow labels above titles** (a top AI-slop tell — `PageHeader` renders title-first; the `eyebrow` prop is ignored).
+- **Mono:** Geist Mono (`font-mono`, `--ff-mono`) — identifiers, scores, timestamps. Numbers use `tabular-nums`.
+- **Banned:** Inter, system-default-only stacks, gradient text, monospace as lazy "tech" shorthand, **uppercase letter-spaced kicker/eyebrow labels above titles** (a top AI-slop tell — page headers render title-first).
 
 ## 4. Component Stylings
 
-- **Panel** (`.signal-panel`): 0.75rem radius, 1px `--border-panel`, panel surface + subtle top highlight, `--elev-panel` shadow. The primary grouping primitive — don't nest panels.
-- **Eyebrow** (`.signal-eyebrow`): display font, uppercase, 0.2em tracking, accent color; pair with a short accent tick, not a heading restatement.
-- **Button** (`Button` / `buttonClasses` in `page-header.tsx`, backed by `theme.ts`): the canonical button. Variants `primary` (solid `--accent`, `--on-accent` text), `priority` (solid `--priority-solid` red, `--on-priority` text — both AA ≥4.5:1), `ghost` (inset + hairline border). Sizes `md` (44px touch target) / `sm`. Use `<Button>` for buttons, `buttonClasses({variant})` on a `<Link>`. Never hand-roll button classes or wash a CTA into a faint tint.
-- **DataTable** (`data-table.tsx`): config-driven table (columns with custom `cell` renderers, `isSelected`, `minWidth`, `emptyState`). Centralizes thead, row rhythm, hover/selected states, and `scope="col"`. Use for any tabular data.
-- **Tabs** (`TabNav` in `tab-nav.tsx`, backed by `control.tab*` in `theme.ts`): the canonical tabbed-section nav — a card grid of `{key,label,detail?,count?,href}` items with one active treatment (accent border + soft fill). Use it for any in-page section switcher; never hand-roll tab class strings.
-- **Icons:** monochrome and driven by `currentColor`, always — that is the rule the rest of this bullet serves. Two sanctioned sources:
-  - **Inline SVG line icons** — 24 viewBox, 1.75 stroke, `currentColor`, rendered at ~20px. The default everywhere in the app.
-  - **PNG used as a CSS mask** — the sidebar rail (`NavIcon` in `app-shell.tsx` → `.nav-image-icon`). The element paints `currentColor` and the PNG supplies only its alpha shape via `mask: var(--nav-icon)`. The file's own colour is discarded, so a masked icon is still monochrome, still inherits colour, and still warms to `--accent` when its item is active.
+These are **CSS classes in `arc-app.css`**, not React components. Reuse the class; don't invent a parallel one.
 
-  Still banned: **rendered** raster/clip-art iconography (an `<img>` whose baked-in colour is what you see), and filled or gradient icon styles. The distinction that matters is not the file format — it is whether the icon's colour comes from the theme or from the asset.
-- **Back-link:** detail/record pages pass `backHref`/`backLabel` to `PageHeader` (renders the shared `BackLink`). Don't hand-roll back buttons.
-- **Mark chat** (`src/app/mark/`): the operator↔Mark conversational surface — a full-height workbench panel, no page header above it. Thread rail (search, pinned, projects with progressive `+` creation, archived) + integrated conversation header (renameable title, thread menu, Operations link; on mobile the rail becomes a drawer behind a header toggle). Conversation: operator messages as right-aligned quiet bubbles with hover timestamps; Mark replies flat full-width with avatar + name/time line; day separators; inline action cards (approve/decline/revision) and collapsible step traces. Composer: mode picker (ask/act/draft) with a governance dot, @-mention and /-command popovers, keyboard hints left + "outbound stays locked" right. New-chat state is a work launcher: time-of-day greeting, centered composer, workflow shortcuts with a live pending-approvals count. CSS-only thinking indicators, reduced-motion safe.
+- **Card** (`.card`): the primary grouping primitive — panel surface, hairline border, soft radius. Don't nest cards.
+- **Button** (`.btn`, `.btn.gold`, `.btn.ghost`): the canonical button. Default/`gold` is the solid antique-gold gradient fill with near-black ink (`#1a1505`); `ghost` is transparent with a `--line-2` hairline and `--text-2` label. 34–36px tall, 8–9px radius, 600 weight, `translateY(-1px)` on hover. Use `.btn` on `<button>` and on `<Link>` alike. Never hand-roll button styling or wash a CTA into a faint tint.
+- **Pill** (`.pill`) and **Chip** (`.chip`): status and metadata cues — tinted bg + matching border, bright readable text. `.pill` is the status treatment, `.chip` the compact tag/filter.
+- **Tables** (`.tablewrap` + `.tabbar` for section switchers): tabular surfaces are composed per route inside a `.tablewrap` scroll container. There is no config-driven `DataTable` component — match the thead/row rhythm of the nearest existing table.
+- **Empty states** (`.empty`, `.emptyrow`, `.es`, `.empty-note`): composed and instructive on a soft surface, not a bare "No data".
+- **Icons:** inline SVG in `currentColor` — 24 viewBox, ~1.75 stroke, rendered ~20px. The nav rail's icons are defined inline in `app-shell.tsx`; there is no shared `nav-icons.tsx`. `lucide-react` is installed and used **only** by the Arc chat components (`(app)/arc/_components/`) — don't spread it into other routes without a deliberate call. Never raster/PNG icons, no filled or gradient icon styles.
 - **On-fill tokens:** `--on-accent` / `--on-priority` are the only correct text colors on solid accent/priority fills (contrast-verified). `--priority-solid` is the button-fill red; `--priority` stays for tints/dots/text.
-- **Status Pills** (`StatusPill`, backed by `ThemeTone` in `theme.ts`): tinted bg + matching border + colored dot, bright readable text. Tones: amber/green/red/gray/blue/dark.
-- **EvidenceChip** (`evidence-chip.tsx`): the source/citation cue — optional `[n]` index, source label, optional confidence %, optional link. Use wherever the UI shows evidence (Opportunities, Home focal card, Arc citations, Brand facts).
-- **InlineApprovalCard** (`inline-approval-card.tsx`): the approval-gated draft card — title + draft body + decision slots (gold `Approve` as the single focal action, ghost revise/decline) + an always-on "Outbound stays locked" badge. Use for any in-flow approve/decline (Arc replies, Activity, Campaign builder, Outbox).
-- **Inputs:** label above, helper/error below, inset surface, 44px min touch target.
-- **Empty states:** composed and instructive, dashed `--border-strong` on soft surface.
+- **Inputs** (`.mfield`, `.mlabel`): label above, helper/error below, inset surface, 44px min touch target.
+- **Shared React components** are few and live in `src/app/(app)/_components/`: `Modal`, `KpiStrip`, `Sparkline`, `ShareDialog`, `CommandPalette`, `ComingSoonToasts`. Everything else is route-local under `<route>/_components/`.
+- **Not in this codebase** (removed from this doc after an audit — don't reach for them): `theme.ts`, `PageHeader`, `Panel`, `Button`/`buttonClasses`, `StatusPill`/`ThemeTone`, `DataTable`, `TabNav`, `BackLink`, `CountUp`, `EvidenceChip`, `InlineApprovalCard`, `nav-icons.tsx`, and the `/mark` route (the operator↔agent chat surface is `/arc`). The `.signal-panel` / `.signal-eyebrow` / `.focal-card` classes are still defined in `globals.css` but no component uses them.
 
 ## 4.1 Component Library Ownership
 
 The installed libraries support the Signal system; they do not replace it.
 
-- **Signal primitives own the app vocabulary.** `theme.ts`, `PageHeader`, `Button`, `StatusPill`, `Panel`, `DataTable`, and `TabNav` remain the visual contract. New components should compose these before introducing local class recipes.
-- **Radix owns behavior primitives.** Use Radix for accessible menus, popovers, collapsibles, dialogs, and other stateful interactions, then skin them with Signal tokens. Do not hand-roll focus trapping, menu keyboard behavior, or disclosure semantics.
-- **MUI is opt-in and wrapped.** Use MUI Joy/Material only for complex product controls that materially benefit from its maturity, such as dense forms, selects, settings controls, and future data-management surfaces. Never drop raw MUI styling into pages; wrap it behind Signal-named components and map it to CSS variables.
-- **dnd-kit owns drag behavior.** Use it for board and sortable workflows, with restrained motion and explicit state labels.
-- **cmdk owns command/search patterns.** Use it for command palette and quick-jump flows where keyboard-first behavior matters.
-- **Motion owns state feedback, not spectacle.** Keep transitions short, reduced-motion safe, and tied to state changes.
-- **Recharts and Cytoscape own specialized visualization.** Recharts belongs to analytics; Cytoscape belongs to Brain. Both must be token-themed and legible on dark surfaces.
-- **Rive and shader effects are brand moments only.** They may support Arc identity or empty states, but they should never become ambient decoration across ordinary workflow screens.
+Several of these are installed but **not yet used anywhere in `src/`** — the note says where each actually stands today, so nobody assumes an established pattern that doesn't exist.
+
+- **The CSS vocabulary owns the app.** `arc-app.css` + the per-route sheets are the visual contract (see §1 and §4). New surfaces should extend that vocabulary before introducing a library-flavored recipe.
+- **cmdk owns command/search patterns** — in use, by `command-palette.tsx`. Keep keyboard-first flows on it.
+- **Motion owns state feedback, not spectacle.** In use on the landing page (`landing/_components/`) and the Arc chat. Keep transitions short, reduced-motion safe, and tied to state changes; the calm rules in §6 still bind the workflow screens.
+- **Charts are hand-built inline SVG.** Analytics and the Brain knowledge graph both draw their own SVG — that is the pattern. Recharts is **not installed** (§6 bans it). `@mui/x-charts` and `cytoscape` are in `package.json` but imported by nothing (cytoscape only has type shims in `src/types/`); adopting either is a new decision, not a continuation.
+- **Radix, MUI, dnd-kit, Rive: installed, zero imports.** If you reach for one, you are establishing the pattern, so do it deliberately: Radix for accessible menus/popovers/collapsibles/dialogs rather than hand-rolled focus trapping; MUI Joy/Material only for dense product controls, always wrapped and mapped to CSS variables, never raw in a page; dnd-kit for board/sortable workflows; Rive and shader effects as brand moments only, never ambient decoration on ordinary workflow screens.
 
 ## 5. Layout Principles
 
@@ -71,11 +64,11 @@ Persistent command rail + asymmetric content grids. Avoid repeated equal 3-colum
 
 CSS-only transform/opacity/filter; cheap enough to stay 60fps and low-latency. Everything below is reduced-motion safe (guarded in `globals.css` + the `data-motion=reduced` global).
 
-- **Entrances:** two tiers. `.module-rise` is the at-once page fade (forced to 0 delay). `.rise-in` is the opt-in **staggered blur-rise cascade** (`.rise-d1`…`.rise-d5`) for redesigned surfaces — sequence hero → sections → rail so a page *assembles* rather than snapping in.
-- **Numbers:** count up on first paint via `CountUp` (easeOutCubic, ~900–1100ms).
-- **Data:** charts may self-draw (stroke-dashoffset) where real data exists; build as inline SVG (recharts is banned here — see project notes).
-- **Hover:** background/border step on lists; arrow nudge + a small `padding-left` slide on actionable rows. The **focal card** (`.focal-card`, the single primary action per surface) is the *one* allowed accent-glow-on-hover (its border warms to `--accent-border-strong` + a soft accent bloom) — everywhere else still obeys **no levitation** (`hover:-translate-y-*`) and **no glow on ordinary cards/selected states**.
-- **Press:** `active:translate-y-px`. **Live:** at most one `.status-breathe` dot per view.
+- **Entrances:** app screens use the `arcRise` keyframe in `arc-app.css` — a short fade + 8px lift, applied per-element with small stagger delays (`.05s`, `.1s`, `.14s`) so a page *assembles* rather than snapping in. The `.module-rise` / `.rise-in` / `.rise-d1`…`.rise-d5` cascade lives in `globals.css` and is used by the **landing page only**; don't reach for it inside `(app)`.
+- **Numbers:** `tabular-nums`, no count-up animation (the `CountUp` component this doc once named does not exist).
+- **Data:** charts may self-draw (stroke-dashoffset) where real data exists; build as inline SVG — as Analytics and the Brain graph already do. Recharts is banned and not installed.
+- **Hover:** background/border step on lists; arrow nudge + a small `padding-left` slide on actionable rows. `.btn` is the one element that lifts (`translateY(-1px)`); ordinary cards and selected states obey **no levitation** and **no glow**. (`.focal-card` in `globals.css` once carried an accent-bloom exception — nothing uses it now.)
+- **Press:** `active:translate-y-px`. **Live:** the pulsing dot is the `arcBreathe` keyframe (`.indtag i`, `.arcnote i`); at most one per view.
 - **No** animating layout dimensions, **no** bounce/elastic easing.
 
 ## 7. Typographic Weight Discipline
@@ -98,4 +91,4 @@ glow, focal-card bloom). Every redesigned page inherits these rules:
   display moment (the page title).
 - **Calm motion only:** short fades; no levitation (`hover:-translate-y-*`) or
   glow on ordinary elements; at most one live `.status-breathe` dot per view.
-- `/arc` and `/mark` are the deliberate rich exceptions — these rules don't bind them.
+- `/arc` is the deliberate rich exception — these rules don't bind it.

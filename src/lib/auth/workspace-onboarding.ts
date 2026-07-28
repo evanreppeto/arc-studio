@@ -2,7 +2,9 @@ import { randomBytes } from "node:crypto";
 
 import type { User } from "@supabase/supabase-js";
 
+import { isSelfServeSignupOpen } from "@/lib/auth/auth-mode";
 import { startTrialForOrg } from "@/lib/billing/trial";
+import { isPlatformAdmin } from "@/lib/waitlist/admin";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured, type TypedSupabaseClient } from "@/lib/supabase/server";
 import { seedDefaultMediaFolders } from "@/lib/media-library/persistence";
@@ -35,7 +37,11 @@ export type CreateWorkspaceInput = {
 
 export type CreateWorkspaceResult =
   | { ok: true; orgId: string; workspaceId: string; claimedExistingOrg: boolean }
-  | { ok: false; status: "not_authenticated" | "not_configured" | "invalid_input" | "already_claimed" | "failed"; message: string };
+  | {
+      ok: false;
+      status: "not_authenticated" | "not_authorized" | "not_configured" | "invalid_input" | "already_claimed" | "failed";
+      message: string;
+    };
 
 function normalizeName(value: string | undefined, fallback = "") {
   return (value ?? fallback).replace(/\s+/g, " ").trim();
@@ -367,6 +373,24 @@ export async function createWorkspaceForAuthenticatedUser(input: CreateWorkspace
   const user = await getSupabaseAuthenticatedUser();
   if (!user) {
     return { ok: false, status: "not_authenticated", message: "Sign in before creating a workspace." };
+  }
+
+  // Invite-only means invited INTO a workspace, not handed the keys to found more.
+  // Every explicit creation path — Settings → New workspace, /onboarding, and
+  // POST /api/auth/onboarding — funnels through here, so this is the one place
+  // the rule has to hold. Without it, closing sign-up still let any invited
+  // teammate spin up their own tenant from Settings.
+  //
+  // Scoped to the closed configuration: with self-serve sign-up open (local dev,
+  // demo, and once the product opens up) anyone who can sign up can obviously
+  // create the workspace they signed up for, and this must not block them.
+  if (!isSelfServeSignupOpen() && !isPlatformAdmin(user.email)) {
+    return {
+      ok: false,
+      status: "not_authorized",
+      message:
+        "Creating new workspaces is limited to platform operators right now. Ask for an invite to an existing workspace.",
+    };
   }
 
   // The explicit "create workspace" UI must create a genuinely NEW workspace, even

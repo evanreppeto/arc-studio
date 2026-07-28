@@ -32,6 +32,8 @@ const SIGN_UP_ERRORS: Record<string, string> = {
   workspace_intent: "Pick whether you're creating or joining a workspace.",
   provision: "Your account was created, but setup didn't finish. Sign in to continue.",
   resend_expired: "That sign-up has timed out. Enter your details again to get a fresh link.",
+  // Sign-up is invite-only right now; the API refuses without a valid invite.
+  invite_required: "Arc Studio is invite-only right now. Use the link from your invite email, or ask your workspace owner to send one.",
   "1": "Something went wrong creating your account. Try again.",
 };
 
