@@ -7,6 +7,7 @@ import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExt
 } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { canonicalIndustryKey } from "@/lib/product-language";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 
@@ -684,6 +685,14 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
       },
     };
   } catch (error) {
+    // Degrade, but not silently. A caught error is invisible to Sentry's
+    // automatic instrumentation, which is how a missing column took this board
+    // to "0 packages" for every org on 2026-07-28 with nothing raised anywhere.
+    reportDegraded(error, {
+      scope: "campaigns.getCampaignWorkspaceList",
+      surface: "primary",
+      detail: { orgId: orgId ?? null },
+    });
     return {
       status: "unavailable",
       message: error instanceof Error ? error.message : "Campaign workspace is unavailable.",
