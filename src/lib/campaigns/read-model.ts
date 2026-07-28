@@ -1,13 +1,17 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore } from "@/domain";
+import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
+  parseConsideredAudiences,
+  normalizeHandoffNote,
+  type ConsideredAudience,
+} from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { canonicalIndustryKey } from "@/lib/product-language";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 
 export const CAMPAIGN_SELECT =
-  "id,name,persona,campaign_theme,restoration_focus,status,company_id,contact_id,lead_id,owner,objective,audience_summary,offer_summary,compliance_notes,launch_locked,source_signal,source_system,reasoning_payload,audit_payload,created_at,updated_at";
+  "id,name,persona,campaign_theme,restoration_focus,status,company_id,contact_id,lead_id,owner,objective,audience_summary,offer_summary,compliance_notes,considered_audiences,handoff_note,launch_locked,source_signal,source_system,reasoning_payload,audit_payload,created_at,updated_at";
 export const ASSET_SELECT =
   "id,campaign_id,asset_type,channel,title,status,tool_source,prompt_input,prompt_inputs,draft_body,edited_body,approved_body,dispatch_locked,compliance_notes,reasoning_payload,audit_payload,created_at,updated_at";
 const APPROVAL_SELECT =
@@ -251,6 +255,10 @@ export type CampaignWorkspaceMeta = {
   audienceSummary: string;
   offerSummary: string;
   complianceNotes: string;
+  /** Audiences weighed and not chosen — the targeting decision, checkable. */
+  consideredAudiences: ConsideredAudience[];
+  /** Note for the human continuing offline (sales / referral partner). */
+  handoffNote: string | null;
   owner: string;
   launchLocked: boolean;
   createdAt: string;
@@ -363,6 +371,8 @@ export type CampaignRow = {
   audience_summary: string | null;
   offer_summary: string | null;
   compliance_notes: string | null;
+  considered_audiences: unknown;
+  handoff_note: string | null;
   launch_locked: boolean;
   source_signal: unknown;
   source_system: string | null | undefined;
@@ -734,6 +744,10 @@ type DemoCampaign = {
   audienceSummary: string;
   offerSummary: string;
   complianceNotes: string;
+  /** Audiences weighed and not chosen — the targeting decision, checkable. */
+  consideredAudiences: ConsideredAudience[];
+  /** Note for the human continuing offline (sales / referral partner). */
+  handoffNote: string | null;
   whyBuilt: string;
   recommendedAction: string;
   guardrailFlags: string[];
@@ -1028,6 +1042,8 @@ function buildDemoCampaignWorkspaceDetail(campaign: DemoCampaign, agentName: str
       audienceSummary: campaign.audienceSummary,
       offerSummary: campaign.offerSummary,
       complianceNotes: campaign.complianceNotes,
+      consideredAudiences: campaign.consideredAudiences,
+      handoffNote: campaign.handoffNote,
       owner: campaign.owner,
       launchLocked,
       createdAt: formatDate(campaign.createdAtIso),
@@ -1111,6 +1127,20 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
       owner: agentName,
       objective,
       audienceSummary: target.audience,
+      // Demo campaigns carry a real targeting rationale so the section shows what
+      // a populated package looks like, not just its empty state. Derived from
+      // the persona so it stays coherent with the rest of the generated campaign.
+      consideredAudiences: [
+        {
+          label: `Everyone outside ${target.name}`,
+          reason: "Too broad to personalize — the message only lands for this relationship stage",
+        },
+        {
+          label: "Contacts already in an active sequence",
+          reason: "Would double-contact people mid-conversation",
+        },
+      ],
+      handoffNote: `If they reply, pick it up in the thread rather than restarting. Lead with the reason Arc surfaced them — ${action.toLowerCase()} — not with the offer.`,
       offerSummary: offer,
       complianceNotes: "Claims and audience rules require human review before launch. Outbound remains locked until approval.",
       whyBuilt: `${agentName} matched a recent customer signal to the ${target.name} persona and prepared a focused campaign draft.`,
@@ -1242,6 +1272,8 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
         "Capture high-intent emergency water-loss searches across the North Shore and convert them to same-day mitigation calls before competitors respond.",
       audienceSummary:
         "Homeowners in 60091/60093/60201 with active water emergencies — burst pipes, sump failures, and storm backups in the last 24 hours.",
+      consideredAudiences: [],
+      handoffNote: null,
       offerSummary: "24/7 emergency response, on-site in 60 minutes, insurance documentation handled from the first call.",
       complianceNotes:
         "No guaranteed-outcome or insurance-payout claims. Response-time language reflects historical North Shore averages, not a contractual promise.",
@@ -1365,6 +1397,12 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       owner: agentName,
       objective: "Re-engage homeowners who searched for burst-pipe help overnight but never booked a crew.",
       audienceSummary: "Overnight emergency searchers in the North Shore service area with no booked job in the CRM.",
+      consideredAudiences: [
+        { label: "All North Shore homeowners", reason: "Too broad for an emergency message — would reach people with no active problem", sizeEstimate: 4200 },
+        { label: "Past emergency callers", reason: "Already covered by the reactivation nurture; would double-contact", sizeEstimate: 180 },
+      ],
+      handoffNote:
+        "If they call back, lead with response time, not price. The overnight crew is the differentiator here — most competitors quote a next-day window.",
       offerSummary: "Priority morning callback with documented water extraction and drying.",
       complianceNotes: "Follow-up only to inbound inquiries. No cold outreach. Clear opt-out on the SMS.",
       whyBuilt: `${agentName} found unconverted overnight emergency leads and drafted a fast morning-callback package.`,
@@ -1432,6 +1470,11 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       owner: "Evan Reppeto",
       objective: "Pre-approve Summit Restoration as the priority water-loss vendor for managed multifamily portfolios.",
       audienceSummary: "Property managers and operations directors overseeing multifamily portfolios in 60091/60093/60201.",
+      consideredAudiences: [
+        { label: "Individual condo owners", reason: "No budget authority for building-wide work", sizeEstimate: 900 },
+      ],
+      handoffNote:
+        "Partner handoff: mention the 4.9 review average before pricing. These buyers shortlist on reputation, then negotiate.",
       offerSummary: "Managed-building SLA, insurance-ready documentation, and a vendor pre-approval packet.",
       complianceNotes: "B2B outreach to named contacts. SLA language reviewed; no contractual commitment until a packet is signed.",
       whyBuilt: `${agentName} assembled a vendor-packet outreach set targeting property managers ahead of the spring storm season.`,
@@ -1509,6 +1552,8 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       owner: "Evan Reppeto",
       objective: "Drive preventative sump-pump and backwater-valve inspections ahead of spring storms.",
       audienceSummary: "Homeowners with finished basements in flood-prone North Shore zips who have not booked an inspection.",
+      consideredAudiences: [],
+      handoffNote: null,
       offerSummary: "Discounted pre-season basement and sump inspection with a documented readiness report.",
       complianceNotes: "Promotional pricing disclosed with terms. No scare-tactic claims about specific homes.",
       whyBuilt: `${agentName} timed a preventative inspection push to the spring storm forecast.`,
@@ -1572,6 +1617,8 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       owner: agentName,
       objective: "Educate homeowners on post-water-loss mold risk and convert to remediation assessments.",
       audienceSummary: "Homeowners with a closed water-loss job in the last 60 days who have not had a mold assessment.",
+      consideredAudiences: [],
+      handoffNote: null,
       offerSummary: "Free mold risk assessment with lab-backed air sampling and a remediation plan.",
       complianceNotes: "Educational framing. Health claims limited to general mold-growth timelines, no diagnosis language.",
       whyBuilt: `${agentName} identified recently restored homes at elevated mold risk and built a follow-up education set.`,
@@ -1635,6 +1682,10 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       owner: "Evan Reppeto",
       objective: "Build a referral pipeline with independent insurance agents for water and fire losses.",
       audienceSummary: "Independent property & casualty agents in the North Shore who place homeowner policies.",
+      consideredAudiences: [
+        { label: "Captive agents", reason: "Cannot refer outside their carrier network", sizeEstimate: 320 },
+      ],
+      handoffNote: "Referral partner note: this is a relationship build, not a pitch. No pricing in the first conversation.",
       offerSummary: "Co-branded claims-support packet and a named restoration contact for fast policyholder response.",
       complianceNotes: "B2B partner outreach. No referral-fee language that would violate insurance regulations.",
       whyBuilt: `${agentName} mapped local agents with high homeowner-policy volume and prepared a referral outreach packet.`,
@@ -1699,6 +1750,8 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       owner: agentName,
       objective: "Offer smoke and soot remediation to homeowners affected by regional wildfire smoke events.",
       audienceSummary: "Homeowners in affected zips after a regional air-quality advisory from wildfire smoke.",
+      consideredAudiences: [],
+      handoffNote: null,
       offerSummary: "Smoke and odor remediation with HVAC cleaning and air-quality verification.",
       complianceNotes: "Tied to a specific air-quality advisory window. Archived once the event passed.",
       whyBuilt: `${agentName} drafted this for a wildfire smoke event that has since passed; archived for reuse next season.`,
@@ -1856,6 +1909,10 @@ export async function getCampaignWorkspaceDetail(
         audienceSummary: campaign.audience_summary ?? "Audience has not been summarized yet.",
         offerSummary: campaign.offer_summary ?? "Offer has not been summarized yet.",
         complianceNotes: campaign.compliance_notes ?? "No campaign-level compliance notes captured.",
+        // The two package fields that complete the contract: what targeting was
+        // weighed and rejected, and the note for whoever continues offline.
+        consideredAudiences: parseConsideredAudiences(campaign.considered_audiences),
+        handoffNote: normalizeHandoffNote(campaign.handoff_note),
         owner: campaign.owner ?? "Unassigned",
         launchLocked: campaign.launch_locked,
         createdAt: formatDate(campaign.created_at),

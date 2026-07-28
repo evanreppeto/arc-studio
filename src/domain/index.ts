@@ -48,6 +48,7 @@ export * from "./campaign-kind";
 export * from "./board-demo";
 export * from "./task-schedule";
 export * from "./campaign-presentation";
+export * from "./campaign-package";
 export * from "./interactions";
 export * from "./knowledge-graph";
 export * from "./brain-recall";
