@@ -1,6 +1,6 @@
 import { getRecentActivity, type ActivityEntry, type ActivityTone } from "@/lib/activity/read-model";
 import { getAnalyticsOverview, normalizeWindow } from "@/lib/analytics/overview";
-import { unavailable } from "@/lib/observability/unavailable";
+import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getOpportunityConversion } from "@/lib/performance/opportunity-conversion";
 import { getPerformanceReadModel } from "@/lib/performance/read-model";
@@ -71,8 +71,21 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     hasHistory: false,
   };
 
+  // Which of the three secondary reads FAILED, as opposed to returning nothing.
+  // `overview` already carries its own `dataError`; these three had no such
+  // channel, so a broken query rendered as "no data in this window yet" — the
+  // same confusion that hid a live outage on /campaigns (BSR-542).
+  const loadErrors = ([
+    ["Performance", reasonIfUnavailable(performance)],
+    ["Activity", reasonIfUnavailable(activity)],
+    ["Opportunity conversion", reasonIfUnavailable(conversion)],
+  ] as Array<[string, string | null]>)
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .map(([label, reason]) => `${label}: ${reason}`);
+
   return (
     <AnalyticsView
+      loadErrors={loadErrors}
       overview={safeOverview}
       range={range}
       conversion={conversion}
