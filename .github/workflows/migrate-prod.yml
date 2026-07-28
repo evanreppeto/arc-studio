@@ -1,0 +1,107 @@
+name: Apply migrations to prod
+
+# Closes the gap that took the campaigns board down on 2026-07-28 (BSR-543).
+#
+# A merge to `main` deploys CODE automatically — the app to Vercel, the runner to
+# Cloud Run. Nothing deployed SCHEMA. Applying a migration was an unprompted
+# manual step, so PR #680 shipped a query for two columns that did not exist and
+# prod answered `42703` on every request. The read path absorbed it and every org
+# saw an empty board until someone traced it by hand.
+#
+# ── What this does and does NOT guarantee ──────────────────────────────────────
+# Vercel deploys from its own git integration, which this workflow cannot gate.
+# So this is a RACE, not a barrier: applying the chain takes seconds, a Vercel
+# build takes ~2-3 minutes, so in practice schema lands well before the new code
+# serves traffic. That is a large improvement over "whenever someone remembers",
+# and it is not a proof.
+#
+# For a change where the window genuinely matters, use SCHEMA-FIRST instead:
+# apply the migration to prod BEFORE merging the code that needs it. Additive
+# migrations are backward compatible — old code ignores a new column — so the
+# schema can always lead safely. The code can never lead safely.
+#
+# ── Why additive-only is enforced below ───────────────────────────────────────
+# Auto-applying arbitrary DDL to production is how you lose data at 2am. A DROP
+# or a destructive ALTER must stay a deliberate human action with a backup taken
+# first, so this refuses to run one and tells you to do it by hand.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never let two runs push migrations at once, and never cancel one midway —
+  # a half-applied chain is worse than a slow one.
+  group: migrate-prod
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fail loudly if the database URL is missing
+        env:
+          DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error title=PROD_SUPABASE_DB_URL is not set::Migrations touching supabase/migrations/ just merged, but nothing can apply them to production. Store the prod Postgres connection string as the PROD_SUPABASE_DB_URL secret. Until then every migration needs a manual apply, and code that depends on it will 42703 in production."
+            exit 1
+          fi
+
+      # Guardrail, deliberately blunt. This workflow may only apply changes that
+      # are safe to run ahead of the code that uses them. Anything destructive
+      # stops here rather than being automated.
+      - name: Refuse destructive DDL
+        run: |
+          set -euo pipefail
+          # Only inspect migrations added by this push, not the whole history.
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="HEAD~1"
+          fi
+          FILES=$(git diff --name-only --diff-filter=A "$BASE" HEAD -- 'supabase/migrations/**' || true)
+          if [ -z "$FILES" ]; then
+            echo "No newly added migration files in this push."
+            exit 0
+          fi
+          echo "New migrations:"; echo "$FILES"
+          # `drop column`, `drop table`, `truncate`, and type changes that can
+          # lose data. `drop ... if exists` on an INDEX or POLICY is routine and
+          # allowed; the pattern targets tables and columns specifically.
+          if grep -inE 'drop[[:space:]]+(table|column)|truncate[[:space:]]+table|alter[[:space:]]+column[[:space:]]+.*[[:space:]]type[[:space:]]' $FILES; then
+            echo "::error title=Destructive migration::A newly added migration contains destructive DDL. This workflow only auto-applies additive changes. Apply this one by hand, with a backup taken first, and confirm the restore path (BSR-532)."
+            exit 1
+          fi
+          echo "Additive only — safe to apply ahead of the deploy."
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply the chain to prod
+        env:
+          DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          # `db push` applies only migrations prod has not recorded yet, so a
+          # re-run is a no-op rather than a replay.
+          supabase db push --db-url "$DB_URL" --include-all
+          echo "### Migrations applied to prod" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Report what prod now has
+        env:
+          DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          supabase migration list --db-url "$DB_URL" | tail -15 >>"$GITHUB_STEP_SUMMARY" || true
