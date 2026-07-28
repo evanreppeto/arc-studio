@@ -4,6 +4,7 @@ import {
   DEFAULT_SPEND_CAP_CENTS,
   METERING_PRICING_VERSION,
   bypassesMetering,
+  clampSpendCapCents,
   computeSpendDecision,
   describeConnectorCost,
   estimateConnectorCostCents,
@@ -48,18 +49,25 @@ export async function getSpendCapCents(client: SupabaseClient, workspaceId: stri
     .eq("workspace_id", workspaceId)
     .maybeSingle<{ cap_cents: number }>();
   if (error || !data) return DEFAULT_SPEND_CAP_CENTS;
-  return data.cap_cents ?? DEFAULT_SPEND_CAP_CENTS;
+  // Clamped on READ as well as write. A row stored before the platform ceiling
+  // existed — or written by any path that bypasses setSpendCapCents — would
+  // otherwise keep authorising spend above it indefinitely.
+  return clampSpendCapCents(data.cap_cents ?? DEFAULT_SPEND_CAP_CENTS);
 }
 
 /**
  * Set the workspace's metered-spend cap. RAISING this is the operator's explicit
- * approval of more spend — it unlocks calls the cap was refusing. Clamped to >= 0.
+ * approval of more spend — it unlocks calls the cap was refusing.
+ *
+ * Clamped into [0, MAX_WORKSPACE_SPEND_CAP_CENTS]. The ceiling is the backstop
+ * for the failure this field invites: a units mistake in the Settings input
+ * authorising orders of magnitude more real spend than intended.
  */
 export async function setSpendCapCents(
   client: SupabaseClient,
   input: { workspaceId: string; orgId: string | null; capCents: number; updatedBy?: string | null },
 ): Promise<void> {
-  const capCents = Math.max(0, Math.round(input.capCents));
+  const capCents = clampSpendCapCents(input.capCents);
   const { error } = await adminDb(client).from("connector_spend_budgets").upsert(
     {
       workspace_id: input.workspaceId,
@@ -267,6 +275,12 @@ export async function meterConnectorCall<T>(
      * Omitted = the entry's static tier, the historical behaviour.
      */
     costTier?: ConnectorCostTier;
+    /**
+     * Billable units to record when `run()` throws. Default 0 — most failures
+     * cost nothing. Return > 0 only where the provider genuinely bills for the
+     * failed attempt; guessing here overcharges the customer.
+     */
+    unitsOnFailure?: (error: unknown) => number;
   },
   run: () => Promise<T> | T,
   unitsFromResult?: (result: T) => number,
@@ -290,7 +304,35 @@ export async function meterConnectorCall<T>(
     return { ok: false, metered: true, refusal: auth };
   }
 
-  const result = await run();
+  let result: T;
+  try {
+    result = await run();
+  } catch (error) {
+    // A failed run can still have cost us: some providers bill the moment they
+    // accept a job, so an error thrown afterwards is a real charge. Before this,
+    // `run()` was unwrapped — the throw propagated, `recordConnectorUsage` never
+    // fired, and the spend went unrecorded. The workspace's period total then
+    // understated reality and the cap under-protected by exactly that amount.
+    //
+    // Whether a given failure was billable is provider-specific, so the caller
+    // decides via `unitsOnFailure`; the default is 0 (charge nothing), which
+    // preserves the previous behaviour — but now as a deliberate choice rather
+    // than an oversight. Attributing cost to failures accurately needs
+    // provider-level signal (BSR-502).
+    const failedUnits = params.unitsOnFailure?.(error) ?? 0;
+    if (failedUnits > 0) {
+      await recordConnectorUsage(client, {
+        orgId: params.orgId,
+        workspaceId: params.workspaceId,
+        connectorKey: params.connectorKey,
+        units: failedUnits,
+        context: { ...params.context, outcome: "failed" },
+        costTier: tier,
+      });
+    }
+    throw error;
+  }
+
   const actualUnits = unitsFromResult ? unitsFromResult(result) : params.estimatedUnits;
   const rec = await recordConnectorUsage(client, {
     orgId: params.orgId,
