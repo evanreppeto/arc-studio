@@ -187,11 +187,19 @@ export function RecordView({
   record,
   activity,
   personaOptions,
+  crmLabel = "Relationships",
 }: {
   record: CrmRecordData;
   activity: RecordActivity;
   /** The org's own personas for the edit picker. */
   personaOptions?: { key: string; label: string }[];
+  /**
+   * What this workspace calls its CRM — "Matters" for a law firm, "Accounts"
+   * for an agency. The nav rail has always used the tenant's own word; this
+   * back-link said "CRM" regardless, so the two disagreed on every record page.
+   * "CRM" is also developer jargon, which DESIGN.md bans in primary UI.
+   */
+  crmLabel?: string;
 }) {
   const [tab, setTab] = useState<string>("overview");
   const [actView, setActView] = useState<"timeline" | "tasks" | "notes">("timeline");
@@ -332,7 +340,7 @@ export function RecordView({
       <div className="recband">
         <Link className="back" href="/crm">
           {svg('<path d="M15 5l-7 7 7 7"/>')}
-          Back to CRM
+          Back to {crmLabel}
         </Link>
         <div className="idrow">
           <span className="bigav">{initials(record.name)}</span>
