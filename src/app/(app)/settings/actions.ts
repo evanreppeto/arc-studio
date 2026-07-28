@@ -159,6 +159,10 @@ function humanizeWorkspaceError(status: string, message?: string): string {
   switch (status) {
     case "not_authenticated":
       return "Sign in to create a workspace.";
+    case "not_authorized":
+      // Carries the reason from the gate — a generic "could not" would read as a
+      // bug rather than the deliberate invite-only policy it is.
+      return message ?? "You don't have permission to create a workspace.";
     case "invalid_input":
       return "Enter an organization and workspace name.";
     default:
