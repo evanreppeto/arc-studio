@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
     // revalidatePath, which evicts the affected route, so this only ever serves
     // <=30s-stale reads on revisit — fine for these dashboards.
     staleTimes: { dynamic: 30 },
+    // Branding uploads validate the image itself at 4 MB. Leave enough room for
+    // the multipart Server Action envelope; Next otherwise rejects the request
+    // at its 1 MB default before our validation or inline error UI can run.
+    serverActions: { bodySizeLimit: "5mb" },
   },
   // Move the dev-only on-screen indicator off the left rail (its default
   // 'bottom-left' overlaps the sidebar's operator avatar). Set to `false` to hide.

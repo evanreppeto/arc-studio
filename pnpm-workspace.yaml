@@ -2,6 +2,13 @@ ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
 
+onlyBuiltDependencies:
+  - "@google/genai"
+  - "@sentry/cli"
+  - core-js-pure
+  - esbuild
+  - protobufjs
+
 packages:
   - "packages/*"
   - "apps/*"
