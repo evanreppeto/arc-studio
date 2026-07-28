@@ -1,0 +1,161 @@
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+
+/**
+ * NIGHTLY PROD SMOKE (BSR-478).
+ *
+ * CI proves the code compiles. It does not prove the deployed app works — and
+ * that gap is where this project's expensive bugs live. `guardrails.spec.ts`
+ * covers the read-only shape of the app (login wall, tenant renders, inbox
+ * populated, approval surface present). This file covers the things that have
+ * historically broken *silently*, where every surface still looked fine.
+ *
+ * WHICH TENANT THIS RUNS AGAINST — read before changing anything.
+ *
+ * Prod holds two orgs, BOTH named "Big Shoulders Restoration". They are only
+ * distinguishable by slug/id, which has already caused one mix-up:
+ *
+ *   - `big-shoulders-restoration-2` (org 30bd4155…, workspace 840470d3…) is the
+ *     REAL, LIVE tenant with real people in it. **Nothing here may ever write to
+ *     it.**
+ *   - `big-shoulders-restoration` (org 63b72a45…, workspace 0d2ddb28…) is the
+ *     ARCHIVED seeded demo org: test-only accounts, seeded data, no real users.
+ *     That is the smoke tenant, and the credentials below belong to it.
+ *
+ * The seeded data is frozen (the org is archived and nothing writes to it but
+ * this run), which is exactly what makes the known-fact assertions stable.
+ */
+
+const EMAIL = process.env.E2E_EMAIL || "owner@bsr.test";
+// No fallback — this signs in to PRODUCTION. Unset ⇒ the run skips visibly
+// rather than a working prod credential living in the repo.
+const PASSWORD = process.env.E2E_PASSWORD || "";
+
+/**
+ * The Arc check needs the runner to be scoped to the SMOKE workspace. The
+ * runner's token is a Secret Manager reference scoped per workspace, so until a
+ * version exists for the demo org, asking Arc there fails on credentials rather
+ * than on reasoning — a permanently red check that teaches nothing.
+ *
+ * Set ARC_SMOKE_ENABLED=1 once that token exists. Until then this one check
+ * skips VISIBLY (reported as skipped, never as passed).
+ */
+const ARC_ENABLED = process.env.ARC_SMOKE_ENABLED === "1";
+
+/**
+ * Facts seeded into the demo org on 2026-07-06 and frozen since. Arc must
+ * surface at least MIN_KNOWN_HITS of these from retrieval — none of them appear
+ * in the question, so echoing the prompt cannot satisfy it.
+ */
+const KNOWN_PARTNERS = [
+  "Rapid Response Plumbing",
+  "Lakeside Mechanical",
+  "Halsted Drain & Sewer",
+  "North Shore Pipeworks",
+  "Windy City Plumbing Co",
+];
+const MIN_KNOWN_HITS = 2;
+
+const ARC_REPLY_TIMEOUT_MS = 180_000;
+
+async function login(context: BrowserContext) {
+  await context.request.post("/api/auth/sign-in", {
+    form: { email: EMAIL, password: PASSWORD, rememberMe: "1", from: "/" },
+    maxRedirects: 0,
+  });
+  const cookies = await context.cookies();
+  const hasSession = cookies.some((c) => /^sb-.*-auth-token/.test(c.name));
+  expect(hasSession, "step 1 (sign in): should set a Supabase session cookie").toBe(true);
+}
+
+function requireDeploy() {
+  test.skip(!process.env.E2E_BASE_URL, "set E2E_BASE_URL to run the nightly smoke against a deploy");
+  test.skip(!PASSWORD, "set the PROD_E2E_PASSWORD secret to run the nightly smoke");
+}
+
+/** Count outbound dispatches visible in the Outbox, so step 5 can prove the run sent nothing. */
+async function sentCount(page: Page): Promise<number> {
+  await page.goto("/outbox", { waitUntil: "domcontentloaded" });
+  const body = (await page.locator("body").innerText()).toLowerCase();
+  const match = body.match(/(\d+)\s+sent\b/);
+  return match ? Number(match[1]) : 0;
+}
+
+test.describe("nightly prod smoke", () => {
+  test.beforeEach(requireDeploy);
+
+  test("step 2: the console home renders real data, not the empty state", async ({ page, context }) => {
+    await login(context);
+    await page.goto("/home", { waitUntil: "domcontentloaded" });
+
+    expect(page.url(), "step 2: should not be bounced back to login").not.toContain("/login");
+
+    // An empty state has masked schema errors before — a page that renders
+    // "nothing yet" looks identical to a page whose query silently returned
+    // zero rows. Assert a non-zero count, which the empty state cannot produce.
+    const body = page.locator("body");
+    await expect(body, "step 2: the tenant should render").toContainText(/big shoulders/i);
+    await expect(body, "step 2: home should show a non-zero count, not an empty state").toContainText(/[1-9]\d*/);
+  });
+
+  test("step 3: Arc answers a question whose answer we already know", async ({ page, context }) => {
+    test.skip(
+      !ARC_ENABLED,
+      "set ARC_SMOKE_ENABLED=1 once the runner has a Secret Manager token scoped to the smoke workspace",
+    );
+    await login(context);
+    await page.goto("/arc", { waitUntil: "domcontentloaded" });
+
+    // Deliberately does NOT name any partner: the answer has to come from Arc's
+    // own retrieval over the seeded CRM. This is the only check that has ever
+    // caught a silent reasoning break — five stacked failures in Arc's prod path
+    // were invisible to tests, logs, health checks and CI, and were found only
+    // by asking a question whose answer we already knew.
+    const composer = page.locator(".arc-composer textarea");
+    await expect(composer, "step 3: the Arc composer should be present").toBeVisible();
+    await composer.fill("List the plumbing partner companies in our CRM by name.");
+    await composer.press("Enter");
+
+    // Arc replies asynchronously (enqueue -> runner -> stream), so wait on the
+    // CONTENT rather than on any spinner finishing.
+    const body = page.locator("body");
+    await expect(async () => {
+      const text = await body.innerText();
+      const hits = KNOWN_PARTNERS.filter((name) => text.includes(name));
+      expect(
+        hits.length,
+        `step 3: Arc should name at least ${MIN_KNOWN_HITS} seeded partners from retrieval; saw ${hits.length} (${hits.join(", ") || "none"})`,
+      ).toBeGreaterThanOrEqual(MIN_KNOWN_HITS);
+    }).toPass({ timeout: ARC_REPLY_TIMEOUT_MS, intervals: [2_000] });
+
+    // "Tool call succeeded" is not "the answer is right" — a reply that declines
+    // is a reasoning/retrieval break even though the request technically worked.
+    const finalText = await body.innerText();
+    expect(finalText, "step 3: Arc should not be answering that it lacks access").not.toMatch(
+      /isn't connected to this workspace|no access to|I don't have access/i,
+    );
+  });
+
+  test("step 4: a campaign revision request persists", async ({ page, context }) => {
+    await login(context);
+    await page.goto("/campaigns", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("body"), "step 4: the campaigns list should render").toContainText(/campaign/i);
+
+    // The human gate must exist — outbound stays locked behind an approval, and
+    // a campaign list that lost its approval affordances is a real regression.
+    await expect(page.locator("body"), "step 4: the approval gate should be present").toContainText(/approv/i);
+  });
+
+  test("step 5: the smoke run sent nothing outbound", async ({ page, context }) => {
+    await login(context);
+    const before = await sentCount(page);
+
+    // Re-read after exercising the app. Outbound is approval-gated and nothing
+    // above approves anything, so this count must not move. If it ever does,
+    // something in the read path is triggering a send — exactly the failure this
+    // whole project is built to prevent.
+    await page.goto("/campaigns", { waitUntil: "domcontentloaded" });
+    const after = await sentCount(page);
+
+    expect(after, "step 5: no outbound send should have occurred during the smoke run").toBe(before);
+  });
+});
