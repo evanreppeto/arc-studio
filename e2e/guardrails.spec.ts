@@ -88,5 +88,19 @@ test.describe("deployed app guardrails", () => {
     await page.goto("/campaigns", { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).toContainText(/campaign/i);
     await expect(page.locator("body")).toContainText(/approv/i);
+
+    // The two assertions above match STATIC chrome — "approval-gated" sits in the
+    // board header and renders whether or not a single campaign loads. That is
+    // why this guardrail stayed green twice a day for weeks while prod's board
+    // showed zero campaigns for a workspace holding nineteen (BSR-542).
+    //
+    // The board now distinguishes "failed to load" from "genuinely empty", so
+    // assert on that distinction rather than on chrome. Deliberately NOT a
+    // non-zero count: a tenant with no campaigns yet is legitimately empty, and
+    // a guardrail that reddens for that trains people to ignore it.
+    await expect(
+      page.locator("body"),
+      "the campaigns board reported a failed load — the query is broken, not the workspace empty",
+    ).not.toContainText(/couldn’t load campaigns|couldn't load campaigns/i);
   });
 });
