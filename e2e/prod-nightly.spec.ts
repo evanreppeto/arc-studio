@@ -200,20 +200,20 @@ test.describe("nightly prod smoke", () => {
       ).toContainText(/revision requested/i);
     }).toPass({ timeout: 30_000, intervals: [2_000] });
 
-    // --- restore ---
-    // Nightly runs must be idempotent. Without this, every night consumes one
-    // reviewable asset until none are left and the check goes red for a reason
-    // that has nothing to do with the app being broken.
-    const reopen = page.getByRole("button", { name: /^reopen$/i }).first();
-    await expect(reopen, "step 4: a revised asset should offer Reopen").toBeVisible();
-    await reopen.click();
-    await expect(async () => {
-      await page.reload({ waitUntil: "domcontentloaded" });
-      await expect(
-        page.getByRole("button", { name: /request revision/i }).first(),
-        "step 4: the asset should be back under review after reopening",
-      ).toBeVisible();
-    }).toPass({ timeout: 30_000, intervals: [2_000] });
+    // --- repeatable without a restore ---
+    // `isActionable` is `!/approved|archived|live|sent|deployed/`, so an asset in
+    // `revision_requested` STAYS actionable and keeps offering "Request
+    // revision". The nightly run therefore re-revises the same asset instead of
+    // consuming a fresh one each night, and needs no undo.
+    //
+    // Not an oversight that there is no restore: `Reopen` only renders for
+    // approved/archived assets, so there is no UI path back from
+    // `revision_requested` — and inventing one via a direct DB write would test
+    // something the product cannot do.
+    await expect(
+      page.getByRole("button", { name: /request revision/i }).first(),
+      "step 4: a revised asset must stay actionable, or the nightly run consumes one asset per night",
+    ).toBeVisible();
   });
 
   test("step 5: the smoke run sent nothing outbound", async ({ page, context }) => {
