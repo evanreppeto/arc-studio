@@ -107,7 +107,14 @@ function toRow(item: CampaignWorkspaceListItem): CampaignRow {
 export default async function CampaignsPage() {
   const ctx = await getCurrentWorkspaceContext();
   const [list, storedPersonaOptions] = await Promise.all([
-    getCampaignWorkspaceList(undefined, "Arc", ctx.orgId).catch(() => ({ status: "unavailable" } as const)),
+    // Keep the reason. This used to be `.catch(() => ({ status: "unavailable" }))`,
+    // which discarded the error entirely — and since the read-model already
+    // catches internally and returns its own message, the only thing this
+    // wrapper ever did was throw information away.
+    getCampaignWorkspaceList(undefined, "Arc", ctx.orgId).catch((error: unknown) => ({
+      status: "unavailable" as const,
+      message: error instanceof Error ? error.message : "Campaign workspace is unavailable.",
+    })),
     getOrgPersonaOptions(ctx.orgId).catch(() => []),
   ]);
   const demoPersonaOptions = personasForIndustry(canonicalIndustryKey(process.env.ARC_DEMO_INDUSTRY))
@@ -117,6 +124,18 @@ export default async function CampaignsPage() {
     : isDemoDataEnabled()
       ? demoPersonaOptions
       : [];
+  // Three states, not two. A failed load and an empty workspace used to render
+  // identically — the board showed "0 packages" whether the query returned
+  // nothing or blew up, so a broken campaigns read looked exactly like a new
+  // tenant. That is how a real prod failure went unnoticed while the twice-daily
+  // guardrail stayed green (BSR-542).
+  const loadError = list.status === "unavailable" ? (list.message ?? "Campaign workspace is unavailable.") : null;
+  if (loadError) {
+    // Reaches Vercel runtime logs and, via the Sentry Next.js integration's
+    // console capture, the error tracker. Deliberately noisy: an operator
+    // staring at an empty board deserves to find something when they go looking.
+    console.error(`[campaigns] read failed for org ${ctx.orgId}: ${loadError}`);
+  }
   const rows = list.status === "live" ? list.campaigns.map(toRow) : [];
 
   // Two different facts, said as two different things. They used to be one claim
@@ -146,5 +165,5 @@ export default async function CampaignsPage() {
   ].filter(Boolean);
   const arcNote = parts.length > 0 ? parts.join(" · ") : "Arc drafts approval-gated packages here as opportunities come in";
 
-  return <CampaignsBoard rows={rows} arcNote={arcNote} personaOptions={personaOptions} />;
+  return <CampaignsBoard rows={rows} arcNote={arcNote} personaOptions={personaOptions} loadError={loadError} />;
 }

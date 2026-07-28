@@ -98,11 +98,19 @@ export function CampaignsBoard({
   rows,
   arcNote,
   personaOptions,
+  loadError = null,
 }: {
   rows: CampaignRow[];
   arcNote: string;
   /** The org's own personas for the New-campaign picker. */
   personaOptions?: { key: string; label: string }[];
+  /**
+   * Why the list is empty, when it is empty because the read FAILED rather than
+   * because the workspace has no campaigns. Those two must never render the same
+   * — an empty board that is actually a broken query is how a prod failure hid
+   * behind a green guardrail (BSR-542).
+   */
+  loadError?: string | null;
 }) {
   const [tab, setTab] = useState("all");
   const [q, setQ] = useState("");
@@ -263,7 +271,19 @@ export function CampaignsBoard({
           <tbody>
             {visible.length === 0 ? (
               <tr className="emptyrow">
-                <td colSpan={6}>No campaigns match this view.</td>
+                {/* "Couldn't load" and "nothing here yet" are different facts and
+                    must read differently. Saying "No campaigns" over a failed
+                    query tells an operator the workspace is empty when it isn't. */}
+                <td colSpan={6}>
+                  {loadError ? (
+                    <>
+                      <strong>Couldn’t load campaigns.</strong> This is a failure, not an empty workspace — campaigns may exist.
+                      <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
+                    </>
+                  ) : (
+                    "No campaigns match this view."
+                  )}
+                </td>
               </tr>
             ) : (
               visible.map((r) => (
