@@ -1,5 +1,6 @@
 import { getRecentActivity, type ActivityEntry, type ActivityTone } from "@/lib/activity/read-model";
 import { getAnalyticsOverview, normalizeWindow } from "@/lib/analytics/overview";
+import { unavailable } from "@/lib/observability/unavailable";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getOpportunityConversion } from "@/lib/performance/opportunity-conversion";
 import { getPerformanceReadModel } from "@/lib/performance/read-model";
@@ -35,9 +36,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const range = normalizeWindow((await searchParams).range);
   const [overview, activity, performance, conversion] = await Promise.all([
     getAnalyticsOverview(ctx.orgId, range).catch(() => null),
-    getRecentActivity({}, undefined, ctx.orgId).catch(() => ({ status: "unavailable" }) as const),
-    getPerformanceReadModel(undefined, undefined, ctx.orgId).catch(() => ({ status: "unavailable" }) as const),
-    getOpportunityConversion(ctx.orgId).catch(() => ({ status: "unavailable" }) as const),
+    getRecentActivity({}, undefined, ctx.orgId).catch(unavailable("analytics.activity", ctx.orgId)),
+    getPerformanceReadModel(undefined, undefined, ctx.orgId).catch(unavailable("analytics.performance", ctx.orgId)),
+    getOpportunityConversion(ctx.orgId).catch(unavailable("analytics.conversion", ctx.orgId)),
   ]);
 
   const campaignRows = performance.status === "live" ? (performance.campaignRows ?? []) : [];
