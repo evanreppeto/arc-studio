@@ -823,6 +823,45 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                 </div>
               </div>
 
+              {/* Who was passed over, and why. The brief above says who this
+                  targets; without this the operator can only trust the targeting
+                  decision rather than check it. Empty is a legitimate state — a
+                  campaign can have one sensible audience — so this says so
+                  plainly instead of implying no alternatives existed. */}
+              <div className="csec">
+                <h3 className="csh">Audiences considered <span className="est">Targeting</span></h3>
+                <div className="card">
+                  {campaign.consideredAudiences.length > 0 ? (
+                    <div className="brief">
+                      {campaign.consideredAudiences.map((entry) => (
+                        <div className="briefrow" key={entry.label}>
+                          <div className="bk">
+                            {entry.label}
+                            {entry.sizeEstimate !== undefined && (
+                              <span className="cmuted"> · ~{entry.sizeEstimate.toLocaleString("en-US")}</span>
+                            )}
+                          </div>
+                          <div className="bv">Not chosen — {entry.reason}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rbody cmuted">
+                      No alternative audiences were recorded for this campaign.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {campaign.handoffNote && (
+                <div className="csec">
+                  <h3 className="csh">Handoff note <span className="est">For the person continuing offline</span></h3>
+                  <div className="card">
+                    <p className="rbody">{campaign.handoffNote}</p>
+                  </div>
+                </div>
+              )}
+
               <div className="csec">
                 <h3 className="csh">Why Arc built this <span className="est">Arc reasoning</span></h3>
                 <div className="card">

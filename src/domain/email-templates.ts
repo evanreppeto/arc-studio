@@ -86,6 +86,14 @@ export function renderAuthEmail(input: AuthEmailInput): { html: string; text: st
     ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td valign="middle"><img src="${escapeHtml(input.logoUrl)}" alt="" width="28" height="28" style="width:28px;height:28px;display:block;border-radius:6px" /></td><td valign="middle" style="padding-left:10px;font-family:${sans};font-size:15px;font-weight:600;letter-spacing:0.01em;color:${textPrimary}">${escapeHtml(appName)}</td></tr></table>`
     : `<span style="font-family:${sans};font-size:15px;font-weight:600;color:${textPrimary}">${escapeHtml(appName)}</span>`;
 
+  // Footer sign-off: the mark again, small and muted, above the legal note.
+  // An auth email that only carries the brand at the very top reads as generic
+  // by the time the reader reaches the bottom — which is exactly where they
+  // decide whether a link asking for their password is legitimate.
+  const signOff = input.logoUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 10px"><tr><td valign="middle"><img src="${escapeHtml(input.logoUrl)}" alt="" width="18" height="18" style="width:18px;height:18px;display:block;border-radius:4px;opacity:0.9" /></td><td valign="middle" style="padding-left:8px;font-family:${sans};font-size:12.5px;font-weight:600;color:${textSecondary}">${escapeHtml(appName)}</td></tr></table>`
+    : `<p style="margin:0 0 10px;font-family:${sans};font-size:12.5px;font-weight:600;color:${textSecondary}">${escapeHtml(appName)}</p>`;
+
   const paragraphs = bodyBlocks
     .map(
       (block) =>
@@ -104,7 +112,7 @@ export function renderAuthEmail(input: AuthEmailInput): { html: string; text: st
   // Copy/paste fallback for clients that strip or mangle the button.
   const fallback = `<p style="margin:22px 0 0;font-family:${sans};font-size:12.5px;line-height:1.55;color:${textMuted}">Or paste this link into your browser:<br /><a href="${escapeHtml(cta.url)}" style="color:${accent};text-decoration:underline;word-break:break-all">${escapeHtml(cta.url)}</a></p>`;
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="color-scheme" content="dark light" /><meta name="supported-color-schemes" content="dark light" /></head>
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="color-scheme" content="dark" /><meta name="supported-color-schemes" content="dark" /></head>
 <body style="margin:0;padding:0;background:${canvas};font-family:${sans}">
 ${preheaderBlock}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${canvas}" style="background:${canvas}"><tr><td align="center" style="padding:32px 20px">
@@ -119,6 +127,7 @@ ${fallback}
 </td></tr>
 <tr><td style="padding:26px 32px 28px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-top:1px solid ${hairline};padding-top:16px">
+${signOff}
 <p style="margin:0;font-family:${sans};font-size:12px;line-height:1.55;color:${textMuted}">${escapeHtml(footerNote)}</p>
 </td></tr></table>
 </td></tr>
