@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { entityTypeFromCrmObjectKey } from "@/domain";
+import { entityTypeFromCrmObjectKey, type CustomFieldObjectKey } from "@/domain";
+import { getCustomFieldsForRecord } from "@/lib/custom-fields/values";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getCrmRecordData, type CrmObjectKey } from "@/lib/crm/read-model";
 import { getRecordNotes, getRecordTasks, getRecordTimeline } from "@/lib/interactions/read-model";
@@ -75,7 +76,17 @@ export default async function CrmRecordPage({
 
   const personaOptions = await getOrgPersonaOptions().catch(() => []);
 
+  // The tenant's own custom fields for this object, with this record's values.
+  // Degrades to empty on its own: a record must still render if the field layer
+  // is unavailable (or its migration hasn't been applied yet).
+  const customFields = ctxForLabel?.orgId
+    ? await getCustomFieldsForRecord(ctxForLabel.orgId, objectKey as CustomFieldObjectKey, id).catch(
+        () => [],
+      )
+    : [];
+
   return <RecordView
       crmLabel={crmLabel}
+      customFields={customFields}
       record={record} activity={activity} personaOptions={personaOptions} />;
 }

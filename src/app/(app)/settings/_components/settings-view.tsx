@@ -6,6 +6,9 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { SettingsTeamInvite, SettingsTeamMember, SettingsTeamView, WorkspaceActivityEntry } from "@/lib/auth/team-view";
 import type { WaitlistView } from "@/lib/waitlist/read-model";
 import type { HealthConsoleView } from "@/lib/observability/health-console";
+import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
+
+import { CustomFieldsPanel } from "./custom-fields-panel";
 import type { LoopState } from "@/lib/observability/health-grading";
 import { WORKSPACE_ROLES } from "@/lib/auth/workspace-roles";
 import type { SettingsWorkspace, SettingsWorkspacesView } from "@/lib/auth/workspaces-view";
@@ -98,6 +101,7 @@ const Ic = ({ d }: { d: string }) => <svg viewBox="0 0 24 24" dangerouslySetInne
 const NAVGROUPS = [
   { g: "WORKSPACE", items: [["overview", "Overview"], ["general", "Organization & brand"], ["appearance", "Appearance"], ["team", "Team"], ["workspaces", "Workspaces"]] },
   { g: "ARC", items: [["connections", "Connections"]] },
+  { g: "RECORDS", items: [["fields", "Custom fields"]] },
   { g: "ACCOUNT", items: [["account", "Account"], ["usage", "Usage & billing"]] },
   { g: "ADVANCED", items: [["media", "Media models"], ["system", "System status"]] },
 ] as const;
@@ -563,7 +567,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null }) {
+export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, customFields = [], crmObjectLabels }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string> }) {
   const [cur, setCur] = useState("overview");
   // Health and the waitlist are platform-level, not workspace-level: the server
   // sends null unless the viewer is a platform admin, so the group — and every
@@ -755,6 +759,15 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         : "Idle";
 
   const sections: Record<string, ReactNode> = {
+    fields: (
+      <>
+        <Head
+          t="Custom fields"
+          d="Track what the built-in fields don't cover. Fields you add here appear on the record, in the add and edit forms, and in what Arc reads when it drafts."
+        />
+        <CustomFieldsPanel definitions={customFields} objectLabels={crmObjectLabels} />
+      </>
+    ),
     health: health ? (
       <>
         <Head
