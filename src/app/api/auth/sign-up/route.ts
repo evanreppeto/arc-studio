@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { getAuthMode } from "@/lib/auth/auth-mode";
+import { getAuthMode, isSelfServeSignupOpen } from "@/lib/auth/auth-mode";
 import { getSafeOperatorReturnPath } from "@/lib/auth/operator-shared";
+import { lookupWorkspaceInviteByCode } from "@/lib/auth/workspace-invites";
 import { authedRedirectLocation } from "@/lib/auth/post-auth-redirect";
 import { authEmailRedirectOrigin } from "@/lib/auth/email-redirect";
 import {
@@ -48,6 +49,25 @@ export async function POST(request: Request) {
       new URL(`/sign-up?error=${signUpIntent.error}&from=${encodeURIComponent(from)}`, origin),
       { status: 303 },
     );
+  }
+
+  // Invite-only, enforced HERE. isSelfServeSignupOpen() was consulted by three
+  // pages and by nothing on this route, so closing sign-up hid the form while
+  // leaving the endpoint that creates accounts and workspaces open to anyone
+  // willing to POST to it. A gate that only the UI honours is not a gate.
+  //
+  // An invite is what makes a closed sign-up legitimate, so require a real one:
+  // active, unexpired, unused. /accept-invite posts the code it was opened with,
+  // which is the only path that should still work.
+  if (!isSelfServeSignupOpen()) {
+    const inviteCode = String(form.get("inviteCode") ?? "").trim();
+    const invite = inviteCode ? await lookupWorkspaceInviteByCode(inviteCode) : { ok: false as const, reason: "not_found" as const };
+    if (!invite.ok) {
+      return NextResponse.redirect(
+        new URL(`/sign-up?error=invite_required&from=${encodeURIComponent(from)}`, origin),
+        { status: 303 },
+      );
+    }
   }
 
   const supabase = await createSupabaseAuthServerClient();
