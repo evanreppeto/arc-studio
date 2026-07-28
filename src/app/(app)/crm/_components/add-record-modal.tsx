@@ -6,6 +6,7 @@ import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel } from "@/domain";
 
 import { Modal } from "../../_components/modal";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
+import type { CustomFieldDefinition } from "@/domain";
 
 export type LinkOption = { type: string; id: string; label: string };
 export type PersonaOption = { key: string; label: string };
@@ -21,6 +22,8 @@ export type AddRecordValue = {
   /** Parent record link (leads → company/contact/property; outcomes → job/lead). */
   parentType?: string;
   parentId?: string;
+  /** Tenant-defined custom fields, keyed by field key (BSR-493). */
+  customFields?: Record<string, unknown>;
 };
 
 type FieldConfig = {
@@ -92,6 +95,7 @@ export function AddRecordModal({
   singular,
   linkOptions = [],
   personaOptions,
+  customFieldDefs = [],
   onClose,
   onSubmit,
 }: {
@@ -102,11 +106,19 @@ export function AddRecordModal({
   linkOptions?: LinkOption[];
   /** The org's own personas. Falls back to the BSR demo set when not provided. */
   personaOptions?: PersonaOption[];
+  /**
+   * This object's custom field definitions. Collected at creation so a field the
+   * tenant marked required is satisfied up front rather than leaving a record
+   * that violates its own schema until someone opens it.
+   */
+  customFieldDefs?: CustomFieldDefinition[];
   onClose: () => void;
   /** Returns the outcome so the modal can surface an error and stay open on failure. */
   onSubmit: (value: AddRecordValue) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const cfg = FORM[objectKey];
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
+  const setCustom = (key: string, value: unknown) => setCustomValues((v) => ({ ...v, [key]: value }));
   const personaChoices =
     personaOptions?.length ? personaOptions : OFFICIAL_PERSONA_MAPPINGS.map((key) => ({ key, label: personaLabel(key) }));
   const [name, setName] = useState("");
@@ -146,6 +158,7 @@ export function AddRecordModal({
       postalCode: postalCode.trim() || undefined,
       parentType: parentType || undefined,
       parentId: parentId || undefined,
+      customFields: customFieldDefs.length > 0 ? customValues : undefined,
     });
     if (result.ok) {
       onClose();
@@ -260,6 +273,63 @@ export function AddRecordModal({
             </select>
           </label>
         </div>
+
+        {customFieldDefs.map((d) => (
+          <label className="mfield" key={d.id}>
+            <span className="mlabel">
+              {d.label} {!d.required && <span className="mopt">optional</span>}
+            </span>
+            {d.fieldType === "boolean" ? (
+              <select
+                value={customValues[d.key] === true ? "true" : customValues[d.key] === false ? "false" : ""}
+                onChange={(e) =>
+                  setCustom(d.key, e.target.value === "" ? null : e.target.value === "true")
+                }
+              >
+                <option value="">—</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            ) : d.fieldType === "select" ? (
+              <select value={String(customValues[d.key] ?? "")} onChange={(e) => setCustom(d.key, e.target.value)}>
+                <option value="">—</option>
+                {d.options.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : d.fieldType === "multi_select" ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {d.options.map((o) => {
+                  const sel = Array.isArray(customValues[d.key]) ? (customValues[d.key] as string[]) : [];
+                  return (
+                    <label key={o.value} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={sel.includes(o.value)}
+                        onChange={(e) =>
+                          setCustom(d.key, e.target.checked ? [...sel, o.value] : sel.filter((v) => v !== o.value))
+                        }
+                      />
+                      {o.label}
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <input
+                // Not type="number" for number/currency: the domain layer strips
+                // "$" and thousands separators, which a number input would drop.
+                type={d.fieldType === "date" ? "date" : d.fieldType === "url" ? "url" : "text"}
+                inputMode={d.fieldType === "number" || d.fieldType === "currency" ? "decimal" : undefined}
+                value={String(customValues[d.key] ?? "")}
+                onChange={(e) => setCustom(d.key, e.target.value)}
+                placeholder={d.helpText ?? undefined}
+              />
+            )}
+          </label>
+        ))}
 
         {error && <div className="mError">{error}</div>}
       </form>

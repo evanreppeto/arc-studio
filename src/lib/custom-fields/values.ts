@@ -222,3 +222,34 @@ export async function findRecordIdsByCustomField(
   }
   return ids;
 }
+
+/**
+ * Validate custom field values WITHOUT writing them.
+ *
+ * Record creation needs this: the values must be checked before the record row
+ * is inserted, or a rejected value leaves a created record missing the fields
+ * its own tenant marked required. `createCrmRecord` already front-loads the
+ * object's DB constraints for exactly this reason — this is the same guard for
+ * the tenant-defined half of the schema.
+ */
+export async function validateCustomFieldValues(
+  orgId: string,
+  objectKey: CustomFieldObjectKey,
+  raw: Record<string, unknown>,
+  opts: { client?: SupabaseClient } = {},
+): Promise<{ ok: true } | { ok: false; error: string; fieldKey?: string }> {
+  const client = opts.client ?? getSupabaseAdminClient();
+  const definitions = await listFieldDefinitions(orgId, objectKey, { client });
+
+  for (const definition of definitions) {
+    // A required field must be satisfied even when the form omitted it, or
+    // "required" would only apply to callers that happened to send the key.
+    const supplied = Object.prototype.hasOwnProperty.call(raw, definition.key);
+    if (!supplied && !definition.required) continue;
+
+    const coerced = coerceCustomFieldValue(definition, supplied ? raw[definition.key] : null);
+    if (!coerced.ok) return { ok: false, error: coerced.error, fieldKey: definition.key };
+  }
+
+  return { ok: true };
+}

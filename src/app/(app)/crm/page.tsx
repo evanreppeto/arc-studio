@@ -10,6 +10,12 @@ import { getAppSettings } from "@/lib/settings/store";
 
 import { type KpiCell } from "../_components/kpi-strip";
 import { CrmBoard, type CrmObjectVM, type CrmRowVM } from "./_components/crm-board";
+import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
+import { listFieldDefinitions } from "@/lib/custom-fields/definitions";
+import { getCustomFieldsForRecords } from "@/lib/custom-fields/values";
+
+/** How many custom fields become list columns. See the note at the call site. */
+const MAX_CUSTOM_COLUMNS = 2;
 
 export const metadata = { title: "CRM — Arc Studio" };
 
@@ -177,5 +183,44 @@ export default async function CrmPage() {
     };
   });
 
-  return <CrmBoard objects={objects} rowsByKey={rowsByKey} defaultKey="contacts" kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} />;
+  // The tenant's custom fields: values onto each row (searchable + displayable)
+  // and the column set per object. Capped at MAX_CUSTOM_COLUMNS columns because
+  // the table's built-in columns are fixed-width; every field stays searchable
+  // and is shown in full on the record page, so nothing is hidden outright.
+  const customColumnsByKey: Record<string, { key: string; label: string }[]> = {};
+  const customFieldDefsByKey: Record<string, CustomFieldDefinition[]> = {};
+  if (orgId) {
+    await Promise.all(
+      OBJECT_KEYS.map(async (key) => {
+        try {
+          const definitions = await listFieldDefinitions(orgId, key as CustomFieldObjectKey);
+          if (definitions.length === 0) return;
+          customFieldDefsByKey[key] = definitions;
+          customColumnsByKey[key] = definitions
+            .slice(0, MAX_CUSTOM_COLUMNS)
+            .map((d) => ({ key: d.key, label: d.label }));
+
+          const rows = rowsByKey[key] ?? [];
+          if (rows.length === 0) return;
+          const byRecord = await getCustomFieldsForRecords(
+            orgId,
+            key as CustomFieldObjectKey,
+            rows.map((r) => r.id),
+          );
+          for (const row of rows) {
+            const entries = byRecord.get(row.id);
+            if (!entries) continue;
+            const map: Record<string, string> = {};
+            for (const e of entries) if (e.display) map[e.definition.key] = e.display;
+            if (Object.keys(map).length > 0) row.customFields = map;
+          }
+        } catch {
+          // A missing/unavailable field layer must never take the CRM board
+          // down — the board is the product's front door.
+        }
+      }),
+    );
+  }
+
+  return <CrmBoard objects={objects} rowsByKey={rowsByKey} defaultKey="contacts" kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} customColumnsByKey={customColumnsByKey} customFieldDefsByKey={customFieldDefsByKey} />;
 }
