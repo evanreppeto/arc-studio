@@ -52,7 +52,7 @@ function requireCredentials() {
 test.describe("deployed app guardrails", () => {
   // Guardrails only run against a DEPLOYED target (E2E_BASE_URL). Skip them in a
   // default local run (e.g. CI's local screens job), which has no seeded data or
-  // auth — `pnpm test:e2e:prod` sets E2E_BASE_URL.
+  // auth — `pnpm test:e2e:guardrails:prod` sets E2E_BASE_URL.
   test.beforeEach(() => {
     test.skip(!process.env.E2E_BASE_URL, "set E2E_BASE_URL to run guardrails against a deploy");
   });
