@@ -98,7 +98,9 @@ export async function runArcPartnerCampaign(
   const campaignId = await insertOne(client, "campaigns", withOrg({
     name: `${draft.campaignName} ${runId}`,
     persona: request.persona,
-    campaign_theme: deriveCampaignTheme(request.campaignTheme, request.restorationFocus),
+    // `campaigns_campaign_theme_length` rejects an empty string, so fall back to
+    // a neutral theme the way createCampaignShell/createCampaignFromOpportunity do.
+    campaign_theme: deriveCampaignTheme(request.campaignTheme, request.restorationFocus) || "Campaign growth",
     restoration_focus: normalizeRestorationFocus(request.restorationFocus),
     status: draft.guardrails.approvalStatus === "needs_compliance" ? "blocked" : "pending_approval",
     company_id: companyId,
@@ -139,7 +141,9 @@ export async function runArcPartnerCampaign(
     hyper_persona_summary: draft.personaSummary,
     relationship_stage: "partner_growth",
     value_tier: request.lead.partnerScore >= 70 ? "high" : "medium",
-    dominant_loss_pattern: request.restorationFocus,
+    // Null rather than a guessed loss pattern: a workspace that never named one
+    // should have no dominant pattern on its persona snapshot, not a water term.
+    dominant_loss_pattern: request.restorationFocus ?? null,
     preferred_channel: request.channel === "sms" ? "sms_then_phone" : "email_then_phone",
     message_posture: "simple_handoff_partner_protection",
     recommended_offer: draft.offerSummary,

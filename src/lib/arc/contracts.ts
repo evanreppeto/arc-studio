@@ -17,10 +17,12 @@ export const arcPartnerCampaignRequestSchema = z.object({
   channel: z.enum(["email", "sms", "call_script", "one_pager"]).default("email"),
   /** Industry-neutral campaign theme (what the campaign is about) — free text. */
   campaignTheme: optionalText,
-  /** Legacy restoration focus. No longer enum-constrained so non-restoration
-   *  workspaces aren't forced to pick a water/fire term; it seeds `campaignTheme`
-   *  when no explicit theme is given. Default kept for back-compat with BSR. */
-  restorationFocus: z.string().trim().min(1).default("water_backup"),
+  /** Legacy restoration focus. No longer enum-constrained, and deliberately has
+   *  NO default: it used to default to "water_backup", which silently stamped a
+   *  restoration term onto every campaign run by a law firm, dental practice, or
+   *  agency that never mentioned water. Omitting it now yields a neutral theme
+   *  instead of a wrong one. It still seeds `campaignTheme` when supplied. */
+  restorationFocus: optionalText,
   company: z
     .object({
       name: z.string().trim().min(1).default("Arc Plumbing Partner"),

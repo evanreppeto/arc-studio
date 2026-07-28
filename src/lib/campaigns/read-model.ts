@@ -250,7 +250,7 @@ export type CampaignWorkspaceMeta = {
   id: string;
   name: string;
   persona: string;
-  restorationFocus: string;
+  campaignTheme: string;
   status: string;
   objective: string;
   audienceSummary: string;
@@ -743,7 +743,7 @@ type DemoCampaign = {
   id: string;
   name: string;
   persona: string;
-  restorationFocus: string;
+  campaignTheme: string;
   status: string;
   lifecycle: CampaignLaunchState["lifecycle"];
   launchLocked: boolean;
@@ -923,7 +923,7 @@ function buildDemoCampaignWorkspaceDetail(campaign: DemoCampaign, agentName: str
     toolsUsed: campaign.toolsUsed,
     promptInputs: [
       { label: "Persona", value: campaign.persona },
-      { label: "Theme", value: campaign.restorationFocus },
+      { label: "Theme", value: campaign.campaignTheme },
       { label: "Segment", value: "Mid-market accounts — Team & Business plans" },
       { label: "Offer", value: campaign.offerSummary },
     ],
@@ -1045,7 +1045,7 @@ function buildDemoCampaignWorkspaceDetail(campaign: DemoCampaign, agentName: str
       id: campaign.id,
       name: campaign.name,
       persona: campaign.persona,
-      restorationFocus: campaign.restorationFocus,
+      campaignTheme: campaign.campaignTheme,
       status: campaign.status,
       objective: campaign.objective,
       audienceSummary: campaign.audienceSummary,
@@ -1128,7 +1128,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
       id,
       name,
       persona: target.name,
-      restorationFocus: theme,
+      campaignTheme: theme,
       status,
       lifecycle,
       launchLocked: lifecycle !== "Live",
@@ -1271,7 +1271,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       id: "demo-emergency-water-response-2026",
       name: "Emergency Water Response 2026",
       persona: "Homeowner Emergency",
-      restorationFocus: "Water Mitigation",
+      campaignTheme: "Water Mitigation",
       status: "In Review",
       lifecycle: "In review",
       launchLocked: true,
@@ -1398,7 +1398,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       id: "demo-burst-pipe-rapid-response",
       name: "Burst Pipe Rapid Response",
       persona: "Homeowner Emergency",
-      restorationFocus: "Water Mitigation",
+      campaignTheme: "Water Mitigation",
       status: "In Review",
       lifecycle: "In review",
       launchLocked: true,
@@ -1471,7 +1471,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       id: "demo-commercial-water-mitigation",
       name: "Commercial Water Mitigation",
       persona: "Property Manager",
-      restorationFocus: "Water Mitigation",
+      campaignTheme: "Water Mitigation",
       status: "Ready",
       lifecycle: "Ready",
       launchLocked: true,
@@ -1553,7 +1553,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       id: "demo-spring-storm-prep",
       name: "Spring Storm Prep",
       persona: "Homeowner Preventative",
-      restorationFocus: "Storm Readiness",
+      campaignTheme: "Storm Readiness",
       status: "Live",
       lifecycle: "Live",
       launchLocked: false,
@@ -1618,7 +1618,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       id: "demo-mold-remediation-awareness",
       name: "Mold Remediation Awareness",
       persona: "Homeowner Rebuild",
-      restorationFocus: "Mold Remediation",
+      campaignTheme: "Mold Remediation",
       status: "Live",
       lifecycle: "Live",
       launchLocked: false,
@@ -1683,7 +1683,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       id: "demo-insurance-partner-referral",
       name: "Insurance Partner Referral",
       persona: "Insurance Agent",
-      restorationFocus: "Partner Development",
+      campaignTheme: "Partner Development",
       status: "Ready",
       lifecycle: "Ready",
       launchLocked: true,
@@ -1751,7 +1751,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       id: "demo-wildfire-smoke-cleanup",
       name: "Wildfire Smoke Cleanup",
       persona: "Homeowner Rebuild",
-      restorationFocus: "Smoke & Odor",
+      campaignTheme: "Smoke & Odor",
       status: "Archived",
       lifecycle: "In review",
       launchLocked: true,
@@ -1912,7 +1912,7 @@ export async function getCampaignWorkspaceDetail(
         id: campaign.id,
         name: cleanCampaignName(campaign.name),
         persona: humanize(campaign.persona),
-        restorationFocus: campaign.campaign_theme?.trim() || humanize(campaign.restoration_focus ?? ""),
+        campaignTheme: campaign.campaign_theme?.trim() || humanize(campaign.restoration_focus ?? ""),
         status: statusLabel(campaign.status),
         objective: campaign.objective ?? "No objective captured yet.",
         audienceSummary: campaign.audience_summary ?? "Audience has not been summarized yet.",

@@ -1032,7 +1032,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
               </div>
               <div className="gl">
                 <span className="gk">Theme</span>
-                <span className="gv">{campaign.restorationFocus || "—"}</span>
+                <span className="gv">{campaign.campaignTheme || "—"}</span>
               </div>
             </div>
           </div>
