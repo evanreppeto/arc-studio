@@ -24,6 +24,29 @@ Migrations are timestamped SQL files in [`supabase/migrations/`](supabase/migrat
 
 Apply any new migration to the **production** Supabase DB **before or together with** merging the code that depends on it. Merging code that reads a column/table the prod DB doesn't have yet causes schema drift and breaks prod.
 
+### Verifying the chain still applies from empty
+
+```bash
+pnpm db:verify-chain
+```
+
+Drops a local Postgres and replays every migration from scratch, then asserts the
+result is a real schema (ledger complete, tables present, contract invariants
+intact). Needs Docker. Run it after adding a migration.
+
+This matters because the chain once **could not** apply to a fresh database:
+Supabase keys its ledger on the 14-digit version prefix, so two files sharing a
+prefix meant the second silently never ran — and nothing errored.
+`supabase/migrations-legacy/` still contains four such duplicate pairs; the
+rebaseline into `00000000000000_baseline.sql` is what resolved it. Every future
+environment depends on this working — new staging, a self-hosted eval DB,
+disaster recovery, per-tenant databases.
+
+[`.github/workflows/migrations.yml`](.github/workflows/migrations.yml) runs it on
+every PR touching `supabase/migrations/`. That workflow is **path-filtered**, so
+do not add its `chain` job to the required status checks on `main` — a required
+check that never reports parks every unrelated PR forever.
+
 ## Post-deploy smoke check
 
 After a deploy, confirm the surfaces are healthy:
