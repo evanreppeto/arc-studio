@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { entityTypeFromCrmObjectKey, isAllowedPersona, parseNoteInput, parseTaskInput } from "@/domain";
+import { entityTypeFromCrmObjectKey, isAllowedPersona, parseNoteInput, parseTaskInput, type CustomFieldObjectKey } from "@/domain";
+import { saveCustomFieldValues } from "@/lib/custom-fields/values";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { updateCrmRecordFields } from "@/lib/crm/create";
@@ -148,5 +149,36 @@ export async function setRecordNotePinned(
   const result = await setNotePinned(noteId, isPinned, await currentScope());
   if (!result.ok) return { ok: false, error: result.error };
   revalidatePath(`/crm/${objectKey}/${recordId}`);
+  return { ok: true, persisted: true };
+}
+
+/**
+ * Save this record's custom field values (BSR-493).
+ *
+ * Internal like notes and tasks — nothing here reaches the outside world — but
+ * still requireOperator()-gated and org-scoped from the session, never from the
+ * request. Validation lives in the domain layer and is all-or-nothing, so a bad
+ * value leaves the record untouched rather than half-updated.
+ */
+export async function saveRecordCustomFields(input: {
+  objectKey: string;
+  recordId: string;
+  values: Record<string, unknown>;
+}): Promise<WriteResult> {
+  await requireOperator();
+  if (!VALID_KEYS.has(input.objectKey)) return { ok: false, error: "Unknown record type." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const { orgId } = await currentScope();
+  const result = await saveCustomFieldValues(
+    orgId,
+    input.objectKey as CustomFieldObjectKey,
+    input.recordId,
+    input.values,
+  );
+
+  if (!result.ok) return { ok: false, error: result.error };
+
+  revalidatePath(`/crm/${input.objectKey}/${input.recordId}`);
   return { ok: true, persisted: true };
 }

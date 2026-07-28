@@ -1,6 +1,9 @@
 import { resolveAgentConnection } from "@/lib/agent/connection";
 import { getViewerAvatarUrl } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+import { CUSTOM_FIELD_OBJECT_KEYS, type CustomFieldObjectKey } from "@/domain";
+import { listAllFieldDefinitions } from "@/lib/custom-fields/definitions";
+import { getProductLanguage } from "@/lib/product-language";
 import { getSettingsTeamView } from "@/lib/auth/team-view";
 import { getSettingsWorkspacesView } from "@/lib/auth/workspaces-view";
 import { getSettingsUsageView } from "@/lib/ai-usage/settings-summary";
@@ -70,5 +73,15 @@ export default async function SettingsPage() {
   // Whether the deployment has a Google Cloud OAuth app configured — gates the
   // "Connect with Google" button on the reviews connector.
   const googleOAuthConfigured = isGoogleOAuthConfigured();
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} />;
+  // A tenant's own custom fields, plus its own word for each CRM object — the
+  // settings screen must not be the one place the product reverts to our
+  // internal vocabulary ("Properties" to a firm that calls them Matters).
+  const customFields = ctx?.orgId
+    ? await listAllFieldDefinitions(ctx.orgId, { includeArchived: true }).catch(() => [])
+    : [];
+  const language = getProductLanguage(settings.industry || businessProfile?.industry);
+  const crmObjectLabels = Object.fromEntries(
+    CUSTOM_FIELD_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
+  ) as Record<CustomFieldObjectKey, string>;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} customFields={customFields} crmObjectLabels={crmObjectLabels} />;
 }

@@ -9,6 +9,9 @@ import { type NoteEntry, type TaskEntry, type TimelineEntry } from "@/lib/intera
 
 import { addRecordNote, addRecordTask, completeRecordTask, reopenRecordTask, setRecordNotePinned, updateCrmRecord } from "../actions";
 import { EditRecordModal } from "./edit-record-modal";
+import type { CustomFieldEntry } from "@/lib/custom-fields/values";
+
+import { CustomFieldsSection } from "./custom-fields-section";
 
 export type RecordActivity = {
   timeline: TimelineEntry[];
@@ -188,9 +191,12 @@ export function RecordView({
   activity,
   personaOptions,
   crmLabel = "Relationships",
+  customFields = [],
 }: {
   record: CrmRecordData;
   activity: RecordActivity;
+  /** This workspace's own fields for this object, with this record's values. */
+  customFields?: CustomFieldEntry[];
   /** The org's own personas for the edit picker. */
   personaOptions?: { key: string; label: string }[];
   /**
@@ -417,6 +423,12 @@ export function RecordView({
                   ))}
                 </div>
               </div>
+
+              <CustomFieldsSection
+                entries={customFields}
+                objectKey={record.key}
+                recordId={record.id}
+              />
 
               {(record.nextBestAction || record.cta || record.messageAngle) && (
                 <div className="sec">
