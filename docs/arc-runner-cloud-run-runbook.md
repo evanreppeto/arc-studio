@@ -33,7 +33,10 @@ Capture the printed service URL. Confirm health:
 Redeploy the Vercel app so the env takes effect. Then verify the agent is wired:
 Settings -> Agent drawer shows "Runner endpoint" ✓, or run `pnpm diagnose:arc`.
 
-## 4. Database (prod = tegdgejiyxurgvgheshi, applied manually)
+## 4. Database (prod = qqbecyrhnowmooyjiztz "marketing-engine", applied manually)
+Vercel does not run migrations, so prod schema changes are a manual release step.
+The project IS reachable from the Supabase MCP, so `apply_migration` works — the
+SQL editor is no longer the only route.
 - Apply migration `supabase/migrations/20260618120000_product_tenancy_foundation.sql` to prod.
   (The second-brain features add no migration — they reuse existing tables.)
 - Onboard BSR: with `.env.local` pointed at PROD Supabase creds, run
