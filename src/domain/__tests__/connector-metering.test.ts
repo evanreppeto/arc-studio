@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_COST_RATES,
   DEFAULT_SPEND_CAP_CENTS,
+  MAX_WORKSPACE_SPEND_CAP_CENTS,
+  clampSpendCapCents,
   computeSpendDecision,
   describeConnectorCost,
   estimateConnectorCostCents,
@@ -145,5 +147,41 @@ describe("isMeteredTier + defaults", () => {
   });
   it("ships a sane default cap", () => {
     expect(DEFAULT_SPEND_CAP_CENTS).toBeGreaterThan(0);
+  });
+});
+
+// BSR-515. The workspace spend cap is operator-settable and, until this ceiling
+// existed, unbounded — a units mistake in the Settings field ("5000" meaning
+// dollars) authorised five figures of real provider spend with nothing to catch
+// it. The cap is the last thing between a runaway loop and our card.
+describe("platform spend ceiling", () => {
+  it("caps any proposed value at the platform ceiling", () => {
+    expect(clampSpendCapCents(MAX_WORKSPACE_SPEND_CAP_CENTS + 1)).toBe(MAX_WORKSPACE_SPEND_CAP_CENTS);
+    // The realistic mistake: dollars typed into a cents field.
+    expect(clampSpendCapCents(5_000 * 100 * 100)).toBe(MAX_WORKSPACE_SPEND_CAP_CENTS);
+  });
+
+  it("passes through values under the ceiling untouched", () => {
+    expect(clampSpendCapCents(DEFAULT_SPEND_CAP_CENTS)).toBe(DEFAULT_SPEND_CAP_CENTS);
+    expect(clampSpendCapCents(MAX_WORKSPACE_SPEND_CAP_CENTS)).toBe(MAX_WORKSPACE_SPEND_CAP_CENTS);
+  });
+
+  // Zero is a meaningful setting — it blocks all metered spend — so it must not
+  // be coerced into the default.
+  it("preserves a deliberate zero cap", () => {
+    expect(clampSpendCapCents(0)).toBe(0);
+  });
+
+  // Non-finite input is nonsense, never a real setting. For a spend guard the
+  // safe direction is closed (spend nothing), not open — Infinity must not be
+  // read as "authorise the maximum".
+  it("fails closed on nonsense input rather than authorising the ceiling", () => {
+    expect(clampSpendCapCents(-1)).toBe(0);
+    expect(clampSpendCapCents(Number.NaN)).toBe(0);
+    expect(clampSpendCapCents(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it("keeps the ceiling above the default so the default is always settable", () => {
+    expect(MAX_WORKSPACE_SPEND_CAP_CENTS).toBeGreaterThan(DEFAULT_SPEND_CAP_CENTS);
   });
 });

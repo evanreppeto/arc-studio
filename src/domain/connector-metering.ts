@@ -27,6 +27,33 @@ export const METERING_PRICING_VERSION = "2026-07-10";
  */
 export const DEFAULT_SPEND_CAP_CENTS = 5000;
 
+/**
+ * Hard platform ceiling on a per-workspace spend cap: $2,000/period.
+ *
+ * The workspace cap is operator-settable, and until this existed it had **no
+ * upper bound** — a typo in the Settings field ("5000" meaning dollars, or a
+ * stray zero) authorised five figures of real provider spend with nothing to
+ * catch it. The cap is the only thing standing between a runaway loop and our
+ * card, so it needs its own limit.
+ *
+ * Applied on WRITE and on READ. Read matters independently: a row stored before
+ * this ceiling existed, or written by any path that skips the setter, would
+ * otherwise keep authorising spend above it forever.
+ *
+ * Raising a workspace beyond this is deliberately not self-serve — it requires
+ * changing this constant, i.e. a code review.
+ */
+export const MAX_WORKSPACE_SPEND_CAP_CENTS = 200_000;
+
+/**
+ * Coerce any proposed/stored cap into the allowed range. Non-finite or negative
+ * input floors to 0 (a cap of zero is meaningful: it blocks all metered spend).
+ */
+export function clampSpendCapCents(cents: number): number {
+  if (!Number.isFinite(cents) || cents <= 0) return 0;
+  return Math.min(Math.round(cents), MAX_WORKSPACE_SPEND_CAP_CENTS);
+}
+
 /** Pricing for one metered connector. `centsPerUnit` is the billable rate. */
 export type ConnectorCostRate = {
   /** Estimated cost of a single billable unit, in cents. */
@@ -55,6 +82,39 @@ export const CONNECTOR_COST_RATES: Record<string, ConnectorCostRate> = {
   // image; video passes ~10 units per clip (see the generation call sites).
   "gemini-media": { centsPerUnit: 6, unitLabel: "image", disclosureUnits: 10 },
 };
+
+/** The metered connector that media generation runs on. */
+export const MEDIA_CONNECTOR = "gemini-media";
+
+/**
+ * Billable units per media job. One unit is one image; a video clip is priced at
+ * VIDEO units because it costs roughly that much more to render.
+ *
+ * These live here rather than at the call sites so the cost the Studio SHOWS and
+ * the cost the cap ENFORCES are the same number. They were previously duplicated
+ * literals in the two generation routes, which is exactly how a quoted price and
+ * a charged price drift apart.
+ */
+export const MEDIA_UNITS = { image: 1, video: 10 } as const;
+
+export type MediaJobKind = keyof typeof MEDIA_UNITS;
+
+/** Estimated cost in cents of one media job of the given kind. */
+export function estimateMediaJobCents(kind: MediaJobKind): number {
+  return estimateConnectorCostCents(MEDIA_CONNECTOR, MEDIA_UNITS[kind]);
+}
+
+/**
+ * Per-job cost labels for the Studio, in the tenant's terms (currency, not
+ * tokens or units). Empty when media isn't a priced connector.
+ */
+export function describeMediaJobCosts(): { image: string; video: string } | null {
+  if (!getConnectorCostRate(MEDIA_CONNECTOR)) return null;
+  return {
+    image: formatCents(estimateMediaJobCents("image")),
+    video: formatCents(estimateMediaJobCents("video")),
+  };
+}
 
 /** The pricing for a connector, or null when it is not a priced/metered connector. */
 export function getConnectorCostRate(connectorKey: string): ConnectorCostRate | null {
