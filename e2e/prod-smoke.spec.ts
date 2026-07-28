@@ -10,7 +10,9 @@ import { test, expect } from "@playwright/test";
  * are set — see e2e-guardrails.yml).
  *
  * Point it at prod with E2E_BASE_URL:
- *   E2E_BASE_URL=https://arc-studio.ai pnpm exec playwright test e2e/prod-smoke.spec.ts
+ *   pnpm test:e2e:smoke:prod
+ * or, for any other deployed target:
+ *   E2E_BASE_URL=https://some-deploy.example pnpm exec playwright test e2e/prod-smoke.spec.ts
  */
 
 test.describe("prod smoke", () => {

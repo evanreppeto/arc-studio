@@ -49,7 +49,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Guardrails against prod
-        run: pnpm test:e2e:prod
+        run: pnpm test:e2e:guardrails:prod
         env:
           E2E_EMAIL: ${{ secrets.PROD_E2E_EMAIL || 'owner@bsr.test' }}
           # No literal fallback — this signs in to production. Unset ⇒ the
