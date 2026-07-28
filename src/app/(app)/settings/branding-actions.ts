@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+import { setWorkspaceRowLogo } from "@/lib/auth/workspace-admin";
 import { uploadBrandingImage } from "@/lib/branding/images";
 import { setWorkspaceLogo } from "@/lib/branding/logo";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
@@ -59,6 +60,51 @@ export async function removeWorkspaceLogoAction(): Promise<BrandingResult> {
   }
   revalidatePath("/", "layout");
   revalidatePath("/brand");
+  return { ok: true, url: null };
+}
+
+/**
+ * Per-workspace logo, distinct from the org-scoped one above.
+ *
+ * `setWorkspaceLogo` writes business_profiles.logo_url — the brand record the
+ * creative renderer FETCHES to stamp on generated ads. That logo belongs to the
+ * organization and must not change just because one workspace under it wants a
+ * different picture in its rail. So this pair writes workspaces.logo_url, which
+ * is app chrome only and never reaches outbound.
+ *
+ * The workspaceId is explicit rather than taken from the active context: an
+ * owner editing another of their workspaces from the Settings list is the whole
+ * point. `setWorkspaceRowLogo` re-checks owner/admin on that workspace.
+ */
+export async function saveWorkspaceRowLogoAction(workspaceId: string, formData: FormData): Promise<BrandingResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect a workspace to upload a logo." };
+  const id = workspaceId?.trim();
+  if (!id) return { ok: false, error: "A workspace is required." };
+
+  const image = file(formData);
+  if (!image) return { ok: false, error: "Choose an image first." };
+
+  const uploaded = await uploadBrandingImage(`workspace/${id}`, image);
+  if (!uploaded.ok) return uploaded;
+
+  const saved = await setWorkspaceRowLogo(id, uploaded.url);
+  if (!saved.ok) return { ok: false, error: saved.message };
+
+  revalidatePath("/", "layout");
+  return { ok: true, url: uploaded.url };
+}
+
+export async function removeWorkspaceRowLogoAction(workspaceId: string): Promise<BrandingResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect a workspace first." };
+  const id = workspaceId?.trim();
+  if (!id) return { ok: false, error: "A workspace is required." };
+
+  const saved = await setWorkspaceRowLogo(id, null);
+  if (!saved.ok) return { ok: false, error: saved.message };
+
+  revalidatePath("/", "layout");
   return { ok: true, url: null };
 }
 

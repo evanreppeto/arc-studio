@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import type { User } from "@supabase/supabase-js";
 
+import { startTrialForOrg } from "@/lib/billing/trial";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured, type TypedSupabaseClient } from "@/lib/supabase/server";
 import { seedDefaultMediaFolders } from "@/lib/media-library/persistence";
@@ -303,6 +304,28 @@ async function createWorkspaceDefaults(
     { onConflict: "workspace_id,key" },
   );
 
+  // The `agents` row Arc is actually looked up by. Every enqueue path — chat
+  // (arc-chat/enqueue), opportunity scans and drafts (opportunities/enqueue),
+  // campaign revisions — resolves `agents` by (org_id, key) and REFUSES when
+  // there's no row: "Arc isn't connected to this workspace yet." Only the
+  // originally seeded tenant ever had one, so every workspace created through
+  // this path had an Arc that could not be given a single instruction.
+  //
+  // Distinct from arc_instances above, which is the per-workspace Arc identity;
+  // this is the org-scoped agent that agent_tasks.agent_id points at. The key
+  // must match DEFAULT_CONNECTION.agentKey in lib/agent/connection.ts.
+  await client.from("agents").upsert(
+    {
+      org_id: org.id,
+      key: "arc",
+      name: "Arc",
+      description: "Marketing operator. Drafts and prepares; never sends without approval.",
+      status: "ready",
+      default_approval_policy: "owner_required",
+    },
+    { onConflict: "org_id,key" },
+  );
+
   await client.from("business_profiles").upsert(
     {
       org_id: org.id,
@@ -317,6 +340,11 @@ async function createWorkspaceDefaults(
 
   await seedDefaultMediaFolders({ orgId: org.id, client });
   await seedDefaultPersonas({ orgId: org.id, client, industry });
+
+  // Start the free trial. Best-effort and non-renewing: a failure must not fail
+  // workspace creation, and a workspace with no trial dates is fully usable
+  // rather than locked out (see src/domain/trial.ts).
+  await startTrialForOrg({ orgId: org.id }, client);
 
   await client.from("audit_events").insert({
     org_id: org.id,

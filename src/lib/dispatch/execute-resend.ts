@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { buildResendEmailPayload, stampCampaignLinks, type ResendEmailPayload } from "@/domain";
 
+import { checkUsageAllowed } from "@/lib/billing/entitlements";
 import { recordConnectionUse } from "@/lib/connections/persistence";
 import { sendResendEmail } from "@/lib/connections/resend-client";
 import { readConnectorCredential } from "@/lib/connectors/credentials";
@@ -104,6 +105,18 @@ export async function executeResendDispatch(
   }
   if (!dispatch.approval_item_id) {
     return { ok: false, message: "Dispatch is not linked to an approval, so it can't be sent." };
+  }
+
+  // A lapsed trial makes the workspace read-only: outbound stops. Checked on
+  // `readOnly` only, NOT on being over the AI cap — an approved email costs no
+  // model spend, so refusing to deliver already-approved work because the agent
+  // used its allowance would punish the customer for the wrong thing.
+  const gate = await checkUsageAllowed(dispatch.org_id, client);
+  if (!gate.allowed && gate.reason === "trial_expired") {
+    return {
+      ok: false,
+      message: "This workspace's free trial has ended, so outbound is paused. Add a plan to resume sending — nothing has been lost.",
+    };
   }
 
   const { data: approval, error: approvalError } = await client

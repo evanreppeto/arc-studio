@@ -100,8 +100,13 @@ const TABS: Array<{
     description:
       "Outcomes flow back into the system — which angle, which persona, which asset — so every approval teaches Arc what your audience actually responds to.",
     bullets: [
-      "Attribution by campaign, channel, persona, and asset",
-      "Engagement signals feed straight back into scoring",
+      // Was "Attribution by campaign, channel, persona, and asset". Removed for
+      // the same reason it came off the pricing page: attribution depends on
+      // the engagement pipeline, which is inert on production (no Resend
+      // webhook configured, `journey_touchpoints` empty). Performance grouped
+      // by campaign/persona/asset IS real, so that's what this now claims.
+      "Performance grouped by campaign, channel, persona, and asset",
+      "Approvals and outcomes feed straight back into scoring",
       "Arc recommends the next iteration, you decide",
     ],
     shot: "/brand/landing/app/analytics.png",
@@ -152,7 +157,7 @@ export function ShowcaseTabs() {
   const tab = TABS.find((t) => t.key === active)!;
 
   return (
-    <section id="product" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
+    <section id="product" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
       <Reveal>
         <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
           One system, every surface of marketing
@@ -164,7 +169,7 @@ export function ShowcaseTabs() {
         </p>
       </Reveal>
 
-      <Reveal delay={0.1} className="mt-9">
+      <Reveal delay={0.1} className="mt-7 sm:mt-9">
         <div
           role="tablist"
           aria-label="Product areas"

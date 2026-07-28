@@ -24,6 +24,14 @@
       "port": 6041,
       "autoPort": true,
       "env": { "ARC_DEMO_DATA": "1", "ARC_AUTH_MODE": "open", "DEFAULT_ORG_SLUG": "meridian" }
+    },
+    {
+      "name": "arc-sandbox",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "--port", "6051"],
+      "port": 6051,
+      "autoPort": true,
+      "env": { "ARC_DEMO_DATA": "0", "ARC_SELF_SERVE_SIGNUP": "1" }
     }
   ]
 }

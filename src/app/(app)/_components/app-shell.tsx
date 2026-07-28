@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { derivedShortLabel, type BillingNotice } from "@/domain";
+import type { ArcRecentConversationVM } from "@/lib/arc-chat/read-model";
 import { getProductLanguage } from "@/lib/product-language";
 
 import { AccountMenu } from "./account-menu";
+import { BillingNoticeBar } from "./billing-notice";
 import { ComingSoonToasts } from "./coming-soon";
 import { CommandPalette, type CommandItem } from "./command-palette";
 import { NavProgress } from "./nav-progress";
@@ -24,24 +27,34 @@ function initials(name: string): string {
   );
 }
 
-const IconArc = <span className="nav-arc-icon" aria-hidden="true" />;
-const IconHome = <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>;
-const IconCampaigns = <svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>;
-const IconCrm = <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M4 20c0-3 2-5 5-5s5 2 5 5" /><path d="M16 6h5M16 10h5" /></svg>;
-const IconOpp = <svg viewBox="0 0 24 24"><path d="M12 3l2.5 5 5.5.8-4 4 1 5.5L12 21l-5-2.7 1-5.5-4-4 5.5-.8z" /></svg>;
-const IconAnalytics = <svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-5M12 16V8M16 16v-8" /></svg>;
-const IconBrain = <svg viewBox="0 0 24 24"><path d="M12 4a4 4 0 00-4 4 3 3 0 00-1 6 3 3 0 003 3 3 3 0 006 0 3 3 0 003-3 3 3 0 00-1-6 4 4 0 00-4-4z" /></svg>;
-const IconPersonas = <svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.5" /><circle cx="16" cy="9" r="2.5" /><path d="M3 19c0-3 2-4.5 5-4.5M21 19c0-3-2-4.5-5-4.5M9 19c0-2 1.5-3 3-3s3 1 3 3" /></svg>;
-const IconJourneys = <svg viewBox="0 0 24 24"><path d="M6 6h6a3 3 0 0 1 0 6H8a3 3 0 0 0 0 6h10" /><circle cx="6" cy="6" r="1.7" /><circle cx="18" cy="18" r="1.7" /></svg>;
-const IconStudio = <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M4 14l5-4 4 3 3-2 4 3" /><circle cx="9" cy="9" r="1.4" /></svg>;
-const IconLibrary = <svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>;
-const IconBrand = <svg viewBox="0 0 24 24"><path d="M12 3l8 4v6c0 4-3.5 7-8 8-4.5-1-8-4-8-8V7z" /></svg>;
-const IconOutbox = <svg viewBox="0 0 24 24"><path d="M3 12l18-8-8 18-2-7z" /></svg>;
+function NavIcon({ src }: { src: string }) {
+  return (
+    <span
+      className="nav-image-icon"
+      aria-hidden="true"
+      style={{ "--nav-icon": `url(${src})` } as React.CSSProperties}
+    />
+  );
+}
+
+const IconArc = <NavIcon src="/brand/nav-icons/arc-chat-icon.png" />;
+const IconHome = <NavIcon src="/brand/nav-icons/sidebar-v2/home.png" />;
+const IconCampaigns = <NavIcon src="/brand/nav-icons/sidebar-v2/campaigns.png" />;
+const IconCrm = <NavIcon src="/brand/nav-icons/sidebar-v2/relationships.png" />;
+const IconOpp = <NavIcon src="/brand/nav-icons/sidebar-v2/opportunities.png" />;
+const IconAnalytics = <NavIcon src="/brand/nav-icons/sidebar-v2/analytics.png" />;
+const IconJourneys = <NavIcon src="/brand/nav-icons/sidebar-v2/journeys.png" />;
+const IconBrain = <NavIcon src="/brand/nav-icons/sidebar-v2/brain.png" />;
+const IconPersonas = <NavIcon src="/brand/nav-icons/sidebar-v2/personas.png" />;
+const IconStudio = <NavIcon src="/brand/nav-icons/sidebar-v2/studio.png" />;
+const IconLibrary = <NavIcon src="/brand/nav-icons/sidebar-v2/library.png" />;
+const IconBrand = <NavIcon src="/brand/nav-icons/sidebar-v2/brand.png" />;
+const IconOutbox = <NavIcon src="/brand/nav-icons/sidebar-v2/outbox.png" />;
 
 type NavGroup = { group: string; items: { label: string; href: string; icon: React.ReactNode }[] };
 
 const PRIMARY_NAV_ITEMS: NavGroup["items"] = [
-  { label: "Arc", href: "/arc", icon: IconArc },
+  { label: "Arc Chat", href: "/arc", icon: IconArc },
   { label: "Home", href: "/home", icon: IconHome },
   { label: "Campaigns", href: "/campaigns", icon: IconCampaigns },
   { label: "Relationships", href: "/crm", icon: IconCrm },
@@ -84,7 +97,7 @@ function navGroupsFor(crmLabel: string): NavGroup[] {
 const PREWARM_HREFS = navGroupsFor("Relationships").flatMap((g) => g.items.map((it) => it.href));
 
 const CRUMBS: Record<string, string> = {
-  "/arc": "Arc",
+  "/arc": "Arc Chat",
   "/home": "Home",
   "/campaigns": "Campaigns",
   "/campaigns/new": "New campaign",
@@ -102,9 +115,36 @@ const CRUMBS: Record<string, string> = {
   "/support": "Help & support",
 };
 
+const MOBILE_NAV_QUERY = "(max-width: 900px)";
+const FOCUSABLE_NAV_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function subscribeToMobileNav(onStoreChange: () => void): () => void {
+  const mediaQuery = window.matchMedia(MOBILE_NAV_QUERY);
+  mediaQuery.addEventListener("change", onStoreChange);
+  return () => mediaQuery.removeEventListener("change", onStoreChange);
+}
+
+function getMobileNavSnapshot(): boolean {
+  return window.matchMedia(MOBILE_NAV_QUERY).matches;
+}
+
+function badgeLabel(href: string, count: number): string {
+  if (href === "/campaigns") {
+    return `${count} campaign approval${count === 1 ? "" : "s"} waiting on you`;
+  }
+  if (href === "/opportunities") {
+    return `${count} open opportunit${count === 1 ? "y" : "ies"}`;
+  }
+  return `${count} item${count === 1 ? "" : "s"} needing attention`;
+}
+
 export function AppShell({
   workspaceName,
   orgName,
+  workspaceSubtitle,
+  workspaceShortLabel,
+  workspaceAccentColor = null,
   userName,
   userEmail,
   logoUrl = null,
@@ -112,10 +152,16 @@ export function AppShell({
   industry = "general",
   workspaces = [],
   navBadges = {},
+  recentConversations = [],
+  billingNotice = null,
   children,
 }: {
   workspaceName: string;
   orgName: string;
+  /** Resolved rail identity — see resolveWorkspaceIdentity in @/domain. */
+  workspaceSubtitle: string;
+  workspaceShortLabel: string;
+  workspaceAccentColor?: string | null;
   userName: string;
   userEmail: string;
   logoUrl?: string | null;
@@ -123,6 +169,8 @@ export function AppShell({
   industry?: string | null;
   workspaces?: WorkspaceOption[];
   navBadges?: Record<string, number>;
+  recentConversations?: ArcRecentConversationVM[];
+  billingNotice?: BillingNotice | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -133,10 +181,17 @@ export function AppShell({
   // always visible). Tapping a destination closes it (see the nav links), and
   // so does the backdrop.
   const [navOpen, setNavOpen] = useState(false);
+  const navToggleRef = useRef<HTMLButtonElement>(null);
+  const navCloseRef = useRef<HTMLButtonElement>(null);
+  const railRef = useRef<HTMLElement>(null);
+  const isMobileNav = useSyncExternalStore(subscribeToMobileNav, getMobileNavSnapshot, () => false);
   const displayName = userName || orgName;
   // No signed-in user (local/demo, open mode) → a neutral label instead of a
   // bare "there". Prod shows the real viewer's first name.
   const firstName = userName.split(/\s+/)[0] || "Account";
+  const showWorkspaceShortLabel =
+    workspaceShortLabel.trim().toLocaleLowerCase() !==
+    derivedShortLabel(orgName).trim().toLocaleLowerCase();
   const baseCrumb = CRUMBS[pathname] ?? CRUMBS[`/${pathname.split("/")[1] ?? ""}`] ?? "Home";
   const crumb = pathname === "/crm" || pathname.startsWith("/crm/") ? language.crmLabel : baseCrumb;
   const commandItems: CommandItem[] = [
@@ -164,6 +219,56 @@ export function AppShell({
     () => false,
   );
 
+  const closeMobileNav = useCallback((restoreFocus = true) => {
+    setNavOpen(false);
+    window.dispatchEvent(new Event("arc:close-account-menu"));
+    if (restoreFocus) window.requestAnimationFrame(() => navToggleRef.current?.focus());
+  }, [setNavOpen]);
+
+  function openAccountMenu() {
+    if (isMobileNav) setNavOpen(true);
+    window.requestAnimationFrame(() => window.dispatchEvent(new Event("arc:open-account-menu")));
+  }
+
+  useEffect(() => {
+    if (!isMobileNav || !navOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => navCloseRef.current?.focus());
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMobileNav();
+        return;
+      }
+      if (event.key !== "Tab" || !railRef.current) return;
+
+      const focusable = Array.from(
+        railRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_NAV_SELECTOR),
+      ).filter((element) => !element.hasAttribute("disabled") && element.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [closeMobileNav, isMobileNav, navOpen]);
+
   return (
     <div className={embedded ? "arc-app is-embedded" : "arc-app"}>
       <NavProgress />
@@ -174,23 +279,56 @@ export function AppShell({
         <button
           type="button"
           className="rail-scrim"
-          aria-hidden={!navOpen}
+          aria-hidden="true"
           tabIndex={-1}
-          onClick={() => setNavOpen(false)}
+          onClick={() => closeMobileNav()}
         />
-        <aside className="rail" data-open={navOpen}>
-          <WorkspaceSwitcher workspaceName={workspaceName} orgName={orgName} logoUrl={logoUrl} workspaces={workspaces} />
-          <div className="indtag">
-            <i />
-            {orgName.split(/\s+/)[0]?.toUpperCase()} workspace
+        <aside
+          id="app-navigation"
+          ref={railRef}
+          className="rail"
+          data-open={navOpen}
+          aria-label="Primary navigation"
+          aria-hidden={isMobileNav && !navOpen ? true : undefined}
+          inert={isMobileNav && !navOpen ? true : undefined}
+        >
+          <div className="rail-mobile-head">
+            <span>Navigation</span>
+            <button
+              ref={navCloseRef}
+              type="button"
+              className="railclose"
+              aria-label="Close navigation"
+              onClick={() => closeMobileNav()}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
           </div>
-          <div className="navwrap">
+          <WorkspaceSwitcher
+            workspaceName={workspaceName}
+            orgName={orgName}
+            subtitle={workspaceSubtitle}
+            logoUrl={logoUrl}
+            accentColor={workspaceAccentColor}
+            workspaces={workspaces}
+          />
+          {showWorkspaceShortLabel && (
+            <div
+              className="indtag"
+              style={workspaceAccentColor ? ({ "--ws-accent": workspaceAccentColor } as React.CSSProperties) : undefined}
+            >
+              <i />
+              {workspaceShortLabel}
+            </div>
+          )}
+          <div className="rail-divider" aria-hidden="true" />
+          <nav className="navwrap" aria-label="Workspace destinations">
             {navGroups.slice(0, 1).map((g) => (
-              <div key={g.group}>
-                <div className="grp">{g.group.toUpperCase()}</div>
+              <div key={g.group} className="nav-primary">
                 {g.items.map((it) => {
                   const active = pathname === it.href || (it.href !== "/" && pathname.startsWith(`${it.href}/`));
                   const badge = navBadges[it.href] ?? 0;
+                  const attentionLabel = badgeLabel(it.href, badge);
                   return (
                     // Default prefetch is ON: with (app)/loading.tsx each route has a
                     // loading boundary, so prefetch only fetches the cheap skeleton shell
@@ -199,13 +337,14 @@ export function AppShell({
                       key={it.label}
                       href={it.href}
                       className={`nav${active ? " on" : ""}`}
-                      onClick={() => setNavOpen(false)}
+                      aria-current={active ? "page" : undefined}
+                      onClick={() => closeMobileNav(false)}
                     >
                       {active && <span className="tick" />}
                       {it.icon}
                       {it.label}
                       {badge > 0 && (
-                        <span className="navbadge" aria-label={`${badge} needing attention`}>
+                        <span className="navbadge" aria-label={attentionLabel} title={attentionLabel}>
                           {badge > 99 ? "99+" : badge}
                         </span>
                       )}
@@ -220,24 +359,63 @@ export function AppShell({
                 {g.items.map((it) => {
                   const active = pathname === it.href || pathname.startsWith(`${it.href}/`);
                   const badge = navBadges[it.href] ?? 0;
+                  const attentionLabel = badgeLabel(it.href, badge);
                   return (
-                    <Link key={it.label} href={it.href} className={`nav${active ? " on" : ""}`} onClick={() => setNavOpen(false)}>
+                    <Link
+                      key={it.label}
+                      href={it.href}
+                      className={`nav${active ? " on" : ""}`}
+                      aria-current={active ? "page" : undefined}
+                      onClick={() => closeMobileNav(false)}
+                    >
                       {active && <span className="tick" />}
                       {it.icon}
                       {it.label}
-                      {badge > 0 && <span className="navbadge" aria-label={`${badge} needing attention`}>{badge > 99 ? "99+" : badge}</span>}
+                      {badge > 0 && <span className="navbadge" aria-label={attentionLabel} title={attentionLabel}>{badge > 99 ? "99+" : badge}</span>}
                     </Link>
                   );
                 })}
               </div>
             ))}
-          </div>
+            <section className="rail-recents" aria-labelledby="rail-recents-title">
+              <div className="rail-recents-head">
+                <h2 id="rail-recents-title">Recent chats</h2>
+                <Link
+                  href="/arc?new=1"
+                  prefetch={false}
+                  onClick={() => closeMobileNav(false)}
+                >
+                  New
+                </Link>
+              </div>
+              {recentConversations.length > 0 ? (
+                <div className="rail-recents-list">
+                  {recentConversations.map((conversation) => (
+                    <Link
+                      key={conversation.id}
+                      href={`/arc?c=${encodeURIComponent(conversation.id)}`}
+                      className="rail-recent"
+                      prefetch={false}
+                      onClick={() => closeMobileNav(false)}
+                    >
+                      <span className="rail-recent-dot" aria-hidden="true" />
+                      <span className="rail-recent-title">{conversation.title}</span>
+                      <time>{conversation.when}</time>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="rail-recents-empty">Start a chat to keep active work close by.</p>
+              )}
+            </section>
+          </nav>
           {/* Pinned above the account control: when something is broken, the way
               to reach a human has to be visible without hunting through a menu. */}
           <Link
             href="/support"
             className={`railhelp${pathname === "/support" || pathname.startsWith("/support/") ? " on" : ""}`}
-            onClick={() => setNavOpen(false)}
+            aria-current={pathname === "/support" || pathname.startsWith("/support/") ? "page" : undefined}
+            onClick={() => closeMobileNav(false)}
           >
             <svg viewBox="0 0 24 24" aria-hidden>
               <circle cx="12" cy="12" r="9" />
@@ -257,15 +435,21 @@ export function AppShell({
           />
         </aside>
 
-        <div className="main">
+        <div
+          className="main"
+          aria-hidden={isMobileNav && navOpen ? true : undefined}
+          inert={isMobileNav && navOpen ? true : undefined}
+        >
           <header className="top">
             {/* Hamburger — opens the nav drawer. Shown only below the shell
                 breakpoint (CSS); on desktop the docked rail makes it redundant. */}
             <button
+              ref={navToggleRef}
               type="button"
               className="menubtn"
-              aria-label="Open navigation"
+              aria-label={navOpen ? "Close navigation" : "Open navigation"}
               aria-expanded={navOpen}
+              aria-controls="app-navigation"
               onClick={() => setNavOpen((v) => !v)}
             >
               <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
@@ -280,16 +464,23 @@ export function AppShell({
               Search or jump to…
               <span className="k">⌘K</span>
             </button>
-            <span className="topav">
+            <button
+              type="button"
+              className="topav topavbtn"
+              aria-label={`Open account menu for ${displayName}`}
+              aria-haspopup="menu"
+              onClick={openAccountMenu}
+            >
               {avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- user-uploaded avatar; next/image would need per-host remotePatterns
                 <img src={avatarUrl} alt={displayName} />
               ) : (
                 initials(displayName)
               )}
-            </span>
+            </button>
           </header>
           <CommandPalette items={commandItems} />
+          <BillingNoticeBar banner={billingNotice} />
           {children}
         </div>
       </div>

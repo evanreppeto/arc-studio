@@ -113,5 +113,17 @@ export const config = {
   // reached Sentry. It must stay open to signed-out visitors in particular — /login
   // is exactly where a browser error most needs reporting and nobody has a session
   // yet. The route forwards only to the configured Sentry DSN, so it exposes nothing.
-  matcher: ["/((?!api|monitoring|auth/callback|_next/static|_next/image|landing|login|sign-in|sign-up|forgot-password|reset-password|favicon.ico|icon.png|brand|effects).*)"],
+  //
+  // ⚠️ Asset-directory entries MUST stay scoped to the directory. `public/brand/`
+  // and `public/effects/` hold images, but matcher entries are path PREFIXES, so
+  // a bare `brand` would also exempt the `/brand` page — which then never reaches
+  // the gate below, and an unprotected page renders exactly like a protected one.
+  // `brand/.` excludes only real files inside the asset directory — the trailing
+  // `.` requires at least one character after the slash, so the bare `/brand/`
+  // stays gated too rather than relying on Next's trailing-slash redirect to
+  // hand it back to the gate. Any new exclusion for a public/ directory needs
+  // the same shape, and must not share a name with a page route.
+  // (`isPublicPath` lets asset EXTENSIONS through anyway, so these entries are
+  // belt-and-braces; a page never has one.)
+  matcher: ["/((?!api|monitoring|auth/callback|_next/static|_next/image|landing|login|sign-in|sign-up|forgot-password|reset-password|favicon.ico|icon.png|brand/.|effects/.).*)"],
 };

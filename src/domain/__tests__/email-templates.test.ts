@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { renderBrandedEmail } from "@/domain";
+import { renderAuthEmail, renderBrandedEmail } from "@/domain";
 
 const theme = { appName: "Summit", logoUrl: "https://cdn.example.com/logo.png", accentColor: "#0B0B0C" };
 
@@ -64,5 +64,57 @@ describe("renderBrandedEmail", () => {
     });
     expect(html).not.toContain("display:none");
     expect(html).toContain("#0B0B0C");
+  });
+});
+
+describe("renderAuthEmail", () => {
+  const base = {
+    heading: "Confirm your email",
+    preheader: "One click and your workspace is ready.",
+    bodyBlocks: ["Confirm this address to finish creating your workspace."],
+    cta: { label: "Confirm my email", url: "{{ .ConfirmationURL }}" },
+    metaNote: "This link expires in 24 hours.",
+    footerNote: "Sent by Arc Studio.",
+    appName: "Arc Studio",
+    logoUrl: "https://arc-studio.ai/icon.png",
+  };
+
+  it("leaves Supabase Go-template placeholders untouched through escaping", () => {
+    const { html } = renderAuthEmail(base);
+    // A mangled placeholder ships a dead link to every new signup, so assert the
+    // exact literal rather than a loose substring.
+    expect(html).toContain('href="{{ .ConfirmationURL }}"');
+    expect(html).not.toContain("&#123;");
+    expect(html).not.toContain("&amp;");
+  });
+
+  it("renders the preheader hidden so it previews in the inbox but not in the body", () => {
+    const { html } = renderAuthEmail(base);
+    expect(html).toContain("One click and your workspace is ready.");
+    expect(html).toContain("display:none");
+  });
+
+  it("includes a copy/paste fallback link for clients that strip the button", () => {
+    const { html } = renderAuthEmail(base);
+    expect(html).toContain("Or paste this link into your browser");
+  });
+
+  it("escapes untrusted copy", () => {
+    const { html } = renderAuthEmail({ ...base, heading: '<img src=x onerror="alert(1)">' });
+    expect(html).not.toContain("<img src=x");
+    expect(html).toContain("&lt;img src=x");
+  });
+
+  it("produces a plaintext alternative carrying the link", () => {
+    const { text } = renderAuthEmail(base);
+    expect(text).toContain("Confirm your email");
+    expect(text).toContain("Confirm my email: {{ .ConfirmationURL }}");
+    expect(text).toContain("Sent by Arc Studio.");
+  });
+
+  it("falls back to a text mark when no logo URL is supplied", () => {
+    const { html } = renderAuthEmail({ ...base, logoUrl: null });
+    expect(html).not.toContain("<img");
+    expect(html).toContain("Arc Studio");
   });
 });

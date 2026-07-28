@@ -1,17 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import Link from "next/link";
-import {
-  motion,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-  useTransform,
-} from "motion/react";
+import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 
 import { AppWindow } from "./app-window";
-import { GoldCta } from "./cta";
 import { Faq } from "./faq";
 import { FounderNote } from "./founder-note";
 import {
@@ -22,6 +15,7 @@ import {
   TrustBand,
 } from "./landing-sections";
 import { ScrollSequence } from "./scroll-sequence";
+import { SiteNav } from "./site-nav";
 import { WaitlistForm } from "./waitlist-form";
 import { ShowcaseTabs } from "./showcase-tabs";
 import { StudioShowcase } from "./studio-showcase";
@@ -32,53 +26,9 @@ const NAV_LINKS = [
   { href: "#how", label: "How it works" },
   { href: "#intelligence", label: "Intelligence" },
   { href: "#approvals", label: "Approvals" },
+  { href: "/pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" },
 ];
-
-function LandingNav() {
-  const [scrolled, setScrolled] = useState(false);
-  const { scrollY } = useScroll();
-  useMotionValueEvent(scrollY, "change", (v) => setScrolled(v > 12));
-
-  return (
-    <header
-      className={`fixed inset-x-0 top-0 z-40 transition-[background-color,border-color,backdrop-filter] duration-300 ${
-        scrolled
-          ? "border-b border-[color:var(--border-panel)] bg-[color:color-mix(in_srgb,var(--canvas)_82%,transparent)] backdrop-blur-md"
-          : "border-b border-transparent"
-      }`}
-    >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-6">
-        <a href="#top" className="flex items-center gap-2.5" aria-label="Arc Studio — back to top">
-          <img src="/icon.png" alt="" className="h-7 w-auto" />
-          <img src="/brand/arc-studio-wordmark.png" alt="Arc Studio" className="h-[1.15rem] w-auto" />
-        </a>
-        <nav className="hidden items-center gap-7 md:flex" aria-label="Page sections">
-          {NAV_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className="text-[0.875rem] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
-        <div className="flex items-center gap-2.5">
-          <Link
-            href="/login"
-            className="flex min-h-[38px] items-center rounded-lg px-3.5 text-[0.875rem] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-          >
-            Sign in
-          </Link>
-          <GoldCta href="#waitlist" size="sm">
-            Join waitlist
-          </GoldCta>
-        </div>
-      </div>
-    </header>
-  );
-}
 
 // The floating approval card: Arc's signature object, drifting gently over the
 // hero's product screenshot. Reduced motion pins it in place.
@@ -141,7 +91,7 @@ function HeroProductShot() {
   const scale = useTransform(scrollYProgress, [0, 1], [0.975, 1]);
 
   return (
-    <div ref={ref} className="relative mt-24 [perspective:1400px]">
+    <div ref={ref} className="relative mt-14 sm:mt-24 [perspective:1400px]">
       <motion.div style={reduced ? undefined : { rotateX, scale, transformOrigin: "center top" }}>
         <div className="relative">
           <HeroApprovalCard />
@@ -203,10 +153,14 @@ function Hero() {
             onViewportLeave={() => heroLoopRef.current?.pause()}
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-b from-[var(--canvas)]/90 via-[var(--canvas)]/30 to-[var(--canvas)]" />
+        {/* The mid-stop is much darker on mobile: at 375px the hero copy stacks
+            into taller blocks that sit directly over the ribbon's brightest
+            band, and at /30 the paragraph lost most of its contrast. Desktop
+            keeps the airier original. */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[var(--canvas)]/95 via-[var(--canvas)]/70 to-[var(--canvas)] sm:from-[var(--canvas)]/90 sm:via-[var(--canvas)]/30" />
       </motion.div>
 
-      <div className="relative mx-auto flex max-w-6xl flex-col justify-center px-6 pb-10 pt-40">
+      <div className="relative mx-auto flex max-w-6xl flex-col justify-center px-6 pb-10 pt-32 sm:pt-40">
         <h1
           className="rise-in rise-d1 max-w-[17ch] font-serif text-[2.9rem] font-semibold leading-[1.06] text-[var(--text-primary)] sm:text-[3.9rem] lg:text-[4.6rem]"
         >
@@ -241,7 +195,7 @@ function Hero() {
 export function LandingView() {
   return (
     <main className="min-h-screen bg-[var(--canvas)] text-[var(--text-primary)]">
-      <LandingNav />
+      <SiteNav links={NAV_LINKS} ctaHref="#waitlist" ctaLabel="Join waitlist" />
       <Hero />
       <ScrollSequence />
       <ShowcaseTabs />

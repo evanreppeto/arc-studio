@@ -416,3 +416,69 @@ describe("executeResendDispatch", () => {
     expect(scopedTo).toContainEqual(["eq", "id", "a1"]);
   });
 });
+
+// BSR-501 degrade order. The rule: hitting the AI allowance must never destroy or
+// block already-approved outbound. Delivering an approved email costs no model
+// spend, so an over-cap workspace still sends; only a lapsed TRIAL pauses
+// outbound, and even then the queued row is left untouched for later.
+describe("degrade order under billing pressure", () => {
+  const OVER_CAP_USAGE = [{ cost_estimate_cents: 9_999_999 }];
+
+  it("still sends an approved dispatch when the org is over its AI allowance", async () => {
+    vi.stubEnv("ARC_BILLING_ENFORCEMENT", "1");
+    const send = vi.fn().mockResolvedValue({ id: "resend-over-cap" });
+    const supabase = createSupabaseQueryMock({
+      campaign_dispatches: { data: queuedDispatch(), error: null },
+      approval_items: { data: APPROVED, error: null },
+      campaign_assets: { data: DEPLOYED_ASSET, error: null },
+      connections: { data: ENABLED_RESEND, error: null },
+      campaign_events: { data: null, error: null },
+      org_plans: { data: { plan_tier: "starter", monthly_cap_cents: null }, error: null },
+      ai_usage_events: { data: OVER_CAP_USAGE, error: null },
+    });
+
+    const result = await executeResendDispatch({ dispatchId: "d1", operator: "Operator" }, supabase, {
+      apiKey: "re_test",
+      send,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("pauses outbound for a lapsed trial without discarding the queued dispatch", async () => {
+    vi.stubEnv("ARC_BILLING_ENFORCEMENT", "1");
+    const send = vi.fn();
+    const supabase = createSupabaseQueryMock({
+      campaign_dispatches: { data: queuedDispatch(), error: null },
+      approval_items: { data: APPROVED, error: null },
+      campaign_assets: { data: DEPLOYED_ASSET, error: null },
+      connections: { data: ENABLED_RESEND, error: null },
+      campaign_events: { data: null, error: null },
+      org_plans: {
+        data: {
+          plan_tier: "free",
+          monthly_cap_cents: null,
+          trial_ends_at: new Date(Date.now() - 86_400_000).toISOString(),
+        },
+        error: null,
+      },
+      ai_usage_events: { data: [], error: null },
+    });
+
+    const result = await executeResendDispatch({ dispatchId: "d1", operator: "Operator" }, supabase, {
+      apiKey: "re_test",
+      send,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/trial has ended/i);
+    expect(send).not.toHaveBeenCalled();
+
+    // Nothing was cancelled or failed — the row stays queued and goes out
+    // untouched once a plan is added.
+    const statuses = findCalls(supabase, "update").map((u) => u.status);
+    expect(statuses).not.toContain("failed");
+    expect(statuses).not.toContain("cancelled");
+  });
+});

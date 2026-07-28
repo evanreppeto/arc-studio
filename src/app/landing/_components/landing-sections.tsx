@@ -90,8 +90,8 @@ const TIMELINE_TONES: Record<TimelineTone, string> = {
 export function HowItWorks() {
   return (
     <section id="how" className="border-y border-[color:var(--border-panel)] bg-[var(--canvas-deep)]">
-      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-        <div className="grid gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:gap-16">
+      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
+        <div className="grid gap-8 sm:gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:gap-16">
           <div>
             <Reveal>
               <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
@@ -102,7 +102,10 @@ export function HowItWorks() {
                 and your week narrows to the decisions that matter.
               </p>
             </Reveal>
-            <div className="mt-9 space-y-6">
+            {/* Hidden on mobile: stacked, this restates the week timeline
+                directly below it. Side by side on desktop the pairing reads;
+                one under the other it is the same story twice. */}
+            <div className="mt-7 hidden space-y-5 sm:mt-9 sm:block sm:space-y-6">
               {STEPS.map((step, i) => (
                 <Reveal key={step.number} delay={0.08 * i}>
                   <div className="flex items-start gap-4">
@@ -126,7 +129,10 @@ export function HowItWorks() {
             <div className="overflow-hidden rounded-xl border border-[color:var(--border-panel)] bg-[var(--surface-panel)] shadow-[0_24px_64px_-32px_rgba(0,0,0,0.8)]">
               <div className="flex items-center justify-between border-b border-[color:var(--border-panel)] px-5 py-3.5">
                 <span className="text-[0.9rem] font-semibold text-[var(--text-primary)]">One week, one campaign</span>
-                <span className="font-[family-name:var(--font-mono)] text-[0.68rem] text-[var(--text-muted)]">
+                {/* Decorative chrome. At 375px the title fills the row and the
+                    two labels collided with no gap — this one is the expendable
+                    half, so it sits out on mobile. */}
+                <span className="hidden font-[family-name:var(--font-mono)] text-[0.68rem] text-[var(--text-muted)] sm:inline">
                   sample timeline
                 </span>
               </div>
@@ -142,7 +148,7 @@ export function HowItWorks() {
                             : "hover:bg-[color:color-mix(in_srgb,var(--surface-inset)_60%,transparent)]"
                         }`}
                       >
-                        <span className="mt-1 font-[family-name:var(--font-mono)] text-[0.68rem] tracking-[0.04em] text-[var(--text-muted)]">
+                        <span className="mt-1 font-[family-name:var(--font-mono)] text-[0.78rem] sm:text-[0.68rem] tracking-[0.04em] text-[var(--text-muted)]">
                           {row.day}
                         </span>
                         {/* The thread: each row draws its segment; the human
@@ -190,7 +196,9 @@ export function HowItWorks() {
               </div>
               <div className="flex items-center gap-2.5 border-t border-[color:var(--border-panel)] bg-[color:color-mix(in_srgb,var(--canvas-deep)_55%,transparent)] px-5 py-3">
                 <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-hidden />
-                <span className="font-[family-name:var(--font-mono)] text-[0.68rem] text-[var(--text-muted)]">
+                {/* 0.68rem measured 10.9px on a phone — below comfortable
+                    reading. Floor it on mobile, designed size returns at sm. */}
+                <span className="font-[family-name:var(--font-mono)] text-[0.78rem] text-[var(--text-muted)] sm:text-[0.78rem] sm:text-[0.68rem]">
                   Wednesday is the only step that needed you
                 </span>
               </div>
@@ -206,8 +214,8 @@ export function HowItWorks() {
 
 export function Intelligence() {
   return (
-    <section id="intelligence" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-      <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
+    <section id="intelligence" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
+      <div className="grid items-center gap-8 sm:gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
         <Reveal>
           <Constellation />
         </Reveal>
@@ -253,8 +261,8 @@ export function Intelligence() {
 export function TrustBand() {
   return (
     <section id="approvals" className="border-y border-[color:var(--border-panel)] bg-[var(--canvas-deep)]">
-      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-        <div className="grid gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
+      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
+        <div className="grid gap-8 sm:gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
           <Reveal>
             <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
               Nothing reaches the outside world without you
@@ -335,10 +343,10 @@ export function FinalCta() {
             Put a marketing operator on your team
           </h2>
           <p className="mx-auto mt-5 max-w-[52ch] text-[1rem] leading-relaxed text-[var(--text-secondary)]">
-            We&rsquo;re onboarding teams gradually while pricing is finalized —
-            join the waitlist and we&rsquo;ll reach out when your spot opens.
+            We&rsquo;re onboarding teams gradually — join the waitlist and
+            we&rsquo;ll reach out when your spot opens.
           </p>
-          <div className="mt-9">
+          <div className="mt-7 sm:mt-9">
             <WaitlistForm source="landing-cta" align="center" />
           </div>
         </Reveal>
@@ -355,23 +363,27 @@ export function LandingFooter() {
           <img src="/icon.png" alt="" className="h-7 w-auto" />
           <img src="/brand/arc-studio-wordmark.png" alt="Arc Studio" className="h-[1.35rem] w-auto" />
         </div>
-        <nav className="flex flex-wrap items-center gap-x-7 gap-y-2 text-[0.85rem] text-[var(--text-secondary)]">
-          <a href="#product" className="transition-colors hover:text-[var(--text-primary)]">Product</a>
-          <a href="#how" className="transition-colors hover:text-[var(--text-primary)]">How it works</a>
-          <a href="#approvals" className="transition-colors hover:text-[var(--text-primary)]">Approvals</a>
-          <a href="#faq" className="transition-colors hover:text-[var(--text-primary)]">FAQ</a>
+        <nav className="flex flex-wrap items-center gap-x-7 gap-y-1 text-[0.85rem] text-[var(--text-secondary)] [&>a]:py-3 sm:[&>a]:py-0">
+          {/* Root-relative hashes, not bare ones: this footer also renders on
+              /pricing, where a bare "#product" would be a dead link. On the
+              landing itself these are still a same-document scroll. */}
+          <Link href="/#product" className="transition-colors hover:text-[var(--text-primary)]">Product</Link>
+          <Link href="/#how" className="transition-colors hover:text-[var(--text-primary)]">How it works</Link>
+          <Link href="/#approvals" className="transition-colors hover:text-[var(--text-primary)]">Approvals</Link>
+          <Link href="/pricing" className="transition-colors hover:text-[var(--text-primary)]">Pricing</Link>
+          <Link href="/#faq" className="transition-colors hover:text-[var(--text-primary)]">FAQ</Link>
           <Link href="/login" className="transition-colors hover:text-[var(--text-primary)]">Sign in</Link>
-          <a href="#waitlist" className="font-medium text-[var(--accent)] transition-colors hover:text-[color:color-mix(in_srgb,var(--accent)_85%,white)]">
+          <Link href="/#waitlist" className="font-medium text-[var(--accent)] transition-colors hover:text-[color:color-mix(in_srgb,var(--accent)_85%,white)]">
             Join the waitlist
-          </a>
+          </Link>
         </nav>
       </div>
       <div className="border-t border-[color:var(--border-panel)]">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-5">
-          <span className="font-[family-name:var(--font-mono)] text-[0.7rem] text-[var(--text-muted)]">
+          <span className="font-[family-name:var(--font-mono)] text-[0.8rem] text-[var(--text-muted)] sm:text-[0.7rem]">
             © {new Date().getFullYear()} Arc Studio
           </span>
-          <span className="font-[family-name:var(--font-mono)] text-[0.7rem] text-[var(--text-muted)]">
+          <span className="font-[family-name:var(--font-mono)] text-[0.8rem] text-[var(--text-muted)] sm:text-[0.7rem]">
             Agent does the work · Human approves · Database remembers
           </span>
         </div>

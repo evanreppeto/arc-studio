@@ -85,7 +85,7 @@ function StoryVideo({ src, poster, alt }: { src: string; poster: string; alt: st
 
 export function StudioShowcase() {
   return (
-    <section id="studio" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
+    <section id="studio" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
       <Reveal>
         <h2 className="max-w-[22ch] font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
           Creative that shows up ready for review
@@ -102,7 +102,7 @@ export function StudioShowcase() {
       <Reveal delay={0.08}>
         <div className="mt-10 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[color:var(--border-panel)] pb-4">
           <span className="text-[0.95rem] font-semibold text-[var(--text-primary)]">Draft creative</span>
-          <span className="font-[family-name:var(--font-mono)] text-[0.68rem] text-[var(--text-muted)]">
+          <span className="font-[family-name:var(--font-mono)] text-[0.78rem] sm:text-[0.68rem] text-[var(--text-muted)]">
             3 workspaces · 3 formats
           </span>
           <span className="ml-auto rounded-full border border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--accent)_12%,transparent)] px-2.5 py-0.5 text-[0.65rem] font-medium text-[var(--accent)]">

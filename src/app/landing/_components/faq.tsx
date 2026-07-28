@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { Reveal } from "./reveal";
 
 // The objections a skeptical visitor has before joining the waitlist. Every
@@ -69,10 +71,13 @@ const FAQS: Array<{ q: string; a: React.ReactNode }> = [
     q: "What does it cost?",
     a: (
       <>
-        Pricing isn&rsquo;t set yet — which is exactly why this is a waitlist
-        rather than a checkout. We&rsquo;re onboarding teams gradually while we
-        get it right, and everyone on the list hears about pricing before
-        they&rsquo;re asked to decide anything.
+        Plans start at $99/month, flat per workspace with unlimited seats —{" "}
+        <Link href="/pricing" className="text-[var(--accent)] underline-offset-4 hover:underline">
+          see the full pricing
+        </Link>
+        . It&rsquo;s still a waitlist rather than a checkout because we&rsquo;re
+        onboarding teams gradually while we get this right; the price you see is
+        the one you&rsquo;ll be offered when your spot opens.
       </>
     ),
   },
@@ -91,8 +96,8 @@ const FAQS: Array<{ q: string; a: React.ReactNode }> = [
 
 export function Faq() {
   return (
-    <section id="faq" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-      <div className="grid items-start gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+    <section id="faq" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
+      <div className="grid items-start gap-8 sm:gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
         <Reveal className="lg:sticky lg:top-28">
           <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
             Questions worth asking

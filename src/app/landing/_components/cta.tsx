@@ -20,7 +20,12 @@ export function GoldCta({
   children: React.ReactNode;
   size?: "lg" | "sm";
 }) {
-  const sizing = size === "lg" ? "min-h-[48px] px-7 text-[0.95rem]" : "min-h-[38px] px-4 text-[0.875rem]";
+  // whitespace-nowrap: a CTA label must never break mid-phrase ("Start 14-" /
+  // "day trial") when the bar gets tight on small screens.
+  const sizing =
+    size === "lg"
+      ? "min-h-[48px] whitespace-nowrap px-7 text-[0.95rem]"
+      : "min-h-[44px] whitespace-nowrap px-4 text-[0.875rem] sm:min-h-[38px]";
   return (
     <Link
       href={href}
@@ -55,7 +60,12 @@ export function GhostCta({
   children: React.ReactNode;
   size?: "lg" | "sm";
 }) {
-  const sizing = size === "lg" ? "min-h-[48px] px-7 text-[0.95rem]" : "min-h-[38px] px-4 text-[0.875rem]";
+  // whitespace-nowrap: a CTA label must never break mid-phrase ("Start 14-" /
+  // "day trial") when the bar gets tight on small screens.
+  const sizing =
+    size === "lg"
+      ? "min-h-[48px] whitespace-nowrap px-7 text-[0.95rem]"
+      : "min-h-[44px] whitespace-nowrap px-4 text-[0.875rem] sm:min-h-[38px]";
   return (
     <Link
       href={href}

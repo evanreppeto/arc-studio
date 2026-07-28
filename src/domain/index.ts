@@ -84,6 +84,8 @@ export * from "./audience-resolution";
 export * from "./virality";
 
 export * from "./plans";
+export * from "./trial";
+export * from "./billing-notice";
 
 export * from "./oauth-refresh";
 
@@ -92,3 +94,5 @@ export * from "./exemplar-skills";
 export * from "./auto-draft-selection";
 
 export * from "./support";
+
+export * from "./workspace-identity";

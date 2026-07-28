@@ -77,7 +77,7 @@ Reserve 700 (bold) for page titles and hero metrics only. UI labels, pills, tabl
 
 ## 8. Anti-Patterns
 
-No emojis, no pure black, no purple/neon AI palette, no gradient text, no side-stripe (`border-left`/`right` > 1px) accent borders on cards/lists/callouts, no nested cards, no equal 3-column dashboard rows, no fake round metrics or placeholder names, no glassmorphism-everywhere, no developer jargon in primary UI. No raster/clip-art iconography (SVG line icons in `currentColor` only). No decorative background imagery behind page headers or panels. No neon glow shadows, no pulsing/radar/ripple ambience. No multi-hue gradient strips as decoration.
+No emojis, no pure black, no purple/neon AI palette, no gradient text, no side-stripe (`border-left`/`right` > 1px) accent borders on cards/lists/callouts, no nested cards, no equal 3-column dashboard rows, no fake round metrics or placeholder names, no glassmorphism-everywhere, no developer jargon in primary UI. No rendered raster/clip-art iconography — icons are monochrome and take their colour from the theme, never from the asset (inline SVG, or a PNG used purely as a CSS mask; see §4). No decorative background imagery behind page headers or panels. No neon glow shadows, no pulsing/radar/ripple ambience. No multi-hue gradient strips as decoration.
 
 ## Redesign — Calm Principles (every page must follow)
 

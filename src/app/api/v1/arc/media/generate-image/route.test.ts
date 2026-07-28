@@ -45,6 +45,11 @@ const checkUsageAllowed = vi.fn(async () => ({
 vi.mock("@/lib/billing/entitlements", () => ({
   checkUsageAllowed: (...a: unknown[]) => checkUsageAllowed(...(a as [])),
   formatCentsUsd: (c: number) => `$${(c / 100).toFixed(0)}`,
+  // Mirrors the real helper closely enough for the 402 assertions.
+  usageBlockMessage: (g: { reason?: string | null; capCents: number }) =>
+    g.reason === "trial_expired"
+      ? "Your free trial has ended."
+      : `This month's plan limit ($${(g.capCents / 100).toFixed(0)}) is reached.`,
 }));
 vi.mock("@/lib/media/storage", () => ({
   storeGeneratedImage,

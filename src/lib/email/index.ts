@@ -48,7 +48,14 @@ export async function sendBrandedEmail(
   deps: SendBrandedEmailDeps = {},
 ): Promise<SendBrandedEmailResult> {
   const apiKey = deps.apiKey ?? process.env.RESEND_API_KEY;
-  const from = deps.from ?? process.env.RESEND_FROM;
+  // Production is configured as RESEND_FROM_EMAIL; .env.example documents
+  // RESEND_FROM. Accept either rather than making one of them silently right —
+  // this helper fails closed, so a name mismatch meant transactional mail
+  // (invites, waitlist notifications) returned "not configured" and sent
+  // nothing, with no error surfaced anywhere.
+  // `||` not `??`: an env var set to an empty string is as unconfigured as a
+  // missing one, and `??` would accept "" and then fail the check below.
+  const from = deps.from || process.env.RESEND_FROM || process.env.RESEND_FROM_EMAIL;
   if (!apiKey || !from) {
     return { ok: false, error: "Resend isn't configured (RESEND_API_KEY / RESEND_FROM)." };
   }

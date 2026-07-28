@@ -7,7 +7,7 @@
 
 import type { ArcActionCard, ArcMention, ArcRecall } from "@/domain";
 import type { ArcAttachment, ArcStep, ArcToolCall } from "@/lib/arc-chat/persistence";
-import type { ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
+import type { ArcRecentConversationVM, ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
 
 import type { ArcWaiting } from "./arc-view.types";
 
@@ -36,6 +36,11 @@ export const DEMO_THREADS: ArcThreadGroupVM[] = [
     ],
   },
 ];
+
+export const DEMO_RECENT_CONVERSATIONS: ArcRecentConversationVM[] = DEMO_THREADS
+  .flatMap((group) => group.items)
+  .slice(0, 3)
+  .map(({ id, title, when }) => ({ id, title, when }));
 
 export const DEMO_STEPS: ArcStep[] = [
   { label: "Read the pricing-intent brief", status: "done", at: "9:38 AM", kind: "think" },

@@ -7,7 +7,7 @@
  * enforced the moment a token IS configured (so configured deployments are closed).
  */
 
-import { hasActiveAgentTokens, tokenAllows, verifyAgentToken, type VerifyAgentTokenResult } from "@/lib/agent/tokens";
+import { TOKEN_SCOPE_ARC_FULL, hasActiveAgentTokens, tokenAllows, verifyAgentToken, type VerifyAgentTokenResult } from "@/lib/agent/tokens";
 import { recordAgentSeen } from "@/lib/agent/health";
 import { deferAfterResponse } from "@/lib/defer";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -142,6 +142,15 @@ export async function checkAgentBearer(request: HeaderCarrier, deps: AgentBearer
   if (token) {
     const verified = await verify(token);
     if (verified.ok) {
+      // The Arc Operations API is the whole agent surface, so it takes arc:full —
+      // scope was being verified on the ingest routes and nowhere else, which made
+      // a narrow token narrow in exactly one direction: a leads:ingest credential
+      // handed to a website form or a partner was accepted on every /api/v1/arc
+      // route for that workspace. tokenAllows treats NULL scopes as legacy and
+      // unrestricted, so pre-scope tokens (and the runner's arc:full) are unchanged.
+      if (!tokenAllows(verified.scopes, TOKEN_SCOPE_ARC_FULL)) {
+        return { ok: false, status: 401, reason: "unauthorized" };
+      }
       deferAfterResponse(recordSeen);
       return { ok: true, tokenSource: "database", orgId: verified.orgId, workspaceId: verified.workspaceId };
     }
