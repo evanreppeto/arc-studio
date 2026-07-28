@@ -156,17 +156,19 @@ test.describe("nightly prod smoke", () => {
       Array.from(new Set(nodes.map((n) => (n as HTMLAnchorElement).getAttribute("href")).filter((h): h is string => !!h))),
     );
 
-    // Name the likely cause. An empty board here is usually the smoke tenant's
-    // monthly usage allowance being spent (the board renders "0 packages" behind
-    // the quota wall), not the approval gate disappearing — and a nightly check
-    // that blames the wrong thing costs more than it saves.
-    const body = (await page.locator("body").innerText()).toLowerCase();
-    const quotaBlocked = /used this month'?s .* allowance|won't start new work until it resets/i.test(body);
+    // A nightly check that blames the wrong thing costs more than it saves, so
+    // name the cause precisely.
+    //
+    // KNOWN as of 2026-07-28: the smoke tenant's 19 campaigns all carry
+    // `visibility='workspace'` with `workspace_id IS NULL` — scoped to a
+    // workspace they don't belong to, so they render for NO ONE and the board
+    // shows "0 packages". That is a data defect in the seeded org (and a latent
+    // product hole: that combination should not be representable), NOT the
+    // approval gate disappearing and NOT the usage cap, which merely also
+    // happens to be spent.
     expect(
       links.length,
-      quotaBlocked
-        ? "step 4: the campaigns board is empty because the smoke tenant has spent its monthly allowance — raise the cap on the smoke org rather than treating this as an app regression"
-        : "step 4: the campaigns list should link to at least one campaign",
+      "step 4: the campaigns board is empty. Check for campaigns with visibility='workspace' AND workspace_id IS NULL — those are orphaned and render for no workspace. Only treat this as an app regression once the smoke org has at least one reachable campaign.",
     ).toBeGreaterThan(0);
 
     const revise = page.getByRole("button", { name: /request revision/i }).first();
