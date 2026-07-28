@@ -77,7 +77,7 @@ export function WorkspaceSwitcher({
 
   const brand = (
     <>
-      <span className="mk">
+      <span className={`mk${logoUrl ? " has-image" : ""}`}>
         {logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo; next/image would need per-host remotePatterns
           <img src={logoUrl} alt={orgName} />
@@ -145,7 +145,7 @@ export function WorkspaceSwitcher({
               style={accentStyle(option.accentColor)}
               onClick={() => select(option)}
             >
-              <span className="ws-item-mk">
+              <span className={`ws-item-mk${option.logoUrl ? " has-image" : ""}`}>
                 {option.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo; next/image would need per-host remotePatterns
                   <img src={option.logoUrl} alt="" />

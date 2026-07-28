@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import { BRANDING_IMAGE_MAX_BYTES, BRANDING_IMAGE_MAX_LABEL } from "@/domain/branding-image";
 import { storeGeneratedMedia } from "@/lib/media/storage";
 
 // Keep uploads small and web-renderable. These are logos/avatars, not media —
 // a few MB is plenty and protects the public bucket from large blobs.
-const MAX_BYTES = 4 * 1024 * 1024;
 const EXT: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -24,7 +24,9 @@ export type UploadImageResult = { ok: true; url: string } | { ok: false; error: 
 export async function uploadBrandingImage(prefix: string, file: File): Promise<UploadImageResult> {
   const ext = EXT[file.type];
   if (!ext) return { ok: false, error: "Use a PNG, JPG, WEBP, GIF, or SVG image." };
-  if (file.size > MAX_BYTES) return { ok: false, error: "Image is too large — keep it under 4MB." };
+  if (file.size > BRANDING_IMAGE_MAX_BYTES) {
+    return { ok: false, error: `Image is too large — keep it under ${BRANDING_IMAGE_MAX_LABEL}.` };
+  }
 
   const bytes = Buffer.from(await file.arrayBuffer());
   if (bytes.length === 0) return { ok: false, error: "That file was empty." };
