@@ -99,7 +99,7 @@ export function WaitlistForm({
         </p>
       ) : (
         <p className={`mt-2 text-[0.8rem] text-[var(--text-muted)] ${align === "center" ? "text-center" : ""}`}>
-          We&apos;re onboarding teams gradually while pricing is finalized.
+          We&apos;re onboarding teams gradually — we&apos;ll reach out when a spot opens.
         </p>
       )}
     </form>

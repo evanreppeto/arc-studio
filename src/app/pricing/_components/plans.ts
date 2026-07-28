@@ -1,4 +1,4 @@
-import { type PlanTier } from "@/domain";
+import { PLANS, type PlanTier } from "@/domain";
 
 // The customer-facing pricing catalog. List prices live here.
 //
@@ -43,9 +43,59 @@ export type PricingPlan = {
   tagline: string;
   /** Who this tier is actually right for — not a feature restatement. */
   bestFor: string;
-  features: string[];
+  /**
+   * Commercial terms that genuinely are tier-specific. These are human/contract
+   * commitments, not software gates — which is the only kind of difference the
+   * tiers can honestly claim beyond volume.
+   */
+  alsoIncluded?: string[];
   featured?: boolean;
 };
+
+/**
+ * Every capability, available on every plan.
+ *
+ * The tiers are volume-based, not a feature ladder, because that is what the
+ * code actually does: `entitlements.ts` enforces exactly one thing — the
+ * monthly spend cap — and there are no per-tier feature gates anywhere in
+ * src/lib or src/domain. A ladder here would promise a restriction that does
+ * not exist and understate what a Starter customer already gets.
+ *
+ * Every line is verified against shipped behaviour. See the bar for a bullet
+ * above before adding one.
+ */
+export const EVERY_PLAN_INCLUDES: string[] = [
+  "Arc finds opportunities from your records and signals",
+  "Complete campaign packages, drafted with evidence attached",
+  "Approval gate on everything outbound — no auto-send exists",
+  "CRM, personas, and full campaign history",
+  "Approved email sending",
+  "Creative studio — generate and resize approved assets",
+  "Brand kit constrains every draft and asset",
+  "Performance learning — Arc improves on your own results",
+  "Every approved send recorded against the contact and campaign",
+  "Database-level workspace isolation",
+  "Unlimited seats — we never charge per person",
+];
+
+/**
+ * How much agent work a tier includes, relative to the entry paid tier.
+ *
+ * Derived from the enforced caps so it cannot drift from them, and expressed as
+ * a ratio precisely so the page can describe volume WITHOUT publishing the cap
+ * in dollars (see the margin note above).
+ */
+export function capacityMultiple(tier: PricingPlan["tier"]): number {
+  const base = PLANS.starter.monthlyCapCents;
+  if (base <= 0) return 1;
+  return Math.round((PLANS[tier].monthlyCapCents / base) * 10) / 10;
+}
+
+/** The volume line shown on each card. */
+export function volumeLabel(tier: PricingPlan["tier"]): string {
+  const x = capacityMultiple(tier);
+  return x === 1 ? "Baseline monthly agent volume" : `${x}× the Starter volume`;
+}
 
 /** Annual billing bills 10 months for 12 — i.e. two months free. */
 export const ANNUAL_MONTHS_CHARGED = 10;
@@ -59,14 +109,6 @@ export const PRICING_PLANS: PricingPlan[] = [
     monthlyUsd: 99,
     tagline: "For a team running marketing themselves.",
     bestFor: "One operator who wants the agent finding the work and drafting it.",
-    features: [
-      "Arc finds opportunities from your records and signals",
-      "Complete campaign packages, drafted with evidence attached",
-      "Approval gate on everything outbound",
-      "CRM, personas, and campaign history",
-      "Approved email sending",
-      "Unlimited seats",
-    ],
   },
   {
     tier: "pro",
@@ -75,13 +117,6 @@ export const PRICING_PLANS: PricingPlan[] = [
     tagline: "For a team that wants the loop closed.",
     bestFor: "Marketing teams that need the creative work and the record of it in one place.",
     featured: true,
-    features: [
-      "Everything in Starter",
-      "Creative studio — generate and resize approved assets",
-      "Every approved send recorded against the contact and campaign",
-      "Performance learning — Arc improves on your own results",
-      "Brand kit constrains every draft and asset",
-    ],
   },
   {
     tier: "scale",
@@ -89,12 +124,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     monthlyUsd: 899,
     tagline: "For higher volume and more moving parts.",
     bestFor: "Teams running many segments, or an agency running several brands.",
-    features: [
-      "Everything in Pro",
-      "Highest monthly agent allowance",
-      "Custom usage limits on request",
-      "Onboarding support",
-    ],
+    alsoIncluded: ["Custom usage limits on request", "Onboarding support"],
   },
 ];
 

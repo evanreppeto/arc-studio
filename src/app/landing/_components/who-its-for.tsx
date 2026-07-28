@@ -36,8 +36,8 @@ const AUDIENCES = [
 export function WhoItsFor() {
   return (
     <section id="who" className="border-y border-[color:var(--border-panel)] bg-[var(--canvas-deep)]">
-      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24 sm:py-28">
-        <div className="grid items-start gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+      <div className="mx-auto max-w-6xl scroll-mt-24 px-6 py-14 sm:py-28">
+        <div className="grid items-start gap-8 sm:gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
           <Reveal className="lg:sticky lg:top-28">
             <h2 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
               Who Arc is for
@@ -63,7 +63,7 @@ export function WhoItsFor() {
             {AUDIENCES.map((a, i) => (
               <Reveal key={a.tag} delay={0.08 * i}>
                 <figure className="group relative h-full overflow-hidden rounded-xl border border-[color:var(--border-panel)] transition-colors duration-300 hover:border-[color:color-mix(in_srgb,var(--accent)_45%,transparent)]">
-                  <div className="relative aspect-[16/10] sm:aspect-[16/11] lg:aspect-[16/7]">
+                  <div className="relative aspect-[16/7] sm:aspect-[16/11] lg:aspect-[16/7]">
                     <img
                       src={a.photo}
                       alt=""

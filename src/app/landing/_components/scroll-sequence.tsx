@@ -99,7 +99,7 @@ export function ScrollSequence() {
           className="absolute inset-0 h-full w-full object-cover opacity-45"
           aria-hidden
         />
-        <div className="relative mx-auto max-w-4xl space-y-8 px-6 py-28 text-center">
+        <div className="relative mx-auto max-w-4xl space-y-8 px-6 py-14 sm:py-28 text-center">
           {STAGES.map((stage) => (
             <p
               key={stage.text}
@@ -114,7 +114,7 @@ export function ScrollSequence() {
   }
 
   return (
-    <section ref={containerRef} className="relative h-[300vh]" aria-label="How Arc operates">
+    <section ref={containerRef} className="relative h-[120vh] sm:h-[300vh]" aria-label="How Arc operates">
       <div className="sticky top-0 flex h-screen items-center justify-center overflow-hidden border-y border-[color:var(--border-panel)] bg-[#0d0d10]">
         <canvas
           ref={canvasRef}
