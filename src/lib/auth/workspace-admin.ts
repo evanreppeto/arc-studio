@@ -6,6 +6,7 @@ import {
   type WorkspaceAccentKey,
   type WorkspaceIdentityPatch,
 } from "@/domain";
+import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured, type TypedSupabaseClient } from "@/lib/supabase/server";
 
@@ -24,6 +25,13 @@ export type UserWorkspace = {
   subtitle: string | null;
   shortLabel: string | null;
   accentKey: WorkspaceAccentKey | null;
+  /**
+   * The mark to draw for this workspace: its own chrome logo, else the org's
+   * brand-record logo. Same precedence the rail's brand block uses (see
+   * `(app)/layout.tsx`) — resolving only `workspaces.logo_url` here is what made
+   * the switcher menu show initials for a workspace whose logo the rail was
+   * already displaying one row above it.
+   */
   logoUrl: string | null;
 };
 
@@ -89,16 +97,21 @@ export async function listWorkspacesForUser(): Promise<UserWorkspace[]> {
   const workspaceIds = [...new Set(memberships.map((row) => row.workspace_id))];
   const orgIds = [...new Set(memberships.map((row) => row.org_id))];
 
-  const [{ data: workspaces }, { data: orgs }] = await Promise.all([
+  const [{ data: workspaces }, { data: orgs }, { data: brandProfiles }] = await Promise.all([
     client
       .from("workspaces")
       .select("id,name,workspace_type,status,subtitle,short_label,accent_key,logo_url")
       .in("id", workspaceIds),
     client.from("organizations").select("id,name").in("id", orgIds),
+    // The brand record is the canonical home of an uploaded logo (see
+    // lib/branding/logo.ts) — most workspaces never set the chrome-only
+    // workspaces.logo_url, so without this the menu falls to initials.
+    client.from("business_profiles").select("org_id,logo_url").in("org_id", orgIds),
   ]);
 
   const workspaceById = new Map((workspaces ?? []).map((row) => [row.id, row]));
   const orgById = new Map((orgs ?? []).map((row) => [row.id, row]));
+  const brandLogoByOrg = new Map((brandProfiles ?? []).map((row) => [row.org_id, row.logo_url]));
 
   return memberships
     .map((row) => {
@@ -115,7 +128,10 @@ export async function listWorkspacesForUser(): Promise<UserWorkspace[]> {
         subtitle: workspace.subtitle ?? null,
         shortLabel: workspace.short_label ?? null,
         accentKey: isWorkspaceAccentKey(workspace.accent_key) ? workspace.accent_key : null,
-        logoUrl: workspace.logo_url ?? null,
+        // Chrome logo wins when set; otherwise the org's brand mark. The brand
+        // value is passed through resolveWorkspaceLogoUrl so a non-absolute
+        // leftover can't reach an <img src> here either.
+        logoUrl: workspace.logo_url?.trim() || resolveWorkspaceLogoUrl(brandLogoByOrg.get(row.org_id), null),
       } satisfies UserWorkspace;
     })
     .filter((value): value is UserWorkspace => value !== null);

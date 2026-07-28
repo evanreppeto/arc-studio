@@ -112,7 +112,7 @@ export function renderAuthEmail(input: AuthEmailInput): { html: string; text: st
   // Copy/paste fallback for clients that strip or mangle the button.
   const fallback = `<p style="margin:22px 0 0;font-family:${sans};font-size:12.5px;line-height:1.55;color:${textMuted}">Or paste this link into your browser:<br /><a href="${escapeHtml(cta.url)}" style="color:${accent};text-decoration:underline;word-break:break-all">${escapeHtml(cta.url)}</a></p>`;
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="color-scheme" content="dark light" /><meta name="supported-color-schemes" content="dark light" /></head>
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="color-scheme" content="dark" /><meta name="supported-color-schemes" content="dark" /></head>
 <body style="margin:0;padding:0;background:${canvas};font-family:${sans}">
 ${preheaderBlock}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${canvas}" style="background:${canvas}"><tr><td align="center" style="padding:32px 20px">

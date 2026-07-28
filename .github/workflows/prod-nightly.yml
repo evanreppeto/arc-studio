@@ -1,0 +1,83 @@
+name: Prod nightly smoke
+
+# Nightly end-to-end run against PRODUCTION (BSR-478).
+#
+# CI proves the code compiles; it does not prove the deployed app works, and
+# that gap is where this project's expensive bugs live. This exercises the paths
+# that have broken SILENTLY — where every surface still looked fine.
+#
+# WHICH TENANT: the smoke credentials belong to the ARCHIVED seeded demo org
+# (`big-shoulders-restoration`, org 63b72a45…) — test-only accounts, seeded
+# data, no real users. Prod's other org, `big-shoulders-restoration-2`, is the
+# REAL live tenant and must never be written to by this workflow. Both orgs are
+# NAMED "Big Shoulders Restoration"; only the slug/id tells them apart.
+#
+# The Arc known-fact check additionally needs ARC_SMOKE_ENABLED=1, which is only
+# true once the runner has a Secret Manager token scoped to the smoke workspace.
+# Until then it reports as SKIPPED — never as passed.
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # 07:00 UTC nightly
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    name: Nightly smoke (prod)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Every assertion carries its step number in the failure message, so the
+      # run reports WHICH step broke without opening the report artifact.
+      - name: Nightly smoke against prod
+        id: smoke
+        run: pnpm test:e2e:nightly
+        env:
+          E2E_EMAIL: ${{ secrets.PROD_E2E_EMAIL || 'owner@bsr.test' }}
+          # No literal fallback — this signs in to production. Unset ⇒ skip.
+          E2E_PASSWORD: ${{ secrets.PROD_E2E_PASSWORD }}
+          ARC_SMOKE_ENABLED: ${{ vars.ARC_SMOKE_ENABLED }}
+
+      # A skipped test is a hollow pass — it looks identical to success on the
+      # checks UI. Surface the counts so "green" can be read honestly.
+      - name: Report skipped checks
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          if [ "${{ vars.ARC_SMOKE_ENABLED }}" != "1" ]; then
+            echo "::warning title=Arc known-fact check is SKIPPED::The nightly smoke is not exercising Arc's reasoning. Set the repo variable ARC_SMOKE_ENABLED=1 once the runner has a Secret Manager token scoped to the smoke workspace (BSR-478)."
+          fi
+
+      - name: Upload Playwright report on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-nightly-report
+          path: playwright-report/
+          retention-days: 14
+
+      # SEAM FOR BSR-477 (alerting). That ticket owns routing failures to Slack;
+      # this step is the hook it fills in — add the webhook call here rather than
+      # rebuilding the trigger. Until then a failure surfaces as a red scheduled
+      # workflow with the failing step named in its message.
+      - name: Alert on failure
+        if: ${{ failure() }}
+        run: |
+          echo "::error title=Nightly prod smoke FAILED::The deployed app failed an end-to-end check. See the named step in the log and the uploaded report. Slack routing lands with BSR-477."

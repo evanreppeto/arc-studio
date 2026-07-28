@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import type { SettingsTeamInvite, SettingsTeamMember, SettingsTeamView, WorkspaceActivityEntry } from "@/lib/auth/team-view";
 import type { WaitlistView } from "@/lib/waitlist/read-model";
@@ -86,10 +86,8 @@ const ICON: Record<string, string> = {
   connections: '<path d="M8 12l-3 3a3 3 0 004 4l3-3M16 12l3-3a3 3 0 00-4-4l-3 3M9 15l6-6"/>',
   agent: '<rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 8V5M9 13h.01M15 13h.01M9 16h6"/>',
   media: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
-  behavior: '<path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z"/><path d="M5 19h14"/>',
   account: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/>',
   usage: '<path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-6"/>',
-  notifications: '<path d="M18 8a6 6 0 00-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M10 20a2 2 0 004 0"/>',
   system: '<path d="M12 3v3M12 18v3M5 12H2M22 12h-3M6 6l-2-2M20 20l-2-2M6 18l-2 2M20 4l-2 2"/><circle cx="12" cy="12" r="4"/>',
   overview: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
 };
@@ -97,19 +95,19 @@ const CHECK = '<path d="M5 12l4 4L19 6"/>';
 const Ic = ({ d }: { d: string }) => <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: d }} />;
 
 const NAVGROUPS = [
-  { g: "WORKSPACE", items: [["overview", "Overview"], ["general", "General"], ["appearance", "Appearance"], ["team", "Team"], ["workspaces", "Workspaces"]] },
-  { g: "ARC", items: [["connections", "Connections"], ["media", "Media models"], ["behavior", "Behavior"]] },
-  { g: "ACCOUNT", items: [["account", "Account & security"], ["usage", "Usage & billing"], ["notifications", "Notifications"], ["system", "System status"]] },
+  { g: "WORKSPACE", items: [["overview", "Overview"], ["general", "Organization & brand"], ["appearance", "Appearance"], ["team", "Team"], ["workspaces", "Workspaces"]] },
+  { g: "ARC", items: [["connections", "Connections"]] },
+  { g: "ACCOUNT", items: [["account", "Account"], ["usage", "Usage & billing"]] },
+  { g: "ADVANCED", items: [["media", "Media models"], ["system", "System status"]] },
 ] as const;
-const DOTS: Record<string, string> = { connections: "var(--ok)", system: "var(--ok)", notifications: "var(--warn)" };
+const DOTS: Record<string, string> = { connections: "var(--ok)", system: "var(--ok)" };
 
 // Sections with in-section tabs. The breadcrumb + tab bar render from these.
 const SUBTABS: Record<string, string[]> = {
-  general: ["Workspace", "Agent"],
+  general: ["Organization", "Agent"],
   team: ["Members", "Invites", "Roles", "Activity"],
   connections: ["Live", "Roadmap"],
   media: ["Defaults", "Roster"],
-  account: ["Identity", "Sign-in"],
   usage: ["Overview", "Connectors", "By day", "By model", "Recent"],
 };
 const SECTION_LABEL: Record<string, string> = {
@@ -129,33 +127,19 @@ const SECTION_KEYWORDS: Record<string, string> = {
   workspaces: "switch organization org tenant",
   connections: "integration api token credential connector gemini higgsfield mcp vault",
   media: "models image video audio gemini veo higgsfield generation default aspect",
-  behavior: "autonomy guardrail recall outbound approval send publish",
-  account: "security password passkey sign-in login session operator sso google",
+  account: "profile photo security sign-in login session sign out",
   usage: "billing cost spend tokens runs plan cap invoice budget",
-  notifications: "alerts email digest notify",
   system: "status health services supabase resend probe",
 };
 
 // ---- reusable controls ----
-// Sw/Seg support both an uncontrolled mode (self-state, for cosmetic mockup rows)
-// and a controlled mode (value + onChange, for persisted settings).
-function Sw({ on: init, locked, value, onChange }: { on?: boolean; locked?: boolean; value?: boolean; onChange?: (v: boolean) => void }) {
-  const [self, setSelf] = useState(!!init);
-  const on = onChange ? !!value : self;
-  const toggle = () => {
-    if (locked) return;
-    if (onChange) onChange(!on);
-    else setSelf((v) => !v);
-  };
-  return <span className={`sw${on ? " on" : ""}${locked ? " locked" : ""}`} onClick={toggle}><i /></span>;
-}
 function Seg({ opts, active, value, onChange }: { opts: string[]; active?: string; value?: string; onChange?: (v: string) => void }) {
   const [internal, setInternal] = useState(active ?? opts[0]);
   const v = value ?? internal;
   return (
     <div className="seg">
       {opts.map((o) => (
-        <button key={o} className={o === v ? "on" : ""} onClick={() => (onChange ? onChange(o) : setInternal(o))}>{o}</button>
+        <button type="button" key={o} className={o === v ? "on" : ""} aria-pressed={o === v} onClick={() => (onChange ? onChange(o) : setInternal(o))}>{o}</button>
       ))}
     </div>
   );
@@ -194,8 +178,7 @@ function Panel({ title, tag, foot, children }: { title: ReactNode; tag?: ReactNo
     </div>
   );
 }
-const TGOK = <span className="tg ok">wired</span>;
-const TGEST = <span className="tg est">scaffold</span>;
+const TGOK = <span className="tg ok">Active</span>;
 const Head = ({ t, d }: { t: string; d: string }) => <div className="sechead"><h2>{t}</h2><p>{d}</p></div>;
 
 // Breadcrumb trail: Settings › Section [› Sub-tab | › Detail]. Any crumb with an
@@ -621,7 +604,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     apply();
     window.addEventListener("popstate", apply);
     return () => window.removeEventListener("popstate", apply);
-  }, []);
+  }, [health, waitlist]);
 
   const navTo = (section: string, tab?: string) => {
     setCur(section);
@@ -653,13 +636,13 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
    * that told every deployment its Gemini key was "Present" and its runner
    * "Connected · 2m ago". Each row links to the screen where you'd fix it.
    */
-  const systemStatus = useMemo(() => {
+  const systemStatus = (() => {
     const rows: { label: string; desc?: string; kind: string; value: string; go?: { label: string; run: () => void } }[] = [];
 
     // A connected workspace is proof Supabase is reachable — this view was rendered from it.
     rows.push({
       label: "Workspace database",
-      desc: connectors.configured ? "Supabase is reachable — this page was rendered from it." : "No workspace is connected, so nothing here persists.",
+      desc: connectors.configured ? "The workspace database is reachable." : "No workspace is connected, so changes cannot be saved.",
       kind: connectors.configured ? "ok" : "warn",
       value: connectors.configured ? "Connected" : "Not connected",
     });
@@ -669,7 +652,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
       const ready = e.enabled && (e.credentialPresent || Boolean(e.envVar));
       rows.push({
         label: "Email delivery (Resend)",
-        desc: !liveSendEnabled ? "Sending is disarmed deployment-wide (ARC_SEND_ENABLED)." : e.fromEmail ? `From ${e.fromEmail}.` : "No from-address set.",
+        desc: !liveSendEnabled ? "Live sending is paused by the deployment safety lock." : e.fromEmail ? `From ${e.fromEmail}.` : "No from-address set.",
         kind: !ready ? "warn" : liveSendEnabled ? "ok" : "warn",
         value: !e.credentialPresent && !e.envVar ? "No key" : !e.enabled ? "Disabled" : liveSendEnabled ? "Ready" : "Key set · sending off",
         go: { label: "Manage", run: () => openConnector("resend") },
@@ -684,7 +667,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         desc: !agentConnection.enabled ? "Disabled for this workspace." : h.lastError ? h.lastError : seen ? `Last seen ${seen}.` : "No check-in recorded yet.",
         kind: !agentConnection.enabled ? "warn" : h.lastStatus === "ok" ? "ok" : h.lastStatus ? "err" : "warn",
         value: !agentConnection.enabled ? "Disabled" : h.lastStatus === "ok" ? "Healthy" : h.lastStatus ?? "Never checked in",
-        go: { label: "Agent", run: () => navTo("agent") },
+        go: { label: "Agent", run: () => navTo("general", "Agent") },
       });
     }
 
@@ -700,7 +683,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     }
 
     return rows;
-  }, [connectors, emailConnection, agentConnection, liveSendEnabled]);
+  })();
 
   // Search jumps to a destination (section, sub-tab, or connector), not just a
   // rail filter. Each entry carries synonyms so intent-y queries land right.
@@ -936,16 +919,16 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
       <>
         <Head t="Overview" d="Your workspace at a glance — health, what needs you, and quick links." />
         <div className="ovgrid">
-          {[["connections", String(activeConnections), "Connections active"], ["team", String(memberCount), "Team members"], ["agent", runnerValue, "Runner status"], ["usage", `${usageView.pctOfCap}%`, "Of monthly cap"]].map(([ic, v, l]) => (
-            <div className="ovcard" key={l} onClick={() => navTo(ic)}><div className="ovi"><Ic d={ICON[ic]} /></div><div className="ovv">{v}</div><div className="ovl">{l}</div></div>
+          {[
+            ["connections", "connections", String(activeConnections), "Connections active"],
+            ["team", "team", String(memberCount), "Team members"],
+            ["general", "agent", runnerValue, "Runner status"],
+            ["usage", "usage", `${usageView.pctOfCap}%`, "Of monthly cap"],
+          ].map(([route, icon, value, label]) => (
+            <button type="button" className="ovcard" key={label} onClick={() => navTo(route, route === "general" ? "Agent" : undefined)}><div className="ovi"><Ic d={ICON[icon]} /></div><div className="ovv">{value}</div><div className="ovl">{label}</div></button>
           ))}
         </div>
-        <Panel title="Needs attention" tag={TGOK}>
-          {[["warn", "Add a recovery sign-in method", "— connect Google SSO in Account.", "account"], ["warn", "Notifications aren’t wired yet", "— event delivery is still scaffold.", "notifications"], ["ok", "Outbound is locked", "— Arc can’t send, post, or spend without you.", "behavior"]].map(([k, t, d, sec]) => (
-            <div className="attn" key={t} onClick={() => navTo(sec)}><span className={`ai ${k}`}><Ic d={k === "ok" ? CHECK : '<path d="M12 9v4M12 17h.01M10.3 4l-7 12a2 2 0 001.7 3h14a2 2 0 001.7-3l-7-12a2 2 0 00-3.4 0z"/>'} /></span><div className="at"><b>{t}</b> {d}</div><span className="ago">→</span></div>
-          ))}
-        </Panel>
-        <Panel title="Workspace" tag={TGOK}>
+        <Panel title="Workspace">
           <Row label="Plan"><span className="pillrow"><Pill kind="ok">{billing?.planLabel ?? "—"}</Pill><button className="btn sm" onClick={() => navTo("usage")}>Manage plan</button></span></Row>
           <Row label="Business type"><span className="pillrow"><span className="ptxt">Company · Restoration &amp; home services</span><button className="btn sm" onClick={() => navTo("general")}>Change</button></span></Row>
           <Row label="Team"><span className="pillrow"><span className="ptxt">{memberCount} {memberCount === 1 ? "member" : "members"}{pendingCount > 0 ? ` · ${pendingCount} pending` : ""}</span><button className="btn sm" onClick={() => navTo("team")}>Manage</button></span></Row>
@@ -954,7 +937,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     ),
     general: (
       <>
-        <Head t="General" d="Your workspace identity and how Arc is named — both apply across the app and Arc’s outbound from-name." />
+        <Head t="Organization & brand" d="Set the organization identity used on generated creative and as the default across Arc. Workspace-only sidebar overrides live under Workspaces." />
         {subBar}
         {activeSub === "Agent" ? <AgentIdentityPanel settings={settings} /> : <GeneralPanel brandName={brandName} workspaceName={workspaceName || brandName} settings={settings} workspaceLogoUrl={workspaceLogoUrl} />}
       </>
@@ -982,7 +965,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     ),
     workspaces: (
       <>
-        <Head t="Workspaces" d="Each workspace is its own brand, CRM, and Arc. Switching re-tailors the whole app." />
+        <Head t="Workspaces" d="Each workspace has its own CRM and Arc context. Customize its sidebar name, color, or optional logo override here." />
         <WorkspacesSection view={workspaces} />
       </>
     ),
@@ -994,7 +977,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
           <>
             <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 12px", lineHeight: 1.5 }}>More integrations are planned. They’re listed honestly — connecting from here isn’t available yet. Social posting & email sending will always stay human-approved.</div>
             <div className="connhub-search"><Ic d='<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>' /><input value={connQ} onChange={(e) => setConnQ(e.target.value)} placeholder="Search planned integrations…" /></div>
-            <div className="catchips">{CATS.map((c) => <span key={c} className={`catchip${connCat === c ? " on" : ""}`} onClick={() => setConnCat(c)}>{c}</span>)}</div>
+            <div className="catchips">{CATS.map((c) => <button type="button" key={c} className={`catchip${connCat === c ? " on" : ""}`} aria-pressed={connCat === c} onClick={() => setConnCat(c)}>{c}</button>)}</div>
             <div className="conngrid">
               {CONNECTORS.filter((x) => x.n !== "Gemini Web Research" && x.n !== "Higgsfield").filter((x) => {
                 const okCat = connCat === "All" || x.cat === connCat;
@@ -1055,68 +1038,38 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
                   const [id, label, prov, rec] = m; const col = PCOL[prov] || "#9aa0ac";
                   const open = () => setModelSel({ id, label, prov, rec, cat: mediaCat });
                   return (
-                    <div className="mrow mrow-btn" key={id} role="button" tabIndex={0} onClick={open} onKeyDown={(e) => { if (e.key === "Enter") open(); }}>
+                    <button type="button" className="mrow mrow-btn" key={id} onClick={open}>
                       <BrandBadge className="mlogo" name={prov} initials={pinit(prov)} color={col} glyphSize={16} />
                       <div className="mi"><div className="mn">{label}{rec ? <span className="mbadge">Arc’s pick</span> : null}</div><div className="mp">{prov}</div></div>
                       <span className="mrow-go" aria-hidden="true">→</span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             </div>
-            <div className="panel-f"><Ic d={CHECK} />Live roster (HIGGSFIELD_MODELS, validated vs MCP 2026-06-24). Arc auto-picks per task; “Arc’s pick” marks the recommended default per category.</div>
+            <div className="panel-f"><Ic d={CHECK} />Arc automatically chooses from this live roster. “Arc’s pick” marks the recommended default for each category.</div>
           </div>
         ) : (
-          <>
-            <MediaDefaultsPanel settings={settings} />
-            <Panel title="Generation preferences" tag={TGEST} foot="scaffold — these toggles don’t persist yet (no consumer wired)">
-              <Row label="Auto-pick best model" desc="Let Arc choose the right model per task (recommended)."><Sw on /></Row>
-              <Row label="Default aspect" desc="Per-platform overrides still apply."><Seg opts={["1:1", "4:5", "9:16", "16:9"]} active="4:5" /></Row>
-              <Row label="Prefer real brand media" desc="AI enhances your approved photos & footage rather than replacing them."><Sw on /></Row>
-              <Row label="Allow video generation"><Sw on /></Row>
-            </Panel>
-          </>
+          <MediaDefaultsPanel settings={settings} />
         )}
-      </>
-    ),
-    behavior: (
-      <>
-        <Head t="Behavior" d="What Arc may do on its own — and where the human gate stays. The outbound gate is not configurable." />
-        <Panel title="Autonomy" tag={TGEST} foot="scaffold — these toggles don’t persist yet. The outbound gate is always enforced (not configurable).">
-          <Row label="Draft campaigns & assets" desc="Arc prepares approval-ready packages."><Sw on /></Row>
-          <Row label="Open opportunities" desc="Source-backed recommendations in your inbox."><Sw on /></Row>
-          <Row label="Write to the Brain" desc="Proposed facts land review-gated, never auto-trusted."><Sw on /></Row>
-          <Row label="Send / publish / spend" desc={<><b style={{ color: "var(--text)" }}>Locked.</b> Always requires explicit human approval — not configurable.</>}><span className="locklbl"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></svg><Sw locked /></span></Row>
-          <Row label="Recall window" desc="How far back Arc reads context for a task."><Seg opts={["Tight", "Standard", "Wide"]} active="Standard" /></Row>
-        </Panel>
       </>
     ),
     account: (
       <>
-        <Head t="Account & security" d="Your operator identity and how you sign in. Your email is live; the controls below are still scaffold." />
-        {subBar}
-        {activeSub === "Sign-in" ? (
-          <Panel title="Sign-in methods" tag={TGEST} foot="operator gate + /api/auth · ARC_AUTH_MODE (controls not yet wired)">
-            <Row label="Password" desc="Email + password operator sign-in."><span className="pillrow"><Pill kind="ok">Configured</Pill><button type="button" className="btn sm" data-soon="Changing your password from here is coming soon">Change</button></span></Row>
-            <Row label="Passkey" desc="Hardware / biometric sign-in."><span className="pillrow"><Pill kind="off">Planned</Pill></span></Row>
-            <Row label="Google" desc="SSO via Google."><span className="pillrow"><Pill kind="off">Planned</Pill><button type="button" className="btn sm" data-soon="Google SSO isn't built yet">Connect</button></span></Row>
-            <div style={{ padding: "13px 0 4px", display: "flex", gap: 9 }}><button type="button" className="btn" data-soon="Rotating the access token is done in your deployment env (OPERATOR_ACCESS_TOKEN)">Reset access token</button><form action="/api/auth/sign-out" method="post" style={{ display: "inline" }}><button type="submit" className="btn danger">Sign out</button></form></div>
-          </Panel>
-        ) : (
-          <Panel title="Operator" tag={TGEST}>
-            <Row label="Signed in as"><span className="pillrow"><span style={{ display: "flex", alignItems: "center", gap: 9 }}><span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", fontFamily: "var(--serif)", fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-border)" }}>{(email || "O").charAt(0).toUpperCase()}</span><span><span style={{ fontSize: "12.5px", fontWeight: 600, display: "block" }}>{email.split("@")[0] || "Operator"}</span><span style={{ fontSize: 11, color: "var(--muted)" }}>{email || "No email on this session"}</span></span></span><button type="button" className="btn sm" data-soon="Editing your operator profile is coming soon">Edit</button></span></Row>
-            <Row label="Profile photo" desc="Shown on your account and across the app. Square works best.">
-              <ImageUploadField
-                currentUrl={avatarUrl}
-                fallback={(email || "O").charAt(0).toUpperCase()}
-                shape="circle"
-                uploadAction={saveUserAvatarAction}
-                removeAction={removeUserAvatarAction}
-              />
-            </Row>
-            <Row label="Access gate" desc="OPERATOR_ACCESS_TOKEN protects the console. Set in your deployment env, not here."><span className="pillrow"><Pill kind="ok">Protected</Pill></span></Row>
-          </Panel>
-        )}
+        <Head t="Account" d="Your profile and active sign-in session." />
+        <Panel title="Profile">
+          <Row label="Signed in as"><span style={{ display: "flex", alignItems: "center", gap: 9 }}><span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", fontFamily: "var(--serif)", fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-border)" }}>{(email || "O").charAt(0).toUpperCase()}</span><span><span style={{ fontSize: "12.5px", fontWeight: 600, display: "block" }}>{email.split("@")[0] || "Operator"}</span><span style={{ fontSize: 11, color: "var(--muted)" }}>{email || "No email on this session"}</span></span></span></Row>
+          <Row label="Profile photo" desc="Shown on your account and across the app. Square works best.">
+            <ImageUploadField
+              currentUrl={avatarUrl}
+              fallback={(email || "O").charAt(0).toUpperCase()}
+              shape="circle"
+              uploadAction={saveUserAvatarAction}
+              removeAction={removeUserAvatarAction}
+            />
+          </Row>
+          <div style={{ padding: "13px 0 4px" }}><form action="/api/auth/sign-out" method="post"><button type="submit" className="btn danger">Sign out</button></form></div>
+        </Panel>
       </>
     ),
     usage: (
@@ -1134,29 +1087,18 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         ) : (
           <>
             <div className="panel">
-              <div className="panel-h"><h3>This month</h3><span className="tg ok" style={{ marginLeft: "auto" }}>{usageView.isDemo ? "demo" : "wired"}</span></div>
+              <div className="panel-h"><h3>This month</h3><span className="tg ok" style={{ marginLeft: "auto" }}>{usageView.isDemo ? "Sample data" : "Live"}</span></div>
               <div className="panel-b" style={{ padding: 16 }}>
                 <div className="ukpis">{[[usageView.tokensLabel, "Tokens"], [usageView.runsLabel, "Agent runs"], [usageView.costLabel, "Est. cost"]].map(([v, l]) => <div className="ukpi" key={l}><div className="uv">{v}</div><div className="ul">{l}</div></div>)}</div>
                 <div className="ubar"><i style={{ width: `${Math.min(usageView.pctOfCap, 100)}%`, ...(usageView.isNearCap ? { background: "var(--warn)" } : {}) }} /></div>
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 7 }}>{usageView.pctOfCap}% of your {usageView.capLabel}{usageView.planLabel ? ` ${usageView.planLabel}` : ""} plan cap · {usageView.rangeLabel}</div>
               </div>
-              <div className="panel-f"><Ic d={CHECK} />loadWorkspaceUsage → summarizeUsageForSettings · scoped to this workspace</div>
+              <div className="panel-f"><Ic d={CHECK} />Usage is scoped to this workspace.</div>
             </div>
             <BillingPlanControl billing={billing} />
             <div style={{ display: "flex", gap: 9 }}><button type="button" className="btn gold" onClick={() => navTo("usage")}><Ic d='<path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-6"/>' />Open usage &amp; billing</button></div>
           </>
         )}
-      </>
-    ),
-    notifications: (
-      <>
-        <Head t="Notifications" d="Where Arc sends you alerts. Backend delivery is not wired yet." />
-        <Panel title="Email me when" tag={TGEST} foot="panel exists; no delivery action wired (scaffold)">
-          <Row label="A campaign needs approval"><Sw on /></Row>
-          <Row label="A dispatch fails"><Sw on /></Row>
-          <Row label="A new opportunity is found"><Sw /></Row>
-          <Row label="Weekly performance digest"><Sw on /></Row>
-        </Panel>
       </>
     ),
     system: (
@@ -1168,7 +1110,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
             but a green pill reading "Connected · 2m ago" is a claim, not a mockup.
             Every row below is now derived from the same props the rest of Settings
             renders from, and each links to the page where you'd actually fix it. */}
-        <Panel title="Services" tag={<span className="tg ok">wired</span>}>
+        <Panel title="Services" tag={<span className="tg ok">Live</span>}>
           {systemStatus.map((s) => (
             <Row key={s.label} label={s.label} desc={s.desc}>
               <span className="pillrow">
@@ -1177,7 +1119,6 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
               </span>
             </Row>
           ))}
-          <Row label="Demo data" desc="Seed example data for screenshots."><Sw /></Row>
         </Panel>
         <div>
           <button type="button" className="btn" onClick={() => router.refresh()}>
@@ -1205,6 +1146,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
             value={navQ}
             onChange={(e) => setNavQ(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && results[0]) selectResult(results[0]); else if (e.key === "Escape") setNavQ(""); }}
+            aria-label="Search settings"
             placeholder="Search settings…"
           />
         </div>
@@ -1212,9 +1154,9 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
           <div className="searchres">
             {results.length ? (
               results.map((d, i) => (
-                <div key={`${d.label}-${d.sub ?? ""}-${i}`} className={`sr-item${i === 0 ? " on" : ""}`} onClick={() => selectResult(d)}>
+                <button type="button" key={`${d.label}-${d.sub ?? ""}-${i}`} className={`sr-item${i === 0 ? " on" : ""}`} onClick={() => selectResult(d)}>
                   <span className="sr-label">{d.label}{d.sub ? <> <span className="sr-sep">›</span> <b>{d.sub}</b></> : null}</span>
-                </div>
+                </button>
               ))
             ) : (
               <div className="sr-empty">No settings match “{navQ.trim()}”.</div>
@@ -1225,9 +1167,9 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
             <div key={grp.g}>
               <div className="setgrp">{grp.g}</div>
               {grp.items.map((it) => (
-                <div key={it[0]} className={`setitem${it[0] === cur ? " on" : ""}`} onClick={() => navTo(it[0])}>
+                <button type="button" key={it[0]} className={`setitem${it[0] === cur ? " on" : ""}`} aria-current={it[0] === cur ? "page" : undefined} onClick={() => navTo(it[0])}>
                   <Ic d={ICON[it[0]]} /><span>{it[1]}</span>{DOTS[it[0]] && <span className="sd" style={{ background: DOTS[it[0]] }} />}
-                </div>
+                </button>
               ))}
             </div>
           ))
@@ -1305,7 +1247,7 @@ function BillingPlanControl({ billing }: { billing: SettingsBillingView | null }
   const statusSuffix = billing.subscriptionStatus ? ` · ${billing.subscriptionStatus}` : "";
 
   return (
-    <Panel title="Plan" tag={TGOK} foot="org_plans · monthly cap enforced against metered usage">
+    <Panel title="Plan" tag={TGOK} foot="The monthly cap is enforced against metered usage.">
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ fontWeight: 600 }}>{current.label}{statusSuffix}</div>
@@ -1365,12 +1307,12 @@ function TeamMembers({ team }: { team: SettingsTeamView }) {
           <div className="me" style={{ padding: "6px 2px", color: "var(--muted)" }}>No members yet.</div>
         ) : (
           members.map((m) => (
-            <div className="mem mem-btn" key={m.id} role="button" tabIndex={0} onClick={() => setSelId(m.id)} onKeyDown={(e) => { if (e.key === "Enter") setSelId(m.id); }}>
+            <button type="button" className="mem mem-btn" key={m.id} onClick={() => setSelId(m.id)}>
               <span className="ma">{initial(m.email)}</span>
               <div className="mi"><div className="mn">{m.email}</div><div className="me">{m.roleLabel}{m.pending ? " · invited" : ""}</div></div>
               {m.isOwner && <Pill kind="off">Owner</Pill>}
               <span className="mem-go">Manage →</span>
-            </div>
+            </button>
           ))
         )}
         {status && <div style={{ fontSize: 12.5, padding: "8px 2px 0", color: status.tone === "ok" ? "var(--ok-text)" : "var(--red-text)" }}>{status.text}</div>}
@@ -1513,7 +1455,7 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
     if (!res.ok) { setStatus({ tone: "err", text: res.error }); return; }
     onCreated(
       { id: `local-${crypto.randomUUID()}`, email: trimmed, role, note: `${role} · just now` },
-      res.persisted ? res.message ?? "Invite sent." : "Invite added — connect your workspace (Supabase) to send it for real.",
+      res.persisted ? res.message ?? "Invite sent." : "Invite added — connect your workspace to send it.",
     );
     onClose();
   }
@@ -1654,7 +1596,7 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
       tone: "ok",
       text: res.persisted
         ? `${res.message ?? "Workspace created."} Reloading…`
-        : "Workspace added — connect your account (Supabase) to provision it for real.",
+        : "Workspace added — connect your account to save it.",
     });
     if (res.persisted) {
       // createWorkspace pins the new workspace as active (it repoints the
@@ -1672,8 +1614,7 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
     <>
       <Panel
         title={<>Your workspaces <span className="ph-d" style={{ marginLeft: 6 }}>{workspaces.length}</span></>}
-        tag={TGOK}
-        foot={view.isDemo ? "demo workspaces — your real memberships list here once connected" : "listWorkspacesForUser · Switch repoints the active-workspace cookie"}
+        foot={view.isDemo ? "Sample workspaces are shown until you connect an account." : "Switching updates the whole app to the selected workspace."}
       >
         {workspaces.length === 0 ? (
           <div className="me" style={{ padding: "6px 2px", color: "var(--muted)" }}>No workspaces yet.</div>
@@ -1684,10 +1625,10 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
               key={w.id}
               style={w.accentColor ? ({ "--ws-accent": w.accentColor } as React.CSSProperties) : undefined}
             >
-              <span className="ma" style={w.accentColor ? { color: w.accentColor, background: `color-mix(in srgb, ${w.accentColor} 16%, transparent)`, borderColor: `color-mix(in srgb, ${w.accentColor} 32%, transparent)`, overflow: "hidden", padding: 0 } : undefined}>
+              <span className={`ma${w.logoUrl ? " has-image" : ""}`} style={!w.logoUrl && w.accentColor ? { color: w.accentColor, background: `color-mix(in srgb, ${w.accentColor} 16%, transparent)`, borderColor: `color-mix(in srgb, ${w.accentColor} 32%, transparent)` } : undefined}>
                 {w.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo; next/image would need per-host remotePatterns
-                  <img src={w.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img src={w.logoUrl} alt="" />
                 ) : (
                   // The shared monogram rule, so this row matches the rail.
                   workspaceInitials(w.name)
@@ -1740,10 +1681,10 @@ function GeneralPanel({ brandName, workspaceName, settings, workspaceLogoUrl }: 
   }
 
   return (
-      <Panel title="Workspace" tag={TGOK} foot="Renames the workspace + organization, and saves profile, industry, and support email">
+      <Panel title="Organization & brand" foot="Changes apply across Arc and to generated creative.">
         <Row label="Workspace name" desc="The bold line in the sidebar. Its subtitle, label, and color live under Workspaces → Customize."><input className="inp" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></Row>
         <Row label="Organization" desc="Your brand name — used in Arc’s outbound from-name and on generated creative. Separate from the workspace name, so a workspace can be labelled for what it does."><input className="inp" value={orgName} onChange={(e) => setOrgName(e.target.value)} maxLength={80} /></Row>
-        <Row label="Workspace logo" desc="One logo: shown in the sidebar in place of the initials, and stamped on creative Arc generates. Also editable on Brand. Square PNG or SVG works best.">
+        <Row label="Brand logo" desc="Stamped on generated creative and used as the default sidebar logo. A workspace-specific override under Workspaces can replace it in the sidebar. Square PNG or SVG works best.">
           <ImageUploadField
             currentUrl={workspaceLogoUrl}
             fallback={pinit(orgName || brandName)}
@@ -1792,9 +1733,9 @@ function AppearancePanel({ settings }: { settings: AppSettings }) {
   }
 
   return (
-      <Panel title="Theme" tag={TGOK} foot={<>Applies across the app{status ? <> · <Status status={status} /></> : null}</>}>
+      <Panel title="Theme" foot={<>Applies across the app{status ? <> · <Status status={status} /></> : null}</>}>
         <Row label="Accent" desc="Used sparingly — buttons, focus, key numbers.">
-          <div className="accsw">{ACCENTS.map(({ key, color }) => <span key={key} className={`accopt${accent === key ? " on" : ""}`} style={{ background: color }} title={key[0].toUpperCase() + key.slice(1)} onClick={() => apply({ appearanceAccent: key })} />)}</div>
+          <div className="accsw">{ACCENTS.map(({ key, color }) => <button type="button" key={key} className={`accopt${accent === key ? " on" : ""}`} style={{ background: color }} aria-label={`${key[0].toUpperCase() + key.slice(1)} accent`} aria-pressed={accent === key} title={key[0].toUpperCase() + key.slice(1)} onClick={() => apply({ appearanceAccent: key })} />)}</div>
         </Row>
         <Row label="Density" desc="Comfortable for review, compact for power use.">
           <Seg opts={["Comfortable", "Compact"]} value={DENSITY_LABEL[density]} onChange={(v) => apply({ appearanceDensity: v === "Compact" ? "compact" : "comfortable" })} />
@@ -1826,7 +1767,7 @@ function AgentIdentityPanel({ settings }: { settings: AppSettings }) {
   }
 
   return (
-    <Panel title="Agent identity" tag={TGOK} foot="Shown wherever Arc is named · getAgentName">
+    <Panel title="Agent identity" tag={TGOK} foot="Shown wherever Arc is named.">
       <Row label="Display name" desc="What the agent is called across the app and in Arc’s replies.">
         <span className="pillrow">
           <input className="inp" value={name} onChange={(e) => setName(e.target.value)} onBlur={save} onKeyDown={(e) => { if (e.key === "Enter") save(); }} style={{ minWidth: 160 }} maxLength={32} />
@@ -1897,7 +1838,7 @@ function ConnectorCard({ view, onOpen }: { view: ConnectorView; onOpen: () => vo
   const kindLabel = CONNECTOR_KIND_LABEL[view.kind] ?? view.kind;
   const cta = view.credentialPresent || view.enabled ? "Manage" : view.credentialOptional || view.platformCredentialAvailable ? "Set up" : "Connect";
   return (
-    <div className="ccard ccard-btn" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === "Enter") onOpen(); }}>
+    <button type="button" className="ccard ccard-btn" onClick={onOpen}>
       <div className="ct">
         <BrandBadge className="clogo" name={view.label} initials={meta.l} color={meta.c} />
         <div><div className="cnm">{view.label}</div><div className="ccat">{kindLabel} · {view.access === "read_only" ? "read-only" : "gated write"}</div></div>
@@ -1909,7 +1850,7 @@ function ConnectorCard({ view, onOpen }: { view: ConnectorView; onOpen: () => vo
         <span className="grow" />
         <span className="cb-open">{cta} →</span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -2405,7 +2346,7 @@ function emailPill(view: ConnectionView, liveSendEnabled: boolean): { kind: stri
     return {
       kind: "warn",
       label: "Not armed",
-      title: "Resend is configured, but live sending is turned off for this deployment (ARC_SEND_ENABLED). Approved campaigns won't send until it's armed.",
+      title: "Resend is configured, but the deployment safety lock is pausing live sending. Approved campaigns will not send until it is armed.",
     };
   }
   return EMAIL_PILL[view.status];
@@ -2417,10 +2358,10 @@ function ResendCard({ view, liveSendEnabled, onOpen }: { view: ConnectionView; l
   const keyBadge = view.credentialPresent
     ? { label: "Workspace key", title: "Uses this workspace's own Resend key." }
     : view.status !== "not_configured"
-      ? { label: "Deployment key", title: "Falls back to the deployment RESEND_API_KEY." }
+      ? { label: "Shared account", title: "Uses the Resend account configured for this deployment." }
       : null;
   return (
-    <div className="ccard ccard-btn" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === "Enter") onOpen(); }}>
+    <button type="button" className="ccard ccard-btn" onClick={onOpen}>
       <div className="ct">
         <BrandBadge className="clogo" name="Resend" initials="Re" color="#9aa0ac" />
         <div><div className="cnm">Resend</div><div className="ccat">Channel · email delivery</div></div>
@@ -2432,7 +2373,7 @@ function ResendCard({ view, liveSendEnabled, onOpen }: { view: ConnectionView; l
         <span className="grow" />
         <span className="cb-open">{cta} →</span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -2481,7 +2422,7 @@ function ResendModal({ view, liveSendEnabled, onClose }: { view: ConnectionView;
           <div className="cxm-label">API key</div>
           {workspaceKey ? (
             <>
-              <p className="cxm-hint">This workspace uses its own Resend key. Paste a new key to rotate it, or remove it to fall back to the deployment key. Your key is stored encrypted and never shown again.</p>
+              <p className="cxm-hint">This workspace uses its own Resend key. Paste a new key to rotate it, or remove it to use the shared account. Your key is stored encrypted and never shown again.</p>
               <div className="cxm-field">
                 <input className="inp" type="password" placeholder="New Resend API key (re_…)" value={apiKey} onChange={(e) => setApiKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveKey(); }} />
                 <button className="btn gold" disabled={pending || !apiKey.trim()} onClick={saveKey}>Save</button>
@@ -2494,7 +2435,7 @@ function ResendModal({ view, liveSendEnabled, onClose }: { view: ConnectionView;
             <>
               <p className="cxm-hint">
                 {envFallback
-                  ? "This workspace is using the deployment key (RESEND_API_KEY). Paste a key to use a dedicated Resend account for this workspace instead."
+                  ? "This workspace is using the shared Resend account. Paste a key to use a dedicated account for this workspace instead."
                   : "Paste your Resend API key to connect this workspace's own Resend account. Stored encrypted and never shown again."}
               </p>
               <div className="cxm-field">
@@ -2513,7 +2454,7 @@ function ResendModal({ view, liveSendEnabled, onClose }: { view: ConnectionView;
               Confirm-send be the first place anyone finds out. */}
           {!liveSendEnabled ? (
             <div className="cxm-note">
-              Live sending is turned off for this deployment, so nothing sends even with this connection on. Set <code>ARC_SEND_ENABLED=1</code> in the environment to arm it.
+              Live sending is paused by the deployment safety lock, so nothing sends even with this connection on. A platform administrator must arm live sending.
             </div>
           ) : null}
           <button className="btn gold" disabled={pending} onClick={() => run(() => setEmailConnectionEnabled({ enabled: !view.enabled, fromEmail: from.trim() || undefined }), view.enabled ? "Sending disabled." : "Sending enabled.")}>
@@ -2580,7 +2521,7 @@ function ModelModal({ model, onClose }: { model: RosterModel; onClose: () => voi
 // the member-management guards, so this guide can't drift from what's enforced.
 function RolesGuide() {
   return (
-    <Panel title="Roles & permissions" tag={TGOK} foot="workspace-roles.ts — the catalog the invite picker and access guards share">
+    <Panel title="Roles & permissions" tag={TGOK} foot="These permissions are shared by invitations and workspace access controls.">
       <div className="roles">
         {WORKSPACE_ROLES.map((r) => (
           <div className="rolecard" key={r.role}>
@@ -2622,7 +2563,7 @@ function ActivityLog({ entries, isDemo }: { entries: WorkspaceActivityEntry[]; i
     );
   }
   return (
-    <Panel title="Recent activity" tag={TGOK} foot={isDemo ? "demo activity — your real audit trail streams in once the workspace is connected" : "audit_events · every member & workspace change, newest first"}>
+    <Panel title="Recent activity" tag={TGOK} foot={isDemo ? "Sample activity is shown until the workspace is connected." : "Member and workspace changes, newest first."}>
       {entries.map((e) => (
         <div className="actrow" key={e.id}>
           <span className="actdot" style={{ background: actionAccent(e.action) }} />
@@ -2638,10 +2579,10 @@ function ActivityLog({ entries, isDemo }: { entries: WorkspaceActivityEntry[]; i
 
 // ---- Usage breakdowns (real ai_usage_events; demo shape offline) ----
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-const usageTag = (isDemo: boolean) => <span className="tg ok">{isDemo ? "demo" : "wired"}</span>;
+const usageTag = (isDemo: boolean) => <span className="tg ok">{isDemo ? "Sample data" : "Live"}</span>;
 function UsageEmpty({ label }: { label: string }) {
   return (
-    <Panel title="Usage" tag={<span className="tg ok">wired</span>}>
+    <Panel title="Usage" tag={<span className="tg ok">Live</span>}>
       <div style={{ padding: "8px 2px", fontSize: 12.5, color: "var(--muted)" }}>{label}</div>
     </Panel>
   );
@@ -2728,7 +2669,7 @@ function ConnectorSpendPanel({ spend }: { spend: ConnectorSpendView | null }) {
 
   return (
     <>
-      <Panel title="Metered connector spend" tag={usageTag(spend.isDemo)} foot="connector_usage_events + connector_spend_budgets · this workspace · this month">
+      <Panel title="Metered connector spend" tag={usageTag(spend.isDemo)} foot="This workspace · this month">
         <div style={{ padding: 4 }}>
           <div className="ukpis">
             {[[spend.spentLabel, "Spent"], [spend.remainingLabel, "Remaining"], [spend.capLabel, "Spend cap"]].map(([v, l]) => (
@@ -2743,7 +2684,7 @@ function ConnectorSpendPanel({ spend }: { spend: ConnectorSpendView | null }) {
         </div>
       </Panel>
 
-      <Panel title="Spend cap" tag={TGOK} foot="connector_spend_budgets · raising the cap approves more metered spend — a run over the cap is refused, never silently overspent">
+      <Panel title="Spend cap" tag={TGOK} foot="Raising the cap approves more metered spend. Runs over the cap are refused.">
         {!spend.configured && <div style={{ fontSize: 11.5, color: "var(--muted)", padding: "10px 0 4px", lineHeight: 1.5 }}>You’re previewing without a connected workspace — changes won’t persist here.</div>}
         <Row label="Monthly cap" desc="Metered data connectors (enrichment, permit / property data) may spend up to this per month. A run that would exceed it is refused; raising the cap is your approval of the extra spend.">
           <span className="pillrow" style={{ alignItems: "center", gap: 8 }}>
