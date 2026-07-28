@@ -1,4 +1,4 @@
-import { describeExternalMediaProvenance } from "@/domain";
+import { assessProvenance, describeExternalMediaProvenance } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
@@ -32,10 +32,30 @@ function scForKind(kind: string): string {
 }
 
 /** MediaAssetView (read model) → the Library view's Asset shape. */
+/**
+ * Short "added" label. The card had this hardcoded to "" for real assets because
+ * the view never carried created_at — so every live asset claimed no age while
+ * the demo fixtures showed one.
+ */
+function addedLabel(iso: string | null): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const days = Math.floor((Date.now() - then) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? "1mo ago" : `${months}mo ago`;
+}
+
 function mapAsset(v: MediaAssetView, i: number): Asset {
   const pv = provFromSource(v.source);
   const label = v.badge || v.source;
   const external = describeExternalMediaProvenance(v.provenance);
+  // BSR-514: an asset whose origin we can't account for must not render clean.
+  // The stored flags alone would leave "source unknown" looking reviewed-and-fine.
+  const prov = assessProvenance({ source: v.source, provenance: v.provenance, riskFlags: v.riskFlags });
   return {
     id: i + 1,
     rid: v.id,
@@ -50,9 +70,9 @@ function mapAsset(v: MediaAssetView, i: number): Asset {
     arc: v.availableToArc,
     used: [],
     by: v.uploadedBy ?? "",
-    added: "",
+    added: addedLabel(v.createdAt),
     recent: 0,
-    risk: v.riskFlags.length ? v.riskFlags.join(" · ") : undefined,
+    risk: prov.riskFlags.length ? prov.riskFlags.join(" · ") : undefined,
     img: v.url && v.url !== "pending" ? v.url : undefined,
     src: label,
     lineage: [[pv, label], ...external.rows],

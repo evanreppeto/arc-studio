@@ -110,7 +110,7 @@ independent fixes. This spec does both.
 - **No migration expected** if `available_to_arc` and `campaign_assets` /
   `library_asset_id` already exist as verified. If planning finds a missing column,
   add a new timestamped migration in `supabase/migrations/` (never edit shipped ones)
-  and remember prod schema drift — prod is `tegdgejiyxurgvgheshi`, migrations applied
+  and remember prod schema drift — prod is `qqbecyrhnowmooyjiztz`, migrations applied
   manually.
 
 ## Auth / Safety

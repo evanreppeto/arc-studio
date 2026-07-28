@@ -160,7 +160,7 @@ Follow the vault/campaigns reference shape: real `"use server"` actions gated by
   row. The backfill will resolve `owner_id` to the BSR workspace's owner user (effectively Evan). If
   there are multiple distinct human operators in prod whose chats must stay separate, the backfill
   mapping needs adjusting before the migration runs. **Confirm before applying to prod.**
-- **PROD RELEASE STEP:** this migration must be applied to the real prod DB (`tegdgejiyxurgvgheshi`)
+- **PROD RELEASE STEP:** this migration must be applied to the real prod DB (`qqbecyrhnowmooyjiztz`)
   **manually** — Vercel auto-deploys code from `origin/main` but does **not** apply Supabase migrations,
   and prod has had schema-drift surprises before. Apply migration before/with the deploy that ships the
   code that selects the new columns.
