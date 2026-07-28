@@ -1,0 +1,61 @@
+name: Migrations
+
+# Proves supabase/migrations/ still applies cleanly to an EMPTY database (BSR-474).
+#
+# The chain once could not do this at all — duplicate version prefixes meant a
+# migration was silently skipped on a fresh database. Supabase keys its ledger on
+# the 14-digit prefix, so the second file of a colliding pair simply never runs,
+# and nothing errors. Every future environment depends on this working: a new
+# staging app, a self-hosted eval DB, disaster recovery, and any per-tenant
+# database story.
+#
+# NOTE: this workflow is path-filtered, so it does NOT run on most PRs. Do not
+# add `chain` to the required status checks on `main` — a required check that
+# never reports leaves every unrelated PR parked forever waiting for it.
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - "scripts/verify-migration-chain.mjs"
+      - ".github/workflows/migrations.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - "scripts/verify-migration-chain.mjs"
+      - ".github/workflows/migrations.yml"
+  workflow_dispatch:
+
+jobs:
+  chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          # This job installs no dependencies, so there is nothing to cache.
+          # Left on (the default), setup-node reads `packageManager` from
+          # package.json and fails outright looking for a pnpm that this job
+          # never needs.
+          package-manager-cache: false
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # No `pnpm install` — the script deliberately has no dependencies, so this
+      # job stays fast and cannot be broken by an unrelated lockfile change.
+      - name: Apply the whole chain to an empty database
+        run: node scripts/verify-migration-chain.mjs
+
+      - name: Stop the stack
+        if: always()
+        run: supabase stop --no-backup || true
