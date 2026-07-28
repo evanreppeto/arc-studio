@@ -1,0 +1,156 @@
+name: Auto-update PR branches
+
+# Closes a loop GitHub leaves open (BSR-535).
+#
+# `main` is protected with `required_status_checks.strict: true`, so a PR must be
+# up to date with `main` to be mergeable. GitHub's auto-merge does NOT update a
+# branch that has fallen behind — even with `allow_update_branch: true`. It waits
+# for the PR to become mergeable, and a behind branch never becomes mergeable
+# without an external push. So auto-merge parks indefinitely with green checks,
+# and the PR *looks* like it landed when it did not.
+#
+# This workflow is that external push.
+#
+# WHY A PAT AND NOT `GITHUB_TOKEN`:
+# a push made with `GITHUB_TOKEN` does not trigger new workflow runs. Updating a
+# branch with it would change the head SHA while `verify` and `e2e` never ran on
+# the new SHA — the PR would then park forever waiting for checks that can never
+# report. That is a quieter, worse version of the bug this fixes. The update must
+# be pushed by a token attributed to a real user.
+#
+# Setup: create a fine-grained PAT with Contents: read/write and Pull requests:
+# read/write on this repo, and store it as the `AUTO_UPDATE_PAT` secret.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Safety net: catches PRs that fell behind while their own update was in
+    # flight, and any push-triggered run that raced. Measured merge cadence on
+    # this repo is a ~9.5 min median gap, so a third of attempts get overtaken.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  # Serialize: two runs updating the same PR would race on expected_head_sha.
+  # Do not cancel in progress — a half-finished sweep is worse than a slow one.
+  group: auto-update-pr-branches
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find PRs that auto-merge cannot land on its own
+        id: find
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # Read here rather than in a step-level `if:` — the `secrets` context
+          # is NOT available in step conditions, so testing it there would
+          # silently evaluate to empty and the alarm below would never fire.
+          PAT: ${{ secrets.AUTO_UPDATE_PAT }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${PAT:-}" ]; then
+            echo "has_pat=1" >>"$GITHUB_OUTPUT"
+          else
+            echo "has_pat=0" >>"$GITHUB_OUTPUT"
+          fi
+
+          # A push to `main` invalidates mergeability for every open PR, and
+          # GitHub recomputes it asynchronously — requesting the field is what
+          # schedules the work. This workflow's primary trigger IS that push, so
+          # the first read almost always returns UNKNOWN. Without this poll the
+          # run would find nothing and exit green on the exact event it exists
+          # to handle.
+          candidates='[]'
+          for attempt in 1 2 3 4 5 6; do
+            candidates=$(gh pr list --base main --state open --limit 100 \
+              --json number,title,headRefOid,mergeStateStatus,autoMergeRequest,isDraft \
+              --jq '[.[]
+                     | select(.autoMergeRequest != null)
+                     | select(.isDraft == false)]')
+
+            unknown=$(jq '[.[] | select(.mergeStateStatus == "UNKNOWN")] | length' <<<"$candidates")
+            if [ "$unknown" -eq 0 ]; then
+              echo "Mergeability settled after ${attempt} attempt(s)."
+              break
+            fi
+            echo "${unknown} PR(s) still computing mergeability; waiting (attempt ${attempt}/6)."
+            sleep 10
+          done
+
+          # BEHIND is reported when being out of date is the *only* thing
+          # blocking the merge, so this filter naturally excludes PRs with
+          # failing checks (BLOCKED / UNSTABLE) and conflicts (DIRTY).
+          behind=$(jq '[.[] | select(.mergeStateStatus == "BEHIND")]' <<<"$candidates")
+
+          count=$(jq 'length' <<<"$behind")
+          echo "count=$count" >>"$GITHUB_OUTPUT"
+          {
+            echo "behind<<BEHIND_EOF"
+            echo "$behind"
+            echo "BEHIND_EOF"
+          } >>"$GITHUB_OUTPUT"
+
+          if [ "$count" -eq 0 ]; then
+            echo "No auto-merge PRs are behind \`main\`. Nothing to do." >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "### $count PR(s) behind \`main\`" >>"$GITHUB_STEP_SUMMARY"
+            jq -r '.[] | "- #\(.number) \(.title)"' <<<"$behind" >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fail loudly if the PAT is missing but needed
+        # Deliberately scoped to "there is work to do". An unconfigured safety
+        # net must not look healthy at the moment it is required — but it also
+        # should not paint every idle scheduled run red.
+        if: steps.find.outputs.count != '0' && steps.find.outputs.has_pat == '0'
+        env:
+          COUNT: ${{ steps.find.outputs.count }}
+        run: |
+          echo "::error title=AUTO_UPDATE_PAT is not set::${COUNT} PR(s) are behind main and cannot land on their own. Create a fine-grained PAT (Contents: read/write, Pull requests: read/write) and store it as the AUTO_UPDATE_PAT secret. Until then every PR needs a manual 'gh pr update-branch'."
+          exit 1
+
+      - name: Update them
+        if: steps.find.outputs.count != '0' && steps.find.outputs.has_pat == '1'
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_UPDATE_PAT }}
+          REPO: ${{ github.repository }}
+          BEHIND: ${{ steps.find.outputs.behind }}
+        run: |
+          set -euo pipefail
+
+          updated=0
+          skipped=0
+
+          while read -r number sha title; do
+            echo "::group::#$number $title"
+
+            # expected_head_sha makes this a no-op if the PR moved since we
+            # listed it (a concurrent push, or a racing run). Losing that race
+            # is fine — the next push or scheduled sweep picks it back up.
+            if err=$(gh api --method PUT \
+                  "repos/$REPO/pulls/$number/update-branch" \
+                  -f expected_head_sha="$sha" 2>&1); then
+              echo "Updated #$number onto main."
+              updated=$((updated + 1))
+            else
+              # 422 here means "already up to date", "conflicted", or "head moved"
+              # — all benign and self-correcting. Log it, never fail the run.
+              echo "Skipped #$number: $err"
+              skipped=$((skipped + 1))
+            fi
+
+            echo "::endgroup::"
+          done < <(jq -r '.[] | "\(.number) \(.headRefOid) \(.title)"' <<<"$BEHIND")
+
+          {
+            echo ""
+            echo "Updated **$updated**, skipped **$skipped**."
+          } >>"$GITHUB_STEP_SUMMARY"
