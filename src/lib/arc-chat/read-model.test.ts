@@ -22,7 +22,7 @@ vi.mock("./persistence", () => ({
   listActiveArcRunConversationIds: mocks.listActiveRuns,
 }));
 
-import { getArcChatModel } from "./read-model";
+import { getArcChatModel, getRecentArcConversations } from "./read-model";
 
 const conversation: ArcConversation = {
   id: "conversation-1",
@@ -93,5 +93,36 @@ describe("getArcChatModel", () => {
 
     expect(model.status === "live" ? model.threadGroups[0]?.items[0]?.preview : null)
       .toBe("Homeowner outreach Drafted a storm follow-up sequence.");
+  });
+});
+
+describe("getRecentArcConversations", () => {
+  it("distinguishes an unavailable backend from an empty live workspace", async () => {
+    mocks.isConfigured.mockReturnValue(false);
+
+    await expect(getRecentArcConversations()).resolves.toBeNull();
+    expect(mocks.listConversations).not.toHaveBeenCalled();
+  });
+
+  it("returns the newest access-scoped conversations with compact labels", async () => {
+    mocks.listConversations.mockResolvedValue([
+      conversation,
+      {
+        ...conversation,
+        id: "conversation-2",
+        title: "  ",
+        lastMessageAt: "2026-07-22T13:30:00.000Z",
+      },
+    ]);
+
+    await expect(getRecentArcConversations({
+      limit: 2,
+      nowMs: Date.parse("2026-07-22T14:00:00.000Z"),
+      orgId: "org-1",
+      workspaceId: "workspace-1",
+    })).resolves.toEqual([
+        { id: "conversation-2", title: "Untitled chat", when: "30m" },
+        { id: "conversation-1", title: "Growth plan", when: "2h" },
+      ]);
   });
 });

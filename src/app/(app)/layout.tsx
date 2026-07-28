@@ -7,6 +7,7 @@ import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getSettingsWorkspacesView } from "@/lib/auth/workspaces-view";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getBillingNoticeView } from "@/lib/billing/billing-notice";
+import { getRecentArcConversations } from "@/lib/arc-chat/read-model";
 import { getAppSettings } from "@/lib/settings/store";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
@@ -14,6 +15,7 @@ import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getNavBadges } from "@/lib/workspace-summary/read-model";
 
 import { AppShell } from "./_components/app-shell";
+import { DEMO_RECENT_CONVERSATIONS } from "./arc/_components/arc-demo-data";
 import "./arc-app.css";
 
 // Every signed-in screen requires per-request auth + live per-workspace data, so
@@ -61,11 +63,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const workspacesView = await getSettingsWorkspacesView().catch(() => ({ isDemo: false, workspaces: [] }));
   // Branding: workspace logo (org-scoped) + the viewer's profile photo, rendered
   // in the rail in place of the initials monograms when set.
-  const [appSettings, businessProfile, avatarUrl] = await Promise.all([
+  const [appSettings, businessProfile, avatarUrl, recentConversationResult] = await Promise.all([
     getAppSettings(ctx.orgId).catch(() => null),
     getBusinessProfile(ctx.orgId).catch(() => null),
     getViewerAvatarUrl(user).catch(() => null),
+    getRecentArcConversations({ orgId: ctx.orgId, workspaceId: ctx.workspaceId }),
   ]);
+  const recentConversations =
+    recentConversationResult ?? (isDemoDataEnabled() ? DEMO_RECENT_CONVERSATIONS : []);
   const viewerAvatarUrl = avatarUrl ?? (isDemoDataEnabled() ? "/brand/demo/avatar-operator.jpg" : null);
   // A real workspace logo is an uploaded absolute URL. The offline demo has no
   // uploads, so it falls back to bundled sample branding — that's what makes the
@@ -106,6 +111,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       industry={industry}
       workspaces={workspacesView.workspaces}
       navBadges={navBadges}
+      recentConversations={recentConversations}
       billingNotice={billingNotice}
     >
       {children}

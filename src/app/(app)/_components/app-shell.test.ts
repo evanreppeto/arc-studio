@@ -49,6 +49,15 @@ describe("app shell navigation contract", () => {
     expect(APP_SHELL).toContain("{showWorkspaceShortLabel &&");
   });
 
+  it("separates workspace identity from navigation and surfaces recent Arc work", () => {
+    expect(APP_SHELL).toContain('className="rail-divider"');
+    expect(APP_SHELL).toContain('id="rail-recents-title"');
+    expect(APP_SHELL).toContain('href={`/arc?c=${encodeURIComponent(conversation.id)}`}');
+    expect(APP_SHELL).toContain('href="/arc?new=1"');
+    expect(APP_SHELL_CSS).toContain("& .rail-divider");
+    expect(APP_SHELL_CSS).toContain("& .rail-recents");
+  });
+
   it("keeps mobile shell controls at a touch-friendly size", () => {
     expect(APP_SHELL_CSS).toContain("& .menubtn { display: inline-grid; width: 44px; height: 44px; }");
     expect(APP_SHELL_CSS).toContain("& .topav { width: 44px; height: 44px; }");
