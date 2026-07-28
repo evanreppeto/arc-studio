@@ -26,4 +26,18 @@ describe("parseArcPartnerCampaignRequest creativeAssets", () => {
       parseArcPartnerCampaignRequest({ creativeAssets: [{ type: "image", url: "not-a-url" }] }),
     ).toThrow();
   });
+
+  it("leaves restorationFocus unset when the caller never names one", () => {
+    // It used to default to "water_backup", which stamped a restoration term
+    // onto campaigns for law firms, dental practices, and agencies.
+    const request = parseArcPartnerCampaignRequest({});
+
+    expect(request.restorationFocus).toBeUndefined();
+  });
+
+  it("still honors an explicitly supplied restorationFocus", () => {
+    const request = parseArcPartnerCampaignRequest({ restorationFocus: "burst_pipe" });
+
+    expect(request.restorationFocus).toBe("burst_pipe");
+  });
 });
