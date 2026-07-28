@@ -32,6 +32,15 @@ export type AppSettings = {
   videoModel: string;
   /** How the journey collector treats consent for this workspace. Enforced server-side. */
   journeyConsentMode: JourneyConsentMode;
+  /**
+   * Sender identity stamped into the footer of every outbound marketing email.
+   * `emailPostalAddress` is legally required (CAN-SPAM and equivalents) and has
+   * no safe default, so the send path refuses while it is blank rather than
+   * inventing one.
+   */
+  emailSenderName: string;
+  emailPostalAddress: string;
+  emailPermissionReminder: string;
 };
 
 export type AppearanceAccent = "gold" | "blue" | "red" | "steel" | "emerald";
@@ -63,6 +72,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   imageModel: "",
   videoModel: "",
   journeyConsentMode: "implied",
+  emailSenderName: "",
+  emailPostalAddress: "",
+  emailPermissionReminder: "",
 };
 
 export const DEFAULT_SUPPORT_EMAIL = "support@bigshouldersmp.com";
@@ -205,6 +217,10 @@ export function mergeAppSettingsRows(rows: SettingRow[]): AppSettings {
     imageModel: appImageModel(map.get("image_model")),
     videoModel: appVideoModel(map.get("video_model")),
     journeyConsentMode: normalizeConsentMode(map.get("journey_consent_mode")),
+    emailSenderName: str("email_sender_name", "").trim(),
+    // Multi-line on purpose — a postal address renders as written.
+    emailPostalAddress: str("email_postal_address", "").trim(),
+    emailPermissionReminder: str("email_permission_reminder", "").trim(),
   };
 }
 

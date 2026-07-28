@@ -94,6 +94,7 @@ export type ResendEmailInput = {
   subject: string;
   html?: string;
   text?: string;
+  headers?: Record<string, string>;
 };
 
 export type ResendEmailPayload = {
@@ -102,6 +103,12 @@ export type ResendEmailPayload = {
   subject: string;
   html?: string;
   text?: string;
+  /**
+   * Extra SMTP headers. Carries List-Unsubscribe / List-Unsubscribe-Post, which
+   * Gmail and Yahoo require of bulk senders — mail without them gets filtered
+   * regardless of content.
+   */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -125,12 +132,17 @@ export function buildResendEmailPayload(input: ResendEmailInput): ResendEmailPay
   const text = input.text?.trim();
   if (!html && !text) throw new Error("buildResendEmailPayload: an html or text body is required.");
 
+  const headers = Object.fromEntries(
+    Object.entries(input.headers ?? {}).filter(([key, value]) => key.trim() && value?.trim()),
+  );
+
   return {
     from,
     to: recipients,
     subject,
     ...(html ? { html } : {}),
     ...(text ? { text } : {}),
+    ...(Object.keys(headers).length ? { headers } : {}),
   };
 }
 

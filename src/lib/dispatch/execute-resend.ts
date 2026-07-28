@@ -1,12 +1,22 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { buildResendEmailPayload, stampCampaignLinks, type ResendEmailPayload } from "@/domain";
+import {
+  buildListUnsubscribeHeaders,
+  buildResendEmailPayload,
+  buildUnsubscribeUrl,
+  checkSenderIdentity,
+  describeSenderIdentityProblem,
+  stampCampaignLinks,
+  wrapMarketingEmail,
+  type ResendEmailPayload,
+} from "@/domain";
 
 import { checkUsageAllowed } from "@/lib/billing/entitlements";
 import { recordConnectionUse } from "@/lib/connections/persistence";
 import { sendResendEmail } from "@/lib/connections/resend-client";
 import { readConnectorCredential } from "@/lib/connectors/credentials";
 
+import { getUnsubscribeSecret, isContactSuppressed, loadWorkspaceEmailIdentity } from "./email-identity";
 import { isLiveSendEnabled } from "./live-send";
 
 // The ONLY place the app performs a real send. It operates on an already-queued
@@ -220,14 +230,60 @@ export async function executeResendDispatch(
       )
     : { html: dispatch.payload?.html ?? null, text: dispatch.payload?.text ?? null };
 
+  // Consent, then compliance, then brand — in that order, because each is a
+  // reason NOT to send and the cheapest refusal should come first.
+  const suppression = await isContactSuppressed(dispatch.contact_id, client);
+  if (suppression.suppressed) {
+    await markFailed(client, dispatch.org_id, dispatchId, dispatch.campaign_id, operator, suppression.reason ?? "Recipient is suppressed.");
+    return { ok: false, message: suppression.reason ?? "Recipient is suppressed." };
+  }
+
+  const { identity, brand } = await loadWorkspaceEmailIdentity(dispatch.org_id, client);
+  const identityProblems = checkSenderIdentity(identity);
+  if (identityProblems.length > 0) {
+    // Refuse rather than send: a commercial email with no postal address or no
+    // working unsubscribe is unlawful in the US, CA, EU and UK alike.
+    const message = identityProblems.map(describeSenderIdentityProblem).join(" ");
+    await markFailed(client, dispatch.org_id, dispatchId, dispatch.campaign_id, operator, message);
+    return { ok: false, message };
+  }
+
+  const unsubscribeSecret = getUnsubscribeSecret();
+  if (!unsubscribeSecret || !dispatch.contact_id) {
+    const message = !dispatch.contact_id
+      ? "This dispatch has no contact, so no unsubscribe link can be generated. Marketing email requires one."
+      : "No unsubscribe signing secret is configured, so a working unsubscribe link can't be generated.";
+    await markFailed(client, dispatch.org_id, dispatchId, dispatch.campaign_id, operator, message);
+    return { ok: false, message };
+  }
+
+  const unsubscribeUrl = buildUnsubscribeUrl(
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://arc-studio.ai",
+    { contactId: dispatch.contact_id, orgId: dispatch.org_id },
+    unsubscribeSecret,
+  );
+
+  const wrapped = wrapMarketingEmail({
+    html: stamped.html,
+    text: stamped.text,
+    identity: {
+      senderName: identity.senderName ?? "",
+      postalAddress: identity.postalAddress ?? "",
+      permissionReminder: identity.permissionReminder,
+    },
+    brand,
+    unsubscribeUrl,
+  });
+
   let payload: ResendEmailPayload;
   try {
     payload = buildResendEmailPayload({
       from,
       to: dispatch.payload?.to ?? [],
       subject: dispatch.payload?.subject ?? "",
-      html: stamped.html ?? undefined,
-      text: stamped.text ?? undefined,
+      html: wrapped.html ?? undefined,
+      text: wrapped.text ?? undefined,
+      headers: buildListUnsubscribeHeaders(unsubscribeUrl),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid email payload.";
