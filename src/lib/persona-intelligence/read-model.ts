@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getOrgPersonaOptions, type PersonaOption } from "../personas/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
@@ -261,6 +262,9 @@ export async function getPersonaIntelligenceData(
       guardrailSignals: guardrailRows.slice(0, 8).map(mapGuardrailSignal),
     };
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "persona-intelligence.getPersonaIntelligenceData", surface: "primary" });
     return {
       status: "unavailable",
       message: error instanceof Error ? error.message : "Persona intelligence is unavailable.",

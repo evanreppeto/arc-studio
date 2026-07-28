@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { formatByteSize } from "@/domain";
 import { getCurrentOrgId, OrgUnavailableError } from "@/lib/auth/org";
@@ -160,6 +161,9 @@ export async function getMediaLibraryData(client?: SupabaseClient, orgIdArg?: st
     // getCurrentOrgId() resolves the DEFAULT org and leaks the wrong tenant.
     orgId = orgIdArg ?? (await getCurrentOrgId());
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "media-library.getMediaLibraryData", surface: "primary" });
     if (error instanceof OrgUnavailableError) return { status: "unavailable", message: error.message };
     throw error;
   }

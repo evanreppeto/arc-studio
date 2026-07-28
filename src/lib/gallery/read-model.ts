@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getCampaignWorkspaceList, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -100,6 +101,9 @@ export async function getGalleryData(client?: SupabaseClient, orgId?: string): P
 
     return { status: "live", campaigns, totals: aggregateTotals(campaigns) };
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "gallery.getGalleryData", surface: "primary" });
     return { status: "unavailable", message: error instanceof Error ? error.message : "Gallery is unavailable." };
   }
 }

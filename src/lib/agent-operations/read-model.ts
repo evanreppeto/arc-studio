@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getCurrentAgentTaskTenantFields, type AgentTaskTenantFields } from "../agent-tasks/scope";
 import { isDemoDataEnabled } from "../demo/demo-mode";
@@ -469,6 +470,9 @@ export async function getAgentOperationsDashboard(
       arcRunner: mapArcRunner(agents, tasks, agentName),
     };
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "agent-operations.getAgentOperationsDashboard", surface: "primary" });
     return {
       status: "unavailable",
       message: error instanceof Error ? error.message : "Agent operations are unavailable.",
@@ -633,6 +637,9 @@ export async function getAgentTaskDetail(
       })),
     };
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "agent-operations.getAgentTaskDetail", surface: "primary" });
     return {
       status: "unavailable",
       message: error instanceof Error ? error.message : "Agent task detail is unavailable.",

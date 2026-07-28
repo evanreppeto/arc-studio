@@ -1955,6 +1955,9 @@ export async function getCampaignWorkspaceDetail(
       auditLog: buildAuditLog(events, outputs, agentName),
     };
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "campaigns.getCampaignWorkspaceDetail", surface: "primary" });
     return {
       status: "unavailable",
       message: error instanceof Error ? error.message : "Campaign detail is unavailable.",

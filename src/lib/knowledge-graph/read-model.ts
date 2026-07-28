@@ -1,4 +1,5 @@
 import { CRM_NODE_KINDS, type CrmIngestTable, type TrustTier } from "@/domain";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { type TypedSupabaseClient, getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -218,6 +219,9 @@ export async function listNodes(
     if (nodes.length === 0 && unfiltered && demoFallback) return { status: "live", nodes: filterDemoNodes({}) };
     return { status: "live", nodes };
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "knowledge-graph.listNodes", surface: "primary" });
     return { status: "unavailable", message: error instanceof Error ? error.message : "Brain is unavailable." };
   }
 }
