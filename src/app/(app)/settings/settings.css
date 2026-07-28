@@ -9,7 +9,7 @@
 .arc-settings .setsearch input { flex: 1; background: transparent; border: 0; color: var(--text); font: inherit; font-size: 12px; outline: none; }
 .arc-settings .setgrp { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; padding: 13px 10px 5px; }
 .arc-settings .searchres { display: flex; flex-direction: column; gap: 1px; padding-top: 4px; }
-.arc-settings .sr-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: 0.12s; }
+.arc-settings .sr-item { width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: 0.12s; }
 .arc-settings .sr-item:hover { background: rgba(255, 255, 255, 0.04); }
 .arc-settings .sr-item.on { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
 .arc-settings .sr-label { font-size: 12.5px; font-weight: 500; color: var(--text-2); display: flex; align-items: center; gap: 5px; }
@@ -17,12 +17,13 @@
 .arc-settings .sr-label b { font-weight: 600; color: var(--text); }
 .arc-settings .sr-sep { color: var(--line-3); }
 .arc-settings .sr-empty { font-size: 11.5px; color: var(--muted); padding: 10px; line-height: 1.5; }
-.arc-settings .setitem { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; color: var(--text-2); font-size: 12.5px; font-weight: 500; cursor: pointer; transition: 0.14s; }
+.arc-settings .setitem { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 500; text-align: left; cursor: pointer; transition: 0.14s; }
 .arc-settings .setitem:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
 .arc-settings .setitem.on { background: var(--accent-soft); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
 .arc-settings .setitem svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; opacity: 0.85; }
 .arc-settings .setitem.on svg { color: var(--accent); opacity: 1; }
 .arc-settings .setitem .sd { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.arc-settings .setitem:focus-visible, .arc-settings .sr-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .arc-settings .setmain { overflow: auto; padding: 22px clamp(20px, 3vw, 34px) 56px; }
 .arc-settings .setmain-in { max-width: 760px; }
 .arc-settings .sechead { margin-bottom: 18px; }
@@ -70,14 +71,6 @@
 .arc-settings .seg { display: inline-flex; background: var(--inset); border: 1px solid var(--line-2); border-radius: 9px; padding: 3px; }
 .arc-settings .seg button { font: inherit; font-size: 11.5px; font-weight: 600; color: var(--text-2); background: transparent; border: 0; border-radius: 6px; padding: 6px 13px; cursor: pointer; transition: 0.14s; }
 .arc-settings .seg button.on { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-border); }
-.arc-settings .sw { display: inline-block; vertical-align: middle; width: 38px; height: 22px; border-radius: 99px; background: var(--inset); border: 1px solid var(--line-2); position: relative; cursor: pointer; transition: 0.16s; flex-shrink: 0; }
-.arc-settings .sw i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted); transition: 0.16s; }
-.arc-settings .sw.on { background: var(--accent-soft); border-color: var(--accent-border); }
-.arc-settings .sw.on i { left: 18px; background: var(--accent); }
-.arc-settings .sw.locked { cursor: not-allowed; opacity: 0.85; }
-.arc-settings .sw.locked i { background: var(--muted); }
-.arc-settings .locklbl { display: inline-flex; align-items: center; gap: 8px; }
-.arc-settings .locklbl svg { width: 13px; height: 13px; stroke: var(--muted); fill: none; stroke-width: 2; }
 .arc-settings .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; transition: 0.15s; white-space: nowrap; }
 .arc-settings .btn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-settings .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
@@ -95,13 +88,15 @@
 .arc-settings .pillrow { display: inline-flex; align-items: center; gap: 9px; }
 .arc-settings .pillrow .ptxt { font-size: 12.5px; color: var(--text-2); }
 .arc-settings .accsw { display: flex; gap: 9px; }
-.arc-settings .accopt { width: 28px; height: 28px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: 0.14s; }
+.arc-settings .accopt { width: 28px; height: 28px; padding: 0; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: 0.14s; }
 .arc-settings .accopt:hover { transform: scale(1.08); }
 .arc-settings .accopt.on { border-color: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 0 0 3px rgba(255, 255, 255, 0.25); }
 
 .arc-settings .mem, .arc-settings .tok { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
 .arc-settings .mem:last-child, .arc-settings .tok:last-child { border-bottom: 0; }
 .arc-settings .mem .ma { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border); flex-shrink: 0; font-size: 13px; }
+.arc-settings .mem .ma.has-image { padding: 2px; border-color: var(--line-2); background: transparent; overflow: hidden; }
+.arc-settings .mem .ma.has-image img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .arc-settings .mem .mi { flex: 1; min-width: 0; }
 .arc-settings .mem .mn { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arc-settings .mem .me { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -124,7 +119,7 @@
 .arc-settings .connhub-search svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.8; }
 .arc-settings .connhub-search input { flex: 1; background: transparent; border: 0; color: var(--text); font: inherit; font-size: 12.5px; outline: none; }
 .arc-settings .catchips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
-.arc-settings .catchip { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 99px; padding: 5px 12px; cursor: pointer; transition: 0.14s; }
+.arc-settings .catchip { font: inherit; font-size: 11px; font-weight: 600; color: var(--muted); background: transparent; border: 1px solid var(--line-2); border-radius: 99px; padding: 5px 12px; cursor: pointer; transition: 0.14s; }
 .arc-settings .catchip:hover { color: var(--text-2); }
 .arc-settings .catchip.on { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-settings .conngrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(214px, 1fr)); gap: 11px; }
@@ -142,7 +137,7 @@
 .arc-settings .cb-add:hover { filter: brightness(1.05); }
 .arc-settings .cb-mng { font-size: 11.5px; font-weight: 600; color: var(--text-2); background: transparent; border: 1px solid var(--line-2); border-radius: 7px; padding: 5px 11px; cursor: pointer; }
 .arc-settings .cb-mng:hover { border-color: var(--accent-border); color: var(--text); }
-.arc-settings .ccard-btn { cursor: pointer; outline: none; }
+.arc-settings .ccard-btn { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; outline: none; }
 .arc-settings .ccard-btn:focus-visible { border-color: var(--accent-border); box-shadow: 0 0 0 2px var(--accent-soft); }
 .arc-settings .cb-open { font-size: 11.5px; font-weight: 600; color: var(--accent-contrast); }
 .arc-settings .ccard-btn:hover .cb-open { color: var(--accent-hover); }
@@ -186,28 +181,19 @@
 .arc-settings .cxm > .cxm-sec:first-child { border-top: 0; padding-top: 4px; }
 
 /* Clickable list rows (team members) — open a manage popup like connector cards. */
-.arc-settings .mem-btn { cursor: pointer; border-radius: 9px; transition: background 0.14s; outline: none; }
+.arc-settings .mem-btn { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 9px; transition: background 0.14s; outline: none; }
 .arc-settings .mem-btn:hover { background: rgba(255, 255, 255, 0.03); }
 .arc-settings .mem-btn:focus-visible { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-border); }
 .arc-settings .mem-go { font-size: 11.5px; font-weight: 600; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .arc-settings .mem-btn:hover .mem-go { color: var(--accent-contrast); }
 
 .arc-settings .ovgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(166px, 1fr)); gap: 11px; margin-bottom: 16px; }
-.arc-settings .ovcard { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 13px 14px; cursor: pointer; transition: 0.15s var(--ease); }
+.arc-settings .ovcard { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); color: inherit; font: inherit; text-align: left; padding: 13px 14px; cursor: pointer; transition: 0.15s var(--ease); }
 .arc-settings .ovcard:hover { border-color: var(--accent-border); transform: translateY(-2px); }
 .arc-settings .ovcard .ovi { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border); margin-bottom: 9px; }
 .arc-settings .ovcard .ovi svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-settings .ovcard .ovv { font-family: var(--serif); font-size: 20px; font-weight: 500; letter-spacing: -0.02em; line-height: 1; }
 .arc-settings .ovcard .ovl { font-size: 11px; color: var(--muted); margin-top: 4px; }
-.arc-settings .attn { display: flex; align-items: center; gap: 11px; padding: 11px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
-.arc-settings .attn:last-child { border-bottom: 0; }
-.arc-settings .attn .ai { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
-.arc-settings .attn .ai svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
-.arc-settings .attn .at { flex: 1; font-size: 12.5px; color: var(--text-2); }
-.arc-settings .attn .at b { color: var(--text); font-weight: 600; }
-.arc-settings .ai.warn { background: var(--warn-soft); color: var(--warn-text); }
-.arc-settings .ai.ok { background: var(--ok-soft); color: var(--ok-text); }
-.arc-settings .attn .ago { color: var(--muted); font-size: 13px; }
 
 .arc-settings .msub { display: flex; gap: 4px; margin-bottom: 11px; border-bottom: 1px solid var(--line-2); }
 .arc-settings .msub button { font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 8px 12px; cursor: pointer; transition: 0.14s; }
@@ -217,7 +203,7 @@
 .arc-settings .modellist { display: flex; flex-direction: column; max-height: 360px; overflow: auto; margin: 0 -4px; padding: 0 4px; }
 .arc-settings .mrow { display: flex; align-items: center; gap: 11px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
 .arc-settings .mrow:last-child { border-bottom: 0; }
-.arc-settings .mrow-btn { cursor: pointer; border-radius: 8px; transition: background 0.14s; outline: none; }
+.arc-settings .mrow-btn { width: 100%; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 8px; transition: background 0.14s; outline: none; }
 .arc-settings .mrow-btn:hover { background: rgba(255, 255, 255, 0.03); }
 .arc-settings .mrow-btn:focus-visible { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-border); }
 .arc-settings .mrow-go { font-size: 14px; color: var(--muted); flex-shrink: 0; padding-right: 2px; transition: color 0.14s; }
@@ -277,8 +263,11 @@
 .arc-settings .imgup { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .arc-settings .imgup-row { display: flex; align-items: center; gap: 10px; }
 .arc-settings .imgup-pv { width: 40px; height: 40px; flex-shrink: 0; border-radius: 9px; border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; overflow: hidden; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 15px; }
+.arc-settings .imgup-pv.has-image { padding: 3px; border-color: var(--line-2); background: transparent; }
 .arc-settings .imgup-pv.circle { border-radius: 50%; }
-.arc-settings .imgup-pv img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.arc-settings .imgup-pv.circle.has-image { padding: 0; background: var(--inset); }
+.arc-settings .imgup-pv img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.arc-settings .imgup-pv.circle img { object-fit: cover; }
 .arc-settings .imgup-err { font-size: 11px; color: var(--red-text); }
 
 /* Waitlist (platform-admin only): signup counts + the newest signups. */
