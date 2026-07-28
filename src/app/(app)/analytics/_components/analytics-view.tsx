@@ -278,6 +278,7 @@ function WhatConverts({ model }: { model: OpportunityConversionReadModel }) {
 }
 
 export function AnalyticsView({
+  loadErrors = [],
   overview,
   range,
   conversion,
@@ -288,6 +289,12 @@ export function AnalyticsView({
   anomalies,
   nextMoves,
 }: {
+  /**
+   * Reads that FAILED, as opposed to returning nothing. Empty means every read
+   * succeeded — an empty section below is then genuinely an empty workspace,
+   * which is the distinction this prop exists to preserve.
+   */
+  loadErrors?: string[];
   overview: AnalyticsOverview;
   range: AnalyticsWindow;
   conversion: OpportunityConversionReadModel;
@@ -311,6 +318,24 @@ export function AnalyticsView({
 
   return (
     <div className="arc-analytics">
+      {/* A failed read is NOT an empty workspace. Without this, a broken query
+          renders as "No data in this window yet" — indistinguishable from a real
+          workspace with nothing in it, which is exactly how a live outage hid on
+          /campaigns (BSR-542). Sits above the tabs because the failure may be in
+          a section the operator isn't currently looking at. */}
+      {loadErrors.length > 0 && (
+        <div className="crm-error" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <b>Some analytics couldn&rsquo;t load.</b> Sections below may look empty because a query failed, not
+            because you have no data. Reload, and if it persists check your workspace access.
+            <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>
+              {loadErrors.map((e) => (
+                <div key={e}>{e}</div>
+              ))}
+            </div>
+          </span>
+        </div>
+      )}
       <div className="ctrlbar">
         <div className="vtabs">
           {([["overview", "Overview"], ["personas", "Personas"], ["channels", "Channels"], ["activity", "Activity"]] as [View, string][]).map(([k, label]) => (

@@ -1,4 +1,4 @@
-import { unavailable } from "@/lib/observability/unavailable";
+import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
 import { countNodesByTier, listGraphEdges, listNodes, type BrainNode } from "@/lib/knowledge-graph/read-model";
 
 import { KIND_COLOR, KIND_LABEL, normalizeConfidence, titleize, toFact } from "./_data/fact-vm";
@@ -85,6 +85,18 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
       ? `${counts.proposed} proposed fact${counts.proposed === 1 ? "" : "s"} stay out of all outbound copy until you approve them — Arc's trust gate.`
       : "";
 
+  // Reads that FAILED, as distinct from returning nothing. Without this, a
+  // broken query renders as a Brain with no facts — indistinguishable from a
+  // workspace Arc has not learned anything about yet (BSR-546).
+  const loadErrors = ([
+    ["Facts", reasonIfUnavailable(result)],
+    ["Graph edges", reasonIfUnavailable(edgeResult)],
+    ["Tier counts", reasonIfUnavailable(countResult)],
+    ["Proposed facts", reasonIfUnavailable(reviewResult)],
+  ] as Array<[string, string | null]>)
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .map(([label, reason]) => `${label}: ${reason}`);
+
   const data: BrainData = { stats, coverageNote, facts, totalFacts: counts.total, review, learned, graphNodes, graphEdges };
-  return <BrainView data={data} focusNodeId={focusNodeId} />;
+  return <BrainView data={data} focusNodeId={focusNodeId} loadErrors={loadErrors} />;
 }

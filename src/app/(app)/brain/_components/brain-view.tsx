@@ -61,7 +61,17 @@ function Confidence({ value }: { value: number | null }) {
   );
 }
 
-export function BrainView({ data, focusNodeId }: { data: BrainData; focusNodeId?: string | null }) {
+export function BrainView({
+  data,
+  focusNodeId,
+  loadErrors = [],
+}: {
+  data: BrainData;
+  focusNodeId?: string | null;
+  /** Reads that FAILED, as opposed to returning nothing. Empty means an empty
+   *  Brain below is genuinely empty — the distinction this preserves. */
+  loadErrors?: string[];
+}) {
   const [tab, setTab] = useState("facts");
   const [rebuilding, startRebuild] = useTransition();
   const [rebuildMsg, setRebuildMsg] = useState<string | null>(null);
@@ -204,6 +214,22 @@ export function BrainView({ data, focusNodeId }: { data: BrainData; focusNodeId?
 
   return (
     <div className={`arc-brain${tab === "web" ? " graph" : ""}`}>
+      {/* A failed read is NOT an empty Brain. Without this, a broken query looks
+          identical to a workspace Arc hasn't learned anything about yet — the
+          confusion that hid a live outage on /campaigns (BSR-542). */}
+      {loadErrors.length > 0 && (
+        <div className="crm-error" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <b>Some of the Brain couldn&rsquo;t load.</b> What&rsquo;s missing below is a failed query, not an
+            empty Brain. Reload, and if it persists check your workspace access.
+            <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>
+              {loadErrors.map((e) => (
+                <div key={e}>{e}</div>
+              ))}
+            </div>
+          </span>
+        </div>
+      )}
       <div className="bhead">
         <div className="bh1row">
           <div>
