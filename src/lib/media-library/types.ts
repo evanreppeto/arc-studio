@@ -53,6 +53,8 @@ export type MediaAssetView = {
   provenance: Record<string, unknown>;
   availableToArc: boolean;
   uploadedBy: string | null;
+  /** ISO timestamp the asset was added. Drives the card's "added" line. */
+  createdAt: string | null;
   usedInCount: number;
 };
 
