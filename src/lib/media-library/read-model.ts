@@ -41,6 +41,7 @@ export function toAssetView(row: MediaAssetRow, usedIn: number): MediaAssetView 
     provenance: row.provenance ?? {},
     availableToArc: row.available_to_arc,
     uploadedBy: row.uploaded_by,
+    createdAt: row.created_at ?? null,
     usedInCount: usedIn,
   };
 }

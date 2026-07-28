@@ -31,7 +31,7 @@
 - HNSW cosine index: `create index if not exists knowledge_nodes_embedding_idx on public.knowledge_nodes using hnsw (embedding vector_cosine_ops);`
 - A SECURITY DEFINER RPC for retrieval (service-role only):
   `match_knowledge_nodes(query_embedding vector(768), match_org_id uuid, match_count int, tiers text[]) returns table(id uuid, distance float)` → `select id, embedding <=> query_embedding as distance from knowledge_nodes where org_id = match_org_id and trust_tier = any(tiers) and embedding is not null order by embedding <=> query_embedding limit match_count`.
-- **Operational:** applied by hand on prod `tegdgejiyxurgvgheshi` (pgvector is supported by Supabase). Captured in this migration; flagged in the plan.
+- **Operational:** applied by hand on prod `qqbecyrhnowmooyjiztz` (pgvector is supported by Supabase). Captured in this migration; flagged in the plan.
 
 ### c. Write hook (best-effort) — `createNode`
 - After a node persists, generate its embedding from `label + summary + body` and `update knowledge_nodes set embedding = … where id = …`. **Best-effort**: wrapped so an embedding failure never fails node creation (same posture as `linkConversationToCampaign`). New facts/learnings become semantically searchable as written.

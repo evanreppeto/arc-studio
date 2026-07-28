@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { parseArcRoute } from "@/domain";
+import { MEDIA_UNITS, parseArcRoute } from "@/domain";
 
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
 import { checkUsageAllowed, usageBlockMessage } from "@/lib/billing/entitlements";
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     // cost is already incurred). Video ≈ 10 image-units in the rate table.
     const metered = await meterConnectorCall(
       undefined,
-      { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: 10, costTier: access.costTier, context: { route: "generate-video" } },
+      { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: MEDIA_UNITS.video, costTier: access.costTier, context: { route: "generate-video" } },
       () => provider.startVideo({ prompt: hardenImagePrompt(prompt), aspectRatio, durationSeconds }),
     );
     if (!metered.ok) return fail("plan_limit", metered.refusal.message, 402);

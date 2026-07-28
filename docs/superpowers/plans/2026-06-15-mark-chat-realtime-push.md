@@ -31,7 +31,7 @@ No code. This decides whether the migration is a real change or a no-op, and con
 
 - [ ] **Step 1: Run the introspection SQL**
 
-Run in the Supabase SQL editor (Dashboard → SQL) for project `tegdgejiyxurgvgheshi`, or via the `supabase` MCP:
+Run in the Supabase SQL editor (Dashboard → SQL) for project `qqbecyrhnowmooyjiztz`, or via the `supabase` MCP:
 
 ```sql
 -- Is RLS enabled on agent_tasks? (expect rowsecurity = true)
@@ -89,7 +89,7 @@ $$;
 
 - [ ] **Step 2: Apply to the database**
 
-Apply the same way other migrations in this repo reach prod (manual — see the `vercel-deploy` note: migrations are applied to the prod DB by hand). Run the file's SQL in the Supabase SQL editor against project `tegdgejiyxurgvgheshi`.
+Apply the same way other migrations in this repo reach prod (manual — see the `vercel-deploy` note: migrations are applied to the prod DB by hand). Run the file's SQL in the Supabase SQL editor against project `qqbecyrhnowmooyjiztz`.
 
 - [ ] **Step 3: Verify it took**
 

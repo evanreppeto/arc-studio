@@ -947,7 +947,7 @@ create unique index if not exists properties_org_address_unique_idx
 
 - [ ] **Step 2: Verify SQL parses against a scratch DB**
 
-If a local/branch Supabase is available, apply it there first (Supabase MCP `apply_migration` on a dev branch, or `supabase db reset` locally). Confirm no error and that re-running is a no-op (`if not exists`). Do NOT apply to prod from here — prod (`tegdgejiyxurgvgheshi`) is applied manually post-merge (memory `vercel-deploy`, `prod-schema-drift`).
+If a local/branch Supabase is available, apply it there first (Supabase MCP `apply_migration` on a dev branch, or `supabase db reset` locally). Confirm no error and that re-running is a no-op (`if not exists`). Do NOT apply to prod from here — prod (`qqbecyrhnowmooyjiztz`) is applied manually post-merge (memory `vercel-deploy`, `prod-schema-drift`).
 
 - [ ] **Step 3: Commit**
 
