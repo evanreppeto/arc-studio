@@ -446,7 +446,7 @@ export function summarizeUsage(events: UsageRollupEvent[]): UsageSummary {
     mdl.count += 1;
     models.set(e.model, mdl);
 
-    const userKey = e.actorUser ?? " autonomous";
+    const userKey = e.actorUser ?? "autonomous";
     const usr = users.get(userKey) ?? {
       actorUser: e.actorUser,
       costCents: 0,
@@ -1566,7 +1566,7 @@ Expected: nothing uncommitted (all work committed across the prior tasks).
 
 ## Rollout checklist (post-merge, manual — not code steps)
 
-1. Apply `supabase/migrations/20260622090000_ai_usage_events.sql` to the prod DB manually (Vercel does not run migrations). Verify the prod project (`tegdgejiyxurgvgheshi`) gains the `ai_usage_events` table and `ai_usage_service` enum.
+1. Apply `supabase/migrations/20260622090000_ai_usage_events.sql` to the prod DB manually (Vercel does not run migrations). Verify the prod project (`qqbecyrhnowmooyjiztz`) gains the `ai_usage_events` table and `ai_usage_service` enum.
 2. After the Next app deploys, Gemini media metering (Task 7) is live immediately.
 3. Redeploy `apps/arc-runner` to Cloud Run so Claude token reporting (Task 9) goes live. Until then, `arc_claude` rows won't appear, but the dashboard renders correctly (it just shows media usage).
 4. Spot-check `/usage`: run an Arc chat and generate an image, then confirm rows appear with non-zero estimated cost.
