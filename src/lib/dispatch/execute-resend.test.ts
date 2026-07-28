@@ -14,6 +14,24 @@ const APPROVED = { status: "approved" };
 const DEPLOYED_ASSET = { status: "approved", dispatch_locked: false, approved_at: "2026-07-01T00:00:00.000Z" };
 const ENABLED_RESEND = { enabled: true, env_var: "RESEND_API_KEY", config: { fromEmail: "Arc <mark@bsg.com>" } };
 
+// What a compliant send needs beyond approval: a contact who hasn't opted out,
+// and a workspace sender identity with the postal address CAN-SPAM requires.
+// Without these the executor now refuses — see the dedicated gate tests below.
+const COMPLIANCE_ROWS = {
+  contacts: { data: { email_unsubscribed_at: null }, error: null },
+  app_settings: {
+    data: [
+      { key: "email_sender_name", value: "Big Shoulders Restoration" },
+      { key: "email_postal_address", value: "123 W Example St, Chicago IL 60601" },
+    ],
+    error: null,
+  },
+  business_profiles: {
+    data: { logo_url: null, accent: "#C8A24B", display_name: "Big Shoulders Restoration" },
+    error: null,
+  },
+};
+
 function queuedDispatch(overrides: Record<string, unknown> = {}) {
   return {
     id: "d1",
@@ -23,6 +41,7 @@ function queuedDispatch(overrides: Record<string, unknown> = {}) {
     channel: "email",
     campaign_id: "c1",
     campaign_asset_id: "a1",
+    contact_id: "ct-1",
     provider_message_id: null,
     payload: { to: "lead@example.com", subject: "Roof inspection", html: "<p>Hello</p>" },
     ...overrides,
@@ -31,7 +50,11 @@ function queuedDispatch(overrides: Record<string, unknown> = {}) {
 
 // Live sending is armed for the whole suite; the gate itself is covered by its
 // own test below.
-beforeEach(() => vi.stubEnv("ARC_SEND_ENABLED", "1"));
+beforeEach(() => {
+  vi.stubEnv("ARC_SEND_ENABLED", "1");
+  // Unsubscribe links are HMAC-signed; without a secret the executor refuses.
+  vi.stubEnv("EMAIL_UNSUBSCRIBE_SECRET", "test-unsubscribe-secret");
+});
 afterEach(() => vi.unstubAllEnvs());
 
 describe("executeResendDispatch", () => {
@@ -39,6 +62,7 @@ describe("executeResendDispatch", () => {
     vi.stubEnv("ARC_SEND_ENABLED", "");
     const send = vi.fn();
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -55,6 +79,7 @@ describe("executeResendDispatch", () => {
   it("sends an approved queued dispatch, stamps the provider message id, and logs dispatch_sent", async () => {
     const send = vi.fn().mockResolvedValue({ id: "resend-123" });
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -85,6 +110,7 @@ describe("executeResendDispatch", () => {
     const CONTACT_UUID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
     const send = vi.fn().mockResolvedValue({ id: "resend-999" });
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: {
         data: queuedDispatch({
           campaign_id: CAMPAIGN_UUID,
@@ -125,6 +151,7 @@ describe("executeResendDispatch", () => {
   it("sends a scheduled dispatch when the operator forces it (send now)", async () => {
     const send = vi.fn().mockResolvedValue({ id: "resend-sched" });
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch({ status: "scheduled" }), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -145,6 +172,7 @@ describe("executeResendDispatch", () => {
   it("is idempotent — returns the existing id and never re-sends an already-dispatched row", async () => {
     const send = vi.fn();
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch({ status: "sent", provider_message_id: "resend-prior" }), error: null },
     });
 
@@ -157,6 +185,7 @@ describe("executeResendDispatch", () => {
   it("refuses a dispatch that is not queued", async () => {
     const send = vi.fn();
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch({ status: "canceled" }), error: null },
     });
 
@@ -170,6 +199,7 @@ describe("executeResendDispatch", () => {
   it("refuses when the dispatch has no linked approval", async () => {
     const send = vi.fn();
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch({ approval_item_id: null }), error: null },
     });
 
@@ -183,6 +213,7 @@ describe("executeResendDispatch", () => {
   it("refuses when the linked approval is not approved", async () => {
     const send = vi.fn();
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: { status: "pending" }, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -199,6 +230,7 @@ describe("executeResendDispatch", () => {
     vi.stubEnv("RESEND_API_KEY", "");
     const send = vi.fn();
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -217,6 +249,7 @@ describe("executeResendDispatch", () => {
     const send = vi.fn().mockResolvedValue({ id: "resend-ws" });
     const readCredential = vi.fn().mockResolvedValue("re_workspace_stored");
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -236,6 +269,7 @@ describe("executeResendDispatch", () => {
     const send = vi.fn().mockResolvedValue({ id: "resend-env" });
     const readCredential = vi.fn();
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -253,6 +287,7 @@ describe("executeResendDispatch", () => {
   it("refuses when the Resend connection is disabled (kill-switch off)", async () => {
     const send = vi.fn();
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -269,6 +304,7 @@ describe("executeResendDispatch", () => {
   it("records a failure (status=failed, last_error) and logs dispatch_failed when Resend throws", async () => {
     const send = vi.fn().mockRejectedValue(new Error("Resend send failed (422): invalid from"));
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -292,6 +328,7 @@ describe("executeResendDispatch", () => {
   it("records the send as an outbound attribution touch in engagement_events", async () => {
     const send = vi.fn().mockResolvedValue({ id: "resend-123" });
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch({ contact_id: "ct-1", campaign_asset_id: "as-1" }), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -320,6 +357,7 @@ describe("executeResendDispatch", () => {
     // postgrest resolves with `{ error }` rather than rejecting — the shape a real
     // constraint violation takes, and the one the old bare `catch` never saw.
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -347,6 +385,7 @@ describe("executeResendDispatch", () => {
     // old code this sent.
     const send = vi.fn().mockResolvedValue({ id: "resend-should-not-happen" });
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: { status: "pending_approval", dispatch_locked: true, approved_at: null }, error: null },
@@ -363,6 +402,7 @@ describe("executeResendDispatch", () => {
   it("refuses an approved asset that has not been deployed (still dispatch_locked)", async () => {
     const send = vi.fn().mockResolvedValue({ id: "resend-should-not-happen" });
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: { status: "approved", dispatch_locked: true, approved_at: "2026-07-01T00:00:00.000Z" }, error: null },
@@ -376,9 +416,131 @@ describe("executeResendDispatch", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  // ————— Compliance gates —————
+  //
+  // `contacts.email_unsubscribed_at` existed since 2026-07-10 but nothing read
+  // it, so an unsubscribed contact still received mail. These lock that shut.
+
+  it("refuses to send to a contact who unsubscribed", async () => {
+    const send = vi.fn();
+    const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
+      contacts: { data: { email_unsubscribed_at: "2026-07-01T00:00:00.000Z" }, error: null },
+      campaign_dispatches: { data: queuedDispatch(), error: null },
+      approval_items: { data: APPROVED, error: null },
+      campaign_assets: { data: DEPLOYED_ASSET, error: null },
+      connections: { data: ENABLED_RESEND, error: null },
+      campaign_events: { data: null, error: null },
+    });
+
+    const result = await executeResendDispatch({ dispatchId: "d1", operator: "Operator" }, supabase, {
+      apiKey: "re_test",
+      send,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/unsubscribed/i);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  // Fail CLOSED: if we can't confirm consent, holding the send is the safer
+  // error than mailing someone who may have opted out.
+  it("holds the send when the consent lookup fails", async () => {
+    const send = vi.fn();
+    const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
+      contacts: { data: null, error: { message: "boom" } },
+      campaign_dispatches: { data: queuedDispatch(), error: null },
+      approval_items: { data: APPROVED, error: null },
+      campaign_assets: { data: DEPLOYED_ASSET, error: null },
+      connections: { data: ENABLED_RESEND, error: null },
+      campaign_events: { data: null, error: null },
+    });
+
+    const result = await executeResendDispatch({ dispatchId: "d1", operator: "Operator" }, supabase, {
+      apiKey: "re_test",
+      send,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  // Commercial email without a postal address is unlawful in the US, so this
+  // refuses rather than warning.
+  it("refuses when the workspace has no postal address configured", async () => {
+    const send = vi.fn();
+    const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
+      app_settings: { data: [{ key: "email_sender_name", value: "BSR" }], error: null },
+      business_profiles: { data: { logo_url: null, accent: null, display_name: "BSR" }, error: null },
+      campaign_dispatches: { data: queuedDispatch(), error: null },
+      approval_items: { data: APPROVED, error: null },
+      campaign_assets: { data: DEPLOYED_ASSET, error: null },
+      connections: { data: ENABLED_RESEND, error: null },
+      campaign_events: { data: null, error: null },
+    });
+
+    const result = await executeResendDispatch({ dispatchId: "d1", operator: "Operator" }, supabase, {
+      apiKey: "re_test",
+      send,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/postal address/i);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("refuses when there is no contact, since no unsubscribe link can be built", async () => {
+    const send = vi.fn();
+    const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
+      campaign_dispatches: { data: queuedDispatch({ contact_id: null }), error: null },
+      approval_items: { data: APPROVED, error: null },
+      campaign_assets: { data: DEPLOYED_ASSET, error: null },
+      connections: { data: ENABLED_RESEND, error: null },
+      campaign_events: { data: null, error: null },
+    });
+
+    const result = await executeResendDispatch({ dispatchId: "d1", operator: "Operator" }, supabase, {
+      apiKey: "re_test",
+      send,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/unsubscribe/i);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("sends the wrapped body with the address, an unsubscribe link, and List-Unsubscribe headers", async () => {
+    const send = vi.fn().mockResolvedValue({ id: "resend-999" });
+    const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
+      campaign_dispatches: { data: queuedDispatch(), error: null },
+      approval_items: { data: APPROVED, error: null },
+      campaign_assets: { data: DEPLOYED_ASSET, error: null },
+      connections: { data: ENABLED_RESEND, error: null },
+      campaign_events: { data: null, error: null },
+    });
+
+    await executeResendDispatch({ dispatchId: "d1", operator: "Operator" }, supabase, {
+      apiKey: "re_test",
+      send,
+    });
+
+    const payload = send.mock.calls[0][1] as { html: string; headers: Record<string, string> };
+    expect(payload.html).toContain("123 W Example St");
+    expect(payload.html).toContain("/api/unsubscribe");
+    // Without List-Unsubscribe-Post, Gmail won't offer one-click and scanners
+    // may GET the link, unsubscribing people who never asked.
+    expect(payload.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+    expect(payload.headers["List-Unsubscribe"]).toMatch(/^<https?:\/\/.+\/api\/unsubscribe\?.+>$/);
+  });
+
   it("refuses a dispatch with no asset to verify, rather than trusting the approval row", async () => {
     const send = vi.fn().mockResolvedValue({ id: "resend-should-not-happen" });
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch({ campaign_asset_id: null }), error: null },
       approval_items: { data: APPROVED, error: null },
       connections: { data: ENABLED_RESEND, error: null },
@@ -400,6 +562,7 @@ describe("executeResendDispatch", () => {
     // specifically between `from("campaign_assets")` and the next `from`.
     const send = vi.fn().mockResolvedValue({ id: "resend-1" });
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -428,6 +591,7 @@ describe("degrade order under billing pressure", () => {
     vi.stubEnv("ARC_BILLING_ENFORCEMENT", "1");
     const send = vi.fn().mockResolvedValue({ id: "resend-over-cap" });
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },
@@ -450,6 +614,7 @@ describe("degrade order under billing pressure", () => {
     vi.stubEnv("ARC_BILLING_ENFORCEMENT", "1");
     const send = vi.fn();
     const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
       campaign_dispatches: { data: queuedDispatch(), error: null },
       approval_items: { data: APPROVED, error: null },
       campaign_assets: { data: DEPLOYED_ASSET, error: null },

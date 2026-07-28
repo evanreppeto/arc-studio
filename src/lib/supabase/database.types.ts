@@ -3046,6 +3046,7 @@ export type Database = {
           status: Database["public"]["Enums"]["contact_status"]
           title: string | null
           updated_at: string
+          email_unsubscribed_at: string | null
         }
         Insert: {
           company_id?: string | null
@@ -3064,6 +3065,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["contact_status"]
           title?: string | null
           updated_at?: string
+          email_unsubscribed_at?: string | null
         }
         Update: {
           company_id?: string | null
@@ -3082,6 +3084,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["contact_status"]
           title?: string | null
           updated_at?: string
+          email_unsubscribed_at?: string | null
         }
         Relationships: [
           {

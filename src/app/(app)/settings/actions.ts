@@ -370,6 +370,38 @@ export async function saveAppearanceSettings(input: {
 }
 
 /**
+ * Sender identity stamped into every outbound marketing email.
+ *
+ * The postal address is legally required (CAN-SPAM and equivalents) and cannot
+ * be defaulted, so the send path refuses while it is blank. This is where an
+ * operator unblocks it.
+ */
+export async function saveEmailIdentitySettings(input: {
+  senderName: string;
+  postalAddress: string;
+  permissionReminder: string;
+}): Promise<SettingsWriteResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const org = await resolveOrgForSave();
+  if (!org.ok) return org;
+
+  try {
+    await saveAppSettings(getSupabaseAdminClient(), org.orgId, {
+      email_sender_name: input.senderName.trim().slice(0, 120),
+      email_postal_address: input.postalAddress.trim().slice(0, 400),
+      email_permission_reminder: input.permissionReminder.trim().slice(0, 300),
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save email identity." };
+  }
+
+  revalidatePath("/settings");
+  return { ok: true, persisted: true };
+}
+
+/**
  * Built-in (Gemini/Veo) generation default. This is the only media-model default
  * that's actually consumed — the /api/v1/arc/media/generate-* routes read
  * settings.imageModel/videoModel. "" = Auto (inherit the level mapping / env

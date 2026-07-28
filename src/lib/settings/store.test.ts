@@ -80,6 +80,12 @@ describe("settings store helpers", () => {
       imageModel: "gemini-3-pro-image",
       videoModel: "veo-3.1-generate-preview",
       journeyConsentMode: "implied",
+      // Sender identity for outbound email. Blank here because this fixture
+      // persists no email_* rows — and blank postal address is exactly what
+      // makes the send path refuse, which is the intended default.
+      emailSenderName: "",
+      emailPostalAddress: "",
+      emailPermissionReminder: "",
     });
     expect(settings).not.toHaveProperty("markWebhookEnabled");
   });
