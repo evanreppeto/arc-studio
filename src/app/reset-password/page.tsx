@@ -10,6 +10,7 @@ const RESET_ERRORS: Record<string, string> = {
   config: "Password reset isn't available right now. Try again shortly.",
   password: "Use at least 8 characters for your new password.",
   expired: "That reset link is invalid or has expired. Request a new one.",
+  reuse: "That's already your current password. Choose a different one.",
   "1": "We couldn't update your password. Try again.",
 };
 
