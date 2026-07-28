@@ -1,3 +1,4 @@
+import { unavailable } from "@/lib/observability/unavailable";
 import { countNodesByTier, listGraphEdges, listNodes, type BrainNode } from "@/lib/knowledge-graph/read-model";
 
 import { KIND_COLOR, KIND_LABEL, normalizeConfidence, titleize, toFact } from "./_data/fact-vm";
@@ -36,14 +37,14 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const focusNodeId = typeof sp.node === "string" && sp.node.trim() ? sp.node.trim() : null;
   const [result, edgeResult, countResult, reviewResult] = await Promise.all([
-    listNodes({}).catch(() => ({ status: "unavailable" }) as const),
-    listGraphEdges().catch(() => ({ status: "unavailable" }) as const),
+    listNodes({}).catch(unavailable("brain.nodes")),
+    listGraphEdges().catch(unavailable("brain.edges")),
     // The tiles need real totals, not the size of the browsable page.
-    countNodesByTier().catch(() => ({ status: "unavailable" }) as const),
+    countNodesByTier().catch(unavailable("brain.tiers")),
     // Ask for the proposed nodes directly: filtering the capped list hid the ones
     // outside its recency window, so a node awaiting review could go unlisted
     // while the tile beside it read 0.
-    listNodes({ trustTier: "proposed" }).catch(() => ({ status: "unavailable" }) as const),
+    listNodes({ trustTier: "proposed" }).catch(unavailable("brain.proposed")),
   ]);
   const nodes: BrainNode[] = result.status === "live" ? result.nodes : [];
   const facts = nodes.map(toFact);
