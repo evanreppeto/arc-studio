@@ -41,6 +41,7 @@ export * from "./outcomes";
 export * from "./arc-tasks";
 export * from "./media-ingest";
 export * from "./asset-provenance";
+export * from "./asset-approval";
 export * from "./redaction";
 export * from "./resend-webhook";
 export * from "./campaign-kind";
