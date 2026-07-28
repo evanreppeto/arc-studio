@@ -82,7 +82,16 @@ function demoWorkspaces(): SettingsWorkspacesView {
   return {
     isDemo: true,
     workspaces: [
-      demoWorkspace({ id: "demo-bsr", name: "Big Shoulders Restoration", meta: "Owner · Restoration & home services", active: true }),
+      // The active row carries a logo and the others don't, so the offline
+      // preview exercises BOTH branches of the menu's mark — an uploaded logo
+      // and the initials fallback.
+      demoWorkspace({
+        id: "demo-bsr",
+        name: "Big Shoulders Restoration",
+        meta: "Owner · Restoration & home services",
+        active: true,
+        logoUrl: "/brand/demo/meridian-logo.png",
+      }),
       demoWorkspace({ id: "demo-summit", name: "Summit Restoration", meta: "Admin · Home services", active: false, accentKey: "emerald" }),
       demoWorkspace({ id: "demo-personal", name: "Personal", meta: "Owner · Sandbox", active: false, accentKey: "steel", subtitle: "Sandbox" }),
     ],
