@@ -1,0 +1,50 @@
+name: Migration drift
+
+# Is PROD running code ahead of its schema? (BSR-545)
+#
+# Migrations are applied to prod by hand (DEPLOY.md). On 2026-07-28 PR #680
+# merged code selecting `campaigns.considered_audiences` while its migration was
+# never applied: every campaigns read on prod threw and /campaigns was broken for
+# every tenant, with CI green throughout — CI never touches prod's schema.
+#
+# TIMING IS THE WHOLE DESIGN. Deliberately does NOT run on pull requests: a PR
+# that ADDS a migration is *supposed* to be unapplied at that moment, so failing
+# there would redden every schema PR and train everyone to ignore this. Drift
+# only means something once the code is on main.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 7 * * *" # nightly, just after the prod smoke
+  workflow_dispatch:
+
+jobs:
+  drift:
+    name: Migration drift (prod)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          # No dependencies are installed — nothing to cache, and left on,
+          # setup-node fails looking for a pnpm this job never needs.
+          package-manager-cache: false
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Compare supabase/migrations against the prod ledger
+        run: node scripts/check-migration-drift.mjs
+        env:
+          # Prod Postgres connection string (percent-encoded). Unset ⇒ the script
+          # fails loudly rather than skipping: a drift detector that silently
+          # no-ops converts an unknown into a false assurance, which is exactly
+          # the failure this workflow exists to prevent.
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
