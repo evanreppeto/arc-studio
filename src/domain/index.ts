@@ -99,3 +99,4 @@ export * from "./auto-draft-selection";
 export * from "./support";
 
 export * from "./workspace-identity";
+export * from "./branding-image";

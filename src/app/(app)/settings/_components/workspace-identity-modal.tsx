@@ -3,6 +3,11 @@
 import { useRef, useState, useTransition } from "react";
 
 import {
+  BRANDING_IMAGE_ACCEPT,
+  BRANDING_IMAGE_MAX_BYTES,
+  BRANDING_IMAGE_MAX_LABEL,
+} from "@/domain/branding-image";
+import {
   resolveWorkspaceIdentity,
   workspaceInitials,
   WORKSPACE_ACCENT_KEYS,
@@ -25,7 +30,9 @@ export type WorkspaceIdentityValue = {
   accentKey: string | null;
 };
 
-const ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
+function message(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
 /**
  * Edit one workspace's display identity, with a live preview of the rail block
@@ -62,6 +69,7 @@ export function WorkspaceIdentityModal({
   const [logoUrl, setLogoUrl] = useState<string | null>(workspace?.logoUrl ?? null);
   const [pending, setPending] = useState(false);
   const [uploading, startUpload] = useTransition();
+  const [logoOperation, setLogoOperation] = useState<"upload" | "remove" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -80,22 +88,40 @@ export function WorkspaceIdentityModal({
     const chosen = event.target.files?.[0];
     event.target.value = ""; // let the same file be re-picked after a remove
     if (!chosen) return;
+    if (chosen.size > BRANDING_IMAGE_MAX_BYTES) {
+      setError(`Image is too large — keep it under ${BRANDING_IMAGE_MAX_LABEL}.`);
+      return;
+    }
     setError(null);
+    setLogoOperation("upload");
     const formData = new FormData();
     formData.append("file", chosen);
     startUpload(async () => {
-      const result = await saveWorkspaceRowLogoAction(workspaceId, formData);
-      if (result.ok) setLogoUrl(result.url);
-      else setError(result.error);
+      try {
+        const result = await saveWorkspaceRowLogoAction(workspaceId, formData);
+        if (result.ok) setLogoUrl(result.url);
+        else setError(result.error);
+      } catch (caught) {
+        setError(message(caught, "Could not upload that logo. Try again."));
+      } finally {
+        setLogoOperation(null);
+      }
     });
   }
 
   function onRemoveLogo() {
     setError(null);
+    setLogoOperation("remove");
     startUpload(async () => {
-      const result = await removeWorkspaceRowLogoAction(workspaceId);
-      if (result.ok) setLogoUrl(null);
-      else setError(result.error);
+      try {
+        const result = await removeWorkspaceRowLogoAction(workspaceId);
+        if (result.ok) setLogoUrl(null);
+        else setError(result.error);
+      } catch (caught) {
+        setError(message(caught, "Could not remove that logo. Try again."));
+      } finally {
+        setLogoOperation(null);
+      }
     });
   }
 
@@ -144,7 +170,7 @@ export function WorkspaceIdentityModal({
       >
         <div className="wsid-preview-h">Sidebar preview</div>
         <div className="wsid-preview-ws">
-          <span className="wsid-preview-mk">
+          <span className={`wsid-preview-mk${preview.logoUrl ? " has-image" : ""}`}>
             {preview.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo; next/image would need per-host remotePatterns
               <img src={preview.logoUrl} alt="" />
@@ -233,23 +259,23 @@ export function WorkspaceIdentityModal({
 
         <div className="mfield">
           <span className="mlabel">
-            Logo <span className="mopt">optional</span>
+            Sidebar logo override <span className="mopt">optional</span>
           </span>
           <div className="wsid-logo">
-            <button type="button" className="btn sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
-              {uploading ? "Uploading…" : logoUrl ? "Replace" : "Upload"}
+            <button type="button" className="btn sm" disabled={uploading} aria-label={logoUrl ? "Replace sidebar logo override" : "Upload sidebar logo override"} onClick={() => fileRef.current?.click()}>
+              {uploading && logoOperation === "upload" ? "Uploading…" : logoUrl ? "Replace" : "Upload"}
             </button>
             {logoUrl && (
-              <button type="button" className="btn sm" disabled={uploading} onClick={onRemoveLogo}>
-                Remove
+              <button type="button" className="btn sm" disabled={uploading} aria-label="Remove sidebar logo override" onClick={onRemoveLogo}>
+                {uploading && logoOperation === "remove" ? "Removing…" : "Remove"}
               </button>
             )}
-            <span className="mopt">Saves immediately. Square PNG or SVG works best.</span>
+            <span className="mopt">Only changes this workspace in the sidebar. Leave blank to use the organization’s brand logo.</span>
           </div>
-          <input ref={fileRef} type="file" accept={ACCEPT} hidden onChange={onPickLogo} />
+          <input ref={fileRef} type="file" accept={BRANDING_IMAGE_ACCEPT} aria-label="Choose sidebar logo override" hidden onChange={onPickLogo} />
         </div>
 
-        {error && <div className="mError">{error}</div>}
+        {error && <div className="mError" role="alert">{error}</div>}
       </form>
     </Modal>
   );
