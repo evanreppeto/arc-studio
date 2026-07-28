@@ -147,6 +147,10 @@ export function summarizeUsage(events: UsageRollupEvent[]): UsageSummary {
     mdl.count += 1;
     models.set(e.model, mdl);
 
+    // The leading space is load-bearing: this is only a Map key, and actorUser is
+    // caller-supplied, so an unspaced "autonomous" would silently merge a real user
+    // of that name into the Arc bucket. The key never escapes — the row below keeps
+    // the original actorUser (null when autonomous), which is what the UI renders.
     const userKey = e.actorUser ?? " autonomous";
     const usr = users.get(userKey) ?? {
       actorUser: e.actorUser,
