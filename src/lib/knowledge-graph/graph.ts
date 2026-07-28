@@ -1,4 +1,5 @@
 import { type TrustTier } from "@/domain";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { type TypedSupabaseClient, getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -113,6 +114,9 @@ export async function getBrainGraph(
 
     return { status: "live", nodes, edges, truncated: truncatedNodes || truncatedEdges };
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "knowledge-graph.getBrainGraph", surface: "primary" });
     return { status: "unavailable", message: error instanceof Error ? error.message : "Brain graph is unavailable." };
   }
 }

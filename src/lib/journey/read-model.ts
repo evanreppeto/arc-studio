@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import {
   assembleJourney,
@@ -306,6 +307,9 @@ export async function getJourneysReadModel(client?: SupabaseClient, orgId?: stri
 
     return buildLiveModel(journeys, nowMs, false);
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "journey.getJourneysReadModel", surface: "primary" });
     return { status: "unavailable", message: error instanceof Error ? error.message : "Journey data is unavailable." };
   }
 }

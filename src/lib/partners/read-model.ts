@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 
@@ -294,6 +295,9 @@ export async function getPartnerDevelopmentDashboard(client?: SupabaseClient, ag
       dataContracts: buildDataContracts(partners, health.length, actions.length, agentName),
     };
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "partners.getPartnerDevelopmentDashboard", surface: "primary" });
     return { status: "unavailable", message: error instanceof Error ? error.message : "Partner development data is unavailable." };
   }
 }

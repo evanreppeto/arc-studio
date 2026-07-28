@@ -1,4 +1,5 @@
 import "server-only";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getOperatorActor } from "@/lib/auth/operator";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -93,7 +94,10 @@ export async function getArcChatModel(
       messages,
       threadGroups: groupThreadsForRail(conversations, active.id, nowMs, runningIds),
     };
-  } catch {
+  } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "arc-chat.getArcChatModel", surface: "primary" });
     return {
       status: "error",
       message: "We couldn't load conversation history. No chats were changed; refresh to try again.",

@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
@@ -293,6 +294,9 @@ export async function getPerformanceReadModel(
       contracts: buildContracts(),
     };
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "performance.getPerformanceReadModel", surface: "primary" });
     return { status: "unavailable", message: error instanceof Error ? error.message : "Performance data is unavailable." };
   }
 }

@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
@@ -1045,6 +1046,9 @@ export async function getCrmOverviewData(client?: SupabaseClient): Promise<CrmOv
     }
     return buildOverviewFromBundle(data);
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "crm.getCrmOverviewData", surface: "primary" });
     // A live read that errors (e.g. prod schema drift) must not leak demo data
     // into a real workspace — only fall back to demo when demo mode is on.
     if (isDemoDataEnabled()) return buildOverviewFromBundle(buildDemoCrmBundle());
@@ -1087,6 +1091,9 @@ export async function getCrmObjectData(key: CrmObjectKey, client?: SupabaseClien
     }
     return buildObjectDataFromBundle(key, data);
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "crm.getCrmObjectData", surface: "primary" });
     if (isDemoDataEnabled()) return buildObjectDataFromBundle(key, buildDemoCrmBundle());
     console.error("[crm] object read failed:", error);
     return { status: "unavailable", message: "CRM data is unavailable." };
@@ -1265,6 +1272,9 @@ export async function getCrmRecordData(key: CrmObjectKey, recordId: string, clie
     }
     return buildRecordDataFromBundle(key, recordId, data, agentName);
   } catch (error) {
+    // Degrade, but not silently — this read IS the screen, so an empty
+    // state here is indistinguishable from an outage (BSR-544).
+    reportDegraded(error, { scope: "crm.getCrmRecordData", surface: "primary" });
     if (isDemoDataEnabled()) return buildRecordDataFromBundle(key, recordId, buildDemoCrmBundle(), agentName);
     console.error("[crm] record read failed:", error);
     return { status: "unavailable", message: "CRM data is unavailable." };
