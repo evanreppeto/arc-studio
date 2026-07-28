@@ -4,6 +4,8 @@ import { formatByteSize } from "@/domain";
 import { getCurrentOrgId, OrgUnavailableError } from "@/lib/auth/org";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
+import { getAssetApprovalStates, type AssetApprovalState } from "./approval";
+
 import {
   type MediaAssetRow,
   type MediaAssetView,
@@ -13,7 +15,11 @@ import {
 } from "./types";
 
 /** Pure: one DB row → view model. `usedIn` is the count of campaign assets referencing it. */
-export function toAssetView(row: MediaAssetRow, usedIn: number): MediaAssetView {
+export function toAssetView(
+  row: MediaAssetRow,
+  usedIn: number,
+  approval?: { status: string; reviewedBy: string | null; reviewedAt: string | null },
+): MediaAssetView {
   const badge =
     row.source === "ai_generated"
       ? "AI"
@@ -41,6 +47,10 @@ export function toAssetView(row: MediaAssetRow, usedIn: number): MediaAssetView 
     provenance: row.provenance ?? {},
     availableToArc: row.available_to_arc,
     uploadedBy: row.uploaded_by,
+    createdAt: row.created_at ?? null,
+    approvalStatus: approval?.status ?? null,
+    approvalReviewedBy: approval?.reviewedBy ?? null,
+    approvalReviewedAt: approval?.reviewedAt ?? null,
     usedInCount: usedIn,
   };
 }
@@ -174,11 +184,14 @@ export async function getMediaLibraryData(client?: SupabaseClient, orgIdArg?: st
     }
   }
   const usage = countUsage(assets, campaignMedia);
+  // Latest review state per asset (BSR-538). Best-effort: a missing approval
+  // read must not blank the whole library, so assets simply render unreviewed.
+  const approvals: Record<string, AssetApprovalState> = await getAssetApprovalStates(orgId, db).catch(() => ({}));
 
   return {
     status: "live",
     folders: buildFolderViews((folderRows ?? []) as MediaFolderRow[], assets),
-    assets: assets.map((a) => toAssetView(a, usage.get(a.id) ?? 0)),
+    assets: assets.map((a) => toAssetView(a, usage.get(a.id) ?? 0, approvals[a.id])),
     totalBytes: assets.reduce((sum, a) => sum + (a.byte_size ?? 0), 0),
   };
 }

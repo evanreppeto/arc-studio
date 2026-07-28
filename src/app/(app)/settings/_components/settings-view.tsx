@@ -5,6 +5,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 
 import type { SettingsTeamInvite, SettingsTeamMember, SettingsTeamView, WorkspaceActivityEntry } from "@/lib/auth/team-view";
 import type { WaitlistView } from "@/lib/waitlist/read-model";
+import type { HealthConsoleView } from "@/lib/observability/health-console";
+import type { LoopState } from "@/lib/observability/health-grading";
 import { WORKSPACE_ROLES } from "@/lib/auth/workspace-roles";
 import type { SettingsWorkspace, SettingsWorkspacesView } from "@/lib/auth/workspaces-view";
 import type { SettingsUsageView } from "@/lib/ai-usage/settings-summary";
@@ -75,6 +77,7 @@ type SettingsWriteResult = { ok: true; persisted: boolean; message?: string } | 
 const ROLE_OPTIONS = ["Owner", "Admin", "Marketer", "Reviewer", "Member", "Viewer"];
 
 const ICON: Record<string, string> = {
+  health: '<path d="M3 12h4l2-5 3 10 2-5h7"/>',
   waitlist: '<path d="M4 7h10M4 12h10M4 17h6"/><path d="M15 17l2 2 4-4"/>',
   general: '<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 00-1.7-1l-.3-2.5h-4l-.3 2.5a7 7 0 00-1.7 1l-2.3-1-2 3.4 2 1.5a7 7 0 000 2l-2 1.5 2 3.4 2.3-1a7 7 0 001.7 1l.3 2.5h4l.3-2.5a7 7 0 001.7-1l2.3 1 2-3.4-2-1.5a7 7 0 00.1-1z"/>',
   appearance: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18 4 4 0 000-8 3 3 0 010-6 4 4 0 000-4z"/>',
@@ -112,11 +115,13 @@ const SUBTABS: Record<string, string[]> = {
 const SECTION_LABEL: Record<string, string> = {
   ...Object.fromEntries(NAVGROUPS.flatMap((g) => g.items.map((it) => [it[0], it[1]]))),
   waitlist: "Waitlist",
+  health: "Health",
 };
 
 // Synonyms so search jumps on intent, not just the literal section name.
 const SECTION_KEYWORDS: Record<string, string> = {
   overview: "home dashboard health",
+  health: "health prod production status uptime env flags connectors runner heartbeat failures observability incident",
   waitlist: "waitlist signups leads early access launch interest",
   general: "workspace name industry support email brand from-name identity",
   appearance: "theme accent color colour dark light density motion look feel",
@@ -166,6 +171,14 @@ function toStatus(res: SettingsWriteResult, okText: string): SaveStatus {
   if (!res.ok) return { tone: "err", text: res.error };
   return { tone: "ok", text: res.persisted ? okText : `${okText} — connect your workspace to persist.` };
 }
+/**
+ * Loop state → pill styling. `unknown` deliberately reads as a warning rather
+ * than as neutral: on this screen, "we can't tell" is a problem to chase, not a
+ * shrug. Grading it green is how silent failures stayed hidden.
+ */
+const LOOP_PILL: Record<LoopState, string> = { live: "ok", degraded: "warn", down: "err", off: "off", unknown: "warn" };
+const LOOP_WORD: Record<LoopState, string> = { live: "Live", degraded: "Degraded", down: "Down", off: "Off", unknown: "Unknown" };
+
 function Pill({ kind, children }: { kind: string; children: ReactNode }) {
   return <span className={`spill ${kind}`}><span className="pd" />{children}</span>;
 }
@@ -566,12 +579,17 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null }) {
+export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null }) {
   const [cur, setCur] = useState("overview");
-  // The waitlist is platform-level, not workspace-level: the server sends null
-  // unless the viewer is a platform admin, so the group is absent for everyone else.
-  const navGroups: ReadonlyArray<{ g: string; items: ReadonlyArray<readonly [string, string]> }> = waitlist
-    ? [...NAVGROUPS, { g: "PLATFORM", items: [["waitlist", "Waitlist"] as const] }]
+  // Health and the waitlist are platform-level, not workspace-level: the server
+  // sends null unless the viewer is a platform admin, so the group — and every
+  // section in it — is absent for everyone else.
+  const platformItems: ReadonlyArray<readonly [string, string]> = [
+    ...(health ? [["health", "Health"] as const] : []),
+    ...(waitlist ? [["waitlist", "Waitlist"] as const] : []),
+  ];
+  const navGroups: ReadonlyArray<{ g: string; items: ReadonlyArray<readonly [string, string]> }> = platformItems.length
+    ? [...NAVGROUPS, { g: "PLATFORM", items: platformItems }]
     : NAVGROUPS;
   const memberCount = team.members.length;
   const pendingCount = team.invites.length;
@@ -592,7 +610,9 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     const apply = () => {
       const p = new URLSearchParams(window.location.search);
       const s = p.get("s");
-      const section = s && SECTION_LABEL[s] && (s !== "waitlist" || waitlist) ? s : "overview";
+      // Deep-linking a platform section without the data (i.e. not a platform
+      // admin) falls back to overview rather than rendering an empty shell.
+      const section = s && SECTION_LABEL[s] && (s !== "waitlist" || waitlist) && (s !== "health" || health) ? s : "overview";
       const t = p.get("t");
       setCur(section);
       setConnSel(section === "connections" ? p.get("c") : null);
@@ -751,6 +771,122 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         : "Idle";
 
   const sections: Record<string, ReactNode> = {
+    health: health ? (
+      <>
+        <Head
+          t="Health"
+          d="Whether prod is actually working, in one place — env readiness, connectors, the runner, and what has recently failed. Platform-wide, across every workspace."
+        />
+        {/* The three answers an operator actually needs. Everything below is the
+            evidence behind them. Grading lives in health-grading.ts so "is the
+            send loop live?" is a tested rule, not an impression formed by
+            scanning pills. */}
+        <Panel
+          title="Loops"
+          tag={<Pill kind={LOOP_PILL[health.overall]}>{LOOP_WORD[health.overall]}</Pill>}
+          foot={`Read ${relTime(health.generatedAt)}${health.databaseConfigured ? "" : " — Supabase is not configured, so only env readiness below is real"}`}
+        >
+          {health.loops.map((loop) => (
+            <Row key={loop.key} label={loop.label} desc={loop.detail}>
+              <Pill kind={LOOP_PILL[loop.state]}>{LOOP_WORD[loop.state]}</Pill>
+            </Row>
+          ))}
+        </Panel>
+
+        {/* Presence only. No value is ever read into this view — an operator
+            needs to know a flag is missing, never what it is set to. */}
+        {health.envGroups.map((group) => (
+          <Panel
+            key={group.capability}
+            title={group.capability}
+            tag={
+              group.flags.every((f) => f.set)
+                ? <span className="tg ok">all set</span>
+                : <Pill kind="warn">{group.flags.filter((f) => !f.set).length} unset</Pill>
+            }
+          >
+            {group.flags.map((flag) => (
+              <Row key={flag.name} label={<code>{flag.name}</code>} desc={flag.purpose}>
+                <Pill kind={flag.set ? "ok" : "off"}>{flag.set ? "Set" : "Unset"}</Pill>
+              </Row>
+            ))}
+          </Panel>
+        ))}
+
+        <Panel title="Runner" tag={<Pill kind={health.runner.configured ? "ok" : "off"}>{health.runner.configured ? "Configured" : "Not configured"}</Pill>}>
+          <Row label="Last heartbeat" desc={health.runner.lastError || "The runner is webhook-driven, so a quiet period is not by itself a fault."}>
+            <Pill kind={health.runner.lastStatus === "ok" ? "ok" : health.runner.lastStatus ? "err" : "warn"}>
+              {health.runner.lastSeenAt ? relTime(health.runner.lastSeenAt) : "Never seen"}
+            </Pill>
+          </Row>
+          <Row label="Queue" desc="Work waiting to be picked up. A queue that stops draining is the real stall signal.">
+            <span className="pillrow">
+              <Pill kind={health.runner.oldestQueuedMinutes !== null && health.runner.oldestQueuedMinutes >= 30 ? "err" : "ok"}>{health.runner.queued} queued</Pill>
+              <Pill kind="ok">{health.runner.running} running</Pill>
+            </span>
+          </Row>
+          <Row label="Failures (24h)" desc="Agent tasks that ended in a failed state.">
+            <Pill kind={health.runner.failedLast24h > 0 ? "warn" : "ok"}>{health.runner.failedLast24h}</Pill>
+          </Row>
+        </Panel>
+
+        <Panel title="Pipeline vitals" tag={<span className="tg ok">live</span>}>
+          {health.vitals.map((vital) => (
+            <Row key={vital.label} label={vital.label} desc={vital.at ? undefined : vital.emptyMeaning}>
+              <Pill kind={vital.at ? "ok" : "warn"}>{vital.at ? relTime(vital.at) : "Never"}</Pill>
+            </Row>
+          ))}
+        </Panel>
+
+        <Panel
+          title="Connectors"
+          tag={<span className="ph-d">{health.connectors.length} across all workspaces</span>}
+        >
+          {health.connectors.length === 0 ? (
+            <Row label="None configured" desc="No workspace has enabled a connector yet.">
+              <Pill kind="off">Empty</Pill>
+            </Row>
+          ) : (
+            health.connectors.map((c) => (
+              <Row
+                key={`${c.workspace}:${c.connectorKey}`}
+                label={<>{c.connectorKey} <span className="ph-d">· {c.workspace}</span></>}
+                desc={c.lastError || (c.lastTestedAt ? `Last tested ${relTime(c.lastTestedAt)}` : "Never tested.")}
+              >
+                <span className="pillrow">
+                  <Pill kind={c.enabled ? "ok" : "off"}>{c.enabled ? "On" : "Off"}</Pill>
+                  {c.enabled && <Pill kind={c.credentialPresent ? "ok" : "err"}>{c.credentialPresent ? "Credential" : "No credential"}</Pill>}
+                  {c.lastTestOk === false && <Pill kind="err">Test failed</Pill>}
+                </span>
+              </Row>
+            ))
+          )}
+        </Panel>
+
+        <Panel
+          title="Recent failures"
+          tag={health.sentryConfigured ? <span className="tg ok">Sentry on</span> : <Pill kind="warn">Sentry off</Pill>}
+        >
+          {health.failures.length === 0 ? (
+            <Row label="Nothing failed" desc="No agent task is in a failed state.">
+              <Pill kind="ok">Clear</Pill>
+            </Row>
+          ) : (
+            health.failures.map((f, i) => (
+              <Row key={`${f.at}-${i}`} label={f.source} desc={f.summary}>
+                <Pill kind="err">{f.at ? relTime(f.at) : "—"}</Pill>
+              </Row>
+            ))
+          )}
+        </Panel>
+
+        <div>
+          <button type="button" className="btn" onClick={() => router.refresh()}>
+            <Ic d='<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 00-14-3M4 14a8 8 0 0014 3"/>' />Re-check
+          </button>
+        </div>
+      </>
+    ) : null,
     waitlist: waitlist ? (
       <>
         <Head t="Waitlist" d="Everyone who asked for early access from the public site. Platform-wide, not workspace-scoped." />

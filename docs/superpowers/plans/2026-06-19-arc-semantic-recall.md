@@ -159,7 +159,7 @@ grant execute on function public.match_knowledge_nodes(text, uuid, int, text[]) 
 
 - [ ] **Step 2: Commit** — `git add supabase/migrations/20260621130000_knowledge_node_embeddings.sql && git commit -m "feat(brain): knowledge_nodes embedding column + match_knowledge_nodes RPC"`
 
-> **Deploy note (plan-level):** this migration + a one-time backfill (Task 5) are applied by hand on prod `tegdgejiyxurgvgheshi`. pgvector is supported by Supabase (`create extension vector`). Flag for the operator at PR time.
+> **Deploy note (plan-level):** this migration + a one-time backfill (Task 5) are applied by hand on prod `qqbecyrhnowmooyjiztz`. pgvector is supported by Supabase (`create extension vector`). Flag for the operator at PR time.
 
 ---
 

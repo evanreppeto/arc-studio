@@ -83,7 +83,7 @@ migration set would therefore **error** at that file. This means one of:
    protected by org RLS.
 
 I **cannot tell which** — the Supabase MCP only sees the unrelated `askvisible` project,
-not prod (`tegdgejiyxurgvgheshi`), and the generated `database.types.ts` is stale (it
+not prod (`qqbecyrhnowmooyjiztz`), and the generated `database.types.ts` is stale (it
 doesn't even list `vault_notes`). Adding app-layer `.eq("org_id", …)` to vault, or
 shipping another `org_id` migration, without knowing the real column state risks either
 breaking the live vault feature (if the column is absent) or duplicating work.

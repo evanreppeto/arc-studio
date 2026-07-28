@@ -2,6 +2,36 @@
 
 How the two deployable surfaces ship, plus the manual steps that are easy to forget.
 
+## How PRs land on `main`
+
+`main` is protected: PR-only, `enforce_admins`, linear history, and required
+checks `verify` + `e2e` with **`strict: true`** (a PR must be up to date with
+`main` to merge). Always merge with auto-merge rather than waiting on a green
+tick:
+
+```bash
+gh pr merge <n> --auto --squash
+```
+
+**Auto-merge alone is not enough.** GitHub's auto-merge does not update a branch
+that has fallen behind `main` — even with `allow_update_branch: true`. Under
+`strict` a behind branch never becomes mergeable without an external push, so
+auto-merge parks indefinitely while both checks sit green. The PR looks landed
+and is not.
+
+[`.github/workflows/auto-update-pr-branches.yml`](.github/workflows/auto-update-pr-branches.yml)
+closes that loop: on every push to `main` (plus a 15-minute sweep) it finds open
+PRs that have auto-merge enabled and are `BEHIND`, and updates them. A PR
+overtaken mid-CI is picked up by the next run rather than parking.
+
+- It requires an **`AUTO_UPDATE_PAT`** repo secret — a fine-grained PAT with
+  Contents: read/write and Pull requests: read/write. A push made with the
+  built-in `GITHUB_TOKEN` does not trigger workflow runs, so the update would
+  change the head SHA while `verify`/`e2e` never run on it, parking the PR
+  permanently. The workflow fails loudly if the secret is missing *and* there is
+  a behind PR to update.
+- Still true regardless: **merged ≠ live.** Confirm both deploy halves below.
+
 ## App → Vercel
 
 The Next.js app auto-deploys from `origin/main` — merging to `main` triggers a Vercel build and deploy. No manual step.
@@ -23,6 +53,29 @@ The Arc runner (`apps/arc-runner/`) deploys to Google Cloud Run.
 Migrations are timestamped SQL files in [`supabase/migrations/`](supabase/migrations). They are **NOT** auto-applied on deploy.
 
 Apply any new migration to the **production** Supabase DB **before or together with** merging the code that depends on it. Merging code that reads a column/table the prod DB doesn't have yet causes schema drift and breaks prod.
+
+### Verifying the chain still applies from empty
+
+```bash
+pnpm db:verify-chain
+```
+
+Drops a local Postgres and replays every migration from scratch, then asserts the
+result is a real schema (ledger complete, tables present, contract invariants
+intact). Needs Docker. Run it after adding a migration.
+
+This matters because the chain once **could not** apply to a fresh database:
+Supabase keys its ledger on the 14-digit version prefix, so two files sharing a
+prefix meant the second silently never ran — and nothing errored.
+`supabase/migrations-legacy/` still contains four such duplicate pairs; the
+rebaseline into `00000000000000_baseline.sql` is what resolved it. Every future
+environment depends on this working — new staging, a self-hosted eval DB,
+disaster recovery, per-tenant databases.
+
+[`.github/workflows/migrations.yml`](.github/workflows/migrations.yml) runs it on
+every PR touching `supabase/migrations/`. That workflow is **path-filtered**, so
+do not add its `chain` job to the required status checks on `main` — a required
+check that never reports parks every unrelated PR forever.
 
 ## Post-deploy smoke check
 
