@@ -246,7 +246,7 @@ const CONNECTOR_META: Record<string, { c: string; l: string; credLabel: string; 
     c: "#7fb89a",
     l: "Wx",
     credLabel: "",
-    credHint: "No credential — reads live NWS/NOAA alerts (public API) and proposes storm-response opportunities. Configure the states to watch.",
+    credHint: "No credential — reads live NWS/NOAA alerts (public API) and proposes opportunities from the weather you opt into. Configure the states or map points to watch.",
   },
   "rss-signals": {
     c: "#8a9bd8",
@@ -749,6 +749,13 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
 
   // Overview cards read from live workspace data — never hardcoded. Connections active counts
   // enabled connectors + email; runner status reflects the agent_connections heartbeat.
+  // The workspace's OWN industry. This row was the literal string
+  // "Company · Restoration & home services" for every tenant — every other row
+  // in this panel is live data, so a law firm read its own settings and was told
+  // it was a restoration company. Unset says so rather than guessing a vertical.
+  const businessTypeLabel =
+    INDUSTRY_OPTIONS.find((o) => o.value === settings.industry)?.label ?? "Not set";
+
   const activeConnections = connectors.connectors.filter((c) => c.enabled).length + (emailConnection?.enabled ? 1 : 0);
   const runnerValue = !agentConnection?.enabled
     ? "Off"
@@ -944,7 +951,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         </div>
         <Panel title="Workspace">
           <Row label="Plan"><span className="pillrow"><Pill kind="ok">{billing?.planLabel ?? "—"}</Pill><button className="btn sm" onClick={() => navTo("usage")}>Manage plan</button></span></Row>
-          <Row label="Business type"><span className="pillrow"><span className="ptxt">Company · Restoration &amp; home services</span><button className="btn sm" onClick={() => navTo("general")}>Change</button></span></Row>
+          <Row label="Business type"><span className="pillrow"><span className="ptxt">{businessTypeLabel}</span><button className="btn sm" onClick={() => navTo("general")}>Change</button></span></Row>
           <Row label="Team"><span className="pillrow"><span className="ptxt">{memberCount} {memberCount === 1 ? "member" : "members"}{pendingCount > 0 ? ` · ${pendingCount} pending` : ""}</span><button className="btn sm" onClick={() => navTo("team")}>Manage</button></span></Row>
         </Panel>
       </>
@@ -2216,7 +2223,7 @@ function CsvImportSection({ view }: { view: ConnectorView }) {
       <div className="cxm-label">Paste CSV</div>
       <p className="cxm-hint">
         {ready
-          ? "A header row plus one contact per line. Columns like name, email, phone, company, city/state/zip are auto-detected — order doesn't matter. Leads dedupe on email/phone, so re-importing updates instead of duplicating."
+          ? "A header row plus one contact per line. Columns like name, email, phone, company, city/state/zip are auto-detected — order doesn't matter. Leads dedupe on email/phone, so re-importing updates instead of duplicating. Include a last contacted (or last activity) column if your export has one: it's what lets Arc spot who's gone quiet straight away, instead of treating everyone as new."
           : "Set a default persona above and switch this on first — then paste your CSV here."}
       </p>
       <div className="cxm-field stack">
@@ -2225,7 +2232,10 @@ function CsvImportSection({ view }: { view: ConnectorView }) {
           rows={5}
           spellCheck={false}
           disabled={!ready || pending}
-          placeholder={"name,email,company,city,state\nJordan Vega,jordan@acme.com,Acme Restoration,Chicago,IL"}
+          placeholder={
+            "name,email,company,city,state,last contacted\n" +
+            "Jordan Vega,jordan@acme.com,Acme Restoration,Chicago,IL,2026-01-15"
+          }
           value={csv}
           onChange={(e) => setCsv(e.target.value)}
         />

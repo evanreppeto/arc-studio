@@ -65,13 +65,13 @@ export function EditIdentityModal({
       <form id="edit-identity-form" className="mform" onSubmit={submit}>
         <label className="mfield">
           <span className="mlabel">Brand name</span>
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Big Shoulders Restoration" required />
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your company name" required />
         </label>
         <label className="mfield">
           <span className="mlabel">
             Tagline <span className="mopt">optional</span>
           </span>
-          <input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="Storm-damage roofing & exteriors, done right." />
+          <input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="What you do, in one line" />
         </label>
         <label className="mfield">
           <span className="mlabel">

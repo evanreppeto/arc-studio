@@ -143,7 +143,7 @@ describe("getActivationState", () => {
     getAdmin.mockReturnValue(
       fakeDb({
         org_onboarding_state: { single: null },
-        business_profiles: { single: { voice_guidance: "Plain, direct.", website_url: null, logo_url: null, tagline: null } },
+        business_profiles: { single: { voice_guidance: "Plain, direct.", website_url: null, tagline: null } },
         contacts: { count: 3 },
         companies: { count: 0 },
         media_assets: { count: 0 },
@@ -163,7 +163,7 @@ describe("getActivationState", () => {
     getAdmin.mockReturnValue(
       fakeDb({
         org_onboarding_state: { single: null },
-        business_profiles: { single: { voice_guidance: null, website_url: null, logo_url: null, tagline: null } },
+        business_profiles: { single: { voice_guidance: null, website_url: null, tagline: null } },
         contacts: { count: 0 },
         companies: { count: 0 },
         media_assets: { count: 0 },
@@ -176,5 +176,27 @@ describe("getActivationState", () => {
 
     expect(state.signals.brandCaptured).toBe(false);
     expect(state.checklist.nextStep).toBe("records");
+  });
+
+  // A logo affects generated creative, not copy. Counting it ticked the step off
+  // for a workspace that had uploaded an image and nothing else, telling the
+  // owner they'd finished the setup that makes Arc sound like them — while Arc
+  // still wrote generic marketing. This is a real case: Evan's workspace.
+  it("does not count a logo alone as having taught Arc the brand", async () => {
+    getAdmin.mockReturnValue(
+      fakeDb({
+        org_onboarding_state: { single: null },
+        business_profiles: { single: { voice_guidance: null, website_url: null, tagline: null } },
+        contacts: { count: 0 },
+        companies: { count: 0 },
+        media_assets: { count: 0 },
+        campaigns: { count: 0 },
+        workspace_memberships: { count: 1 },
+      }) as never,
+    );
+
+    const state = await getActivationState("org-1", "ws-1");
+
+    expect(state.signals.brandCaptured).toBe(false);
   });
 });
