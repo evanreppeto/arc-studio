@@ -22,7 +22,6 @@ type OnboardingRow = { brand_captured_at: string | null; dismissed_at: string | 
 type BrandProfileRow = {
   voice_guidance: string | null;
   website_url: string | null;
-  logo_url: string | null;
   tagline: string | null;
 };
 
@@ -34,23 +33,26 @@ type BrandProfileRow = {
  * so the step could never be ticked off and the checklist would nag forever.
  *
  * Signup creates a business_profiles row carrying only the name it asked for, so
- * the row existing proves nothing. These four fields are ones the owner can only
- * have supplied through /brand — via the form, a logo upload, or website
- * analysis. The flag is still honoured if anything ever starts writing it.
+ * the row existing proves nothing.
+ *
+ * Deliberately does NOT count `logo_url`. The step promises Arc "learns your
+ * voice, services and proof points — so drafts sound like you", and a logo
+ * delivers none of that: it affects generated creative, not copy. Counting it
+ * ticked the step off for a workspace that had uploaded an image and nothing
+ * else, telling the owner they'd finished the highest-leverage setup while Arc
+ * still wrote generic marketing. These three fields are the ones that actually
+ * inform what Arc writes. The flag is still honoured if anything ever writes it.
  */
 async function readBrandCaptured(db: SupabaseClient, orgId: string): Promise<boolean> {
   try {
     const { data, error } = await db
       .from("business_profiles")
-      .select("voice_guidance,website_url,logo_url,tagline")
+      .select("voice_guidance,website_url,tagline")
       .eq("org_id", orgId)
       .maybeSingle<BrandProfileRow>();
     if (error || !data) return false;
     return Boolean(
-      data.voice_guidance?.trim() ||
-        data.website_url?.trim() ||
-        data.logo_url?.trim() ||
-        data.tagline?.trim(),
+      data.voice_guidance?.trim() || data.website_url?.trim() || data.tagline?.trim(),
     );
   } catch {
     return false;

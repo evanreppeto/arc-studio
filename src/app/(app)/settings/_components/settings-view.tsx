@@ -2223,7 +2223,7 @@ function CsvImportSection({ view }: { view: ConnectorView }) {
       <div className="cxm-label">Paste CSV</div>
       <p className="cxm-hint">
         {ready
-          ? "A header row plus one contact per line. Columns like name, email, phone, company, city/state/zip are auto-detected — order doesn't matter. Leads dedupe on email/phone, so re-importing updates instead of duplicating."
+          ? "A header row plus one contact per line. Columns like name, email, phone, company, city/state/zip are auto-detected — order doesn't matter. Leads dedupe on email/phone, so re-importing updates instead of duplicating. Include a last contacted (or last activity) column if your export has one: it's what lets Arc spot who's gone quiet straight away, instead of treating everyone as new."
           : "Set a default persona above and switch this on first — then paste your CSV here."}
       </p>
       <div className="cxm-field stack">
@@ -2232,7 +2232,10 @@ function CsvImportSection({ view }: { view: ConnectorView }) {
           rows={5}
           spellCheck={false}
           disabled={!ready || pending}
-          placeholder={"name,email,company,city,state\nJordan Vega,jordan@acme.com,Acme Restoration,Chicago,IL"}
+          placeholder={
+            "name,email,company,city,state,last contacted\n" +
+            "Jordan Vega,jordan@acme.com,Acme Restoration,Chicago,IL,2026-01-15"
+          }
           value={csv}
           onChange={(e) => setCsv(e.target.value)}
         />
