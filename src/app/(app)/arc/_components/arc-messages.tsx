@@ -75,7 +75,7 @@ import {
   saveArcMessageToBrainAction,
   setArcMessageFeedbackAction,
 } from "../actions";
-import { LiveReasoning, StreamingMarkdown } from "./arc-markdown";
+import { LiveReasoning } from "./arc-markdown";
 import { buildDemoLiveWork, DEMO_STEPS, DEMO_TOOLS } from "./arc-demo-data";
 import type { RunKind, RunRow, WorkPanelTab } from "./arc-view.types";
 
@@ -154,7 +154,7 @@ export function RunContract({ contract, outcome = "complete" }: { contract: ArcR
 
 export function RunTrace({
   pending,
-  liveText,
+  responding = false,
   reasoning,
   steps = [],
   toolCalls = [],
@@ -166,7 +166,10 @@ export function RunTrace({
   thoughtSeconds,
 }: {
   pending: boolean;
-  liveText?: string | null;
+  /** The answer has started arriving. The answer itself renders in the message's
+   *  own container (never in here — see the note on the live block below); this
+   *  only shifts the status label from "Thinking" to "Responding". */
+  responding?: boolean;
   reasoning?: string | null;
   steps?: ArcStep[];
   toolCalls?: ArcToolCall[];
@@ -288,9 +291,16 @@ export function RunTrace({
     return row;
   }).filter((row) => sourceRows.length > 0 || row.status !== "queued");
   const hasError = liveRows.some((row) => row.status === "error");
-  const hasReportedWork = liveRows.length > 0 || Boolean(liveText?.trim()) || Boolean(reasoning?.trim());
+  const hasReportedWork = liveRows.length > 0 || responding || Boolean(reasoning?.trim());
   const elapsedLabel = formatWorkingTime(elapsedSeconds);
 
+  // NOTE: the streamed answer is deliberately NOT rendered here. It used to be —
+  // as `.arc-live-commentary`, nested between the reasoning and the activity
+  // list — and then the completed message re-rendered it in a different
+  // container at a different type scale, so finishing a run read as a page swap
+  // rather than a reply settling. The answer now lives in the message's own
+  // container from the first token; this block only ever holds reasoning and
+  // activity, and collapses above the answer when the run completes.
   return (
     <motion.div
       className="arc-run-live"
@@ -300,19 +310,14 @@ export function RunTrace({
     >
       <div className="arc-run-live-head">
         <ThinkingIndicator label={stopping ? "Stopping" : hasError ? "Needs attention" : "Thinking"} />
-        <span><b aria-hidden="true" className={!stopping && !hasError ? "arc-shimmer" : undefined}>{stopping ? "Stopping safely…" : hasError ? `Needs attention after ${elapsedLabel}` : liveText?.trim() ? `Responding · ${elapsedLabel}` : `Thinking · ${elapsedLabel}`}</b><span className="sr-only" role="status" aria-live="polite">{stopping ? "Arc is stopping safely" : hasError ? "Arc needs attention" : "Arc is working"}</span></span>
+        <span><b aria-hidden="true" className={!stopping && !hasError ? "arc-shimmer" : undefined}>{stopping ? "Stopping safely…" : hasError ? `Needs attention after ${elapsedLabel}` : responding ? `Responding · ${elapsedLabel}` : `Thinking · ${elapsedLabel}`}</b><span className="sr-only" role="status" aria-live="polite">{stopping ? "Arc is stopping safely" : hasError ? "Arc needs attention" : "Arc is working"}</span></span>
         <button type="button" className="arc-stop" aria-label="Stop Arc" onClick={onStop} disabled={!onStop || stopping}><Square size={11} /> {stopping ? "Stopping…" : "Stop"}</button>
       </div>
       <div className="arc-run-divider" />
       <div className="arc-live-worklog">
         {reasoning?.trim() ? (
           <motion.div initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }}>
-            <LiveReasoning text={reasoning} streaming={!liveText?.trim()} />
-          </motion.div>
-        ) : null}
-        {liveText?.trim() ? (
-          <motion.div initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }}>
-            <StreamingMarkdown className="arc-live-commentary arc-markdown" text={liveText} streaming />
+            <LiveReasoning text={reasoning} streaming={!responding} />
           </motion.div>
         ) : null}
         <div className="arc-live-events" role="list" aria-label="Live activity">

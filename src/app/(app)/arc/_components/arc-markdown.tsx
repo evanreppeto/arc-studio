@@ -156,6 +156,23 @@ export function StreamingMarkdown({ text, streaming, className }: { text: string
   );
 }
 
+/**
+ * Arc's reply. One container and one type scale from the first streamed token
+ * through to the settled message — finishing a run only drops the caret and lets
+ * the syntax highlighter run.
+ *
+ * This exists because the answer used to be rendered twice: once inside the run
+ * trace as small muted commentary while streaming, then again in a separate
+ * result card once complete. The text changed size, colour, and position at the
+ * moment of completion, which read as the message being replaced rather than
+ * finishing. Every surface that shows an Arc reply — live, settled, or demo —
+ * renders it through here so that can't drift apart again.
+ */
+export function ArcAnswer({ text, streaming }: { text: string; streaming: boolean }) {
+  if (!text.trim()) return null;
+  return <StreamingMarkdown className="arc-answer-body arc-markdown" text={text} streaming={streaming} />;
+}
+
 /** The live "Thinking" stream — reasoning as it forms, kept in a calm fixed-height
  *  window that auto-scrolls to the newest line so a long transcript never sprawls.
  *  Snaps to full (no caret) once the answer starts. */
