@@ -103,3 +103,4 @@ export * from "./support";
 export * from "./workspace-identity";
 export * from "./branding-image";
 export * from "./email-compliance";
+export * from "./lead-fit";

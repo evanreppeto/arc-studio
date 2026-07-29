@@ -111,8 +111,10 @@ describe("runColdLeadDetection card titles", () => {
     expect(title).not.toMatch(/null|undefined/);
   });
 
-  it("resolves names in bulk — two lookups regardless of lead count", async () => {
+  it("resolves names and fit signals in bulk — constant lookups regardless of lead count", async () => {
     // N+1 here would mean 500 round-trips on the daily scan (listLeads takes 500).
+    // What matters is that the count does NOT grow with the number of leads —
+    // three leads produce the same queries as five hundred.
     listLeads.mockResolvedValue([
       lead(),
       lead({ id: "74d34ec4-0000-0000-0000-000000000000", contactId: "ct_1", companyId: "co_1" }),
@@ -123,7 +125,10 @@ describe("runColdLeadDetection card titles", () => {
 
     const from = (db as unknown as { calls: Array<[string, ...unknown[]]> }).calls.filter((c) => c[0] === "from");
     expect(from.filter((c) => c[1] === "companies")).toHaveLength(1);
-    expect(from.filter((c) => c[1] === "contacts")).toHaveLength(1);
+    // Two bulk contacts reads: names, then the email/phone/city that feed the
+    // fit score for records with no intent signals. Both are single `in(...)`
+    // queries over the same org-scoped ids.
+    expect(from.filter((c) => c[1] === "contacts")).toHaveLength(2);
     expect(captured()).toHaveLength(3);
   });
 });
