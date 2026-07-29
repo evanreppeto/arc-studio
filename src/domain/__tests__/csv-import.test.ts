@@ -4,6 +4,7 @@ import {
   csvRowId,
   csvRowToContact,
   detectColumnMapping,
+  parseCsvDate,
   mapCsvRow,
   parseCsv,
   parseCsvContacts,
@@ -117,5 +118,59 @@ Dana,Whitfield,dana@northshore.com,North Shore Group,,Evanston,IL
   it("returns nothing usable for a header-only or empty CSV", () => {
     expect(parseCsvContacts("name,email").contacts).toEqual([]);
     expect(parseCsvContacts("").contacts).toEqual([]);
+  });
+});
+
+describe("parseCsvDate", () => {
+  const NOW = new Date("2026-07-29T00:00:00.000Z");
+
+  it("accepts ISO dates, with or without a time", () => {
+    expect(parseCsvDate("2026-01-15", NOW)).toBe("2026-01-15T00:00:00.000Z");
+    expect(parseCsvDate("2026-01-15T09:30:00Z", NOW)).toBe("2026-01-15T00:00:00.000Z");
+  });
+
+  it("accepts US M/D/YYYY, which is what most CRM exports emit", () => {
+    expect(parseCsvDate("1/15/2026", NOW)).toBe("2026-01-15T00:00:00.000Z");
+    expect(parseCsvDate("12/03/2025", NOW)).toBe("2025-12-03T00:00:00.000Z");
+  });
+
+  // A wrong date manufactures false urgency — "quiet 200 days" about someone
+  // spoken to last week — inside an evidence-cited card the operator trusts.
+  // No date is strictly better than a guessed one.
+  it("refuses to guess ambiguous or malformed dates", () => {
+    expect(parseCsvDate("15/01/2026", NOW)).toBeUndefined();
+    expect(parseCsvDate("1/15/26", NOW)).toBeUndefined();
+    expect(parseCsvDate("last tuesday", NOW)).toBeUndefined();
+    expect(parseCsvDate("45231", NOW)).toBeUndefined();
+    expect(parseCsvDate("", NOW)).toBeUndefined();
+    expect(parseCsvDate(undefined, NOW)).toBeUndefined();
+  });
+
+  it("drops future dates and pre-2000 artefacts", () => {
+    expect(parseCsvDate("2027-01-01", NOW)).toBeUndefined();
+    expect(parseCsvDate("1899-12-30", NOW)).toBeUndefined();
+  });
+});
+
+describe("last-contacted column", () => {
+  // Without this the lead lands as received-today, reads as zero days cold, and
+  // Arc finds nothing for 30 days right after telling the owner to import.
+  it("detects common header spellings and carries the date as updatedAt", () => {
+    const csv = ["email,Last Contacted", "a@b.com,2026-01-15"].join("\n");
+    const { contacts, mappedColumns } = parseCsvContacts(csv);
+    expect(mappedColumns.lastContactedAt).toBe("Last Contacted");
+    expect(contacts[0].updatedAt).toBe("2026-01-15T00:00:00.000Z");
+  });
+
+  it("omits updatedAt entirely when the date is unusable", () => {
+    const csv = ["email,last activity", "a@b.com,not a date"].join("\n");
+    const { contacts } = parseCsvContacts(csv);
+    expect(contacts[0].updatedAt).toBeUndefined();
+  });
+
+  it("imports fine when the column is absent", () => {
+    const { contacts } = parseCsvContacts(["email", "a@b.com"].join("\n"));
+    expect(contacts).toHaveLength(1);
+    expect(contacts[0].updatedAt).toBeUndefined();
   });
 });
