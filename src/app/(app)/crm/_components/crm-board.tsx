@@ -9,6 +9,7 @@ import { type CrmObjectKey } from "@/lib/crm/read-model";
 import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord } from "../actions";
 import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-record-modal";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
+import type { CustomFieldDefinition } from "@/domain";
 
 type FilterOption = { value: string; label: string; count: number };
 
@@ -127,6 +128,8 @@ function SortMenu({ value, onChange }: { value: SortKey; onChange: (v: SortKey) 
 
 export type CrmRowVM = {
   id: string;
+  /** This tenant's own custom fields, keyed by field key -> display string. */
+  customFields?: Record<string, string>;
   name: string;
   detail: string;
   initials: string;
@@ -190,6 +193,9 @@ const CHECK = (
 );
 
 function cellContent(k: string, r: CrmRowVM) {
+  // Custom-field columns are keyed "cf:<field key>" so they can't collide with
+  // the built-in column keys below.
+  if (k.startsWith("cf:")) return nx(r.customFields?.[k.slice(3)] ?? "");
   switch (k) {
     case "primary":
       return (
@@ -346,6 +352,8 @@ export function CrmBoard({
   kpis,
   personaOptions,
   campaigns = [],
+  customColumnsByKey = {},
+  customFieldDefsByKey = {},
 }: {
   objects: CrmObjectVM[];
   rowsByKey: Record<string, CrmRowVM[]>;
@@ -355,6 +363,16 @@ export function CrmBoard({
   personaOptions?: { key: string; label: string }[];
   /** The org's campaigns, for the bulk "Add to campaign" picker (contacts only). */
   campaigns?: { id: string; name: string; href: string }[];
+  /**
+   * Custom-field columns per object, already ordered and capped by the server.
+   * Only a couple are shown: the table has a fixed set of built-in columns, and
+   * a tenant with fifteen custom fields would otherwise render an unusable
+   * horizontal scroll. Every field is still searchable and shown in full on the
+   * record itself.
+   */
+  customColumnsByKey?: Record<string, { key: string; label: string }[]>;
+  /** Full definitions per object, for the Add-record form. */
+  customFieldDefsByKey?: Record<string, CustomFieldDefinition[]>;
 }) {
   const [activeKey, setActiveKey] = useState(defaultKey);
   const [q, setQ] = useState("");
@@ -384,7 +402,16 @@ export function CrmBoard({
   const active = objects.find((o) => o.key === activeKey) ?? objects[0];
   const localRows = localByKey[active.key] ?? [];
   const totalRows = localRows.length + (rowsByKey[active.key] ?? []).length;
-  const cols = COLS[active.key] ?? COLS.contacts;
+  // Splice the tenant's custom columns in just before the trailing actions cell.
+  const cols = (() => {
+    const base = COLS[active.key] ?? COLS.contacts;
+    const custom = customColumnsByKey[active.key] ?? [];
+    if (custom.length === 0) return base;
+    const actIdx = base.findIndex((c) => c.k === "act");
+    const extra: Col[] = custom.map((c) => ({ k: `cf:${c.key}`, t: c.label }));
+    if (actIdx < 0) return [...base, ...extra];
+    return [...base.slice(0, actIdx), ...extra, ...base.slice(actIdx)];
+  })();
   // o.count is the server's row count for the object; archived rows are soft-deleted
   // so they're netted out of the headline count and tab badges the same way they're
   // hidden from the list. Subtracting (rather than recomputing) keeps the count intact
@@ -510,7 +537,10 @@ export function CrmBoard({
     let filtered = allActiveRows.filter((r) => {
       // Soft-deleted records stay out of the default list; Status → Archived opts in.
       if (r.statusLabel === ARCHIVED_LABEL && statusF !== ARCHIVED_LABEL) return false;
-      if (needle && !`${r.name} ${r.detail} ${r.persona} ${r.owner}`.toLowerCase().includes(needle)) return false;
+      // Custom field values are searchable too — a tenant that tracks a matter
+      // number expects to find the record by typing it.
+      const customHay = r.customFields ? Object.values(r.customFields).join(" ") : "";
+      if (needle && !`${r.name} ${r.detail} ${r.persona} ${r.owner} ${customHay}`.toLowerCase().includes(needle)) return false;
       if (personaF && r.persona !== personaF) return false;
       if (statusF && r.statusLabel !== statusF) return false;
       if (ownerF && r.owner !== ownerF) return false;
@@ -852,6 +882,7 @@ export function CrmBoard({
         singular={active.addLabel.replace(/^Add\s+/i, "")}
         linkOptions={linkOptions}
         personaOptions={personaOptions}
+        customFieldDefs={customFieldDefsByKey[active.key] ?? []}
         onClose={() => setAddOpen(false)}
         onSubmit={handleCreate}
       />

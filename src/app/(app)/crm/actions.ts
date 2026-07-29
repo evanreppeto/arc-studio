@@ -13,6 +13,8 @@ import { bulkUpdateCrmPersona, type CreateCrmInput, insertCrmRecord } from "@/li
 import { insertTask } from "@/lib/interactions/persistence";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import type { CustomFieldObjectKey } from "@/domain";
+import { saveCustomFieldValues, validateCustomFieldValues } from "@/lib/custom-fields/values";
 
 /**
  * Real operator write for the CRM board's "Add {record}" button. A new CRM
@@ -180,9 +182,42 @@ export async function createCrmRecord(input: CreateCrmInput): Promise<CreateResu
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
 
   const ctx = await getCurrentWorkspaceContext();
+
+  // Validate the tenant's own custom fields BEFORE inserting, for the same
+  // reason the built-in constraints are checked above: a value rejected after
+  // the insert would leave a created record missing fields its tenant marked
+  // required, with no obvious way for the operator to tell what happened.
+  // Always validated, even when the form supplied nothing: a field the tenant
+  // marked required must be enforced regardless of what the caller sent, or
+  // "required" would only bind callers that happened to include the key.
+  const customValues = input.customFields ?? {};
+  const valid = await validateCustomFieldValues(
+    ctx.orgId,
+    input.objectKey as CustomFieldObjectKey,
+    customValues,
+  ).catch(() => ({ ok: true }) as const);
+  if (!valid.ok) return { ok: false, error: valid.error };
+
   const result = await insertCrmRecord({ ...input, name, owner: actor }, ctx.orgId);
   if (!result.ok) return { ok: false, error: result.error };
 
+  // Values are already validated, so this only fails on a genuine write error.
+  // Say so rather than reporting a clean create — the record exists either way,
+  // and silently dropping the custom values is how data goes quietly missing.
+  let customFieldsSaved = true;
+  if (result.id && Object.keys(customValues).length > 0) {
+    const saved = await saveCustomFieldValues(
+      ctx.orgId,
+      input.objectKey as CustomFieldObjectKey,
+      result.id,
+      customValues,
+    ).catch(() => ({ ok: false }) as const);
+    customFieldsSaved = saved.ok;
+  }
+
   revalidatePath("/crm");
+  if (!customFieldsSaved) {
+    return { ok: false, error: "The record was created, but its custom fields could not be saved. Open the record to add them." };
+  }
   return { ok: true, persisted: true, id: result.id };
 }

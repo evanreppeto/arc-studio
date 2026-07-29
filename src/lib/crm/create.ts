@@ -8,6 +8,8 @@ import { findExistingContactByEmail } from "./dedupe";
 import { type CrmObjectKey } from "./read-model";
 
 export type CreateCrmInput = {
+  /** Tenant-defined custom field values, keyed by field key (BSR-493). */
+  customFields?: Record<string, unknown>;
   objectKey: CrmObjectKey;
   /** Primary display name / title. Required. */
   name: string;
