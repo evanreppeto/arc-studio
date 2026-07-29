@@ -9,6 +9,7 @@ const base: ArcTurnContext = {
     brandVoice: "y",
     creativePolicy: "z",
     compliance: "c",
+    personas: [],
   },
   mode: "ask",
   scope: { conversationId: "c1", projectId: null, campaignId: null, operator: "op" },
