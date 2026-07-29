@@ -1031,6 +1031,14 @@ export function ArcView({
   const [installingSkillKey, setInstallingSkillKey] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [workPanelOpen, setWorkPanelOpen] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restored after hydration so server and client markup stay identical
+      if (window.localStorage.getItem("arc.workPanelOpen") === "1") setWorkPanelOpen(true);
+    } catch {
+      /* localStorage unavailable — start closed */
+    }
+  }, []);
   // The assets open in the review workspace (null = closed), plus a per-asset
   // decision map so approvals persist while the panel is open and reflect back on
   // the inline package summary.
@@ -1394,7 +1402,11 @@ export function ArcView({
     setComposerMenu(null);
     setContextInfoOpen(false);
     setComposerNotice(null);
-    if ((chatRootRef.current?.clientWidth ?? 0) >= 1000) setWorkPanelOpen(true);
+    // Sending a message no longer forces the workspace open. It used to, on any
+    // window wider than 1000px, whether or not the run would put anything in it
+    // — so "hi" opened a drawer reading "Activity will collect here during the
+    // next run", and closing it was overridden by the next message. The panel
+    // opens when it is earned: the Workspace button, or approval-gated assets.
     if (!live) {
       const demoContract = buildArcRunContract({ mode: resolvedMode, route: resolvedRoute, contextScopes });
       const demoProfile = buildArcRunProfile({ request: body, mode: resolvedMode, command, sources: demoContract.readScopes });
@@ -1501,9 +1513,16 @@ export function ArcView({
     setReviewCards(cards.filter((card) => card.approval));
   };
 
+  // Closing the workspace used to last exactly until the next message. Remember
+  // the operator's choice instead, so dismissing it means something.
   const setWorkPanelVisibility = (open: boolean) => {
     setWorkPanelOpen(open);
     if (!open) setReviewCards(null);
+    try {
+      window.localStorage.setItem("arc.workPanelOpen", open ? "1" : "0");
+    } catch {
+      /* localStorage unavailable — the in-session state still works */
+    }
   };
 
   const recordAssetStatus = (assetId: string, status: ArcAssetStatus) => {
