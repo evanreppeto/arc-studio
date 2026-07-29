@@ -6,7 +6,7 @@
 // so both the live and demo conversation renderers import from here.
 
 import { isValidElement, useEffect, useRef, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { ArrowDown, Check, Copy } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -20,6 +20,8 @@ import sql from "highlight.js/lib/languages/sql";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
+
+import { useBottomPin } from "./use-bottom-pin";
 
 /**
  * Smoothly reveal streamed text. The runner posts partial reply bodies that the
@@ -173,22 +175,64 @@ export function ArcAnswer({ text, streaming }: { text: string; streaming: boolea
   return <StreamingMarkdown className="arc-answer-body arc-markdown" text={text} streaming={streaming} />;
 }
 
-/** The live "Thinking" stream — reasoning as it forms, kept in a calm fixed-height
- *  window that auto-scrolls to the newest line so a long transcript never sprawls.
- *  Snaps to full (no caret) once the answer starts. */
+/**
+ * Reasoning, rendered the same way everywhere it appears — streaming live, or
+ * re-read later from a collapsed run receipt or the Work panel.
+ *
+ * It used to be markdown only while live. The two settled surfaces dumped the
+ * same string into a bare `<p>`, so the moment a run finished, reasoning the
+ * reader was mid-way through turned into literal `**asterisks**`, `-` bullets,
+ * and `##` hashes. Every surface goes through here now so they can't drift.
+ */
+export function ReasoningMarkdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
+  return (
+    <div className={`arc-reasoning-body arc-stream${streaming ? " is-streaming" : ""} arc-markdown`}>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{text}</ReactMarkdown>
+    </div>
+  );
+}
+
+/**
+ * The live "Thinking" stream — reasoning as it forms.
+ *
+ * Follows the newest line only while the reader is actually at the bottom. It
+ * used to set `scrollTop = scrollHeight` on every revealed frame, which meant
+ * any attempt to scroll back was overridden within ~16ms: you could watch the
+ * thinking, but you could not read it. The window is also expandable now — a
+ * long reasoning pass through a ~5-line porthole is not something to make
+ * someone squint at.
+ */
 export function LiveReasoning({ text, streaming }: { text: string; streaming: boolean }) {
   const shown = useSmoothStream(text, streaming);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const { pinned, pinnedRef, repin } = useBottomPin(scrollRef, { threshold: 24 });
+
   useEffect(() => {
     const el = scrollRef.current;
+    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+  }, [shown, expanded, pinnedRef]);
+
+  const followLatest = () => {
+    repin();
+    const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [shown]);
+  };
+
   return (
-    <div className="arc-live-reasoning">
+    <div className="arc-live-reasoning" data-expanded={expanded ? "true" : undefined}>
       <div className="arc-live-reasoning-scroll" ref={scrollRef}>
-        <div className={`arc-stream${streaming ? " is-streaming" : ""} arc-markdown`}>
-          <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{shown}</ReactMarkdown>
-        </div>
+        <ReasoningMarkdown text={shown} streaming={streaming} />
+      </div>
+      <div className="arc-live-reasoning-controls">
+        <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
+          {expanded ? "Collapse thinking" : "Expand thinking"}
+        </button>
+        {!pinned ? (
+          <button type="button" className="is-follow" onClick={followLatest}>
+            <ArrowDown size={11} /> Follow latest
+          </button>
+        ) : null}
       </div>
     </div>
   );

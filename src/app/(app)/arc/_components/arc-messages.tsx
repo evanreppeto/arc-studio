@@ -75,7 +75,7 @@ import {
   saveArcMessageToBrainAction,
   setArcMessageFeedbackAction,
 } from "../actions";
-import { LiveReasoning } from "./arc-markdown";
+import { LiveReasoning, ReasoningMarkdown } from "./arc-markdown";
 import { buildDemoLiveWork, DEMO_STEPS, DEMO_TOOLS } from "./arc-demo-data";
 import type { RunKind, RunRow, WorkPanelTab } from "./arc-view.types";
 
@@ -267,7 +267,7 @@ export function RunTrace({
           {reasoning ? (
             <div className="arc-reasoning-summary">
               <Brain size={15} />
-              <div><b>Thinking</b><p>{reasoning}</p></div>
+              <div><b>Thinking</b><ReasoningMarkdown text={reasoning} /></div>
             </div>
           ) : null}
           <div className="arc-run-rows">
@@ -705,7 +705,7 @@ export function ArcWorkPanel({
                 <>
                   {activityRows.length > 0 || reasoning ? <div className="arc-work-run-status" data-state={runView.state}><span><i />{runView.label}</span>{runView.progressLabel ? <em>{runView.progressLabel}</em> : null}</div> : null}
                   <div className="arc-work-heading"><span>{reasoning ? "Run context" : "Run"}</span><h3>{runView.heading}</h3></div>
-                  {reasoning ? <p className="arc-work-reasoning">{reasoning}</p> : activityRows.length === 0 ? <div className="arc-work-empty">Activity and decisions will appear here as Arc works.</div> : null}
+                  {reasoning ? <div className="arc-work-reasoning"><ReasoningMarkdown text={reasoning} /></div> : activityRows.length === 0 ? <div className="arc-work-empty">Activity and decisions will appear here as Arc works.</div> : null}
                   <section className="arc-artifact-section">
                     <h4>Activity</h4>
                     {activityRows.length > 0 ? (
