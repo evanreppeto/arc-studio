@@ -280,6 +280,21 @@ export function CampaignsBoard({
                       <strong>Couldn’t load campaigns.</strong> This is a failure, not an empty workspace — campaigns may exist.
                       <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
                     </>
+                  ) : allRows.length === 0 ? (
+                    // A workspace with zero campaigns is a different fact from a
+                    // filter hiding them. "No campaigns match this view" tells a
+                    // brand-new owner to go hunting for a filter that isn't set,
+                    // when what they actually need is to know where campaigns
+                    // come from.
+                    <>
+                      <strong>No campaigns yet.</strong> Arc drafts these from opportunities it finds in your records
+                      — nothing is sent until you approve it.
+                      <div style={{ marginTop: 8 }}>
+                        <Link className="cbtn" href="/opportunities">
+                          See what Arc has found&nbsp;→
+                        </Link>
+                      </div>
+                    </>
                   ) : (
                     "No campaigns match this view."
                   )}
