@@ -59,7 +59,20 @@ export function detectPermitOpportunities(_ctx: Pick<SignalDetectContext, "confi
 export const permitDataConnector: SignalSourceConnector = {
   key: "permit-data",
   detect: (ctx) => detectPermitOpportunities(ctx),
-  estimateUnits: (config) => estimateBillableUnits(config),
+  // ZERO while `detect()` is a stub, not `estimateBillableUnits(config)`.
+  //
+  // `meterConnectorCall` records `estimatedUnits` as ACTUAL spend unless the
+  // caller supplies `unitsFromResult`, and `runSignalSourceDetection` does not.
+  // So pricing this at one lookup per municipality charged a metered call, on
+  // every daily scan, for a detector that makes no request and returns [] —
+  // billing an operator for nothing, indefinitely, with no finding to show for
+  // it. Refusing to invent findings (above) but still charging for them would
+  // have been the same broken promise wearing a different hat.
+  //
+  // `estimateBillableUnits` stays exported: it is the real pricing model for
+  // when a permit source lands (BSR-368). Restore it here at the same time, so
+  // the cost and the work can never disagree again.
+  estimateUnits: () => 0,
 };
 
 registerSignalSource(permitDataConnector);
