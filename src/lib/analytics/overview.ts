@@ -6,6 +6,8 @@
 import { humanizePersonaLabel } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { isWonStatus } from "@/domain";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 
 const DAY = 86400000;
 const DEFAULT_WINDOW = 30; // days per period
@@ -217,6 +219,7 @@ export async function getAnalyticsOverview(
 ): Promise<AnalyticsOverview> {
   if (!isSupabaseAdminConfigured()) return isDemoDataEnabled() ? demoAnalyticsOverview(windowDays) : emptyOverview(windowDays);
   const admin = getSupabaseAdminClient();
+  const outcomeStages = await getPipelineStages(orgId, "outcomes");
   const since = new Date(Date.now() - 2 * windowDays * DAY).toISOString();
 
   const [leadsRes, jobsRes, outcomesRes] = await Promise.all([
@@ -276,7 +279,11 @@ export async function getAnalyticsOverview(
     const b = bucket(j.created_at);
     if (b.period) trend.bookings[b.period][b.idx] += 1;
   }
-  const isWin = (o: OutcomeRow) => o.status === "won" || o.status === "paid";
+  // Ask the stage what it MEANS, never what it is called. This was
+  // `o.status === "won" || o.status === "paid"` — so the moment a tenant renamed
+  // "Won" to "Retained", every revenue and conversion number on this page
+  // silently read zero. No error, just wrong figures on a page people trust.
+  const isWin = (o: OutcomeRow) => isWonStatus(outcomeStages, o.status);
   for (const o of outcomes) {
     if (!isWin(o)) continue;
     const b = bucket(o.created_at);
