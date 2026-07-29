@@ -326,106 +326,24 @@
 }
 .arc-answer > p:first-child,
 .arc-markdown > p:first-child { color: var(--text); }
-.arc-result-receipt {
-  position: relative;
-  max-width: 76ch;
-  overflow: hidden;
-  margin-top: 15px;
-  border: 1px solid var(--line-2);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 34%),
-    color-mix(in srgb, var(--panel) 62%, var(--canvas));
-  padding: 17px 18px 16px;
-}
-.arc-result-receipt::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 2px;
-  background: var(--accent);
-}
-.arc-result-receipt-kicker {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--accent-contrast);
-  font-size: 10px;
-  font-weight: 680;
-  letter-spacing: .065em;
-  text-transform: uppercase;
-}
-.arc-result-receipt-kicker em {
-  margin-left: auto;
-  color: var(--ok-text);
-  font-size: 9px;
-  font-style: normal;
-  font-weight: 620;
-  letter-spacing: .03em;
-  text-transform: none;
-}
-.arc-result-receipt h2 {
-  margin: 10px 0 7px;
-  color: var(--text);
-  font-family: var(--serif);
-  font-size: clamp(20px, 2vw, 25px);
-  font-weight: 540;
-  line-height: 1.22;
-  letter-spacing: -.018em;
-}
-.arc-result-receipt > p {
-  margin: 0;
-  color: var(--text-2);
-  font-size: 13px;
-  line-height: 1.62;
-}
-.arc-live-result {
-  --arc-outcome-tone: var(--accent);
-  position: relative;
-  max-width: 76ch;
-  margin-top: 13px;
-  border-left: 2px solid color-mix(in srgb, var(--arc-outcome-tone) 72%, var(--line-2));
-  padding: 1px 0 1px 16px;
-}
-.arc-live-result[data-intent="research"] { --arc-outcome-tone: #6aa8c9; }
-.arc-live-result[data-intent="analysis"] { --arc-outcome-tone: #a191d6; }
-.arc-live-result[data-intent="create"] { --arc-outcome-tone: #d8a76d; }
-.arc-live-result[data-intent="action"] { --arc-outcome-tone: var(--ok); }
-.arc-live-result-kicker {
-  min-height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 9px;
-  color: color-mix(in srgb, var(--arc-outcome-tone) 72%, var(--text));
-  font-size: 10.5px;
-  font-weight: 680;
-  letter-spacing: .055em;
-  text-transform: uppercase;
-}
-.arc-live-result-kicker span { display: inline-flex; align-items: center; gap: 6px; }
-.arc-live-result-kicker em {
-  color: var(--ok-text);
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 620;
-  letter-spacing: .02em;
-  text-transform: none;
-}
-.arc-live-result-head { display: grid; gap: 9px; margin: 5px 0 12px; }
-.arc-live-result-head h2 {
-  max-width: 28ch;
-  margin: 0;
-  color: var(--text);
-  font-family: var(--serif);
-  font-size: clamp(20px, 2vw, 25px);
-  font-weight: 540;
-  line-height: 1.22;
-  letter-spacing: -.018em;
-}
-.arc-outcome-badges { display: flex; flex-wrap: wrap; gap: 6px; }
-.arc-outcome-badges span {
+/* Arc's reply. The same container and the same type scale from the first
+   streamed token to the settled message — `.arc-answer-body` is also
+   `.arc-markdown`, so nothing about the text changes when a run finishes; the
+   caret simply stops. There is deliberately no card, no border, no kicker, and
+   no generated headline around it: the answer is the message.
+
+   What used to live here (`.arc-live-result` / `.arc-result-receipt`) wrapped
+   every reply in a tinted, side-striped card topped by a serif headline the app
+   wrote on Arc's behalf. It also carried a per-intent hue palette — including a
+   purple — which DESIGN.md forbids twice over (no purple/neon AI palette, no
+   side-stripe borders > 1px). Evidence now reads below the answer instead. */
+.arc-answer-body { margin-top: 2px; }
+
+/* Result metadata: the outbound-safety guarantee and any evidence badges the
+   reply actually earned. Metadata scale, below the answer, inside the same
+   evidence rail as sources and recalled memory. */
+.arc-answer-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.arc-answer-meta > span {
   min-height: 24px;
   display: inline-flex;
   align-items: center;
@@ -438,9 +356,11 @@
   font-size: 9.5px;
   font-weight: 570;
 }
-.arc-outcome-badges span svg { color: var(--arc-outcome-tone); }
-.arc-outcome-badges span[data-kind="limitation"] { border-color: color-mix(in srgb, var(--warn) 28%, var(--line-2)); color: var(--warn); }
-.arc-live-result .arc-markdown { max-width: none; }
+.arc-answer-meta > span svg { color: var(--accent); }
+.arc-answer-safety { color: var(--ok-text); }
+.arc-answer-safety svg { color: var(--ok-text); }
+.arc-answer-badge[data-kind="limitation"] { border-color: color-mix(in srgb, var(--warn) 28%, var(--line-2)); color: var(--warn); }
+.arc-answer-badge[data-kind="limitation"] svg { color: var(--warn); }
 .arc-status-update {
   min-height: 34px;
   display: flex;
@@ -458,18 +378,6 @@
 .arc-status-update svg { flex: none; color: var(--ok-text); }
 .arc-status-update span { min-width: 0; display: flex; gap: 5px; }
 .arc-status-update b { color: var(--ok-text); font-weight: 650; }
-.arc-result-next {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 13px;
-  border-top: 1px solid var(--line);
-  padding-top: 11px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-.arc-result-next svg { flex: 0 0 auto; margin-top: 1px; color: var(--accent); }
 .arc-response-evidence {
   max-width: 76ch;
   display: flex;
@@ -646,14 +554,6 @@
   padding: 18px 0 20px;
   transition: opacity var(--arc-base) var(--arc-curve);
 }
-.arc-live-commentary { max-width: 76ch; }
-.arc-live-commentary.arc-markdown p,
-.arc-live-commentary.arc-markdown li {
-  color: var(--text);
-  font-size: 13.5px;
-  line-height: 1.72;
-}
-.arc-live-commentary.arc-markdown p { margin: 0; }
 
 /* Streaming typewriter caret — a calm block cursor on the last rendered line
    while text is still typing out. Attaches to the last block so it flows inline
@@ -687,12 +587,22 @@
 /* Live "Thinking" — the model's reasoning streaming in as it forms, kept quiet
    and secondary to the answer (a muted quote with a small label). */
 .arc-live-reasoning { padding-left: 13px; border-left: 1px solid var(--line-2); }
-.arc-live-reasoning .arc-markdown { max-width: 74ch; color: var(--muted); font-size: 12.5px; line-height: 1.62; }
-.arc-live-reasoning .arc-markdown p { margin: 0 0 7px; }
-.arc-live-reasoning .arc-markdown p:last-child { margin: 0; }
 .arc-live-reasoning .arc-stream.is-streaming > :last-child::after { height: 0.95em; opacity: .8; }
+
+/* One reasoning treatment, wherever it appears — streaming live, expanded from a
+   collapsed run receipt, or read in the Work panel. Reasoning used to be
+   markdown only while live and a raw string in the two settled surfaces, so
+   finishing a run turned formatted thinking into literal asterisks and hashes. */
+.arc-reasoning-body { max-width: 74ch; color: var(--muted); font-size: 12.5px; line-height: 1.62; }
+.arc-reasoning-body p { margin: 0 0 7px; }
+.arc-reasoning-body p:last-child { margin: 0; }
+.arc-reasoning-body ul, .arc-reasoning-body ol { margin: 0 0 7px; gap: 3px; }
+.arc-reasoning-body strong { color: var(--text-2); }
 /* Long reasoning stays calm: a fixed window that auto-scrolls to the newest line,
    with a soft fade so earlier thought recedes rather than sprawling. */
+/* Follows the newest line only while the reader is at the bottom (see
+   useBottomPin) — it used to force scrollTop to the end on every revealed
+   frame, so scrolling back a line was impossible while thinking streamed. */
 .arc-live-reasoning-scroll {
   max-height: 176px;
   overflow-y: auto;
@@ -703,6 +613,24 @@
 }
 .arc-live-reasoning-scroll::-webkit-scrollbar { width: 6px; }
 .arc-live-reasoning-scroll::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--line-3); }
+.arc-live-reasoning[data-expanded="true"] .arc-live-reasoning-scroll { max-height: min(60vh, 620px); }
+.arc-live-reasoning-controls { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.arc-live-reasoning-controls button {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 7px;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast);
+}
+.arc-live-reasoning-controls button:hover { color: var(--text-2); border-color: var(--line-2); }
+.arc-live-reasoning-controls button.is-follow { color: var(--accent-contrast); border-color: var(--accent-border); }
 
 /* ── Rich markdown: code blocks + tables ────────────────────────────────── */
 .arc-code { margin: 13px 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: 10px; background: var(--canvas-deep); }
@@ -880,7 +808,7 @@
 }
 .arc-reasoning-summary > svg { margin: 2px auto 0; color: var(--accent); }
 .arc-reasoning-summary b { color: var(--text); font-size: 11px; font-weight: 650; }
-.arc-reasoning-summary p { margin: 3px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; max-height: 320px; overflow-y: auto; }
+.arc-reasoning-summary .arc-reasoning-body { margin: 3px 0 0; max-height: 320px; overflow-y: auto; }
 
 /* ── Inline package and structured actions ──────────────────────────────── */
 .arc-package { max-width: 100%; margin: 14px 0 0; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
@@ -1852,7 +1780,7 @@
 }
 .arc-work-heading > span { color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
 .arc-work-heading h3 { margin: 5px 0 0; color: var(--text); font-family: var(--serif); font-size: 21px; font-weight: 540; line-height: 1.15; letter-spacing: -.015em; }
-.arc-work-reasoning { margin: 14px 0 0; border-left: 1px solid var(--accent-border); color: var(--text-2); padding-left: 12px; font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; }
+.arc-work-reasoning { margin: 14px 0 0; border-left: 1px solid var(--accent-border); padding-left: 12px; }
 .arc-work-empty { margin-top: 14px; border: 1px dashed var(--line-2); border-radius: 9px; color: var(--muted); padding: 13px; font-size: 11px; line-height: 1.55; }
 .arc-work-activity { display: grid; gap: 2px; }
 .arc-work-activity > div { min-height: 44px; display: grid; grid-template-columns: 24px minmax(0, 1fr) 16px; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
@@ -2422,8 +2350,6 @@
   .arc-assistant-message { margin-bottom: 30px; }
   .arc-answer,
   .arc-markdown { font-size: 14px; }
-  .arc-live-result { padding-left: 12px; }
-  .arc-live-result-kicker { font-size: 10px; }
   .arc-status-update span { flex-direction: column; gap: 1px; }
   .arc-suggestions button { min-height: 40px; padding-inline: 13px; }
   .arc-answer h2,
@@ -2480,8 +2406,6 @@
   .arc-run-live-head { margin-bottom: 11px; }
   .arc-run-live-head b { font-size: 12.5px; }
   .arc-live-worklog { gap: 17px; padding: 16px 0 18px; }
-  .arc-live-commentary.arc-markdown p,
-  .arc-live-commentary.arc-markdown li { font-size: 13px; line-height: 1.65; }
   .arc-live-event { grid-template-columns: 22px minmax(0, 1fr) 18px; gap: 8px; }
   .arc-live-event-icon { width: 22px; }
   .arc-run-contract-grid { grid-template-columns: 1fr; }
