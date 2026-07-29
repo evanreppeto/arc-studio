@@ -20,6 +20,17 @@ const metering = vi.hoisted(() => ({ meterConnectorCall: vi.fn() }));
 vi.mock("../metering", () => metering);
 
 import { runSignalSourceDetection } from "../detection";
+import { registerSignalSource } from "../registry";
+
+// A purpose-built metered source. This used to piggyback on `permit-data`, which
+// coupled a test about the DETECTION PLUMBING to one connector's pricing policy
+// — so when permit-data correctly dropped to 0 units (it makes no request), this
+// test broke for a reason that had nothing to do with what it verifies.
+registerSignalSource({
+  key: "fake-metered",
+  detect: () => [],
+  estimateUnits: (config) => (Array.isArray(config?.municipalities) ? config.municipalities.length : 0),
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -29,21 +40,21 @@ beforeEach(() => {
 describe("runSignalSourceDetection — central cost governance", () => {
   it("routes a metered source through meterConnectorCall and upserts when allowed", async () => {
     readModel.listWorkspaceConnectors.mockResolvedValue([
-      { key: "permit-data", kind: "signal_source", status: "connected" },
+      { key: "fake-metered", kind: "signal_source", status: "connected" },
     ]);
     metering.meterConnectorCall.mockResolvedValue({ ok: true, metered: true, result: [{}, {}], costCents: 16 });
 
     const res = await runSignalSourceDetection({ workspaceId: "w", orgId: "o" });
     expect(res.ok).toBe(true);
     if (res.ok) {
-      expect(res.bySource["permit-data"]).toBe(2);
+      expect(res.bySource["fake-metered"]).toBe(2);
       expect(res.total).toBe(2);
       expect(res.refused).toEqual({});
     }
     // priced up front by the source's estimateUnits (2 municipalities → 2 units)
     expect(metering.meterConnectorCall).toHaveBeenCalledOnce();
     const args = metering.meterConnectorCall.mock.calls[0][1];
-    expect(args).toMatchObject({ connectorKey: "permit-data", estimatedUnits: 2 });
+    expect(args).toMatchObject({ connectorKey: "fake-metered", estimatedUnits: 2 });
     expect(opps.upsertOpportunities).toHaveBeenCalledOnce();
   });
 
