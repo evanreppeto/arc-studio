@@ -2277,7 +2277,8 @@ function isLineField(kind: ConfigFieldKind): kind is "points" | "feeds" | "queri
  * enabling one is a statement about your business, not a display preference.
  */
 const WEATHER_CATEGORY_LABELS: Record<WeatherCategory, { label: string; hint: string }> = {
-  property_damage: { label: "Property damage", hint: "Storms, hail, wind, flood, hard freeze, fire weather" },
+  property_damage: { label: "Property damage", hint: "Storms, hail, wind, flood, hard freeze" },
+  fire_weather: { label: "Fire weather", hint: "Red Flag Warnings and fire-weather watches — prevention and preparedness demand, before anything burns" },
   extreme_heat: { label: "Extreme heat", hint: "Heat advisories and warnings — cooling and heat-resilience demand" },
   air_quality: { label: "Air quality", hint: "Air quality, stagnation, smoke — filtration and ventilation demand" },
   marine_coastal: { label: "Marine & coastal", hint: "Beach hazards, rip currents, surf, lakeshore flooding" },
