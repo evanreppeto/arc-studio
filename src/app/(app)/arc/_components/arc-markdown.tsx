@@ -5,7 +5,7 @@
 // depends only on react-markdown / highlight.js / motion — no other arc component —
 // so both the live and demo conversation renderers import from here.
 
-import { isValidElement, useEffect, useRef, useState } from "react";
+import { isValidElement, memo, useEffect, useRef, useState } from "react";
 import { ArrowDown, Check, Copy } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -21,15 +21,27 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 
+import { splitStreamedMarkdown } from "@/lib/arc-chat/stream-split";
+
 import { useBottomPin } from "./use-bottom-pin";
 
 /**
- * Smoothly reveal streamed text. The runner posts partial reply bodies that the
- * client only re-fetches on a poll (~1–2.5s apart), so without smoothing the
- * answer lands in visible chunks. This reveals the target at a steady,
- * backlog-aware cadence so it reads as continuous typing — a bigger backlog
- * reveals faster, so a fresh chunk catches up in a beat instead of dumping — and
- * snaps to full the instant streaming ends or reduced-motion is requested.
+ * Smoothly reveal streamed text.
+ *
+ * Text does not arrive token by token: the runner writes partial reply bodies to
+ * the database and the SSE route polls it — every 120ms while a run is active,
+ * relaxing to 500ms when nothing is changing (see
+ * `app/api/arc/stream/[conversationId]/route.ts`). So the client still receives
+ * visible chunks, and without smoothing the answer lands in steps.
+ *
+ * This reveals the target at a steady, backlog-aware cadence so it reads as
+ * continuous typing — a bigger backlog reveals faster, so a fresh chunk catches
+ * up in a beat instead of dumping — and snaps to full the instant streaming ends
+ * or reduced-motion is requested.
+ *
+ * (An earlier version of this note claimed the client polled every 1–2.5s. That
+ * was true before SSE landed; the chunking is finer now, but it is still
+ * chunking, which is why the smoothing stays.)
  */
 export function useSmoothStream(target: string, streaming: boolean): string {
   const reduceMotion = useReducedMotion();
@@ -147,13 +159,30 @@ const HLJS_LANGUAGES = {
 // renders pass this; the streaming pass omits it and shows clean mono until done.
 export const REHYPE_HIGHLIGHT_PLUGINS: MarkdownPlugins = [[rehypeHighlight, { detect: false, languages: HLJS_LANGUAGES }]];
 
+/**
+ * Blocks that are done arriving. Memoized on the exact markdown string, so once
+ * a block has settled it is never re-parsed again for the rest of the stream —
+ * the reveal loop then only pays for the paragraph still being written.
+ *
+ * react-markdown renders its blocks directly (no wrapper element), so splitting
+ * the reply across two of these leaves the same flat run of children under
+ * `.arc-stream` — which is what keeps the `> :last-child` caret rule working.
+ */
+const SettledBlocks = memo(function SettledBlocks({ text }: { text: string }) {
+  return <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{text}</ReactMarkdown>;
+});
+
 /** Markdown that types itself out while `streaming`, with a trailing caret (the
  *  caret is a CSS `::after` on the last rendered block — see `.arc-stream`). */
 export function StreamingMarkdown({ text, streaming, className }: { text: string; streaming: boolean; className?: string }) {
   const shown = useSmoothStream(text, streaming);
+  // Settled once the run ends: one root, and the syntax highlighter finally runs
+  // over the whole reply. While streaming, only the tail is re-parsed per frame.
+  const { settled, tail } = streaming ? splitStreamedMarkdown(shown) : { settled: "", tail: shown };
   return (
     <div className={`arc-stream${streaming ? " is-streaming" : ""}${className ? ` ${className}` : ""}`}>
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={streaming ? undefined : REHYPE_HIGHLIGHT_PLUGINS} components={MARKDOWN_COMPONENTS}>{shown}</ReactMarkdown>
+      {settled ? <SettledBlocks text={settled} /> : null}
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={streaming ? undefined : REHYPE_HIGHLIGHT_PLUGINS} components={MARKDOWN_COMPONENTS}>{tail}</ReactMarkdown>
     </div>
   );
 }
@@ -185,9 +214,13 @@ export function ArcAnswer({ text, streaming }: { text: string; streaming: boolea
  * and `##` hashes. Every surface goes through here now so they can't drift.
  */
 export function ReasoningMarkdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
+  // Reasoning streams on the same per-frame reveal as the answer, so it gets the
+  // same treatment: settled blocks are memoized, only the tail is re-parsed.
+  const { settled, tail } = streaming ? splitStreamedMarkdown(text) : { settled: "", tail: text };
   return (
     <div className={`arc-reasoning-body arc-stream${streaming ? " is-streaming" : ""} arc-markdown`}>
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{text}</ReactMarkdown>
+      {settled ? <SettledBlocks text={settled} /> : null}
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{tail}</ReactMarkdown>
     </div>
   );
 }
