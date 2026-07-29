@@ -294,10 +294,11 @@ export function isPropertyDamageWeather(eventType: string | null | undefined): b
  * demand it creates, never who gets called — Arc cannot know a workspace's trade,
  * and the operator opting in is what supplies that knowledge.
  */
-export type WeatherCategory = "property_damage" | "extreme_heat" | "air_quality" | "marine_coastal";
+export type WeatherCategory = "property_damage" | "fire_weather" | "extreme_heat" | "air_quality" | "marine_coastal";
 
 export const WEATHER_CATEGORIES: readonly WeatherCategory[] = [
   "property_damage",
+  "fire_weather",
   "extreme_heat",
   "air_quality",
   "marine_coastal",
@@ -311,11 +312,16 @@ export const WEATHER_CATEGORIES: readonly WeatherCategory[] = [
  * inboxes that never asked for them, which is the invisible-default failure that
  * put Illinois storm opportunities in front of tenants in Phoenix.
  */
-export const DEFAULT_WEATHER_CATEGORIES: readonly WeatherCategory[] = ["property_damage"] as const;
+export const DEFAULT_WEATHER_CATEGORIES: readonly WeatherCategory[] = ["property_damage", "fire_weather"] as const;
 
 // Matched word-boundaried on the NWS event name, most specific first: an
 // "Excessive Heat Warning" is heat, and must not fall through to anything else.
 const HEAT_EVENT = /\b(heat|hot)\b/i;
+// NWS's fire-weather products: "Red Flag Warning" (which contains no "fire" at
+// all), "Fire Weather Watch", "Extreme Fire Danger". Keyed on the product name
+// rather than the word, because matching only "fire" catches the second and
+// silently drops the first.
+const FIRE_WEATHER_EVENT = /\bred flag\b|\bfire\b/i;
 const AIR_QUALITY_EVENT = /\b(air quality|air stagnation|smoke|dust)\b/i;
 const MARINE_EVENT = /\b(beach|rip current|surf|marine|small craft|lakeshore|coastal)\b/i;
 
@@ -335,6 +341,9 @@ export function weatherCategoryOf(eventType: string | null | undefined): Weather
   if (HEAT_EVENT.test(name)) return "extreme_heat";
   if (AIR_QUALITY_EVENT.test(name)) return "air_quality";
   if (MARINE_EVENT.test(name)) return "marine_coastal";
+  // Before the property_damage fallback, which also matches `red flag` and
+  // `fire` and would otherwise claim a fire FORECAST had already caused damage.
+  if (FIRE_WEATHER_EVENT.test(name)) return "fire_weather";
   if (isPropertyDamageWeather(name)) return "property_damage";
   return null;
 }
@@ -370,6 +379,18 @@ const WEATHER_CATEGORY_COPY: Record<
       `a geo-targeted campaign reaches affected property owners before competitors do.`,
     action: (area) => `Launch a geo-targeted damage-response campaign for ${area}`,
     campaignType: "storm_response",
+  },
+  fire_weather: {
+    // A Red Flag Warning forecasts fire RISK. Nothing has burned, so there are no
+    // "affected property owners" and no damage to respond to — the demand it
+    // drives is prevention before the window, not restoration after it. Saying
+    // otherwise is a fabricated claim wearing a real NWS alert id.
+    demand: () =>
+      `Fire risk is elevated while the alert is in effect, and property owners act on ` +
+      `prevention — defensible space, clearing gutters and vents, readiness checks — ` +
+      `during the window rather than after it.`,
+    action: (area) => `Launch a geo-targeted fire-preparedness campaign for ${area}`,
+    campaignType: "fire_preparedness",
   },
   extreme_heat: {
     demand: () =>
