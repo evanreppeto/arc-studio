@@ -120,6 +120,10 @@ export async function persistLeadIngestion({
   const attribution = await resolveLastTouchAttribution(supabase, orgId, contactId, result.attribution);
 
   const leadValues = {
+    // Only set when the caller supplied real history (a CSV import carrying a
+    // last-contacted date). Omitted otherwise so the column default of now()
+    // still applies to genuinely new leads.
+    ...(input.receivedAt ? { received_at: input.receivedAt } : {}),
     company_id: companyId,
     contact_id: contactId,
     property_id: propertyId,
