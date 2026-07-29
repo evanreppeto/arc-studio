@@ -13,6 +13,9 @@ import {
   type WeatherEventInput,
 } from "@/domain";
 import { getCurrentOrgId } from "@/lib/auth/org";
+import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+import { getConnectorConfig } from "@/lib/connectors/config";
+import { parseWeatherCategories } from "@/domain";
 import { resolveCrmNames } from "@/lib/crm/names";
 import { buildPerformanceLearning, getCampaignPerformancePanel } from "@/lib/performance/campaign-panel";
 import { listLeads } from "@/lib/repos/leads";
@@ -201,7 +204,29 @@ export async function runWeatherEventDetection(
   const events = await src.listActiveEvents(now);
   if (events.length === 0) return { ok: true, count: 0 };
 
-  const candidates = detectWeatherEventOpportunities(events, { now });
+  // Read the SAME per-workspace weather config the `weather-signals` connector
+  // reads (src/lib/connectors/builtin/weather-signal.ts).
+  //
+  // This path and the connector path both run inside one scan, over different
+  // sources: this one reads the stored `weather_events` table, the connector
+  // hits live NWS. Because `upsertOpportunities` dedups by skipping a subject
+  // that already has an open opportunity of the same kind, whichever finishes
+  // first wins — and they race inside a Promise.all. So when this path ignored
+  // the workspace's config, a weather opportunity would carry a persona (or
+  // respect the operator's event-category opt-in) only depending on who won
+  // that race. Reading the config here makes the two paths agree, whoever wins.
+  //
+  // Without a persona, `selectAutoDraftCandidates` skips the opportunity as
+  // `no_persona` — so the config gap silently made storm opportunities
+  // undraftable rather than visibly wrong.
+  const ctx = await getCurrentWorkspaceContext().catch(() => null);
+  const config: Record<string, unknown> = ctx?.workspaceId
+    ? await getConnectorConfig(db, ctx.workspaceId, "weather-signals").catch(() => ({}))
+    : {};
+  const persona = typeof config.persona === "string" && config.persona.trim() ? config.persona.trim() : null;
+  const categories = parseWeatherCategories(config.eventCategories);
+
+  const candidates = detectWeatherEventOpportunities(events, { now, persona, categories });
   return upsertOpportunities(candidates, db, { orgId });
 }
 
