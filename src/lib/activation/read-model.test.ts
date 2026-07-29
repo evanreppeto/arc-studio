@@ -42,6 +42,7 @@ describe("getActivationState", () => {
     const state = await getActivationState("org-1", "ws-1");
 
     expect(state.signals).toEqual({
+      hasRecords: false,
       brandCaptured: false,
       dismissed: false,
       hasMedia: false,
@@ -56,6 +57,8 @@ describe("getActivationState", () => {
     getAdmin.mockReturnValue(
       fakeDb({
         org_onboarding_state: { single: { brand_captured_at: "2026-06-22T00:00:00Z", dismissed_at: null } },
+        contacts: { count: 12 },
+        companies: { count: 0 },
         media_assets: { count: 3 },
         campaigns: { count: 0 },
         workspace_memberships: { count: 1 },
@@ -65,12 +68,14 @@ describe("getActivationState", () => {
     const state = await getActivationState("org-1", "ws-1");
 
     expect(state.signals).toEqual({
+      hasRecords: true,
       brandCaptured: true,
       dismissed: false,
       hasMedia: true,
       hasCampaign: false,
       hasTeammate: false,
     });
+    // Core is records, not brand.
     expect(state.checklist.coreDone).toBe(true);
   });
 
@@ -78,6 +83,8 @@ describe("getActivationState", () => {
     getAdmin.mockReturnValue(
       fakeDb({
         org_onboarding_state: { single: null },
+        contacts: { count: 0 },
+        companies: { count: 0 },
         media_assets: { count: 0 },
         campaigns: { count: 0 },
         workspace_memberships: { count: 2 },
@@ -102,5 +109,27 @@ describe("getActivationState", () => {
     const state = await getActivationState("org-1", "ws-1");
 
     expect(state.signals.hasMedia).toBe(false);
+});
+
+  // An owner may start from a company list rather than contacts; requiring both
+  // would leave the blocking step unfinished for someone who already did the
+  // useful thing.
+  it("counts companies alone as having records", async () => {
+    getAdmin.mockReturnValue(
+      fakeDb({
+        org_onboarding_state: { single: null },
+        contacts: { count: 0 },
+        companies: { count: 4 },
+        media_assets: { count: 0 },
+        campaigns: { count: 0 },
+        workspace_memberships: { count: 1 },
+      }) as never,
+    );
+
+    const state = await getActivationState("org-1", "ws-1");
+
+    expect(state.signals.hasRecords).toBe(true);
+    expect(state.checklist.coreDone).toBe(true);
+    expect(state.checklist.nextStep).toBe("brand");
   });
 });

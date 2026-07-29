@@ -9,6 +9,7 @@ export type ActivationState = {
 };
 
 const EMPTY_SIGNALS: ActivationSignals = {
+  hasRecords: false,
   brandCaptured: false,
   dismissed: false,
   hasMedia: false,
@@ -63,8 +64,13 @@ export async function getActivationState(orgId: string, workspaceId: string | nu
 
   const db = getSupabaseAdminClient() as unknown as SupabaseClient;
 
-  const [onboarding, hasMedia, hasCampaign, hasTeammate] = await Promise.all([
+  const [onboarding, hasContacts, hasCompanies, hasMedia, hasCampaign, hasTeammate] = await Promise.all([
     readOnboardingRow(db, orgId),
+    // Either object counts as "has records" — an owner may start from a company
+    // list or a contact list, and requiring both would keep the blocking step
+    // unfinished for someone who has already done the useful thing.
+    countExceeds(db, "contacts", (q) => q.eq("org_id", orgId), 0),
+    countExceeds(db, "companies", (q) => q.eq("org_id", orgId), 0),
     countExceeds(db, "media_assets", (q) => q.eq("org_id", orgId), 0),
     workspaceId
       ? countExceeds(db, "campaigns", (q) => q.eq("workspace_id", workspaceId), 0)
@@ -75,6 +81,7 @@ export async function getActivationState(orgId: string, workspaceId: string | nu
   ]);
 
   const signals: ActivationSignals = {
+    hasRecords: hasContacts || hasCompanies,
     brandCaptured: Boolean(onboarding?.brand_captured_at),
     dismissed: Boolean(onboarding?.dismissed_at),
     hasMedia,
