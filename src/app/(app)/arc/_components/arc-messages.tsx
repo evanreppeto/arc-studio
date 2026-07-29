@@ -293,6 +293,20 @@ export function RunTrace({
   const hasError = liveRows.some((row) => row.status === "error");
   const hasReportedWork = liveRows.length > 0 || responding || Boolean(reasoning?.trim());
   const elapsedLabel = formatWorkingTime(elapsedSeconds);
+  // Name the phase Arc is actually in rather than a generic "Thinking". The
+  // runner reports its own phases now, so the most recent running row is the
+  // truthful answer to "what is it doing?" — and it reads as one calm line
+  // changing as the work moves, which is the shape asked for.
+  const currentActivity = [...liveRows].reverse().find((row) => row.status === "running")?.label;
+  const statusLabel = stopping
+    ? "Stopping safely…"
+    : hasError
+      ? `Needs attention after ${elapsedLabel}`
+      : currentActivity
+        ? `${currentActivity} · ${elapsedLabel}`
+        : responding
+          ? `Responding · ${elapsedLabel}`
+          : `Thinking · ${elapsedLabel}`;
 
   // NOTE: the streamed answer is deliberately NOT rendered here. It used to be —
   // as `.arc-live-commentary`, nested between the reasoning and the activity
@@ -313,7 +327,7 @@ export function RunTrace({
     >
       <div className="arc-run-live-head">
         <ThinkingIndicator label={stopping ? "Stopping" : hasError ? "Needs attention" : "Thinking"} />
-        <span><b aria-hidden="true" className={!stopping && !hasError ? "arc-shimmer" : undefined}>{stopping ? "Stopping safely…" : hasError ? `Needs attention after ${elapsedLabel}` : responding ? `Responding · ${elapsedLabel}` : `Thinking · ${elapsedLabel}`}</b><span className="sr-only" role="status" aria-live="polite">{stopping ? "Arc is stopping safely" : hasError ? "Arc needs attention" : "Arc is working"}</span></span>
+        <span><b aria-hidden="true" className={!stopping && !hasError ? "arc-shimmer" : undefined}>{statusLabel}</b><span className="sr-only" role="status" aria-live="polite">{stopping ? "Arc is stopping safely" : hasError ? "Arc needs attention" : currentActivity ? `Arc is ${currentActivity.toLowerCase()}` : "Arc is working"}</span></span>
         <button type="button" className="arc-stop" aria-label="Stop Arc" onClick={onStop} disabled={!onStop || stopping}><Square size={11} /> {stopping ? "Stopping…" : "Stop"}</button>
       </div>
       {/* Nothing to report yet: the head already spins, shimmers, and counts.
