@@ -9,9 +9,18 @@ export type ArcBusinessContext = {
   creativePolicy: string;
   /** Compliance / restricted-claims posture, stated for the model. */
   compliance: string;
+  /**
+   * The WORKSPACE's own persona taxonomy. Carried through from the wire payload
+   * rather than flattened away: the system prompt tells Arc to "use these exact
+   * keys", so a hardcoded list instructs the model to map a tenant's contacts
+   * onto another business's personas. Empty means "not supplied" and the prompt
+   * falls back to the demo set.
+   */
+  personas: Array<{ key: string; label: string }>;
 };
 
 export const NEUTRAL_CONTEXT: ArcBusinessContext = {
+  personas: [],
   businessName: "the business",
   industry: "Not specified.",
   brandVoice: "Use a clear, accurate, professional voice. Ask for brand details when the operator has not activated a Brand Kit.",
@@ -105,6 +114,12 @@ export function fromAppContext(raw: AppBusinessContext): ArcBusinessContext {
     brandVoice: [voice, identity, brainFacts].filter(Boolean).join(" "),
     creativePolicy: DEFAULT_CREATIVE_POLICY + proof,
     compliance,
+    // The org's own taxonomy, normalized to {key,label}. The wire payload carries
+    // more per persona (audienceType, sortOrder, isActive, metadata); the prompt
+    // only needs the key and something to call it.
+    personas: (raw.personas ?? [])
+      .filter((p) => p && typeof p.key === "string" && p.key.trim())
+      .map((p) => ({ key: p.key.trim(), label: typeof p.label === "string" && p.label.trim() ? p.label.trim() : p.key.trim() })),
   };
 }
 

@@ -57,8 +57,25 @@ function businessBlock(b: ArcBusinessContext): string {
   ].join("\n");
 }
 
-function personasBlock(): string {
-  const lines = ARC_PERSONAS.map((p) => `- ${p.key} — ${p.label}`);
+/**
+ * The WORKSPACE's own persona taxonomy, not BSR's twelve.
+ *
+ * This block tells Arc "use these exact keys", so a hardcoded list did not just
+ * mislead the model — it instructed it to map a law firm's contacts onto
+ * "Emergency Homeowner" and "Plumbing Partner". Personas have been per-org since
+ * migration 20260713120000, and the app has been sending the org's own set on
+ * the wire the whole time; this block was simply reading a constant instead.
+ *
+ * ARC_PERSONAS survives only as the offline/demo fallback, for a runner started
+ * without app context. Falling back to SOME taxonomy beats emitting an empty
+ * list, which would leave Arc free to invent keys.
+ */
+function personasBlock(business: ArcBusinessContext): string {
+  const own = Array.isArray(business.personas)
+    ? business.personas.filter((p) => p && typeof p.key === "string" && p.key.trim())
+    : [];
+  const source = own.length > 0 ? own : ARC_PERSONAS;
+  const lines = source.map((p) => `- ${p.key} — ${p.label ?? p.key}`);
   return ["PERSONA TAXONOMY (use these exact keys when mapping or filtering by persona):", ...lines].join("\n");
 }
 
@@ -232,7 +249,7 @@ export function buildSystemPrompt(base: string, ctx: ArcTurnContext): string {
     businessBlock(ctx.business),
     workspaceStateBlock(ctx.workspaceState),
     memoryBlock(ctx.memory),
-    personasBlock(),
+    personasBlock(ctx.business),
     modeBlock(ctx.mode),
     mediaConfigBlock(ctx.mediaConfig),
     skillBlock(ctx.skill),
