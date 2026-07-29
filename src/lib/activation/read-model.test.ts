@@ -57,6 +57,7 @@ describe("getActivationState", () => {
     getAdmin.mockReturnValue(
       fakeDb({
         org_onboarding_state: { single: { brand_captured_at: "2026-06-22T00:00:00Z", dismissed_at: null } },
+        business_profiles: { single: null },
         contacts: { count: 12 },
         companies: { count: 0 },
         media_assets: { count: 3 },
@@ -83,6 +84,7 @@ describe("getActivationState", () => {
     getAdmin.mockReturnValue(
       fakeDb({
         org_onboarding_state: { single: null },
+        business_profiles: { single: null },
         contacts: { count: 0 },
         companies: { count: 0 },
         media_assets: { count: 0 },
@@ -118,6 +120,7 @@ describe("getActivationState", () => {
     getAdmin.mockReturnValue(
       fakeDb({
         org_onboarding_state: { single: null },
+        business_profiles: { single: null },
         contacts: { count: 0 },
         companies: { count: 4 },
         media_assets: { count: 0 },
@@ -131,5 +134,47 @@ describe("getActivationState", () => {
     expect(state.signals.hasRecords).toBe(true);
     expect(state.checklist.coreDone).toBe(true);
     expect(state.checklist.nextStep).toBe("brand");
+  });
+
+  // The bug this guards: `markBrandCaptured` has no callers, so
+  // `brand_captured_at` is never written. Deriving the signal from profile
+  // content is what lets the step ever complete.
+  it("counts brand as captured from profile content even with no onboarding flag", async () => {
+    getAdmin.mockReturnValue(
+      fakeDb({
+        org_onboarding_state: { single: null },
+        business_profiles: { single: { voice_guidance: "Plain, direct.", website_url: null, logo_url: null, tagline: null } },
+        contacts: { count: 3 },
+        companies: { count: 0 },
+        media_assets: { count: 0 },
+        campaigns: { count: 0 },
+        workspace_memberships: { count: 1 },
+      }) as never,
+    );
+
+    const state = await getActivationState("org-1", "ws-1");
+
+    expect(state.signals.brandCaptured).toBe(true);
+  });
+
+  // Signup creates a profile row carrying only the name it asked for, so the row
+  // existing must NOT count as the owner having taught Arc their brand.
+  it("does not count a bare signup-created profile as brand captured", async () => {
+    getAdmin.mockReturnValue(
+      fakeDb({
+        org_onboarding_state: { single: null },
+        business_profiles: { single: { voice_guidance: null, website_url: null, logo_url: null, tagline: null } },
+        contacts: { count: 0 },
+        companies: { count: 0 },
+        media_assets: { count: 0 },
+        campaigns: { count: 0 },
+        workspace_memberships: { count: 1 },
+      }) as never,
+    );
+
+    const state = await getActivationState("org-1", "ws-1");
+
+    expect(state.signals.brandCaptured).toBe(false);
+    expect(state.checklist.nextStep).toBe("records");
   });
 });

@@ -19,6 +19,44 @@ const EMPTY_SIGNALS: ActivationSignals = {
 
 type OnboardingRow = { brand_captured_at: string | null; dismissed_at: string | null };
 
+type BrandProfileRow = {
+  voice_guidance: string | null;
+  website_url: string | null;
+  logo_url: string | null;
+  tagline: string | null;
+};
+
+/**
+ * Whether the owner has actually taught Arc their brand.
+ *
+ * Derived from profile CONTENT rather than the `brand_captured_at` flag, because
+ * nothing ever writes that flag — `markBrandCaptured` exists and has no callers,
+ * so the step could never be ticked off and the checklist would nag forever.
+ *
+ * Signup creates a business_profiles row carrying only the name it asked for, so
+ * the row existing proves nothing. These four fields are ones the owner can only
+ * have supplied through /brand — via the form, a logo upload, or website
+ * analysis. The flag is still honoured if anything ever starts writing it.
+ */
+async function readBrandCaptured(db: SupabaseClient, orgId: string): Promise<boolean> {
+  try {
+    const { data, error } = await db
+      .from("business_profiles")
+      .select("voice_guidance,website_url,logo_url,tagline")
+      .eq("org_id", orgId)
+      .maybeSingle<BrandProfileRow>();
+    if (error || !data) return false;
+    return Boolean(
+      data.voice_guidance?.trim() ||
+        data.website_url?.trim() ||
+        data.logo_url?.trim() ||
+        data.tagline?.trim(),
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function readOnboardingRow(db: SupabaseClient, orgId: string): Promise<OnboardingRow | null> {
   try {
     const { data, error } = await db
@@ -64,8 +102,9 @@ export async function getActivationState(orgId: string, workspaceId: string | nu
 
   const db = getSupabaseAdminClient() as unknown as SupabaseClient;
 
-  const [onboarding, hasContacts, hasCompanies, hasMedia, hasCampaign, hasTeammate] = await Promise.all([
+  const [onboarding, brandFromProfile, hasContacts, hasCompanies, hasMedia, hasCampaign, hasTeammate] = await Promise.all([
     readOnboardingRow(db, orgId),
+    readBrandCaptured(db, orgId),
     // Either object counts as "has records" — an owner may start from a company
     // list or a contact list, and requiring both would keep the blocking step
     // unfinished for someone who has already done the useful thing.
@@ -82,7 +121,7 @@ export async function getActivationState(orgId: string, workspaceId: string | nu
 
   const signals: ActivationSignals = {
     hasRecords: hasContacts || hasCompanies,
-    brandCaptured: Boolean(onboarding?.brand_captured_at),
+    brandCaptured: brandFromProfile || Boolean(onboarding?.brand_captured_at),
     dismissed: Boolean(onboarding?.dismissed_at),
     hasMedia,
     hasCampaign,
