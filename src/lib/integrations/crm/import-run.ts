@@ -98,6 +98,12 @@ async function importOneContact(
     ...input.options,
     allowedPersonaKeys: input.options.allowedPersonaKeys ?? input.allowedPersonaKeys,
   });
+
+  // An import carries history: a contact last touched eight months ago must land
+  // as an eight-month-old lead, not a brand-new one, or nothing is ever cold.
+  if (lead && contact.updatedAt) {
+    lead = { ...lead, receivedAt: contact.updatedAt };
+  }
   if (!lead) {
     result.skipped += 1;
     result.errors.push({ externalId, message: "no usable name/email/phone" });
