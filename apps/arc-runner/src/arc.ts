@@ -192,7 +192,15 @@ async function runArcQuery(opts: {
    */
   let narratedUpTo = 0;
   const step: StepFn = async (label, status, detail) => {
-    if (status === "done") return opts.step(label, status, detail ?? null);
+    // Both edges quote, because which edge holds the reasoning depends on the
+    // step. A tool call is decided *before* it runs, so its "why" is on the
+    // opening edge and nothing new accrues while the model waits on the result.
+    // A phase like working out an answer is the opposite: it opens before the
+    // model has thought anything at all, and everything worth reporting happens
+    // inside it — quoting only on open left those phases as bare labels.
+    //
+    // The cursor advances either way, so a passage is reported once. A close
+    // with nothing new passes null, and the stored opening narration stands.
     const thinking = thinkingStream.value();
     const segment = thinking.slice(narratedUpTo).trim();
     narratedUpTo = thinking.length;
