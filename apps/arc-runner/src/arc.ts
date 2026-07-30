@@ -271,6 +271,21 @@ async function runArcQuery(opts: {
   const tools = toolsForMode(opts.mode, opts.client, step, sink, { ...(opts.toolContext ?? {}), skill: opts.skill });
   const arcServer = createSdkMcpServer({ name: "arc", version: "1.0.0", tools });
 
+  // Opened BEFORE the connector fetch, not after it (BSR-566).
+  //
+  // These three reads — connectors, media config, workspace summary — are one
+  // phase from the reader's side: Arc working out what this workspace has. The
+  // step used to open only around the last of them, so the two network calls
+  // below ran with no row in `running`, and the status line fell back to a bare
+  // "Thinking · Ns" for exactly as long as they took. That was the last of the
+  // silent windows BSR-566 was filed about; the rest were closed by BSR-574.
+  //
+  // Deliberately NOT a fourth label. run-phases.ts makes the case: these are our
+  // plumbing, and three rows telling someone we fetched our own config says
+  // nothing about their business. One line that stays honest while the work
+  // moves is the shape being asked for.
+  await step(STEP_WORKSPACE, "running");
+
   // Remote MCP connectors (e.g. Higgsfield) and the operator's media-model
   // defaults both only matter in work modes; fetch them together, best-effort, so
   // neither a connector outage nor a config miss ever breaks a turn.
@@ -281,7 +296,6 @@ async function runArcQuery(opts: {
   ]);
   const { mcpServers: remoteServers, allowedTools: remoteAllowed } = buildRemoteMcp(remote);
 
-  await step(STEP_WORKSPACE, "running");
   const workspaceState = await resolveWorkspaceSummary(opts.client);
   const system = buildSystemPrompt(ARC_SYSTEM_PROMPT, { ...opts.ctx, workspaceState, mediaConfig });
   await step(STEP_WORKSPACE, "done");

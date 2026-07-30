@@ -13,6 +13,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sdkMessages: unknown[] = [];
 
+/**
+ * Ordered record of steps AND the setup fetches, so a test can assert which
+ * happened first. The phase has to OPEN before the work it describes, or the
+ * status line has nothing running to name and falls back to a bare "Thinking".
+ */
+const timeline: string[] = [];
+/** Work modes gate the connector + media reads; flip per test. */
+let workModesOn = false;
+
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   createSdkMcpServer: () => ({}),
   tool: (name: string, description: string, schema: unknown, handler: unknown) => ({ name, description, schema, handler }),
@@ -33,13 +42,19 @@ vi.mock("./conversation-context", () => ({
 }));
 vi.mock("./workspace-summary", () => ({ resolveWorkspaceSummary: async () => null }));
 vi.mock("./connectors", () => ({
-  fetchRemoteConnectors: async () => [],
+  fetchRemoteConnectors: async () => {
+    timeline.push("fetch:connectors");
+    return [];
+  },
   buildRemoteMcp: () => ({ mcpServers: {}, allowedTools: [] }),
-  remoteConnectorsAllowedForMode: () => false,
+  remoteConnectorsAllowedForMode: () => workModesOn,
 }));
 vi.mock("./media-config", () => ({
-  fetchMediaConfig: async () => null,
-  mediaConfigAllowedForMode: () => false,
+  fetchMediaConfig: async () => {
+    timeline.push("fetch:media");
+    return null;
+  },
+  mediaConfigAllowedForMode: () => workModesOn,
 }));
 
 type StepCall = { label: string; status: "running" | "done"; detail?: string | null };
@@ -52,6 +67,7 @@ function makeClient(steps: StepCall[]) {
     postChatReply: async () => {},
     postStep: async (_taskId: string, label: string, status: "running" | "done", detail?: string | null) => {
       steps.push({ label, status, detail });
+      timeline.push(`step:${label}(${status})`);
     },
     postChatChunk: async () => {},
     postChatThinking: async () => {},
@@ -73,6 +89,8 @@ const payload = {
 describe("runArcTurn phase narration", () => {
   beforeEach(() => {
     sdkMessages.length = 0;
+    timeline.length = 0;
+    workModesOn = false;
   });
 
   it("reports its own phases on a turn that calls no tools at all", async () => {
@@ -248,5 +266,55 @@ describe("runArcTurn phase narration", () => {
     // ...so reasoning is the phase that has to be closed, or it spins forever.
     const reasoning = steps.filter((s) => s.label === "Working out an answer");
     expect(reasoning.at(-1)?.status).toBe("done");
+  });
+
+  // BSR-566's last silent window. The workspace phase used to open AFTER the
+  // connector and media reads, so those two network calls ran with no row in
+  // `running` and the header fell back to "Thinking · Ns" for exactly as long
+  // as they took. Ordering is the whole assertion here — that both fetches
+  // happen and the phase closes is not enough.
+  it("opens the workspace phase before the connector and media reads", async () => {
+    workModesOn = true;
+    sdkMessages.push(
+      { type: "assistant", message: { content: [{ type: "text", text: "Done." }] } },
+      { type: "result", subtype: "success", result: "Done." },
+    );
+
+    const steps: StepCall[] = [];
+    const { runArcTurn } = await import("./arc");
+    await runArcTurn(payload, makeClient(steps) as never);
+
+    const opened = timeline.indexOf("step:Checking what's active right now(running)");
+    const connectors = timeline.indexOf("fetch:connectors");
+    const media = timeline.indexOf("fetch:media");
+
+    expect(opened, "the workspace phase should be reported").toBeGreaterThanOrEqual(0);
+    expect(connectors, "connectors should be fetched in a work mode").toBeGreaterThanOrEqual(0);
+    expect(media, "media config should be fetched in a work mode").toBeGreaterThanOrEqual(0);
+    expect(opened).toBeLessThan(connectors);
+    expect(opened).toBeLessThan(media);
+  });
+
+  it("keeps the context and workspace phases adjacent in the step sequence", async () => {
+    // NB this one passes against the pre-fix code too, and is not evidence for
+    // it: the connector reads emitted no steps either way, so the two phases
+    // were always neighbours in the ARRAY. BSR-566 was about a gap in TIME —
+    // the test above is the one that proves it. This guards a different thing:
+    // that nothing later slips a phase between them.
+    workModesOn = true;
+    sdkMessages.push(
+      { type: "assistant", message: { content: [{ type: "text", text: "Done." }] } },
+      { type: "result", subtype: "success", result: "Done." },
+    );
+
+    const steps: StepCall[] = [];
+    const { runArcTurn } = await import("./arc");
+    await runArcTurn(payload, makeClient(steps) as never);
+
+    const phases = steps.filter((s) => s.label !== "Arc");
+    const contextDone = phases.findIndex((s) => s.label === "Reading your workspace" && s.status === "done");
+    const workspaceOpen = phases.findIndex((s) => s.label === "Checking what's active right now" && s.status === "running");
+    expect(contextDone).toBeGreaterThanOrEqual(0);
+    expect(workspaceOpen).toBe(contextDone + 1);
   });
 });
