@@ -6,6 +6,7 @@ import type { MediaAssetView, MediaFolderView } from "@/lib/media-library/types"
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import { LibraryView, type Asset, type Folder } from "./_components/library-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import "./library.css";
 
 export const metadata = { title: "Library — Arc Studio" };
@@ -122,11 +123,20 @@ function mapFolders(views: MediaFolderView[]): Folder[] {
 }
 
 export default async function LibraryPage() {
+  // Correctly silent (BSR-546): (app)/layout.tsx is the auth boundary; a null
+  // context here renders a coherent empty state, not a false claim about data.
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   if (ctx?.orgId && isSupabaseAdminConfigured()) {
     const [data, campaigns] = await Promise.all([
-      getMediaLibraryData(getSupabaseAdminClient(), ctx.orgId).catch(() => null),
+      // PRIMARY: the media list IS the Library. Empty reads as "you have no
+      // approved media", which would send an operator off to re-upload assets
+      // they already own.
+      getMediaLibraryData(getSupabaseAdminClient(), ctx.orgId).catch((error) => {
+        reportDegraded(error, { scope: "library.getMediaLibraryData", surface: "primary" });
+        return null;
+      }),
       // Campaign options for the selection bar's "Add to campaign" picker.
+      // Correctly silent (BSR-546): picker options; an empty dropdown is visible.
       listCampaignNames(ctx.orgId).catch(() => []),
     ]);
     if (data && data.status === "live") {
