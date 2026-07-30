@@ -104,6 +104,13 @@ export function buildQueryOptions(args: {
     systemPrompt: args.systemPrompt,
     model: args.inference.model,
     fallbackModel: args.inference.fallbackModel,
+    // `maxThinkingTokens` is deprecated in the SDK and, on current models, is
+    // only read as on/off — it does not describe how thinking is produced or
+    // whether it reaches the stream. Arc has never captured a single character
+    // of reasoning in production (BSR-573) while setting only this field, so
+    // state the intent explicitly: these models support adaptive thinking, and
+    // `thinking` takes precedence over the deprecated dial.
+    thinking: { type: "adaptive" },
     maxThinkingTokens: args.inference.maxThinkingTokens,
     maxTurns: args.inference.maxTurns,
     maxBudgetUsd: args.inference.maxBudgetUsd,
