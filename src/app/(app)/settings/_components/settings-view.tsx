@@ -876,15 +876,35 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
           <Panel
             key={group.capability}
             title={group.capability}
+            // The tag reports the CAPABILITY, not a raw unset count. Social has
+            // eleven optional variables; "11 unset" reads as eleven problems
+            // when it means "not using social", and a panel that cries wolf is
+            // one an operator learns to skip (BSR-480).
             tag={
-              group.flags.every((f) => f.set)
-                ? <span className="tg ok">all set</span>
-                : <Pill kind="warn">{group.flags.filter((f) => !f.set).length} unset</Pill>
+              group.state === "ready"
+                ? <span className="tg ok">ready</span>
+                : <Pill kind={group.state === "inert" ? "off" : "warn"}>{group.state}</Pill>
             }
           >
+            <Row label={<span className="tg">{group.state}</span>} desc={group.detail}>
+              <span />
+            </Row>
             {group.flags.map((flag) => (
-              <Row key={flag.name} label={<code>{flag.name}</code>} desc={flag.purpose}>
-                <Pill kind={flag.set ? "ok" : "off"}>{flag.set ? "Set" : "Unset"}</Pill>
+              <Row
+                key={flag.name}
+                label={
+                  <>
+                    <code>{flag.name}</code>{" "}
+                    {flag.requirement !== "required" && <span className="tg">{flag.requirement}</span>}
+                  </>
+                }
+                desc={flag.purpose}
+              >
+                {/* An unset OPTIONAL var is a choice, not a fault — only a
+                    missing required one is worth a warning colour. */}
+                <Pill kind={flag.set ? "ok" : flag.requirement === "required" ? "warn" : "off"}>
+                  {flag.set ? "Set" : "Unset"}
+                </Pill>
               </Row>
             ))}
           </Panel>
