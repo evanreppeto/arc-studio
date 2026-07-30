@@ -60,6 +60,13 @@ export async function getOpportunityConversion(
       db.from("approval_items").select("campaign_id").eq("org_id", resolvedOrgId).eq("status", "approved").in("campaign_id", campaignIds),
       db.from("campaign_results").select("campaign_id, jobs, won_revenue_cents").in("campaign_id", campaignIds),
     ]);
+    // These three decide which opportunities count as approved and booked, so a
+    // failed read here does not thin the data — it reports that NOTHING
+    // converted (BSR-575). On the analytics surface that reads as a real result
+    // an operator would act on, and it is the same `unavailable` the primary
+    // opportunities read above already returns for its own failure.
+    if (camps.error || appr.error || results.error) return { status: "unavailable" };
+
     for (const c of (camps.data ?? []) as { id: string; status: string }[]) {
       if (APPROVED_CAMPAIGN_STATUSES.has(c.status)) approved.add(c.id);
     }

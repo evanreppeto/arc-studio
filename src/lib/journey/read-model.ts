@@ -181,17 +181,53 @@ export async function getJourneysReadModel(client?: SupabaseClient, orgId?: stri
       ).limit(MAX_ROWS),
     ]);
 
-    // contacts is the identity anchor and must succeed; the touch sources are
-    // tolerated-optional (an empty/absent table just yields thinner journeys).
-    // The journey_* tables are also optional — absent before the P1 migration.
-    if (contacts.error) throw new Error(`contacts lookup failed: ${contacts.error.message}`);
+    // EVERY one of these is load-bearing for what this page claims (BSR-575).
+    //
+    // `contacts` was already fatal. The other six inspected their error and threw
+    // it away, which is why renaming `journey_touchpoints` produced a normal
+    // looking page while renaming `contacts` produced a banner — the same
+    // failure, opposite signals.
+    //
+    // The tolerance this replaces was written for a real reason: the `journey_*`
+    // tables did not exist before the P1 migration. That shipped, and all seven
+    // tables are present on prod (verified 2026-07-30), so the only thing the
+    // tolerance still catches is a genuine failure.
+    //
+    // /journeys is the attribution surface, which is what makes silence
+    // expensive here: with `outcomes` failing, revenue attribution reads zero,
+    // and with `engagement_events` failing a customer shows no history at all.
+    // Both are confident false statements about a customer, and the performance
+    // learning loop downstream consumes them as fact.
+    //
+    // Every failed source is named, not just the first, so one reload tells an
+    // operator the whole story rather than one table at a time.
+    const failures = (
+      [
+        ["contacts", contacts.error],
+        ["engagement_events", engagement.error],
+        ["leads", leads.error],
+        ["jobs", jobs.error],
+        ["outcomes", outcomes.error],
+        ["journey_identities", identities.error],
+        ["journey_touchpoints", touchpoints.error],
+      ] as const
+    ).filter(([, error]) => error);
+
+    if (failures.length > 0) {
+      throw new Error(
+        `journey lookup failed: ${failures
+          .map(([table, error]) => `${table} (${error?.message ?? "unknown error"})`)
+          .join("; ")}`,
+      );
+    }
+
     const contactRows = (contacts.data ?? []) as ContactRow[];
-    const engagementRows = engagement.error ? [] : ((engagement.data ?? []) as EngagementRow[]);
-    const leadRows = leads.error ? [] : ((leads.data ?? []) as LeadRow[]);
-    const jobRows = jobs.error ? [] : ((jobs.data ?? []) as JobRow[]);
-    const outcomeRows = outcomes.error ? [] : ((outcomes.data ?? []) as OutcomeRow[]);
-    const identityRows = identities.error ? [] : ((identities.data ?? []) as IdentityRow[]);
-    const touchpointRows = touchpoints.error ? [] : ((touchpoints.data ?? []) as TouchpointRow[]);
+    const engagementRows = (engagement.data ?? []) as EngagementRow[];
+    const leadRows = (leads.data ?? []) as LeadRow[];
+    const jobRows = (jobs.data ?? []) as JobRow[];
+    const outcomeRows = (outcomes.data ?? []) as OutcomeRow[];
+    const identityRows = (identities.data ?? []) as IdentityRow[];
+    const touchpointRows = (touchpoints.data ?? []) as TouchpointRow[];
 
     // Nothing to show → demo fallback (only when the flag is on), else empty-live.
     if (contactRows.length === 0 && engagementRows.length === 0 && leadRows.length === 0 && touchpointRows.length === 0) {

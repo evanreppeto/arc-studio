@@ -196,6 +196,8 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
 
   let connectors: ConnectorHealthRow[] = [];
   let runnerCounts = { queued: 0, running: 0, oldestQueuedAt: null as string | null, failedLast24h: 0 };
+  // Whether those zeros are a reading or an absence of one (BSR-575).
+  let queueEvidenceMissing = false;
   let failures: RecentFailure[] = [];
   let lastOutboundAt: string | null = null;
   let lastInboundAt: string | null = null;
@@ -205,6 +207,52 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
   if (databaseConfigured) {
     const supabase = getSupabaseAdminClient();
     const since = new Date(now - FAILURE_WINDOW_HOURS * 3600_000).toISOString();
+
+    // Keep "this read failed" distinct from "there is nothing here" (BSR-575).
+    //
+    // Every read below used `.then((r) => r.data ?? [], () => [])`, which
+    // collapses both a PostgREST `{ error }` result and a thrown rejection into
+    // an empty list. For this console specifically that is self-defeating: zero
+    // queued tasks and zero recent failures is precisely what a healthy idle
+    // system looks like, so a database it could not read graded as `live` and
+    // told the operator "Runner reachable and the queue is moving."
+    //
+    // The grading module already models `unknown` as distinct from `live` — the
+    // information was simply being destroyed before it got there.
+    const readFailures = new Set<string>();
+    const rowsOf = <T>(table: string) =>
+      [
+        (r: { data: T[] | null; error: unknown }): T[] => {
+          if (r.error) readFailures.add(table);
+          return r.data ?? [];
+        },
+        (): T[] => {
+          readFailures.add(table);
+          return [];
+        },
+      ] as const;
+    const countOf = (table: string) =>
+      [
+        (r: { count: number | null; error: unknown }): number => {
+          if (r.error) readFailures.add(table);
+          return r.count ?? 0;
+        },
+        (): number => {
+          readFailures.add(table);
+          return 0;
+        },
+      ] as const;
+    const oneOf = <T>(table: string) =>
+      [
+        (r: { data: T | null; error: unknown }): T | null => {
+          if (r.error) readFailures.add(table);
+          return r.data;
+        },
+        (): T | null => {
+          readFailures.add(table);
+          return null;
+        },
+      ] as const;
 
     const [
       connectorRows,
@@ -218,16 +266,16 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
       scanRow,
       embeddingRow,
     ] = await Promise.all([
-      supabase.from("workspace_connectors").select("workspace_id, connector_key, enabled, credential_ref, last_tested_at, last_test_ok, last_test_error").then((r) => r.data ?? [], () => []),
-      supabase.from("workspaces").select("id, name").then((r) => r.data ?? [], () => []),
-      supabase.from("agent_tasks").select("created_at").eq("status", "queued").order("created_at", { ascending: true }).then((r) => r.data ?? [], () => []),
-      supabase.from("agent_tasks").select("id", { count: "exact", head: true }).eq("status", "running").then((r) => r.count ?? 0, () => 0),
-      supabase.from("agent_tasks").select("id", { count: "exact", head: true }).eq("status", "failed").gte("updated_at", since).then((r) => r.count ?? 0, () => 0),
-      supabase.from("agent_tasks").select("objective, task_type, updated_at, metadata").eq("status", "failed").order("updated_at", { ascending: false }).limit(RECENT_FAILURE_LIMIT).then((r) => r.data ?? [], () => []),
-      supabase.from("journey_touchpoints").select("occurred_at").eq("direction", "outbound").order("occurred_at", { ascending: false }).limit(1).maybeSingle().then((r) => r.data, () => null),
-      supabase.from("journey_touchpoints").select("occurred_at").eq("direction", "inbound").order("occurred_at", { ascending: false }).limit(1).maybeSingle().then((r) => r.data, () => null),
-      supabase.from("agent_tasks").select("created_at").eq("task_type", "arc_opportunity_scan").order("created_at", { ascending: false }).limit(1).maybeSingle().then((r) => r.data, () => null),
-      supabase.from("knowledge_nodes").select("updated_at").not("embedding", "is", null).order("updated_at", { ascending: false }).limit(1).maybeSingle().then((r) => r.data, () => null),
+      supabase.from("workspace_connectors").select("workspace_id, connector_key, enabled, credential_ref, last_tested_at, last_test_ok, last_test_error").then(...rowsOf<Record<string, unknown>>("workspace_connectors")),
+      supabase.from("workspaces").select("id, name").then(...rowsOf<{ id: string; name: string | null }>("workspaces")),
+      supabase.from("agent_tasks").select("created_at").eq("status", "queued").order("created_at", { ascending: true }).then(...rowsOf<{ created_at: string }>("agent_tasks")),
+      supabase.from("agent_tasks").select("id", { count: "exact", head: true }).eq("status", "running").then(...countOf("agent_tasks")),
+      supabase.from("agent_tasks").select("id", { count: "exact", head: true }).eq("status", "failed").gte("updated_at", since).then(...countOf("agent_tasks")),
+      supabase.from("agent_tasks").select("objective, task_type, updated_at, metadata").eq("status", "failed").order("updated_at", { ascending: false }).limit(RECENT_FAILURE_LIMIT).then(...rowsOf<Record<string, unknown>>("agent_tasks")),
+      supabase.from("journey_touchpoints").select("occurred_at").eq("direction", "outbound").order("occurred_at", { ascending: false }).limit(1).maybeSingle().then(...oneOf<{ occurred_at?: string }>("journey_touchpoints")),
+      supabase.from("journey_touchpoints").select("occurred_at").eq("direction", "inbound").order("occurred_at", { ascending: false }).limit(1).maybeSingle().then(...oneOf<{ occurred_at?: string }>("journey_touchpoints")),
+      supabase.from("agent_tasks").select("created_at").eq("task_type", "arc_opportunity_scan").order("created_at", { ascending: false }).limit(1).maybeSingle().then(...oneOf<{ created_at?: string }>("agent_tasks")),
+      supabase.from("knowledge_nodes").select("updated_at").not("embedding", "is", null).order("updated_at", { ascending: false }).limit(1).maybeSingle().then(...oneOf<{ updated_at?: string }>("knowledge_nodes")),
     ]);
 
     const workspaceNames = new Map<string, string>();
@@ -255,6 +303,8 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
       oldestQueuedAt: queued[0]?.created_at ?? null,
       failedLast24h: failedCount as number,
     };
+    // The queue figures are only evidence if the queue was actually readable.
+    queueEvidenceMissing = readFailures.has("agent_tasks");
 
     failures = (failureRows as Array<Record<string, unknown>>).map((row) => {
       const metadata = (row.metadata ?? {}) as Record<string, unknown>;
@@ -299,6 +349,7 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
     lastError: runner.lastError,
     oldestQueuedMinutes: runner.oldestQueuedMinutes,
     failedRecently: runner.failedLast24h,
+    evidenceMissing: queueEvidenceMissing,
   });
 
   const media = gradeMediaLoop({
