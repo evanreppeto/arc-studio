@@ -60,6 +60,7 @@ import type {
 } from "@/lib/arc-chat/persistence";
 import type { ArcRunContract } from "@/lib/arc-chat/run-contract";
 import { visibleRecallCount } from "@/lib/arc-chat/recall-visibility";
+import { isRunPhaseLabel } from "@/lib/arc-chat/run-phases";
 import { collapseTraceRows } from "@/lib/arc-chat/trace-rows";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import { resolveArcRunViewState } from "@/lib/arc-chat/run-view-state";
@@ -292,13 +293,17 @@ export function RunTrace({
     return row;
   }).filter((row) => sourceRows.length > 0 || row.status !== "queued");
   const hasError = liveRows.some((row) => row.status === "error");
-  const hasReportedWork = liveRows.length > 0 || responding || Boolean(reasoning?.trim());
+  const hasReportedWork = liveRows.some((row) => row.isTool || !isRunPhaseLabel(row.label)) || Boolean(reasoning?.trim());
   const elapsedLabel = formatWorkingTime(elapsedSeconds);
   // Name the phase Arc is actually in rather than a generic "Thinking". The
   // runner reports its own phases now, so the most recent running row is the
   // truthful answer to "what is it doing?" — and it reads as one calm line
   // changing as the work moves, which is the shape asked for.
   const currentActivity = [...liveRows].reverse().find((row) => row.status === "running")?.label;
+  // What the reader sees. The runner's own phases name the current activity in
+  // the header above; as rows they are just our plumbing, listed back at someone
+  // waiting on an answer. Arc's actions on their workspace keep their rows.
+  const visibleLiveRows = liveRows.filter((row) => row.isTool || !isRunPhaseLabel(row.label));
   const statusLabel = stopping
     ? "Stopping safely…"
     : hasError
@@ -340,16 +345,18 @@ export function RunTrace({
       <>
       <div className="arc-run-divider" />
       <div className="arc-live-worklog">
-        {/* Reasoning that arrived before Arc reported anything — the opening
-            thought, with no action attached to it yet. Once steps start landing
-            each one carries the thinking that led to it, inline below. */}
-        {reasoning?.trim() && liveRows.length === 0 ? (
+        {/* Arc thinking, as it forms. This is the most interesting thing on the
+            screen during a run and it belongs in front of the reader, not behind
+            a disclosure — a previous pass hid it whenever any step had landed,
+            which meant it was never visible at all once the run reported its own
+            phases. */}
+        {reasoning?.trim() ? (
           <motion.div initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }}>
             <LiveReasoning text={reasoning} streaming={!responding} />
           </motion.div>
         ) : null}
         <div className="arc-live-events" role="list" aria-label="Live activity">
-        {(collapseTraceRows(liveRows) as RunRow[]).map((row, index) => (
+        {(collapseTraceRows(visibleLiveRows) as RunRow[]).map((row, index) => (
           <motion.div
             className={`arc-live-event is-${row.status}`}
             key={row.id}
