@@ -60,6 +60,7 @@ import type {
 } from "@/lib/arc-chat/persistence";
 import type { ArcRunContract } from "@/lib/arc-chat/run-contract";
 import { visibleRecallCount } from "@/lib/arc-chat/recall-visibility";
+import { collapseTraceRows } from "@/lib/arc-chat/trace-rows";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import { resolveArcRunViewState } from "@/lib/arc-chat/run-view-state";
 import {
@@ -348,7 +349,7 @@ export function RunTrace({
           </motion.div>
         ) : null}
         <div className="arc-live-events" role="list" aria-label="Live activity">
-        {liveRows.map((row, index) => (
+        {(collapseTraceRows(liveRows) as RunRow[]).map((row, index) => (
           <motion.div
             className={`arc-live-event is-${row.status}`}
             key={row.id}
@@ -1051,8 +1052,14 @@ export function SourcesRow({ mentions, onMentionContextMenu }: { mentions: ArcMe
 
 /** Recalled Brain memory used for this reply — each chip links to its node in the
  *  Brain (via `?node=`), so a citation lands on the exact fact. */
-export function RecallRow({ recall, onRecallContextMenu }: { recall: ArcRecall[]; onRecallContextMenu?: (event: React.MouseEvent, item: ArcRecall) => void }) {
+export function RecallRow({ recall: rawRecall, onRecallContextMenu }: { recall: ArcRecall[]; onRecallContextMenu?: (event: React.MouseEvent, item: ArcRecall) => void }) {
   const [expanded, setExpanded] = useState(false);
+  // Recall arrives with repeats — the same fact matched by several queries comes
+  // back once per match, so the row rendered "Lead: csv 65%" three times and then
+  // offered to show four more of the same. One chip per distinct fact.
+  const recall = rawRecall.filter(
+    (item, index) => rawRecall.findIndex((other) => (other.nodeId ?? other.label) === (item.nodeId ?? item.label)) === index,
+  );
   if (recall.length === 0) return null;
   const visibleCount = visibleRecallCount(recall.length, expanded);
   const remaining = recall.length - visibleCount;
