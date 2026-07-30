@@ -293,6 +293,13 @@
 .arc-assistant-message {
   margin: 0 0 12px;
 }
+
+/* Space below the newest turn so the question can sit at the top of the view
+   while the answer grows downward into it, rather than the answer being dragged
+   along the bottom edge above the composer. Height is measured and set in
+   arc-view.tsx — it is the shortfall and nothing more, so it shrinks to zero as
+   the reply grows and never has to be removed. */
+.arc-turn-spacer { height: 0; flex: none; }
 .arc-assistant-message.is-active { margin-top: 2px; }
 .arc-assistant-content { min-width: 0; }
 
