@@ -167,6 +167,7 @@ export function RunTrace({
   outcome = "complete",
   demoRows = [],
   thoughtSeconds,
+  startedAtIso,
   answerText = "",
 }: {
   pending: boolean;
@@ -185,6 +186,9 @@ export function RunTrace({
   /** Measured wall-clock of the run, rendered as "Thought for Ns" on the
    *  collapsed summary (Claude-style). Omitted when unknown. */
   thoughtSeconds?: number;
+  /** When the run began, server-side. Without it the elapsed count restarts
+   *  whenever this component mounts. */
+  startedAtIso?: string;
   /** The reply this trace sits with. A step's narration is copied from the prose
    *  Arc wrote before acting and is never removed from the reply, so narration
    *  the answer already contains is suppressed here rather than shown twice. */
@@ -246,14 +250,19 @@ export function RunTrace({
     return () => window.clearInterval(interval);
   }, [demoRows.length, pending, reduceMotion, rows.length, sourceRows.length]);
 
+  // Count from when the run actually began, not from when this component
+  // mounted. Mount time meant a reload — or navigating away and back — reset the
+  // counter to 0s on a run that was already a minute in, and made the live
+  // number disagree with the runner-measured "Thought for Ns" at the end.
   useEffect(() => {
     if (!pending) return;
-    const startedAt = Date.now();
-    const interval = window.setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
-    }, 1000);
+    const startedAt = startedAtIso ? Date.parse(startedAtIso) : Date.now();
+    const from = Number.isFinite(startedAt) ? startedAt : Date.now();
+    const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - from) / 1000)));
+    tick(); // don't show 0s for a second on a run already in progress
+    const interval = window.setInterval(tick, 1000);
     return () => window.clearInterval(interval);
-  }, [pending]);
+  }, [pending, startedAtIso]);
 
   if (!pending) {
     if (!reasoning && sourceRows.length === 0 && !contract) return null;
