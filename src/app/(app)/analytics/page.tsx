@@ -6,6 +6,7 @@ import { getOpportunityConversion } from "@/lib/performance/opportunity-conversi
 import { getPerformanceReadModel } from "@/lib/performance/read-model";
 
 import { AnalyticsView, type ActivityDayVM } from "./_components/analytics-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 export const metadata = { title: "Analytics — Arc Studio" };
 
@@ -35,7 +36,13 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const ctx = await getCurrentWorkspaceContext();
   const range = normalizeWindow((await searchParams).range);
   const [overview, activity, performance, conversion] = await Promise.all([
-    getAnalyticsOverview(ctx.orgId, range).catch(() => null),
+    // PRIMARY: this IS the page. Failing to null renders as a flat, empty
+    // dashboard — indistinguishable from a workspace that genuinely has no
+    // activity, which is a false statement about their performance.
+    getAnalyticsOverview(ctx.orgId, range).catch((error) => {
+      reportDegraded(error, { scope: "analytics.getAnalyticsOverview", surface: "primary", detail: { range } });
+      return null;
+    }),
     getRecentActivity({}, undefined, ctx.orgId).catch(unavailable("analytics.activity", ctx.orgId)),
     getPerformanceReadModel(undefined, undefined, ctx.orgId).catch(unavailable("analytics.performance", ctx.orgId)),
     getOpportunityConversion(ctx.orgId).catch(unavailable("analytics.conversion", ctx.orgId)),

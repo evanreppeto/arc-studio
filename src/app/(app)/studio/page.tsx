@@ -9,6 +9,7 @@ import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabas
 
 import { MediaSpendMeterBar } from "./_components/media-spend-meter";
 import { StudioView, type Item } from "./_components/studio-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import "./studio.css";
 
 export const metadata = { title: "Studio — Arc Studio" };
@@ -28,6 +29,8 @@ function toStudioItem(v: MediaAssetView): Item {
 }
 
 export default async function StudioPage() {
+  // Correctly silent (BSR-546): (app)/layout.tsx is the auth boundary; a null
+  // context here renders a coherent empty state, not a false claim about data.
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   const brandName = ctx?.orgName?.trim() || "Your workspace";
 
@@ -35,7 +38,12 @@ export default async function StudioPage() {
   // workspace's actual backgrounds. Undefined/empty offline → the built-in samples.
   let libraryItems: Item[] | undefined;
   if (ctx?.orgId && isSupabaseAdminConfigured()) {
-    const data = await getMediaLibraryData(getSupabaseAdminClient(), ctx.orgId).catch(() => null);
+    // PRIMARY: same claim as /library — empty asserts the workspace owns no
+    // approved media, which is the input Studio exists to work from.
+    const data = await getMediaLibraryData(getSupabaseAdminClient(), ctx.orgId).catch((error) => {
+      reportDegraded(error, { scope: "studio.getMediaLibraryData", surface: "primary" });
+      return null;
+    });
     if (data && data.status === "live") {
       libraryItems = data.assets
         .filter((a) => (a.kind === "image" || a.kind === "video") && a.url && a.url !== "pending")
