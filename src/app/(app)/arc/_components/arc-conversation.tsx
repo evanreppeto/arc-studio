@@ -455,7 +455,7 @@ export function LiveConversation({
         const failed = message.status === "failed";
         return (
           <AssistantMessage key={message.id} timeIso={message.createdAt} active={pending} onContextMenu={pending ? undefined : (event) => openMenu(event, arcMenuItems(message, index))}>
-            <RunTrace pending={pending} responding={pending && Boolean(message.body.trim())} reasoning={message.reasoning} steps={message.steps} toolCalls={message.toolCalls} contract={contract} thoughtSeconds={thoughtSeconds} onStop={pending && message.agentTaskId ? () => onCancelRun(message.agentTaskId as string, message.conversationId) : undefined} stopping={stoppingTaskId === message.agentTaskId} outcome={message.status === "failed" ? (message.body.startsWith("Stopped by you") ? "canceled" : "failed") : "complete"} />
+            <RunTrace pending={pending} responding={pending && Boolean(message.body.trim())} reasoning={message.reasoning} steps={message.steps} toolCalls={message.toolCalls} contract={contract} thoughtSeconds={thoughtSeconds} answerText={message.body} onStop={pending && message.agentTaskId ? () => onCancelRun(message.agentTaskId as string, message.conversationId) : undefined} stopping={stoppingTaskId === message.agentTaskId} outcome={message.status === "failed" ? (message.body.startsWith("Stopped by you") ? "canceled" : "failed") : "complete"} />
             {/* One container across the whole lifecycle: `message.body` is the
                 partial reply while pending and the final reply once settled, so
                 completion patches this node instead of replacing it. */}

@@ -61,6 +61,7 @@ import type {
 import type { ArcRunContract } from "@/lib/arc-chat/run-contract";
 import { visibleRecallCount } from "@/lib/arc-chat/recall-visibility";
 import { isRunPhaseLabel } from "@/lib/arc-chat/run-phases";
+import { visibleStepNarration } from "@/lib/arc-chat/step-narration";
 import { collapseTraceRows } from "@/lib/arc-chat/trace-rows";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import { resolveArcRunViewState } from "@/lib/arc-chat/run-view-state";
@@ -166,6 +167,7 @@ export function RunTrace({
   outcome = "complete",
   demoRows = [],
   thoughtSeconds,
+  answerText = "",
 }: {
   pending: boolean;
   /** The answer has started arriving. The answer itself renders in the message's
@@ -183,6 +185,10 @@ export function RunTrace({
   /** Measured wall-clock of the run, rendered as "Thought for Ns" on the
    *  collapsed summary (Claude-style). Omitted when unknown. */
   thoughtSeconds?: number;
+  /** The reply this trace sits with. A step's narration is copied from the prose
+   *  Arc wrote before acting and is never removed from the reply, so narration
+   *  the answer already contains is suppressed here rather than shown twice. */
+  answerText?: string;
 }) {
   const reduceMotion = useReducedMotion();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -193,13 +199,21 @@ export function RunTrace({
   // distinct, individually meaningful action.
   const stepSummary = summarizeSteps(steps);
   const sourceRows: RunRow[] = [
-    ...stepSummary.groups.map((group, index) => ({
-      id: `step-${index}`,
-      label: group.count > 1 ? `${group.title} · ${group.count}` : group.title,
-      detail: group.count > 1 ? group.latestLabel : group.steps[0].detail?.join(" · "),
-      status: group.status,
-      kind: group.kind,
-    })),
+    ...stepSummary.groups.map((group, index) => {
+      // Prefer the narration — the prose Arc wrote before acting — over the
+      // group's latest label. Grouping used to discard it, so a repeated action
+      // ("Searching CRM · 3") replaced the reasoning with its own restated name.
+      // Hidden when the answer already says the same thing, so a sentence that
+      // survived into the reply isn't read twice.
+      const narration = group.steps.map((item) => item.detail?.join(" · ")).find((value) => value?.trim());
+      return {
+        id: `step-${index}`,
+        label: group.count > 1 ? `${group.title} · ${group.count}` : group.title,
+        detail: visibleStepNarration(narration, answerText) ?? (group.count > 1 ? group.latestLabel : undefined),
+        status: group.status,
+        kind: group.kind,
+      };
+    }),
     ...toolCalls.map((tool, index) => ({
       id: `tool-${index}`,
       label: tool.name,

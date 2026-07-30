@@ -124,6 +124,27 @@ describe("runArcTurn phase narration", () => {
     expect(contextOpen?.detail ?? null).toBeNull();
   });
 
+  // BSR-574. Arc's thinking is redacted and always arrives empty (BSR-573), so
+  // the narration source is the prose Arc writes before it acts — verified
+  // against a real run before this was built: a turn's blocks read
+  // "… text / tool_use / tool_use / text …".
+  it("carries the prose Arc wrote as the next step's narration", async () => {
+    sdkMessages.push(
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "x" } } },
+      { type: "assistant", message: { content: [{ type: "text", text: "The CRM is the only live source here, so I'll search it before answering." }] } },
+      { type: "result", subtype: "success", result: "It's empty." },
+    );
+
+    const steps: StepCall[] = [];
+    const { runArcTurn } = await import("./arc");
+    await runArcTurn(payload, makeClient(steps) as never);
+
+    const narrated = steps.filter((s) => typeof s.detail === "string" && s.detail.includes("search it before answering"));
+    expect(narrated.length).toBeGreaterThan(0);
+    // Consumed once — one sentence must not end up explaining several actions.
+    expect(narrated).toHaveLength(1);
+  });
+
   it("closes the reasoning phase when the turn streams no prose", async () => {
     sdkMessages.push({ type: "result", subtype: "success", result: "" });
 

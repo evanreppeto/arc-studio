@@ -190,6 +190,25 @@ async function runArcQuery(opts: {
    * but the actual reasoning that ran between the last action and this one.
    * Closing a step passes nothing — the stored narration is preserved.
    */
+  /**
+   * The prose Arc wrote just before it acted — the narration source.
+   *
+   * Confirmed against a real run before this was built: a turn's block sequence
+   * reads `… thinking / text / tool_use / tool_use / thinking / text / tool_use …`,
+   * so Arc genuinely writes an explanation and then acts on it. That text is
+   * what Codex shows; the private thinking it appeared to show is redacted and
+   * arrives empty (BSR-573).
+   *
+   * This is only ever *copied* to the step. It is never removed from the reply:
+   * pre-tool text is sometimes substantive answer content — `assembleReplyBody`
+   * exists precisely because a turn that answered, called a tool, then closed
+   * was losing its finding — so withholding by position would trade a silent
+   * empty trace for a silently truncated answer. The chat suppresses narration
+   * that also appears in the answer, which degrades the trace rather than the
+   * reply.
+   */
+  let pendingNarration: string | null = null;
+
   let narratedUpTo = 0;
   const step: StepFn = async (label, status, detail) => {
     // Both edges quote, because which edge holds the reasoning depends on the
@@ -204,7 +223,13 @@ async function runArcQuery(opts: {
     const thinking = thinkingStream.value();
     const segment = thinking.slice(narratedUpTo).trim();
     narratedUpTo = thinking.length;
-    return opts.step(label, status, detail ?? (segment || null));
+    // Prose first — it is the source that actually has content. Thinking stays
+    // as a fallback so this keeps working if these models stop redacting it.
+    const narration = detail ?? pendingNarration ?? (segment || null);
+    // Consumed by whichever step reports next, on either edge — holding it would
+    // let one sentence explain several unrelated actions.
+    pendingNarration = null;
+    return opts.step(label, status, narration);
   };
 
   const tools = toolsForMode(opts.mode, opts.client, step, sink, { ...(opts.toolContext ?? {}), skill: opts.skill });
@@ -313,7 +338,13 @@ async function runArcQuery(opts: {
       }
       if (shape.length) blockSequences.push(shape.join(">"));
       for (const block of message.message.content) {
-        if (block.type === "text") text += block.text;
+        if (block.type === "text") {
+          text += block.text;
+          const prose = block.text.trim();
+          // Held for the next tool call. Overwritten rather than accumulated:
+          // the sentence immediately before an action is the one explaining it.
+          if (prose) pendingNarration = prose;
+        }
         // Second, independent capture path. The delta stream was the only way
         // reasoning was ever collected, so a delta that carries no text — which
         // is exactly what a redacted-thinking phase sends — lost it completely
