@@ -120,6 +120,10 @@ function readEnvGroups(env: NodeJS.ProcessEnv): EnvGroup[] {
       flags: [
         { name: "ARC_SEND_ENABLED", set: isSet(env.ARC_SEND_ENABLED), purpose: "Master kill switch. Dark means no mail leaves, however well configured." },
         { name: "RESEND_WEBHOOK_SECRET", set: isSet(env.RESEND_WEBHOOK_SECRET), purpose: "Inbound delivery/open/click/reply events. Unset means sends look fire-and-forget." },
+        // Unset is not neutral: primary-surface failures are recorded in Sentry
+        // but nothing pages anyone, which is the state that let a broken
+        // campaigns board sit unnoticed (BSR-477).
+        { name: "ALERT_SLACK_WEBHOOK_URL", set: isSet(env.ALERT_SLACK_WEBHOOK_URL), purpose: "Posts primary-surface and Arc runner failures to Slack. Unset means failures are logged but nobody is paged." },
       ],
     },
     {
