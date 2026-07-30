@@ -8,7 +8,138 @@ Ordered by how much each unblocks.
 
 ---
 
-## 1. Stripe — unblocks all of M4 (BSR-497)
+
+## 1. Resend inbound events (BSR-473) — ✅ ALREADY DONE
+
+Verified from the Resend dashboard 2026-07-30: endpoint registered and
+**Enabled** (created 2d ago), events arriving, every one returning **200**.
+
+That 200 is the proof the secret is set: the route returns `503
+no_webhook_secret` when `RESEND_WEBHOOK_SECRET` is missing and `400
+invalid_signature` on a bad signature. Neither is happening.
+
+### About the `"recorded": false` in every response — this is CORRECT
+
+`recordResendWebhookEvent` looks up `campaign_dispatches` by
+`provider_message_id`. The events currently arriving were sent by the **Big
+Shoulders Manager app**, which shares the same Resend account — so there is no
+matching dispatch and the receiver declines to record them, returning 200 so
+svix stops retrying. It is correctly ignoring another app's traffic.
+
+Arc Studio sees those payloads in transit but stores nothing from them. If the
+cross-app noise ever matters, the fix is a separate Resend account or sending
+domain for Arc Studio — not a code change.
+
+### The one thing still unproven
+
+No Arc Studio email has been sent **since this endpoint was created**, so
+`recorded: true` has never actually happened. Send one campaign email from Arc
+Studio and confirm the response flips. Until then the return path is
+configured but not demonstrated.
+
+### Historical note
+
+**URL:** `https://arc-studio.ai/api/webhooks/resend`
+
+**Events handled:** `email.sent`, `email.delivered`, `email.opened`,
+`email.clicked`, `email.bounced`, `email.complained`, `email.delivery_delayed`
+
+---
+
+## 2. Failure alerting (BSR-477) — one webhook URL, no paid tier
+
+**Revised 2026-07-30: Sentry's Slack integration is a paid add-on, so the plan
+that routed everything through Sentry is off.**
+
+Better answer, and cheaper: skip Sentry for alerting entirely. The app already
+funnels every degraded read through one chokepoint — `reportDegraded`
+(`src/lib/observability/report-degraded.ts`, built in BSR-544) — and
+`postSlackWebhook` (`src/lib/integrations/slack/notify.ts`) already exists and
+is tested. Wiring one to the other needs a **free Slack Incoming Webhook** and
+no Sentry plan at all.
+
+Sentry stays as the error *record*; Slack becomes the *alert*. They are
+different jobs and Sentry was only ever the convenient middleman.
+
+### What's needed from you
+
+Create a **Slack Incoming Webhook** for an ops channel and set it on Vercel:
+
+```
+ALERT_SLACK_WEBHOOK_URL   https://hooks.slack.com/services/…
+```
+
+Free, and the only manual step.
+
+### What I build once it exists
+
+- `reportDegraded` with `surface: "primary"` posts to the webhook. **Primary
+  only** — alerting on every optional panel is how real alerts get ignored.
+- Arc runner failures post too. The runner is a separate Cloud Run service, so
+  it would have been outside Sentry's app integration regardless.
+- Rate-limited per scope, so one broken query can't flood the channel.
+
+Unset means no-op, exactly like the other integrations — nothing breaks if you
+never set it.
+
+### Do NOT reuse the `slack-alerts` connector
+
+That one is **per-workspace and operator-triggered** — a tenant's own webhook,
+posting opportunity summaries when someone clicks a button. Routing platform
+failures through it would send our ops noise into a customer's channel.
+
+---
+
+## 4. Supabase auth URLs — verify before acting
+
+Reported unset a couple of weeks ago; **confirm current state before changing
+anything.**
+
+Dashboard → Authentication → URL Configuration:
+
+- **Site URL:** `https://arc-studio.ai`
+- **Redirect URLs:** include `https://arc-studio.ai/**`
+
+If these are unset or still `localhost`, signup confirmation links point
+somewhere the user can't reach — a hard blocker for M4's self-serve path, and a
+dashboard setting rather than a code change.
+
+---
+
+## 5. Staging (BSR-475)
+
+The Supabase half (`zheuujpxsxmisnrlsriv`) is alive. The **Vercel app half was
+deleted**. Create the project and point it at that database; configuration
+afterwards is a code task.
+
+---
+
+## 6. Real recipients — M2's actual blocker
+
+M2 is at 0% and genuinely blocked, not merely unstarted: every CRM contact is a
+seeded `.local` fake, so send → engage → outcome has no fuel. This is a
+business decision about who can legitimately be contacted, which is why it
+isn't a ticket anyone can implement.
+
+---
+
+## Optional cleanup
+
+Once the 2026-07-29 migrations have settled, these exist only to make that day
+reversible and can be dropped:
+
+- `public.status_backup_20260729_leads` / `_jobs` / `_outcomes`
+- `supabase_migrations.schema_migrations_backup_20260729`
+- the now-unused `lead_status` / `job_status` / `outcome_status` enum types
+
+---
+
+## LAST. Stripe (BSR-497)
+
+Deliberately last, by Evan's call 2026-07-30. It unblocks all of M4, but M4 is
+not the near-term goal and everything behind it is already built and waiting —
+so it costs nothing to defer, and doing it early would start a billing
+relationship before the product is ready to charge for.
 
 Pricing is decided and the public pricing page is live. The products don't
 exist yet, so checkout has nothing to sell.
@@ -60,97 +191,3 @@ Entitlement sync is live. `ARC_BILLING_ENFORCEMENT` stays **off** until
 metering would bill people on numbers nobody has checked.
 
 ---
-
-## 2. Resend inbound events — M1's only Urgent item (BSR-473)
-
-Sending already works and is prod-verified. What's missing is the **return
-path**: opens, clicks, bounces and replies never reach the journey timeline, so
-every campaign looks like it vanished after send.
-
-### Add the webhook endpoint in the Resend dashboard
-
-**URL:** `https://arc-studio.ai/api/webhooks/resend`
-
-**Events handled:** `email.sent`, `email.delivered`, `email.opened`,
-`email.clicked`, `email.bounced`, `email.complained`, `email.delivery_delayed`
-
-### Set the signing secret on Vercel
-
-```
-RESEND_WEBHOOK_SECRET   whsec_…
-```
-
-The receiver was built in #586 and verifies the signature — without the secret
-it rejects everything, which is why nothing arrives today.
-
----
-
-## 3. Failure alerting (BSR-477) — this is TWO tasks, and one is entirely yours
-
-M1's "failures page a human" criterion is not met: Sentry issues and Arc runner
-failures both sit where nobody is looking.
-
-### 3a. Sentry → Slack — no code required, do this now
-
-Sentry ships a native Slack integration. **Settings → Integrations → Slack**,
-install it, then add an **Alert Rule** routing issues to your channel. Nothing
-in this repo is involved, and it covers every app-side exception including the
-`degraded` events added in BSR-544.
-
-This is the fastest win on the whole list. Ten minutes, no deploy.
-
-### 3b. Arc runner failures → Slack — needs a webhook URL from you
-
-The runner is a separate Cloud Run service, so Sentry's app integration doesn't
-cover it. Create an **Incoming Webhook** for the same channel and hand over the
-URL; `postSlackWebhook` (`src/lib/integrations/slack/notify.ts`) already exists
-and is tested, so this is wiring, not building.
-
-Note the distinction from the existing `slack-alerts` connector: that is
-**per-workspace and operator-triggered** (a button posts opportunity
-summaries). This is **platform-level and automatic** — a different concern that
-should not reuse a tenant's webhook.
-
----
-
-## 4. Supabase auth URLs — verify before acting
-
-Reported unset a couple of weeks ago; **confirm current state before changing
-anything.**
-
-Dashboard → Authentication → URL Configuration:
-
-- **Site URL:** `https://arc-studio.ai`
-- **Redirect URLs:** include `https://arc-studio.ai/**`
-
-If these are unset or still `localhost`, signup confirmation links point
-somewhere the user can't reach — a hard blocker for M4's self-serve path, and a
-dashboard setting rather than a code change.
-
----
-
-## 5. Staging (BSR-475)
-
-The Supabase half (`zheuujpxsxmisnrlsriv`) is alive. The **Vercel app half was
-deleted**. Create the project and point it at that database; configuration
-afterwards is a code task.
-
----
-
-## 6. Real recipients — M2's actual blocker
-
-M2 is at 0% and genuinely blocked, not merely unstarted: every CRM contact is a
-seeded `.local` fake, so send → engage → outcome has no fuel. This is a
-business decision about who can legitimately be contacted, which is why it
-isn't a ticket anyone can implement.
-
----
-
-## Optional cleanup
-
-Once the 2026-07-29 migrations have settled, these exist only to make that day
-reversible and can be dropped:
-
-- `public.status_backup_20260729_leads` / `_jobs` / `_outcomes`
-- `supabase_migrations.schema_migrations_backup_20260729`
-- the now-unused `lead_status` / `job_status` / `outcome_status` enum types
