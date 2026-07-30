@@ -1,5 +1,9 @@
 export type CumulativeStreamBuffer = {
   append(delta: string): Promise<void>;
+  /** Replace the whole snapshot, throttled like `append`. For a stream whose
+   *  content can be revised — a chunk reclassified as narration and pulled out
+   *  of the reply — not only extended. */
+  set(value: string): Promise<void>;
   flush(finalValue?: string): Promise<void>;
   value(): string;
 };
@@ -30,6 +34,14 @@ export function createCumulativeStreamBuffer(options: {
     async append(delta) {
       if (!delta) return;
       buffer += delta;
+      const at = now();
+      if (lastEmittedAt === null || at - lastEmittedAt >= options.throttleMs) {
+        await emit(at);
+      }
+    },
+    async set(value) {
+      if (value === buffer) return;
+      buffer = value;
       const at = now();
       if (lastEmittedAt === null || at - lastEmittedAt >= options.throttleMs) {
         await emit(at);
