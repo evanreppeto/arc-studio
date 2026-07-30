@@ -3,11 +3,13 @@ import Link from "next/link";
 import { humanizePersonaLabel as humanizePersona } from "@/domain";
 import { resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+import { getActivationState } from "@/lib/activation/read-model";
 import { getAnalyticsOverview, type OverviewKpi, type TrendKey } from "@/lib/analytics/overview";
 import { promptForOpportunity } from "@/lib/arc-chat/waiting-opps";
 import { type OpportunityEvidence } from "@/lib/opportunities/read-model";
 
 import { QuickActions } from "./_components/quick-actions";
+import { SetupChecklist } from "./_components/setup-checklist";
 import { Sparkline } from "../_components/sparkline";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
@@ -66,9 +68,13 @@ export default async function HomePage() {
   // One consistent snapshot for the whole screen: the hero line, the "waiting on
   // you" queue, the metrics, and the campaign rows all read from the same summary
   // so they can't disagree with each other.
-  const [summary, overview] = await Promise.all([
+  const [summary, overview, activation] = await Promise.all([
     getWorkspaceSummary(ctx.orgId),
     getAnalyticsOverview(ctx.orgId),
+    // First-run guidance. Hidden once the workspace has records and the owner
+    // has either finished or dismissed it, so an established workspace never
+    // sees this.
+    getActivationState(ctx.orgId, ctx.workspaceId ?? null),
   ]);
   const approvalCount = summary.approvals.length;
   const approvals = summary.approvals.slice(0, 3);
@@ -123,6 +129,8 @@ export default async function HomePage() {
           <span className="dot">·</span>
           {liveCampaigns} live
         </div>
+
+        <SetupChecklist checklist={activation.checklist} />
 
         {focal && (
           <div className="focal">

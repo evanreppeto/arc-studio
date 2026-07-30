@@ -42,6 +42,7 @@ describe("getActivationState", () => {
     const state = await getActivationState("org-1", "ws-1");
 
     expect(state.signals).toEqual({
+      hasRecords: false,
       brandCaptured: false,
       dismissed: false,
       hasMedia: false,
@@ -56,6 +57,9 @@ describe("getActivationState", () => {
     getAdmin.mockReturnValue(
       fakeDb({
         org_onboarding_state: { single: { brand_captured_at: "2026-06-22T00:00:00Z", dismissed_at: null } },
+        business_profiles: { single: null },
+        contacts: { count: 12 },
+        companies: { count: 0 },
         media_assets: { count: 3 },
         campaigns: { count: 0 },
         workspace_memberships: { count: 1 },
@@ -65,12 +69,14 @@ describe("getActivationState", () => {
     const state = await getActivationState("org-1", "ws-1");
 
     expect(state.signals).toEqual({
+      hasRecords: true,
       brandCaptured: true,
       dismissed: false,
       hasMedia: true,
       hasCampaign: false,
       hasTeammate: false,
     });
+    // Core is records, not brand.
     expect(state.checklist.coreDone).toBe(true);
   });
 
@@ -78,6 +84,9 @@ describe("getActivationState", () => {
     getAdmin.mockReturnValue(
       fakeDb({
         org_onboarding_state: { single: null },
+        business_profiles: { single: null },
+        contacts: { count: 0 },
+        companies: { count: 0 },
         media_assets: { count: 0 },
         campaigns: { count: 0 },
         workspace_memberships: { count: 2 },
@@ -102,5 +111,92 @@ describe("getActivationState", () => {
     const state = await getActivationState("org-1", "ws-1");
 
     expect(state.signals.hasMedia).toBe(false);
+});
+
+  // An owner may start from a company list rather than contacts; requiring both
+  // would leave the blocking step unfinished for someone who already did the
+  // useful thing.
+  it("counts companies alone as having records", async () => {
+    getAdmin.mockReturnValue(
+      fakeDb({
+        org_onboarding_state: { single: null },
+        business_profiles: { single: null },
+        contacts: { count: 0 },
+        companies: { count: 4 },
+        media_assets: { count: 0 },
+        campaigns: { count: 0 },
+        workspace_memberships: { count: 1 },
+      }) as never,
+    );
+
+    const state = await getActivationState("org-1", "ws-1");
+
+    expect(state.signals.hasRecords).toBe(true);
+    expect(state.checklist.coreDone).toBe(true);
+    expect(state.checklist.nextStep).toBe("brand");
+  });
+
+  // The bug this guards: `markBrandCaptured` has no callers, so
+  // `brand_captured_at` is never written. Deriving the signal from profile
+  // content is what lets the step ever complete.
+  it("counts brand as captured from profile content even with no onboarding flag", async () => {
+    getAdmin.mockReturnValue(
+      fakeDb({
+        org_onboarding_state: { single: null },
+        business_profiles: { single: { voice_guidance: "Plain, direct.", website_url: null, tagline: null } },
+        contacts: { count: 3 },
+        companies: { count: 0 },
+        media_assets: { count: 0 },
+        campaigns: { count: 0 },
+        workspace_memberships: { count: 1 },
+      }) as never,
+    );
+
+    const state = await getActivationState("org-1", "ws-1");
+
+    expect(state.signals.brandCaptured).toBe(true);
+  });
+
+  // Signup creates a profile row carrying only the name it asked for, so the row
+  // existing must NOT count as the owner having taught Arc their brand.
+  it("does not count a bare signup-created profile as brand captured", async () => {
+    getAdmin.mockReturnValue(
+      fakeDb({
+        org_onboarding_state: { single: null },
+        business_profiles: { single: { voice_guidance: null, website_url: null, tagline: null } },
+        contacts: { count: 0 },
+        companies: { count: 0 },
+        media_assets: { count: 0 },
+        campaigns: { count: 0 },
+        workspace_memberships: { count: 1 },
+      }) as never,
+    );
+
+    const state = await getActivationState("org-1", "ws-1");
+
+    expect(state.signals.brandCaptured).toBe(false);
+    expect(state.checklist.nextStep).toBe("records");
+  });
+
+  // A logo affects generated creative, not copy. Counting it ticked the step off
+  // for a workspace that had uploaded an image and nothing else, telling the
+  // owner they'd finished the setup that makes Arc sound like them — while Arc
+  // still wrote generic marketing. This is a real case: Evan's workspace.
+  it("does not count a logo alone as having taught Arc the brand", async () => {
+    getAdmin.mockReturnValue(
+      fakeDb({
+        org_onboarding_state: { single: null },
+        business_profiles: { single: { voice_guidance: null, website_url: null, tagline: null } },
+        contacts: { count: 0 },
+        companies: { count: 0 },
+        media_assets: { count: 0 },
+        campaigns: { count: 0 },
+        workspace_memberships: { count: 1 },
+      }) as never,
+    );
+
+    const state = await getActivationState("org-1", "ws-1");
+
+    expect(state.signals.brandCaptured).toBe(false);
   });
 });

@@ -75,7 +75,7 @@ import {
   saveArcMessageToBrainAction,
   setArcMessageFeedbackAction,
 } from "../actions";
-import { LiveReasoning, StreamingMarkdown } from "./arc-markdown";
+import { LiveReasoning, ReasoningMarkdown } from "./arc-markdown";
 import { buildDemoLiveWork, DEMO_STEPS, DEMO_TOOLS } from "./arc-demo-data";
 import type { RunKind, RunRow, WorkPanelTab } from "./arc-view.types";
 
@@ -154,7 +154,7 @@ export function RunContract({ contract, outcome = "complete" }: { contract: ArcR
 
 export function RunTrace({
   pending,
-  liveText,
+  responding = false,
   reasoning,
   steps = [],
   toolCalls = [],
@@ -166,7 +166,10 @@ export function RunTrace({
   thoughtSeconds,
 }: {
   pending: boolean;
-  liveText?: string | null;
+  /** The answer has started arriving. The answer itself renders in the message's
+   *  own container (never in here — see the note on the live block below); this
+   *  only shifts the status label from "Thinking" to "Responding". */
+  responding?: boolean;
   reasoning?: string | null;
   steps?: ArcStep[];
   toolCalls?: ArcToolCall[];
@@ -264,7 +267,7 @@ export function RunTrace({
           {reasoning ? (
             <div className="arc-reasoning-summary">
               <Brain size={15} />
-              <div><b>Thinking</b><p>{reasoning}</p></div>
+              <div><b>Thinking</b><ReasoningMarkdown text={reasoning} /></div>
             </div>
           ) : null}
           <div className="arc-run-rows">
@@ -288,40 +291,60 @@ export function RunTrace({
     return row;
   }).filter((row) => sourceRows.length > 0 || row.status !== "queued");
   const hasError = liveRows.some((row) => row.status === "error");
-  const hasReportedWork = liveRows.length > 0 || Boolean(liveText?.trim()) || Boolean(reasoning?.trim());
+  const hasReportedWork = liveRows.length > 0 || responding || Boolean(reasoning?.trim());
   const elapsedLabel = formatWorkingTime(elapsedSeconds);
+  // Name the phase Arc is actually in rather than a generic "Thinking". The
+  // runner reports its own phases now, so the most recent running row is the
+  // truthful answer to "what is it doing?" — and it reads as one calm line
+  // changing as the work moves, which is the shape asked for.
+  const currentActivity = [...liveRows].reverse().find((row) => row.status === "running")?.label;
+  const statusLabel = stopping
+    ? "Stopping safely…"
+    : hasError
+      ? `Needs attention after ${elapsedLabel}`
+      : currentActivity
+        ? `${currentActivity} · ${elapsedLabel}`
+        : responding
+          ? `Responding · ${elapsedLabel}`
+          : `Thinking · ${elapsedLabel}`;
 
+  // NOTE: the streamed answer is deliberately NOT rendered here. It used to be —
+  // as `.arc-live-commentary`, nested between the reasoning and the activity
+  // list — and then the completed message re-rendered it in a different
+  // container at a different type scale, so finishing a run read as a page swap
+  // rather than a reply settling. The answer now lives in the message's own
+  // container from the first token; this block only ever holds reasoning and
+  // activity, and collapses above the answer when the run completes.
   return (
     <motion.div
       className="arc-run-live"
       initial={reduceMotion ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       data-state={stopping ? "stopping" : hasError ? "error" : "running"}
+      // Before any real work lands there is nothing to frame, so the block drops
+      // its rule and padding and stays a single calm line.
+      data-empty={hasReportedWork ? undefined : "true"}
     >
       <div className="arc-run-live-head">
         <ThinkingIndicator label={stopping ? "Stopping" : hasError ? "Needs attention" : "Thinking"} />
-        <span><b aria-hidden="true" className={!stopping && !hasError ? "arc-shimmer" : undefined}>{stopping ? "Stopping safely…" : hasError ? `Needs attention after ${elapsedLabel}` : liveText?.trim() ? `Responding · ${elapsedLabel}` : `Thinking · ${elapsedLabel}`}</b><span className="sr-only" role="status" aria-live="polite">{stopping ? "Arc is stopping safely" : hasError ? "Arc needs attention" : "Arc is working"}</span></span>
+        <span><b aria-hidden="true" className={!stopping && !hasError ? "arc-shimmer" : undefined}>{statusLabel}</b><span className="sr-only" role="status" aria-live="polite">{stopping ? "Arc is stopping safely" : hasError ? "Arc needs attention" : currentActivity ? `Arc is ${currentActivity.toLowerCase()}` : "Arc is working"}</span></span>
         <button type="button" className="arc-stop" aria-label="Stop Arc" onClick={onStop} disabled={!onStop || stopping}><Square size={11} /> {stopping ? "Stopping…" : "Stop"}</button>
       </div>
+      {/* Nothing to report yet: the head already spins, shimmers, and counts.
+          There used to be a placeholder row here reading "Starting the run… /
+          Waiting for the first reported activity" — our own plumbing narrated to
+          someone waiting on an answer, dressed as an activity item, inside a
+          bordered box framing dead space. */}
+      {!hasReportedWork ? null : (
+      <>
       <div className="arc-run-divider" />
       <div className="arc-live-worklog">
         {reasoning?.trim() ? (
           <motion.div initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }}>
-            <LiveReasoning text={reasoning} streaming={!liveText?.trim()} />
-          </motion.div>
-        ) : null}
-        {liveText?.trim() ? (
-          <motion.div initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }}>
-            <StreamingMarkdown className="arc-live-commentary arc-markdown" text={liveText} streaming />
+            <LiveReasoning text={reasoning} streaming={!responding} />
           </motion.div>
         ) : null}
         <div className="arc-live-events" role="list" aria-label="Live activity">
-        {!hasReportedWork ? (
-          <div className="arc-live-event is-running" role="listitem" aria-current="step">
-            <span className="arc-live-event-icon"><LoaderCircle size={15} /></span>
-            <span className="arc-live-event-copy"><b>Starting the run…</b><small>Waiting for the first reported activity</small></span>
-          </div>
-        ) : null}
         {liveRows.map((row, index) => (
           <motion.div
             className={`arc-live-event is-${row.status}`}
@@ -348,6 +371,8 @@ export function RunTrace({
         ))}
         </div>
       </div>
+      </>
+      )}
     </motion.div>
   );
 }
@@ -700,7 +725,7 @@ export function ArcWorkPanel({
                 <>
                   {activityRows.length > 0 || reasoning ? <div className="arc-work-run-status" data-state={runView.state}><span><i />{runView.label}</span>{runView.progressLabel ? <em>{runView.progressLabel}</em> : null}</div> : null}
                   <div className="arc-work-heading"><span>{reasoning ? "Run context" : "Run"}</span><h3>{runView.heading}</h3></div>
-                  {reasoning ? <p className="arc-work-reasoning">{reasoning}</p> : activityRows.length === 0 ? <div className="arc-work-empty">Activity and decisions will appear here as Arc works.</div> : null}
+                  {reasoning ? <div className="arc-work-reasoning"><ReasoningMarkdown text={reasoning} /></div> : activityRows.length === 0 ? <div className="arc-work-empty">Activity and decisions will appear here as Arc works.</div> : null}
                   <section className="arc-artifact-section">
                     <h4>Activity</h4>
                     {activityRows.length > 0 ? (

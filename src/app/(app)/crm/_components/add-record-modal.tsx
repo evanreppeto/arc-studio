@@ -43,7 +43,7 @@ type FieldConfig = {
 const FORM: Record<CrmObjectKey, FieldConfig> = {
   companies: {
     nameLabel: "Company name",
-    namePlaceholder: "Acme Restoration Co.",
+    namePlaceholder: "Acme Inc.",
     detail: { label: "Website", placeholder: "https://example.com", type: "url" },
     status: { label: "Status", options: ["active", "inactive"] },
   },

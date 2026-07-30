@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyConfidenceFloor,
   confidenceFloorForKind,
+  DEFAULT_WEATHER_CATEGORIES,
   parseWeatherCategories,
   WEATHER_CATEGORIES,
   weatherCategoryOf,
@@ -396,7 +397,10 @@ describe("weatherCategoryOf", () => {
   it("classifies each category from real NWS product names", () => {
     expect(weatherCategoryOf("Severe Thunderstorm Warning")).toBe("property_damage");
     expect(weatherCategoryOf("Hard Freeze Warning")).toBe("property_damage");
-    expect(weatherCategoryOf("Red Flag Warning")).toBe("property_damage");
+    // BSR-551: fire weather is its own category now. This line used to assert
+    // property_damage, which is exactly the bug — it gave a fire FORECAST the
+    // damage-response claim ("affected property owners") before anything burned.
+    expect(weatherCategoryOf("Red Flag Warning")).toBe("fire_weather");
     expect(weatherCategoryOf("Excessive Heat Warning")).toBe("extreme_heat");
     expect(weatherCategoryOf("Heat Advisory")).toBe("extreme_heat");
     expect(weatherCategoryOf("Air Quality Alert")).toBe("air_quality");
@@ -422,9 +426,11 @@ describe("weatherCategoryOf", () => {
 });
 
 describe("parseWeatherCategories", () => {
-  it("falls back to property damage when unset, empty, or unparseable", () => {
+  it("falls back to the default categories when unset, empty, or unparseable", () => {
+    // fire_weather joined the defaults in BSR-551 so that splitting it out of
+    // property_damage did not silently remove coverage workspaces already had.
     for (const raw of [undefined, null, [], "storms", [""], ["nonsense"], 42]) {
-      expect(parseWeatherCategories(raw)).toEqual(["property_damage"]);
+      expect(parseWeatherCategories(raw)).toEqual(["property_damage", "fire_weather"]);
     }
   });
 
@@ -492,5 +498,49 @@ describe("detectWeatherEventOpportunities — per-workspace categories", () => {
         expect(`${o.summary} ${o.recommendedAction}`).not.toMatch(/HVAC|roofer|plumber|BSR|Big Shoulders/i);
       }
     }
+  });
+});
+
+/**
+ * BSR-551. `Red Flag Warning` was always surfaced — the property-damage regex
+ * matches `red flag` explicitly — but it landed in `property_damage`, whose copy
+ * claims "damage-response demand" among "affected property owners". A Red Flag
+ * Warning forecasts fire RISK: nothing has burned and there are no affected
+ * owners yet. Same class as the Air Quality bug: a real NWS alert wearing a
+ * false claim.
+ */
+describe("fire weather is its own category (BSR-551)", () => {
+  it("routes Red Flag Warning to fire_weather, not property_damage", () => {
+    // The product name contains no "fire" at all — this is why the classifier
+    // keys on the product, not the word.
+    expect(weatherCategoryOf("Red Flag Warning")).toBe("fire_weather");
+  });
+
+  it("routes Fire Weather Watch to fire_weather", () => {
+    expect(weatherCategoryOf("Fire Weather Watch")).toBe("fire_weather");
+  });
+
+  it("still classifies real damage weather as property_damage", () => {
+    expect(weatherCategoryOf("Tornado Warning")).toBe("property_damage");
+    expect(weatherCategoryOf("Ice Storm Warning")).toBe("property_damage");
+  });
+
+  it("does not let fire steal the more specific categories", () => {
+    // Ordering guard: heat/air/marine are tested before fire.
+    expect(weatherCategoryOf("Excessive Heat Warning")).toBe("extreme_heat");
+    expect(weatherCategoryOf("Air Quality Alert")).toBe("air_quality");
+    expect(weatherCategoryOf("Coastal Flood Warning")).toBe("marine_coastal");
+  });
+
+  it("ships ON by default so existing coverage is not silently removed", () => {
+    // Fire alerts already reached every workspace via property_damage. Shipping
+    // the new category off-by-default would look like an improvement while
+    // quietly taking coverage away.
+    expect(DEFAULT_WEATHER_CATEGORIES).toContain("fire_weather");
+    expect(DEFAULT_WEATHER_CATEGORIES).toContain("property_damage");
+  });
+
+  it("is opt-out-able like any other category", () => {
+    expect(parseWeatherCategories(["property_damage"])).toEqual(["property_damage"]);
   });
 });

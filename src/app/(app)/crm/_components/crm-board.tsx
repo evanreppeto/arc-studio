@@ -826,7 +826,25 @@ export function CrmBoard({
           <tbody>
             {visible.length === 0 ? (
               <tr className="emptyrow">
-                <td colSpan={cols.length}>{totalRows === 0 ? `No ${active.noun} yet.` : "No matches for this filter."}</td>
+                <td colSpan={cols.length}>
+                  {totalRows === 0 ? (
+                    // A brand-new workspace has no records at all, and every
+                    // other screen stays empty until it does — so say where they
+                    // come from and offer the action, rather than only stating
+                    // the absence.
+                    <>
+                      <strong>No {active.noun} yet.</strong> Arc works from these — it scans them for opportunities
+                      worth acting on.
+                      <div style={{ marginTop: 8 }}>
+                        <button type="button" className="gbtn gold" onClick={() => setAddOpen(true)}>
+                          Add {active.noun.replace(/s$/, "")}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    "No matches for this filter."
+                  )}
+                </td>
               </tr>
             ) : (
               visible.map((r) => (

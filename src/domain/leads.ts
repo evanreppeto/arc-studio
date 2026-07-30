@@ -16,8 +16,21 @@ export const LEAD_STATUSES = [
   "lost",
   "archived",
 ] as const;
-export const LeadStatusSchema = z.enum(LEAD_STATUSES);
-export type LeadStatus = z.infer<typeof LeadStatusSchema>;
+/**
+ * Row-level status validation is a NON-EMPTY STRING, not an enum.
+ *
+ * `LeadSchema.parse(row)` runs on every lead read from the database. Once a
+ * tenant can define its own pipeline stages (BSR-495), a lead sitting in
+ * "conflicts_check" would throw here and take down their entire lead list — a
+ * per-org vocabulary is useless if reading it crashes.
+ *
+ * WHICH values are allowed is an app-layer question, answered against the org's
+ * `pipeline_stages` (see isWonStatus / findStage in domain/pipeline-stages.ts),
+ * exactly as persona validation is answered against the org's own taxonomy.
+ * `LEAD_STATUSES` survives as the default/offline set.
+ */
+export const LeadStatusSchema = z.string().trim().min(1);
+export type LeadStatus = string;
 
 export const ROUTING_RECOMMENDATIONS = ["target", "elevated", "downgraded", "isolated", "archived"] as const;
 export const RoutingRecommendationSchema = z.enum(ROUTING_RECOMMENDATIONS);
@@ -28,7 +41,10 @@ export const LeadRowSchema = z.object({
   company_id: z.string().uuid().nullable(),
   contact_id: z.string().uuid().nullable(),
   property_id: z.string().uuid().nullable(),
-  persona: z.enum(PERSONA_VALUES),
+  // Non-empty string, not z.enum(PERSONA_VALUES): personas have been per-org
+  // since migration 20260713120000, so enumerating BSR's twelve here meant a
+  // tenant's OWN persona threw on read. Same reasoning as status above.
+  persona: z.string().trim().min(1),
   status: LeadStatusSchema,
   routing_recommendation: RoutingRecommendationSchema,
   source: z.string().min(1),
