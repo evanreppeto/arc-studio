@@ -42,7 +42,7 @@ vi.mock("./media-config", () => ({
   mediaConfigAllowedForMode: () => false,
 }));
 
-type StepCall = { label: string; status: "running" | "done" };
+type StepCall = { label: string; status: "running" | "done"; detail?: string | null };
 
 function makeClient(steps: StepCall[]) {
   return {
@@ -50,8 +50,8 @@ function makeClient(steps: StepCall[]) {
     apiPost: async () => ({}),
     apiPut: async () => ({}),
     postChatReply: async () => {},
-    postStep: async (_taskId: string, label: string, status: "running" | "done") => {
-      steps.push({ label, status });
+    postStep: async (_taskId: string, label: string, status: "running" | "done", detail?: string | null) => {
+      steps.push({ label, status, detail });
     },
     postChatChunk: async () => {},
     postChatThinking: async () => {},
@@ -98,6 +98,30 @@ describe("runArcTurn phase narration", () => {
       expect(forLabel.at(0)?.status, `${label} should start as running`).toBe("running");
       expect(forLabel.at(-1)?.status, `${label} should end as done`).toBe("done");
     }
+  });
+
+  // The gap this closes: every phase opened before the model had thought
+  // anything, so quoting only on the opening edge left them all as bare labels —
+  // the narration feature was invisible on a turn that used no tools.
+  it("reports the reasoning a phase produced, not just its label", async () => {
+    sdkMessages.push(
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "The CRM looks empty, so I should say that plainly rather than guess." } } },
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "It's empty." } } },
+      { type: "assistant", message: { content: [{ type: "text", text: "It's empty." }] } },
+      { type: "result", subtype: "success", result: "It's empty." },
+    );
+
+    const steps: StepCall[] = [];
+    const { runArcTurn } = await import("./arc");
+    await runArcTurn(payload, makeClient(steps) as never);
+
+    const reasoningClose = steps.find((s) => s.label === "Working out an answer" && s.status === "done");
+    expect(reasoningClose?.detail).toContain("say that plainly");
+
+    // The phases that run before the model does still carry nothing — there is
+    // genuinely no reasoning behind them, and inventing some would be worse.
+    const contextOpen = steps.find((s) => s.label === "Reading your workspace" && s.status === "running");
+    expect(contextOpen?.detail ?? null).toBeNull();
   });
 
   it("closes the reasoning phase when the turn streams no prose", async () => {
