@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 
 import { isSentryEnabled } from "./sentry-options";
+import { alertOpsFailure } from "./ops-alert";
 
 // Report a failure the app deliberately absorbed (BSR-542 / BSR-543).
 //
@@ -57,6 +58,24 @@ export function reportDegraded(error: unknown, context: DegradedContext): void {
       `[degraded] ${context.scope}: ${err.message}`,
       context.detail ? JSON.stringify(context.detail) : "",
     );
+
+    // Page a human, but only for PRIMARY surfaces (BSR-477).
+    //
+    // A secondary panel degrading is a thing to fix on a weekday; the primary
+    // content of a screen degrading is the 2am case this whole mechanism was
+    // built for. Alerting on both would put the loud one in a channel people
+    // have learned to scroll past — which is worse than not alerting at all.
+    //
+    // Deliberately not awaited: this runs on a request path the caller is
+    // already trying to keep alive, and alertOpsFailure never rejects.
+    if (context.surface === "primary") {
+      void alertOpsFailure({
+        scope: context.scope,
+        message: err.message,
+        detail: context.detail,
+        source: "app",
+      });
+    }
   } catch {
     // Intentionally silent: reporting is best-effort by construction.
   }
