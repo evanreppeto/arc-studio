@@ -96,6 +96,33 @@ export function assembleReplyBody(assistantChunks: string[], resultText: string)
   return [...distinctEarlier, finalText].join("\n\n");
 }
 
+/**
+ * Is this a lead-in — "I'll check the CRM first" — rather than a finding?
+ *
+ * Withholding every pre-tool chunk from the reply was too blunt. Arc reports as
+ * it goes, so a turn that checked three things wrote its findings in the chunks
+ * *between* tool calls: withholding them left a 143-character reply reading
+ * "All three reads are done — nothing changed. Summary above" while the summary
+ * itself sat in the trace. That is the failure `assembleReplyBody` exists to
+ * prevent, arrived at from the other direction.
+ *
+ * A lead-in is short and unstructured: one breath before acting. Anything with
+ * length, line breaks, bullets, or headings is doing real work and stays in the
+ * reply — where, being present, the chat's own suppression keeps it from also
+ * being read in the trace.
+ *
+ * Wrong in the safe direction by construction: misjudging a lead-in as a finding
+ * shows one extra line in the answer; the reverse deletes findings.
+ */
+const LEAD_IN_MAX_CHARS = 200;
+
+export function isLeadIn(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > LEAD_IN_MAX_CHARS) return false;
+  // Structure means it is presenting something, not announcing something.
+  return !/\n|^[-*#>|]|\d\./m.test(trimmed);
+}
+
 /** Fresh per-turn collectors plus the sink that feeds them. */
 function makeSink() {
   const actions: ArcActionCard[] = [];
@@ -400,10 +427,11 @@ async function runArcQuery(opts: {
         assistantChunks.push(text);
         lastTextChunk = assistantChunks.length - 1;
       }
-      // A tool call in this message means the text before it was commentary on
-      // work about to happen, not the reply.
+      // A tool call means the text before it introduced work about to happen —
+      // but only a lead-in is safe to withhold. Arc also reports findings
+      // mid-run, between tool calls, and those belong in the reply.
       if (sawTool && lastTextChunk !== null) {
-        narrationChunks.add(lastTextChunk);
+        if (isLeadIn(assistantChunks[lastTextChunk] ?? "")) narrationChunks.add(lastTextChunk);
         lastTextChunk = null;
       }
     } else if (message.type === "result" && message.subtype === "success") {
