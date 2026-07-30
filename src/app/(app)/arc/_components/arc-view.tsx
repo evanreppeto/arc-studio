@@ -83,6 +83,11 @@ import {
   type ArcSkillDefinition,
 } from "@/lib/arc-skills/catalog";
 import type { WorkspaceArcSkill } from "@/lib/arc-skills/custom";
+import {
+  readWorkPanelPreference,
+  workPanelOpenOnConversationChange,
+  writeWorkPanelPreference,
+} from "@/lib/arc-chat/work-panel-preference";
 import type { ConnectionView } from "@/lib/connections/read-model";
 import type { ConnectorView } from "@/lib/connectors/read-model";
 import type {
@@ -1031,9 +1036,18 @@ export function ArcView({
   const [generatedSkills, setGeneratedSkills] = useState(initialGeneratedSkills);
   const [installingSkillKey, setInstallingSkillKey] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  // Starts closed and is corrected after mount rather than read during render:
+  // sessionStorage does not exist on the server, so seeding state from it would
+  // hydrate a different tree than was sent (BSR-567).
   const [workPanelOpen, setWorkPanelOpen] = useState(false);
   /** The message we last auto-opened for, so closing the panel stays closed. */
   const autoOpenedForRef = useRef<string | null>(null);
+  // The operator's own choice, restored once per mount. Only an explicit toggle
+  // writes it — see work-panel-preference.ts for why the asset auto-open does not.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restored after hydration so server and client markup stay identical
+    if (readWorkPanelPreference() === true) setWorkPanelOpen(true);
+  }, []);
   // The assets open in the review workspace (null = closed), plus a per-asset
   // decision map so approvals persist while the panel is open and reflect back on
   // the inline package summary.
@@ -1589,7 +1603,10 @@ export function ArcView({
     setSelectedDemoId(id);
     setHistoryOpen(false);
     setReviewCards(null);
-    setWorkPanelOpen(false);
+    // Not a hard close: an operator who opened the workspace and then switched
+    // threads asked for it open, and resetting it is the same override one step
+    // removed. Closed when they have expressed no preference.
+    setWorkPanelOpen(workPanelOpenOnConversationChange());
     setContextInfoOpen(false);
     setDemoTurns([]);
     setDemoPending(false);
@@ -1604,7 +1621,7 @@ export function ArcView({
     setStartingNewConversation(true);
     setHistoryOpen(false);
     setReviewCards(null);
-    setWorkPanelOpen(false);
+    setWorkPanelOpen(workPanelOpenOnConversationChange());
     setShareOpen(false);
     setComposerMenu(null);
     setContextInfoOpen(false);
@@ -1625,8 +1642,15 @@ export function ArcView({
     setReviewCards(cards.filter((card) => card.approval));
   };
 
+  /**
+   * The ONLY operator-facing toggle — the Workspace button, the panel's own
+   * close, and the scrim all land here, so it is also the only thing that
+   * records a preference. The asset auto-open calls setWorkPanelOpen directly
+   * and stays unrecorded on purpose.
+   */
   const setWorkPanelVisibility = (open: boolean) => {
     setWorkPanelOpen(open);
+    writeWorkPanelPreference(open);
     if (!open) setReviewCards(null);
   };
 
