@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addStage,
+  archiveStage,
   DEFAULT_PIPELINE_STAGES,
   derivePipelineStageKey,
   findStage,
@@ -8,7 +10,11 @@ import {
   isQualifiedStatus,
   isTerminalStatus,
   isWonStatus,
+  moveStage,
   orderedStages,
+  statusAccent,
+  statusTone,
+  updateStage,
   validateStageSet,
   type PipelineStage,
 } from "../pipeline-stages";
@@ -132,5 +138,156 @@ describe("orderedStages / derivePipelineStageKey", () => {
     expect(derivePipelineStageKey("Conflicts check")).toBe("conflicts_check");
     expect(derivePipelineStageKey("2nd review")).toBe("s_2nd_review");
     expect(derivePipelineStageKey("###")).toBe("");
+  });
+});
+
+describe("display tone", () => {
+  // NOTE the two different inputs. The heuristic reads the HUMAN LABEL, because
+  // that is what the CRM row carries ("In Progress", not "in_progress") — its
+  // patterns are spaced words and would miss every underscored key. The stage
+  // lookup reads the KEY. Passing one where the other belongs silently drops a
+  // status to the neutral tone, so the call sites pass both explicitly.
+  const label = (key: string) => key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  it("keeps every default stage on the colour it has today", () => {
+    // The acceptance criterion is that a workspace which never touches its
+    // stages sees no change at all, so these are pinned to the pre-existing
+    // mappings rather than to what the flags alone would suggest.
+    const tone = (key: string, set = leads) => statusTone(label(key), findStage(set, key));
+    expect(tone("new")).toBe("new");
+    expect(tone("needs_review")).toBe("review");
+    expect(tone("qualified")).toBe("qualified");
+    expect(tone("converted")).toBe("won");
+    expect(tone("lost")).toBe("lost");
+    expect(tone("archived")).toBe("inactive");
+
+    const jobs = DEFAULT_PIPELINE_STAGES.jobs;
+    expect(tone("scheduled", jobs)).toBe("sched");
+    expect(tone("in_progress", jobs)).toBe("active");
+    expect(tone("completed", jobs)).toBe("won");
+  });
+
+  it("follows the meaning, not the name, once a tenant renames a stage", () => {
+    // "Retained" matches none of the won regexes. The flag is what saves it.
+    const renamed = leads.map((s) => (s.key === "converted" ? { ...s, label: "Retained" } : s));
+    expect(statusTone("Retained", findStage(renamed, "converted"))).toBe("won");
+    expect(statusAccent("Retained", findStage(renamed, "converted"))).toBe("green");
+  });
+
+  it("does not paint a closing-but-neutral stage as a loss", () => {
+    const held: PipelineStage = {
+      key: "on_hold", label: "On hold", sortOrder: 9,
+      isTerminal: true, isWon: false, isLost: false, isQualified: false, active: true,
+    };
+    expect(statusTone("on_hold", held)).toBe("inactive");
+  });
+
+  it("carries non-pipeline statuses on the heuristic alone", () => {
+    // Companies and contacts have no stages; passing null must still work.
+    expect(statusTone("Do Not Contact")).toBe("dnc");
+    // statusAccent matches on the raw key, which is what the read-model has here.
+    expect(statusAccent("active")).toBe("green");
+    expect(statusAccent("do_not_contact")).toBe("red");
+  });
+
+  it("reads the label for tone and the key for meaning", () => {
+    // The trap: the heuristic's patterns are spaced words, so handing it a raw
+    // key drops "in_progress" to neutral. Pinned so a future call site that
+    // passes the wrong one fails here instead of quietly greying out a board.
+    expect(statusTone("in_progress")).toBe("inactive");
+    expect(statusTone("In Progress")).toBe("active");
+  });
+
+  it("keeps Scheduled blue even though it is a qualified stage", () => {
+    // isQualified deliberately does not force green, or this repaints on ship.
+    const jobs = DEFAULT_PIPELINE_STAGES.jobs;
+    expect(findStage(jobs, "scheduled")?.isQualified).toBe(true);
+    expect(statusAccent("scheduled", findStage(jobs, "scheduled"))).toBe("blue");
+  });
+});
+
+describe("authoring transforms", () => {
+  it("adds a stage with a derived key", () => {
+    const result = addStage(leads, { label: "Conflicts check" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.stages.find((s) => s.key === "conflicts_check")?.label).toBe("Conflicts check");
+  });
+
+  it("refuses a duplicate name", () => {
+    const result = addStage(leads, { label: "Qualified" });
+    expect(result).toEqual({ ok: false, error: '"Qualified" already uses that name.' });
+  });
+
+  it("revives an archived stage rather than inserting a second row", () => {
+    // The archived key is still stored on every record that sat in it, so
+    // reviving re-maps those records instead of stranding them behind a new row.
+    const withArchived = leads.map((s) => (s.key === "validated" ? { ...s, active: false } : s));
+    const result = addStage(withArchived, { label: "Validated" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.stages.filter((s) => s.key === "validated")).toHaveLength(1);
+    expect(findStage(result.stages, "validated")?.active).toBe(true);
+  });
+
+  it("renames without touching the stored key", () => {
+    const result = updateStage(leads, "qualified", { label: "Engaged" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const stage = findStage(result.stages, "qualified");
+    expect(stage?.label).toBe("Engaged");
+    // Records store the key, so they follow the rename for free.
+    expect(isQualifiedStatus(result.stages, "qualified")).toBe(true);
+  });
+
+  it("refuses to archive the last won stage", () => {
+    // The failure this whole feature has to prevent: revenue quietly reads zero.
+    const outcomes = DEFAULT_PIPELINE_STAGES.outcomes;
+    const noPaid = archiveStage(outcomes, "paid");
+    expect(noPaid.ok).toBe(true);
+    if (!noPaid.ok) return;
+    const result = archiveStage(noPaid.stages, "won");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/won/i);
+  });
+
+  it("refuses to archive the last closing stage", () => {
+    const minimal: PipelineStage[] = [
+      { key: "open", label: "Open", sortOrder: 0, isTerminal: false, isWon: false, isLost: false, isQualified: false, active: true },
+      { key: "done", label: "Done", sortOrder: 1, isTerminal: true, isWon: true, isLost: false, isQualified: true, active: true },
+    ];
+    expect(archiveStage(minimal, "done").ok).toBe(false);
+  });
+
+  it("refuses an outcome stage that is not terminal", () => {
+    const result = updateStage(leads, "qualified", { isWon: true });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/terminal/i);
+  });
+
+  it("reorders and renumbers densely", () => {
+    const result = moveStage(leads, "needs_review", "up");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(orderedStages(result.stages).map((s) => s.key).slice(0, 3)).toEqual([
+      "new", "needs_review", "validated",
+    ]);
+    expect(orderedStages(result.stages).map((s) => s.sortOrder)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it("is a no-op at the ends rather than an error", () => {
+    const result = moveStage(leads, "new", "up");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(orderedStages(result.stages)[0].key).toBe("new");
+  });
+
+  it("closes the gap left by an archived stage so reorder stays adjacent", () => {
+    const archived = archiveStage(leads, "validated");
+    expect(archived.ok).toBe(true);
+    if (!archived.ok) return;
+    expect(orderedStages(archived.stages).map((s) => s.sortOrder)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 });

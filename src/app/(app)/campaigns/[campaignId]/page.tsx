@@ -43,7 +43,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     );
   }
 
-  const performance = await getCampaignPerformancePanel(decodeURIComponent(campaignId));
+  const performance = await getCampaignPerformancePanel(decodeURIComponent(campaignId), orgId ?? undefined);
   // Read-only preview of who this campaign would email — no dispatch rows, no send.
   const audience =
     orgId && isSupabaseAdminConfigured()

@@ -6,7 +6,7 @@ import {
   type PipelineStage,
 } from "@/domain";
 
-import { getSupabaseAdminClient } from "@/lib/supabase/server";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 // Untyped SupabaseClient: `pipeline_stages` isn't in the generated
 // database.types yet (that regenerates against a DB with the migration
@@ -46,6 +46,13 @@ export async function getPipelineStages(
 ): Promise<PipelineStage[]> {
   const fallback = [...DEFAULT_PIPELINE_STAGES[objectKey]];
   if (!orgId) return fallback;
+
+  // No database configured is not a failure to read — it is the backend-less
+  // preview, where every other read falls back too. Without this guard
+  // `getSupabaseAdminClient()` THROWS, and because this is called while building
+  // the CRM bundle it took the whole page down rather than degrading. Callers
+  // are entitled to the fallback this function documents, not an exception.
+  if (!opts.client && !isSupabaseAdminConfigured()) return fallback;
 
   const client = opts.client ?? getSupabaseAdminClient();
   const { data, error } = await client

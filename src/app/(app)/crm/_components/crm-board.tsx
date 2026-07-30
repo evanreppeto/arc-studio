@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel } from "@/domain";
+import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, statusTone } from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
 import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord } from "../actions";
@@ -300,17 +300,6 @@ function personaDotOf(persona: string): string {
   if (/past|repeat|existing|customer|reactivat/.test(p)) return "#b58fd0";
   return "#c8a24a";
 }
-function statusToneOf(status: string): string {
-  const t = (status || "").toLowerCase();
-  if (/lost|dead|cancel|churn/.test(t)) return "lost";
-  if (/won|complete|closed.?won|paid/.test(t)) return "won";
-  if (/qualified/.test(t)) return "qualified";
-  if (/schedul|booked|dispatch/.test(t)) return "sched";
-  if (/review|pending|needs|hold/.test(t)) return "review";
-  if (/new|open|fresh|inbound|prospect/.test(t)) return "new";
-  if (/active|live|engaged|in progress/.test(t)) return "active";
-  return "inactive";
-}
 function titleCase(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -319,16 +308,26 @@ function titleCase(value: string): string {
  *  drops out of the default list and the counts, and is reachable only by asking
  *  for it explicitly via Status → Archived. Matches the `archived` status titleCased. */
 const ARCHIVED_LABEL = "Archived";
-function buildOptimisticRow(objectKey: CrmObjectKey, id: string, v: AddRecordValue): CrmRowVM {
+function buildOptimisticRow(
+  objectKey: CrmObjectKey,
+  id: string,
+  v: AddRecordValue,
+  stages: { key: string; label: string }[] = [],
+): CrmRowVM {
   const detail = objectKey === "properties" ? [v.city, v.state].filter(Boolean).join(", ") : v.detail || "";
+  // Label the row with the tenant's own word, the same one the server will send
+  // back on refresh — otherwise a just-added record briefly reads "Conflicts
+  // Check" (titleCased key) and then changes to "Conflicts check" under the eye.
+  const stageLabel = stages.find((s) => s.key === v.status)?.label;
+  const label = stageLabel ?? (v.status ? titleCase(v.status) : "");
   return {
     id,
     name: v.name,
     detail,
     initials: initialsOf(v.name),
     isCompany: objectKey === "companies",
-    statusLabel: v.status ? titleCase(v.status) : "—",
-    statusTone: statusToneOf(v.status || ""),
+    statusLabel: label || "—",
+    statusTone: statusTone(label),
     persona: personaLabelOf(v.persona || ""),
     dot: personaDotOf(v.persona || ""),
     score: null,
@@ -355,6 +354,7 @@ export function CrmBoard({
   campaigns = [],
   customColumnsByKey = {},
   customFieldDefsByKey = {},
+  stageOptions = {},
 }: {
   /** Why the read FAILED, vs returning nothing. Null when it succeeded. */
   loadError?: string | null;
@@ -366,6 +366,8 @@ export function CrmBoard({
   personaOptions?: { key: string; label: string }[];
   /** The org's campaigns, for the bulk "Add to campaign" picker (contacts only). */
   campaigns?: { id: string; name: string; href: string }[];
+  /** The org's own pipeline stages per object, in its own words. */
+  stageOptions?: Record<string, { key: string; label: string }[]>;
   /**
    * Custom-field columns per object, already ordered and capped by the server.
    * Only a couple are shown: the table has a fixed set of built-in columns, and
@@ -578,7 +580,7 @@ export function CrmBoard({
     const objectKey = active.key as CrmObjectKey;
     const tempId = `local-${crypto.randomUUID()}`;
     setError(null);
-    setLocalByKey((prev) => ({ ...prev, [objectKey]: [buildOptimisticRow(objectKey, tempId, value), ...(prev[objectKey] ?? [])] }));
+    setLocalByKey((prev) => ({ ...prev, [objectKey]: [buildOptimisticRow(objectKey, tempId, value, stageOptions[objectKey] ?? []), ...(prev[objectKey] ?? [])] }));
 
     const res = await createCrmRecord({ objectKey, ...value });
 
@@ -913,6 +915,7 @@ export function CrmBoard({
         singular={active.addLabel.replace(/^Add\s+/i, "")}
         linkOptions={linkOptions}
         personaOptions={personaOptions}
+        stageOptions={stageOptions[active.key]}
         customFieldDefs={customFieldDefsByKey[active.key] ?? []}
         onClose={() => setAddOpen(false)}
         onSubmit={handleCreate}
