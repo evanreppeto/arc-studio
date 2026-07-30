@@ -83,6 +83,7 @@ export * from "./media-config";
 export * from "./email-templates";
 export * from "./crm-matching";
 export * from "./custom-fields";
+export * from "./env-capabilities";
 export * from "./pipeline-stages";
 export * from "./audience-resolution";
 

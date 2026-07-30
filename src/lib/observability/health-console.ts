@@ -21,6 +21,13 @@ import { isMediaGenEnabled } from "@/lib/media";
 import { isLiveSendEnabled } from "@/lib/dispatch/live-send";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
+import {
+  ENV_CAPABILITIES,
+  isEnvVarSet,
+  reportCapabilities,
+  type CapabilityState,
+  type EnvRequirement,
+} from "@/domain";
 import { isPlatformAdmin } from "@/lib/waitlist/admin";
 
 import {
@@ -42,11 +49,17 @@ export type EnvFlag = {
   set: boolean;
   /** What breaks while it is unset. Shown verbatim to the operator. */
   purpose: string;
+  /** Whether being unset actually costs this capability anything. */
+  requirement: EnvRequirement;
 };
 
 export type EnvGroup = {
   capability: string;
   flags: EnvFlag[];
+  /** ready / partial / inert, from the required vars only. */
+  state: CapabilityState;
+  /** One line: what is off and what that costs. */
+  detail: string;
 };
 
 export type ConnectorHealthRow = {
@@ -107,63 +120,20 @@ const isSet = (value: string | undefined): boolean => Boolean(value?.trim());
  * whether the variable is present.
  */
 function readEnvGroups(env: NodeJS.ProcessEnv): EnvGroup[] {
-  return [
-    {
-      capability: "Persistence",
-      flags: [
-        { name: "NEXT_PUBLIC_SUPABASE_URL", set: isSet(env.NEXT_PUBLIC_SUPABASE_URL), purpose: "Without it nothing persists — the app degrades to read-only previews." },
-        { name: "SUPABASE_SERVICE_ROLE_KEY", set: isSet(env.SUPABASE_SERVICE_ROLE_KEY), purpose: "Server-side writes and every admin read." },
-      ],
-    },
-    {
-      capability: "Send loop",
-      flags: [
-        { name: "ARC_SEND_ENABLED", set: isSet(env.ARC_SEND_ENABLED), purpose: "Master kill switch. Dark means no mail leaves, however well configured." },
-        { name: "RESEND_WEBHOOK_SECRET", set: isSet(env.RESEND_WEBHOOK_SECRET), purpose: "Inbound delivery/open/click/reply events. Unset means sends look fire-and-forget." },
-        // Unset is not neutral: primary-surface failures are recorded in Sentry
-        // but nothing pages anyone, which is the state that let a broken
-        // campaigns board sit unnoticed (BSR-477).
-        { name: "ALERT_SLACK_WEBHOOK_URL", set: isSet(env.ALERT_SLACK_WEBHOOK_URL), purpose: "Posts primary-surface and Arc runner failures to Slack. Unset means failures are logged but nobody is paged." },
-      ],
-    },
-    {
-      capability: "Agent loop",
-      flags: [
-        { name: "ARC_AGENT_API_TOKEN", set: isSet(env.ARC_AGENT_API_TOKEN), purpose: "Bearer token the runner uses to call back into the app." },
-        { name: "ARC_RUNNER_URL", set: isSet(env.ARC_RUNNER_URL) || isSet(env.ARC_WEBHOOK_URL), purpose: "Where the app wakes the runner. Unset means queued work is never picked up." },
-        { name: "GEMINI_API_KEY", set: isSet(env.GEMINI_API_KEY), purpose: "Arc's model calls and the Brain's embeddings." },
-      ],
-    },
-    {
-      capability: "Scheduled work",
-      flags: [
-        { name: "CRON_SECRET", set: isSet(env.CRON_SECRET), purpose: "Authenticates Vercel Cron. Unset means every scheduled route rejects." },
-        { name: "OPPORTUNITY_SCAN_CRON_ENABLED", set: isSet(env.OPPORTUNITY_SCAN_CRON_ENABLED), purpose: "The daily opportunity scan." },
-        { name: "BILLING_NOTICES_CRON_ENABLED", set: isSet(env.BILLING_NOTICES_CRON_ENABLED), purpose: "Quota and trial-expiry notices." },
-      ],
-    },
-    {
-      capability: "Media loop",
-      flags: [
-        { name: "ARC_MEDIA_ENABLED", set: isSet(env.ARC_MEDIA_ENABLED), purpose: "Legacy deployment-wide media generation. Per-workspace connectors are the modern path." },
-      ],
-    },
-    {
-      capability: "Billing",
-      flags: [
-        { name: "STRIPE_SECRET_KEY", set: isSet(env.STRIPE_SECRET_KEY), purpose: "Checkout, portal, and webhook handling." },
-        { name: "ARC_BILLING_ENFORCEMENT", set: isSet(env.ARC_BILLING_ENFORCEMENT), purpose: "Whether quota overage actually blocks work, or is only measured." },
-      ],
-    },
-    {
-      capability: "Observability & access",
-      flags: [
-        { name: "NEXT_PUBLIC_SENTRY_DSN", set: isSet(env.NEXT_PUBLIC_SENTRY_DSN), purpose: "Error reporting. Unset means failures land nowhere a human looks." },
-        { name: "ARC_PLATFORM_ADMIN_EMAILS", set: isSet(env.ARC_PLATFORM_ADMIN_EMAILS), purpose: "Who may see this console and the waitlist. Unset means nobody." },
-        { name: "ARC_SELF_SERVE_SIGNUP", set: isSet(env.ARC_SELF_SERVE_SIGNUP), purpose: "Whether strangers can create accounts. Unset keeps signup invite-only." },
-      ],
-    },
-  ];
+  return reportCapabilities(env as Record<string, string | undefined>).map((report) => {
+    const spec = ENV_CAPABILITIES.find((c) => c.key === report.key);
+    return {
+      capability: report.label,
+      state: report.state,
+      detail: report.detail,
+      flags: (spec?.vars ?? []).map((varSpec) => ({
+        name: varSpec.name,
+        set: isEnvVarSet(env as Record<string, string | undefined>, varSpec),
+        purpose: varSpec.ifUnset,
+        requirement: varSpec.requirement,
+      })),
+    };
+  });
 }
 
 function minutesSince(iso: string | null | undefined, now: number): number | null {

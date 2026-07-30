@@ -28,6 +28,7 @@
     "migrate:bsr-branding": "node scripts/migrate-bsr-branding.mjs",
     "configure:resend": "node scripts/configure-resend.mjs",
     "diagnose:arc": "node scripts/diagnose-arc-connection.mjs",
+    "diagnose:env": "tsx scripts/diagnose-env.ts",
     "backfill:embeddings": "node scripts/backfill-embeddings.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
