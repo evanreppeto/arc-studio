@@ -26,6 +26,8 @@ export default async function ArcPage({
   // Deep-link support: `?prompt=` prefills the composer (e.g. the campaign
   // "Ask Arc to draft it" CTA). Capped so a crafted URL can't stuff the box.
   const initialDraft = typeof sp.prompt === "string" && sp.prompt.trim() ? sp.prompt.slice(0, 4000) : undefined;
+  // Correctly silent (BSR-546): (app)/layout.tsx is the auth boundary; a null
+  // context here renders a coherent empty state, not a false claim about data.
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   // The operator's own workspace name — never a hardcoded tenant. Arc is a
   // multi-tenant product; a workspace with no name falls through to a neutral

@@ -7,6 +7,7 @@ import { resolveAppVersion, resolveSupportInbox } from "@/lib/support/inbox";
 import { listSupportRequests } from "@/lib/support/read-model";
 
 import { SupportView } from "./_components/support-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import "./support.css";
 
 export const metadata = { title: "Help & support — Arc Studio" };
@@ -18,7 +19,12 @@ export default async function SupportPage() {
     getCurrentWorkspaceContext().catch(() => null),
     getSupabaseAuthenticatedUser().catch(() => null),
   ]);
-  const requests = await listSupportRequests(ctx?.orgId ?? null).catch(() => []);
+  // PRIMARY: empty renders as "you haven't raised anything", so a workspace
+  // waiting on a reply would think their request was never filed.
+  const requests = await listSupportRequests(ctx?.orgId ?? null).catch((error) => {
+    reportDegraded(error, { scope: "support.listSupportRequests", surface: "primary" });
+    return [];
+  });
 
   const workspaceName = ctx?.workspaceName || ctx?.orgName || "Your workspace";
   const email = user?.email ?? "";

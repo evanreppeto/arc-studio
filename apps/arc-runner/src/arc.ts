@@ -240,6 +240,23 @@ async function runArcQuery(opts: {
   });
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
+  // Diagnostic for BSR-573: Arc had never captured a character of reasoning in
+  // production, and nothing in the code path said why — the thinking branch
+  // reads a defensively-typed field, so a shape change or an absent event fails
+  // silently. Record which stream events actually arrive so the next real run
+  // answers it from the logs instead of from guesswork.
+  const seenEventShapes = new Set<string>();
+  // What a thinking_delta actually carries. The SDK notes that during a
+  // redacted-thinking phase these frames stream only token estimates — no text —
+  // which would explain thinking_delta arriving on every run while nothing is
+  // ever captured. Record the field names once so this stops being a guess.
+  let thinkingDeltaKeys: string | null = null;
+  // Does Arc actually write prose before it calls a tool? BSR-574 proposes using
+  // that text as the narration, and BSR-573 is a lesson in not building on an
+  // unverified source. Record the block order per assistant message, and how
+  // much text precedes the first tool call.
+  const blockSequences: string[] = [];
+  let preToolTextChars = 0;
   // The model phase, split where the reader can actually see it change: reasoning
   // until the first token of prose, then writing. Tool calls report themselves in
   // between, so the trace reads as a sequence of real phases rather than a gap.
@@ -264,6 +281,13 @@ async function runArcQuery(opts: {
   })) {
     if (message.type === "stream_event") {
       const event = message.event;
+      seenEventShapes.add(
+        event.type === "content_block_delta"
+          ? `content_block_delta:${(event.delta as { type?: string }).type ?? "?"}`
+          : event.type === "content_block_start"
+            ? `content_block_start:${((event as { content_block?: { type?: string } }).content_block)?.type ?? "?"}`
+            : event.type,
+      );
       if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
         await beginWriting();
         // Awaited (not fire-and-forget) so throttled posts stay ordered;
@@ -272,6 +296,7 @@ async function runArcQuery(opts: {
       } else if (event.type === "content_block_delta" && event.delta.type === "thinking_delta") {
         // Extended-thinking tokens — streamed to the "Thinking…" trace. Typed as
         // unknown on some SDK versions, so read the field defensively.
+        thinkingDeltaKeys ??= Object.keys(event.delta as object).join("+");
         const thinking = (event.delta as { thinking?: unknown }).thinking;
         if (typeof thinking === "string") {
           await thinkingStream.append(thinking);
@@ -279,8 +304,27 @@ async function runArcQuery(opts: {
       }
     } else if (message.type === "assistant") {
       let text = "";
+      const shape: string[] = [];
+      let sawTool = false;
+      for (const block of message.message.content) {
+        shape.push(block.type);
+        if (block.type === "tool_use") sawTool = true;
+        else if (block.type === "text" && !sawTool) preToolTextChars += (block as { text?: string }).text?.length ?? 0;
+      }
+      if (shape.length) blockSequences.push(shape.join(">"));
       for (const block of message.message.content) {
         if (block.type === "text") text += block.text;
+        // Second, independent capture path. The delta stream was the only way
+        // reasoning was ever collected, so a delta that carries no text — which
+        // is exactly what a redacted-thinking phase sends — lost it completely
+        // and silently. A settled thinking block, when the model emits one, has
+        // the full text and no shape ambiguity.
+        else if (block.type === "thinking") {
+          const settled = (block as { thinking?: unknown }).thinking;
+          if (typeof settled === "string" && settled.trim() && !thinkingStream.value().includes(settled.trim())) {
+            await thinkingStream.append((thinkingStream.value() ? "\n\n" : "") + settled.trim());
+          }
+        }
       }
       if (text.trim()) assistantChunks.push(text);
     } else if (message.type === "result" && message.subtype === "success") {
@@ -300,6 +344,9 @@ async function runArcQuery(opts: {
 
   const body = assembleReplyBody(assistantChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
+  console.log(
+    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars}`,
+  );
 
   // The last SDK deltas commonly land inside the throttle window. Flush the
   // canonical values before the completion write so the pending bubble reaches

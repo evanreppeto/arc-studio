@@ -83,6 +83,9 @@ function toOutboxCard(d: DispatchView, sender: string | null): OutboxCardVM {
 export default async function OutboxPage() {
   const [outbox, emailConnection] = await Promise.all([
     getOutboxList().catch(unavailable("outbox.list")),
+    // Correctly silent (BSR-546): the queue is the page. Without the email
+    // connection the send controls disable and SAY they are unavailable, which
+    // is the honest degraded state rather than a hidden one.
     getEmailConnection().catch(() => null),
   ]);
   const sender = emailConnection?.fromEmail || process.env.RESEND_FROM || null;

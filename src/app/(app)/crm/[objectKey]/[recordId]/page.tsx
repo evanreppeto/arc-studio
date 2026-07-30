@@ -12,6 +12,7 @@ import { getAppSettings } from "@/lib/settings/store";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 
 import { RecordView, type RecordActivity } from "./_components/record-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import "./record.css";
 
 export const metadata = { title: "Record — Arc CRM" };
@@ -36,8 +37,16 @@ export default async function CrmRecordPage({
   const ctxForLabel = await getCurrentWorkspaceContext().catch(() => null);
   const [settingsForLabel, profileForLabel] = ctxForLabel?.orgId
     ? await Promise.all([
-        getAppSettings(ctxForLabel.orgId).catch(() => null),
-        getBusinessProfile(ctxForLabel.orgId).catch(() => null),
+        // Vocabulary, as on /crm: failing these relabels the record's own
+        // back-link and object nouns to our internal ones without looking broken.
+        getAppSettings(ctxForLabel.orgId).catch((error) => {
+          reportDegraded(error, { scope: "crm.record.getAppSettings", surface: "secondary" });
+          return null;
+        }),
+        getBusinessProfile(ctxForLabel.orgId).catch((error) => {
+          reportDegraded(error, { scope: "crm.record.getBusinessProfile", surface: "secondary" });
+          return null;
+        }),
       ])
     : [null, null];
   const crmLabel = getProductLanguage(settingsForLabel?.industry || profileForLabel?.industry).crmLabel;
@@ -63,9 +72,23 @@ export default async function CrmRecordPage({
   if (entityType) {
     const orgId = (await getCurrentWorkspaceContext()).orgId;
     const [timeline, notes, tasks] = await Promise.all([
-      getRecordTimeline(entityType, id, orgId).catch(() => null),
-      getRecordNotes(entityType, id, orgId).catch(() => null),
-      getRecordTasks(entityType, id, orgId).catch(() => null),
+      // PRIMARY, despite being a tab. A failure here doesn't show an error — it
+      // renders "no activity yet", which is a false STATEMENT ABOUT A CUSTOMER
+      // rather than a missing panel. An operator reading "no notes, no calls"
+      // concludes nobody has followed up and acts on that. Wrong data that
+      // drives a decision is the worst degraded state in the app.
+      getRecordTimeline(entityType, id, orgId).catch((error) => {
+        reportDegraded(error, { scope: "crm.record.timeline", surface: "primary", detail: { entityType, id } });
+        return null;
+      }),
+      getRecordNotes(entityType, id, orgId).catch((error) => {
+        reportDegraded(error, { scope: "crm.record.notes", surface: "primary", detail: { entityType, id } });
+        return null;
+      }),
+      getRecordTasks(entityType, id, orgId).catch((error) => {
+        reportDegraded(error, { scope: "crm.record.tasks", surface: "primary", detail: { entityType, id } });
+        return null;
+      }),
     ]);
     activity = {
       timeline: timeline?.status === "live" ? timeline.entries : [],
@@ -74,6 +97,7 @@ export default async function CrmRecordPage({
     };
   }
 
+  // Correctly silent (BSR-546): picker options. An empty dropdown is visible.
   const personaOptions = await getOrgPersonaOptions().catch(() => []);
 
   // The tenant's own custom fields for this object, with this record's values.

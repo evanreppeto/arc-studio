@@ -115,6 +115,8 @@ export default async function CampaignsPage() {
       status: "unavailable" as const,
       message: error instanceof Error ? error.message : "Campaign workspace is unavailable.",
     })),
+    // Correctly silent (BSR-546): picker options. An empty dropdown is
+    // visible to the operator; the campaign list still renders.
     getOrgPersonaOptions(ctx.orgId).catch(() => []),
   ]);
   const demoPersonaOptions = personasForIndustry(canonicalIndustryKey(process.env.ARC_DEMO_INDUSTRY))

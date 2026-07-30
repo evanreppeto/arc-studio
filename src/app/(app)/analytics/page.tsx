@@ -6,6 +6,7 @@ import { getOpportunityConversion } from "@/lib/performance/opportunity-conversi
 import { getPerformanceReadModel } from "@/lib/performance/read-model";
 
 import { AnalyticsView, type ActivityDayVM } from "./_components/analytics-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 export const metadata = { title: "Analytics — Arc Studio" };
 
@@ -34,8 +35,23 @@ function toActivityRow(e: ActivityEntry) {
 export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
   const ctx = await getCurrentWorkspaceContext();
   const range = normalizeWindow((await searchParams).range);
+  const caught: { overview: string | null } = { overview: null };
   const [overview, activity, performance, conversion] = await Promise.all([
-    getAnalyticsOverview(ctx.orgId, range).catch(() => null),
+    // PRIMARY: this IS the page. Failing to null renders as a flat, empty
+    // dashboard — indistinguishable from a workspace that genuinely has no
+    // activity, which is a false statement about their performance.
+    getAnalyticsOverview(ctx.orgId, range).catch((error) => {
+      reportDegraded(error, { scope: "analytics.getAnalyticsOverview", surface: "primary", detail: { range } });
+      // Also keep the reason for the UI. reportDegraded makes the failure
+      // findable in logs; without this the SCREEN still shows "$0 / 0 leads /
+      // flat" under copy reading "straight from CRM", because `safeOverview`
+      // below carries no `dataError` and the banner that exists for exactly
+      // this case only fires on the read-model's own reported failure — never
+      // on a throw. Held on an object so TS does not narrow the closure
+      // assignment away.
+      caught.overview = error instanceof Error ? error.message : "Analytics overview is unavailable.";
+      return null;
+    }),
     getRecentActivity({}, undefined, ctx.orgId).catch(unavailable("analytics.activity", ctx.orgId)),
     getPerformanceReadModel(undefined, undefined, ctx.orgId).catch(unavailable("analytics.performance", ctx.orgId)),
     getOpportunityConversion(ctx.orgId).catch(unavailable("analytics.conversion", ctx.orgId)),
@@ -69,6 +85,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     leadsBySource: [],
     arcRead: { text: "", cites: [], rec: "" },
     hasHistory: false,
+    // Set ONLY when the read threw, so a legitimately empty overview still
+    // reports as empty rather than as broken.
+    dataError: caught.overview,
   };
 
   // Which of the three secondary reads FAILED, as opposed to returning nothing.

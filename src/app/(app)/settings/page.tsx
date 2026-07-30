@@ -23,6 +23,7 @@ import { getWaitlistView } from "@/lib/waitlist/read-model";
 import { getHealthConsoleView } from "@/lib/observability/health-console";
 
 import { SettingsView } from "./_components/settings-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import "./settings.css";
 
 export const metadata = { title: "Settings — Arc Studio" };
@@ -33,23 +34,46 @@ export default async function SettingsPage() {
   const [user, team, usage, connectorSpend, billing, settings, connectors, workspaces, emailConnection, agentConnection] = await Promise.all([
     getSupabaseAuthenticatedUser().catch(() => null),
     getSettingsTeamView().catch(() => ({ workspaceId: null, isDemo: false, members: [], invites: [], activity: [] })),
-    getSettingsUsageView().catch(() => null),
-    getConnectorSpendView().catch(() => null),
+    // PRIMARY: these render SPEND. Failing to null shows no usage and no cost,
+    // which is a false statement about money — an operator reads "nothing spent"
+    // and either relaxes about a cap they are actually near, or files a bug
+    // because the numbers vanished. Either way they act on a wrong figure.
+    getSettingsUsageView().catch((error) => {
+      reportDegraded(error, { scope: "settings.getSettingsUsageView", surface: "primary" });
+      return null;
+    }),
+    getConnectorSpendView().catch((error) => {
+      reportDegraded(error, { scope: "settings.getConnectorSpendView", surface: "primary" });
+      return null;
+    }),
     getSettingsBillingView().catch(() => null),
     getAppSettings(ctx?.orgId ?? null),
     getSettingsConnectorsView().catch(() => ({ configured: false, connectors: [] })),
     getSettingsWorkspacesView().catch(() => ({ isDemo: false, workspaces: [] })),
-    getEmailConnection().catch(() => null),
-    resolveAgentConnection().catch(() => null),
+    // PRIMARY: a failed connection READ renders identically to "not connected".
+    // The operator reconnects something that was already fine, or concludes
+    // sending is off when it isn't. Status that lies is worse than status absent.
+    getEmailConnection().catch((error) => {
+      reportDegraded(error, { scope: "settings.getEmailConnection", surface: "primary" });
+      return null;
+    }),
+    resolveAgentConnection().catch((error) => {
+      reportDegraded(error, { scope: "settings.resolveAgentConnection", surface: "primary" });
+      return null;
+    }),
   ]);
   // Platform waitlist — null unless the viewer is on ARC_PLATFORM_ADMIN_EMAILS.
   // The gate runs server-side inside the read-model, so a non-admin never reads a row.
+  // Correctly silent (BSR-546): null here means "not a platform admin" far more
+  // often than "failed", and the section simply doesn't render. Alerting would
+  // fire for every non-admin page load.
   const waitlist = await getWaitlistView().catch(() => null);
   // Operator health console — same platform-admin gate as the waitlist, enforced
   // server-side inside the read-model, so a non-admin never reads a connector row
   // and the section never reaches their browser.
   const health = await getHealthConsoleView().catch(() => null);
   // The workspace's own personas, for the connector "Default persona" picker.
+  // Correctly silent (BSR-546): picker options; an empty dropdown is visible.
   const personaOptions = await getOrgPersonaOptions(ctx?.orgId ?? undefined).catch(() => []);
   const brandName = ctx?.orgName?.trim() || "Your workspace";
   // No fabricated fallback. This renders under "Signed in as" in a panel whose
@@ -77,7 +101,14 @@ export default async function SettingsPage() {
   // settings screen must not be the one place the product reverts to our
   // internal vocabulary ("Properties" to a firm that calls them Matters).
   const customFields = ctx?.orgId
-    ? await listAllFieldDefinitions(ctx.orgId, { includeArchived: true }).catch(() => [])
+    ? await listAllFieldDefinitions(ctx.orgId, { includeArchived: true }).catch((error) => {
+        // I wrote this silent yesterday so a missing field layer couldn't take
+        // the screen down — right instinct, wrong on reflection. Empty renders
+        // as "No custom fields yet", which tells a tenant their own schema is
+        // gone. Keep degrading; stop asserting.
+        reportDegraded(error, { scope: "settings.listAllFieldDefinitions", surface: "primary" });
+        return [];
+      })
     : [];
   const language = getProductLanguage(settings.industry || businessProfile?.industry);
   const crmObjectLabels = Object.fromEntries(
