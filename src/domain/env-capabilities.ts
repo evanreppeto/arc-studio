@@ -108,7 +108,13 @@ export const ENV_CAPABILITIES: readonly CapabilitySpec[] = [
       v("RESEND_API_KEY", "required", "No transport. A per-workspace key in the Vault also satisfies this."),
       v("RESEND_FROM", "required", "Sends have no From identity and are rejected.", ["RESEND_FROM_EMAIL"]),
       v("RESEND_WEBHOOK_SECRET", "required", "Deliveries, opens, clicks and replies never arrive — sends look fire-and-forget and the journey timeline stays empty."),
-      v("EMAIL_UNSUBSCRIBE_SECRET", "required", "Unsubscribe links cannot be signed or verified, which is a compliance failure, not a missing feature."),
+      // OPTIONAL, not required — corrected after checking the code rather than
+      // the variable name. `getUnsubscribeSecret()` falls back to
+      // SUPABASE_SERVICE_ROLE_KEY, so unsubscribe links are signed and working
+      // without this. Marking it required reported prod as having a live
+      // compliance failure it does not have, which is the same class of wrong
+      // answer this catalogue exists to prevent — just pointing the other way.
+      v("EMAIL_UNSUBSCRIBE_SECRET", "optional", "Unsubscribe links fall back to being signed with the service-role key. They work, but rotating that key silently invalidates every outstanding link, and a public link signature stays coupled to a database credential."),
       v("NEXT_PUBLIC_SITE_URL", "required", "Links inside sent mail have no absolute host to point at.", ["NEXT_PUBLIC_APP_URL", "EMAIL_EXPORT_SITE_URL"]),
       v("NEXT_PUBLIC_APP_URL", "optional", "Stripe Checkout and Portal return links are derived from the request host instead of a fixed one."),
       v("EMAIL_EXPORT_APP_NAME", "optional", "Exported auth email templates are branded \"Arc\" rather than this deployment's name."),
