@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useTransition, type ReactNode } from "react";
 
 import type { SettingsTeamInvite, SettingsTeamMember, SettingsTeamView, WorkspaceActivityEntry } from "@/lib/auth/team-view";
 import type { WaitlistView } from "@/lib/waitlist/read-model";
@@ -75,6 +75,7 @@ import { BrandBadge } from "./brand-badge";
 import { ImageUploadField } from "./image-upload-field";
 import { NewWorkspaceModal, type NewWorkspaceValue } from "./new-workspace-modal";
 import { WorkspaceIdentityModal, type WorkspaceIdentityValue } from "./workspace-identity-modal";
+import { sendTestOpsAlert } from "../alert-actions";
 
 type SettingsWriteResult = { ok: true; persisted: boolean; message?: string } | { ok: false; error: string };
 
@@ -174,6 +175,47 @@ function Pill({ kind, children }: { kind: string; children: ReactNode }) {
 function Row({ label, desc, children }: { label: ReactNode; desc?: ReactNode; children: ReactNode }) {
   return <div className="srow"><div className="sl"><div className="slt">{label}</div>{desc && <div className="sld">{desc}</div>}</div><div className="sc">{children}</div></div>;
 }
+/**
+ * Prove the ops alert channel actually works, from the screen an operator opens
+ * when something is wrong.
+ *
+ * Alerting you cannot test is alerting you do not trust — and the worst time to
+ * discover a stale webhook URL or an archived channel is during the incident it
+ * was meant to announce.
+ */
+function TestAlertRow() {
+  const [status, setStatus] = useState<SaveStatus>(null);
+  const [pending, startTransition] = useTransition();
+  return (
+    <div className="panel">
+      <div className="panel-h"><h3>Alert channel</h3></div>
+      <div className="panel-b">
+        <Row
+          label="Send a test alert"
+          desc="Posts to the platform ops channel through the same path a real failure takes."
+        >
+          <span className="pillrow">
+            <button
+              type="button"
+              className="btn sm"
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  const res = await sendTestOpsAlert();
+                  setStatus(res.ok ? { tone: "ok", text: res.message } : { tone: "err", text: res.error });
+                })
+              }
+            >
+              {pending ? "Sending…" : "Send test alert"}
+            </button>
+            <Status status={status} />
+          </span>
+        </Row>
+      </div>
+    </div>
+  );
+}
+
 function Panel({ title, tag, foot, children }: { title: ReactNode; tag?: ReactNode; foot?: ReactNode; children: ReactNode }) {
   return (
     <div className="panel">
@@ -781,6 +823,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
           t="Health"
           d="Whether prod is actually working, in one place — env readiness, connectors, the runner, and what has recently failed. Platform-wide, across every workspace."
         />
+        <TestAlertRow />
         {/* The three answers an operator actually needs. Everything below is the
             evidence behind them. Grading lives in health-grading.ts so "is the
             send loop live?" is a tested rule, not an impression formed by
