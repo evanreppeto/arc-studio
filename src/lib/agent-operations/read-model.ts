@@ -590,6 +590,15 @@ export async function getAgentTaskDetail(
       },
       acceptanceCriteria: parseAcceptanceCriteria(taskMetadata),
       latestOutput: outputs[0] ?? null,
+      // Uninspected by design (BSR-575, triaged not fixed): these three are
+      // detail panels on ONE task — a timeline, its inputs, its logs. An empty
+      // panel next to a task that is plainly there reads as "nothing recorded",
+      // not as a claim about the business, so it fails the "false statement the
+      // operator will act on" test. The task itself, above, IS guarded.
+      //
+      // This module also has no consumer under src/app (see CLAUDE.md), so
+      // hardening it now would be guessing at how a future screen wants to
+      // degrade. Revisit when it is wired.
       timeline: composeTaskTimeline((eventsResult.data ?? []) as AgentTaskEventRow[], outputs, approvalResult.data ?? null),
       agent: {
         id: agent?.id ?? task.agent_id ?? "unassigned",

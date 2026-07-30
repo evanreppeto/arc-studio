@@ -1132,9 +1132,21 @@ export async function getCrmOverviewData(client?: SupabaseClient): Promise<CrmOv
     // Degrade, but not silently — this read IS the screen, so an empty
     // state here is indistinguishable from an outage (BSR-544).
     reportDegraded(error, { scope: "crm.getCrmOverviewData", surface: "primary" });
-    // A live read that errors (e.g. prod schema drift) must not leak demo data
-    // into a real workspace — only fall back to demo when demo mode is on.
-    if (isDemoDataEnabled()) return buildOverviewFromBundle(buildDemoCrmBundle());
+    // NO demo fallback on the error path (BSR-575).
+    //
+    // Each of these functions already returns demo data ABOVE, before the try,
+    // when Supabase is not configured — the offline preview is served there.
+    // Reaching this catch means Supabase IS configured and a real query failed,
+    // and answering that with fixture data is not a degrade, it is a fabrication.
+    //
+    // This reverses the flag-ON half of #182/#220, deliberately. Those PRs were
+    // fixing the flag-OFF leak into real workspaces and preserved flag-ON as it
+    // stood; nobody had argued for it. It is also what made this whole class of
+    // bug unfindable — every launch.json config sets ARC_DEMO_DATA=1, so forced
+    // failure testing locally could never make these reads fail.
+    //
+    // Demo-on-EMPTY, above, stays. "There is nothing to show" is a true
+    // statement; "here is someone else's data" over an outage is not.
     console.error("[crm] overview read failed:", error);
     return { status: "unavailable", message: "CRM data is unavailable." };
   }
@@ -1177,7 +1189,7 @@ export async function getCrmObjectData(key: CrmObjectKey, client?: SupabaseClien
     // Degrade, but not silently — this read IS the screen, so an empty
     // state here is indistinguishable from an outage (BSR-544).
     reportDegraded(error, { scope: "crm.getCrmObjectData", surface: "primary" });
-    if (isDemoDataEnabled()) return buildObjectDataFromBundle(key, buildDemoCrmBundle());
+    // See getCrmOverviewData: no fixture data over a real failure.
     console.error("[crm] object read failed:", error);
     return { status: "unavailable", message: "CRM data is unavailable." };
   }
@@ -1278,7 +1290,21 @@ export async function getCrmNavCounts(client?: SupabaseClient): Promise<CrmNavCo
       counts: { companies, contacts, properties, leads, jobs, outcomes },
     };
   } catch (error) {
-    if (isDemoDataEnabled()) return { status: "live", counts: demoNavCounts() };
+    // THIS is why getCrmNavCounts "could not be made to fail" (BSR-575).
+    //
+    // Two things combined. It was the ONLY read in this file with no
+    // reportDegraded at all, so a failure left no trace anywhere; and in demo
+    // mode it returned `status: "live"` carrying demo counts, so the caller was
+    // told the read succeeded. Three forced-failure attempts saw a healthy read
+    // because there was nothing to see — not because the error was swallowed
+    // somewhere exotic.
+    //
+    // The sibling reads already reported before their demo fallback. This one
+    // now matches them, which is what makes a forced failure observable.
+    reportDegraded(error, { scope: "crm.getCrmNavCounts", surface: "primary" });
+    // See getCrmOverviewData. This one was the worst of the four: it returned
+    // `status: "live"` alongside the fixtures, so the caller was told the read
+    // had SUCCEEDED — which is why it "could not be made to fail".
     console.error("[crm] nav counts read failed:", error);
     return { status: "unavailable", message: "CRM data is unavailable." };
   }
@@ -1358,7 +1384,7 @@ export async function getCrmRecordData(key: CrmObjectKey, recordId: string, clie
     // Degrade, but not silently — this read IS the screen, so an empty
     // state here is indistinguishable from an outage (BSR-544).
     reportDegraded(error, { scope: "crm.getCrmRecordData", surface: "primary" });
-    if (isDemoDataEnabled()) return buildRecordDataFromBundle(key, recordId, buildDemoCrmBundle(), agentName);
+    // See getCrmOverviewData: no fixture data over a real failure.
     console.error("[crm] record read failed:", error);
     return { status: "unavailable", message: "CRM data is unavailable." };
   }
