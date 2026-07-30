@@ -47,4 +47,4 @@ jobs:
           # fails loudly rather than skipping: a drift detector that silently
           # no-ops converts an unknown into a false assurance, which is exactly
           # the failure this workflow exists to prevent.
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
