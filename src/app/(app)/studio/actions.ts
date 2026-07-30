@@ -26,6 +26,7 @@ import { deriveImageRiskFlags } from "@/lib/media/risk";
 import { storeGeneratedImage, storeGeneratedMedia } from "@/lib/media/storage";
 import { getAppSettings } from "@/lib/settings/store";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 const COMPOSITE_RISK =
   "Real logo overlaid on a background — the background is not proof of a real job.";
@@ -135,7 +136,19 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
         model: gen.model,
         units: 1,
         metadata: { route: "studio_generate", aspect_ratio: aspectRatio, job_id: gen.jobId },
-      }).catch(() => {});
+      }).catch((error) =>
+        // The image was generated and the provider WILL bill for it. Losing this
+        // write means the spend happened and nothing counted it — the workspace's
+        // usage under-reports, and the cap it is measured against drifts from
+        // reality. Failing the generation here would be worse (the money is
+        // already spent), so it degrades — but silently was how metering could
+        // quietly stop matching the invoice (BSR-502).
+        reportDegraded(error, {
+          scope: "studio.recordUsageEvent",
+          surface: "primary",
+          detail: { service: "gemini_image", model: gen.model, jobId: gen.jobId },
+        }),
+      );
       media = {
         kind: "image",
         url,

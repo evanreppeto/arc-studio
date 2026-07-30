@@ -18,6 +18,7 @@ import { enqueueArcOpportunityTask } from "@/lib/opportunities/enqueue";
 import { dismissOpportunity, markOpportunityDrafted, markOpportunityDrafting, snoozeOpportunity } from "@/lib/opportunities/persistence";
 import { getOpportunityForCampaign } from "@/lib/opportunities/read-model";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 /**
  * Operator-triggered opportunity scan: runs the deterministic detectors over the
@@ -165,7 +166,18 @@ async function createDraftCampaign(input: DraftCampaignFromOpportunityInput): Pr
   if (!isAllowedPersona(persona, allowedPersonaKeys)) {
     return { status: "error", error: "Choose a persona for this campaign." };
   }
-  const opp = await getOpportunityForCampaign(input.opportunityId, ctx.orgId).catch(() => null);
+  // Secondary, not primary: a failure here is recoverable by retrying, and the
+  // operator sees an error either way. But it must be recorded, because a read
+  // FAILURE and a genuinely-missing opportunity produce the identical message —
+  // so without this, "no longer available" could mean the database is down.
+  const opp = await getOpportunityForCampaign(input.opportunityId, ctx.orgId).catch((error) => {
+    reportDegraded(error, {
+      scope: "opportunities.getOpportunityForCampaign",
+      surface: "secondary",
+      detail: { opportunityId: input.opportunityId },
+    });
+    return null;
+  });
   if (!opp) return { status: "error", error: "That opportunity is no longer available." };
 
   // Idempotency: a drafted opportunity keeps showing in the inbox, so a re-submit
@@ -245,7 +257,18 @@ export async function draftCampaignFromOpportunityAction(
 
   // Link the campaign back + advance the opportunity so it reads as drafted.
   // Best-effort: the campaign already exists, so a link failure must not fail it.
-  await markOpportunityDrafted(prepared.opp.id, prepared.campaignId, undefined, { orgId: prepared.ctx.orgId }).catch(() => {});
+  //
+  // But it must not fail SILENTLY. If this write is lost the opportunity stays
+  // `pending` while its campaign exists, so the next scan re-detects it and
+  // drafts a DUPLICATE — with nothing anywhere explaining why.
+  await markOpportunityDrafted(prepared.opp.id, prepared.campaignId, undefined, { orgId: prepared.ctx.orgId }).catch(
+    (error) =>
+      reportDegraded(error, {
+        scope: "opportunities.markOpportunityDrafted",
+        surface: "primary",
+        detail: { opportunityId: prepared.opp.id, campaignId: prepared.campaignId },
+      }),
+  );
 
   revalidatePath("/opportunities");
   revalidatePath("/campaigns");
@@ -291,12 +314,27 @@ export async function askArcToDraftFromOpportunityAction(
     });
     // Reads as "drafting" while the run is in flight, then the executor flips it
     // to "drafted" once the package lands.
-    await markOpportunityDrafting(opp.id, taskId, undefined, { orgId: ctx.orgId }).catch(() => {});
+    await markOpportunityDrafting(opp.id, taskId, undefined, { orgId: ctx.orgId }).catch((error) =>
+      reportDegraded(error, {
+        scope: "opportunities.markOpportunityDrafting",
+        surface: "primary",
+        detail: { opportunityId: opp.id, agentTaskId: taskId },
+      }),
+    );
     await executeOpportunityDraftTask({ agentTaskId: taskId, orgId: ctx.orgId, agentName: "Arc" });
   } catch {
     // No Arc agent registered (or the run failed): the draft shell still exists,
     // so settle the opportunity as drafted rather than leaving it stuck.
-    await markOpportunityDrafted(opp.id, campaignId, undefined, { orgId: ctx.orgId }).catch(() => {});
+    // The settle-after-failure path. Losing THIS write is the worst of the
+    // three: the run already failed, and now the opportunity is stuck mid-flight
+    // with no record of either problem.
+    await markOpportunityDrafted(opp.id, campaignId, undefined, { orgId: ctx.orgId }).catch((error) =>
+      reportDegraded(error, {
+        scope: "opportunities.markOpportunityDrafted.afterRunFailure",
+        surface: "primary",
+        detail: { opportunityId: opp.id, campaignId },
+      }),
+    );
   }
 
   revalidatePath("/opportunities");
