@@ -1,7 +1,13 @@
 import type { ArcActionCard, ArcMention, ArcQuestion, DraftForReview } from "../types";
 
 /** Step reporter signature shared by every tool (running -> done live trace). */
-export type StepFn = (label: string, status: "running" | "done") => Promise<void>;
+/**
+ * Report an activity step. `detail` is the reasoning that led to this step —
+ * supplied when a step opens, so the transcript can pair each action with the
+ * thinking that preceded it. Omit it when closing a step; the stored narration
+ * is carried over.
+ */
+export type StepFn = (label: string, status: "running" | "done", detail?: string | null) => Promise<void>;
 
 /** Per-turn collectors for everything Arc attaches to its reply beyond text. */
 export type TurnSink = {

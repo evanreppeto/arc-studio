@@ -174,7 +174,32 @@ async function runArcQuery(opts: {
 }): Promise<ArcTurnResult> {
   const { actions, suggestions, sources, questions, drafts, sink } = makeSink();
 
-  const tools = toolsForMode(opts.mode, opts.client, opts.step, sink, { ...(opts.toolContext ?? {}), skill: opts.skill });
+  // Live-thinking buffer, accumulated from thinking-token deltas. It feeds the
+  // "Thinking…" stream, and — because it is declared before the tools — it also
+  // lets each reported step carry the reasoning that led to it.
+  const thinkingStream = createCumulativeStreamBuffer({
+    onEmit: opts.onThinking,
+    throttleMs: STREAM_THROTTLE_MS,
+  });
+
+  /**
+   * Report a step, quoting the thinking that happened since the previous one.
+   *
+   * This is the honest version of the narration Codex shows: not a summary
+   * invented after the fact, and not the thinking transcript sliced arbitrarily,
+   * but the actual reasoning that ran between the last action and this one.
+   * Closing a step passes nothing — the stored narration is preserved.
+   */
+  let narratedUpTo = 0;
+  const step: StepFn = async (label, status, detail) => {
+    if (status === "done") return opts.step(label, status, detail ?? null);
+    const thinking = thinkingStream.value();
+    const segment = thinking.slice(narratedUpTo).trim();
+    narratedUpTo = thinking.length;
+    return opts.step(label, status, detail ?? (segment || null));
+  };
+
+  const tools = toolsForMode(opts.mode, opts.client, step, sink, { ...(opts.toolContext ?? {}), skill: opts.skill });
   const arcServer = createSdkMcpServer({ name: "arc", version: "1.0.0", tools });
 
   // Remote MCP connectors (e.g. Higgsfield) and the operator's media-model
@@ -187,10 +212,10 @@ async function runArcQuery(opts: {
   ]);
   const { mcpServers: remoteServers, allowedTools: remoteAllowed } = buildRemoteMcp(remote);
 
-  await opts.step(STEP_WORKSPACE, "running");
+  await step(STEP_WORKSPACE, "running");
   const workspaceState = await resolveWorkspaceSummary(opts.client);
   const system = buildSystemPrompt(ARC_SYSTEM_PROMPT, { ...opts.ctx, workspaceState, mediaConfig });
-  await opts.step(STEP_WORKSPACE, "done");
+  await step(STEP_WORKSPACE, "done");
 
   // Every assistant message's text, in order. Kept per-message (not one string)
   // so they can be rejoined with a blank line — the model ends a message without
@@ -205,13 +230,6 @@ async function runArcQuery(opts: {
     onEmit: opts.onPartial,
     throttleMs: STREAM_THROTTLE_MS,
   });
-  // Live-thinking buffer, accumulated from thinking-token deltas purely for the
-  // "Thinking…" stream. Like streamBuf it's cosmetic — the canonical reasoning is
-  // set on the final reply, so if thinking deltas are unavailable nothing breaks.
-  const thinkingStream = createCumulativeStreamBuffer({
-    onEmit: opts.onThinking,
-    throttleMs: STREAM_THROTTLE_MS,
-  });
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
   // The model phase, split where the reader can actually see it change: reasoning
@@ -221,11 +239,11 @@ async function runArcQuery(opts: {
   const beginWriting = async () => {
     if (writing) return;
     writing = true;
-    await opts.step(STEP_REASONING, "done");
-    await opts.step(STEP_WRITING, "running");
+    await step(STEP_REASONING, "done");
+    await step(STEP_WRITING, "running");
   };
 
-  await opts.step(STEP_REASONING, "running");
+  await step(STEP_REASONING, "running");
 
   for await (const message of query({
     prompt: promptInput(opts.content, opts.ctx.scope.conversationId ?? "arc-turn"),
@@ -270,7 +288,7 @@ async function runArcQuery(opts: {
   // Close whichever model phase is still open. A turn that produced no streamed
   // text (tools only, or an empty reply) never entered the writing phase, so the
   // reasoning step is the one left running.
-  await opts.step(writing ? STEP_WRITING : STEP_REASONING, "done");
+  await step(writing ? STEP_WRITING : STEP_REASONING, "done");
 
   const body = assembleReplyBody(assistantChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
@@ -295,7 +313,8 @@ async function runArcQuery(opts: {
 }
 
 export async function runArcTurn(payload: MarkChatMessagePayload, client: ArcClient): Promise<ArcTurnResult> {
-  const step = (label: string, status: "running" | "done") => client.postStep(payload.agentTaskId, label, status);
+  const step = (label: string, status: "running" | "done", detail?: string | null) =>
+    client.postStep(payload.agentTaskId, label, status, detail);
 
   const skill = resolveArcSkill(payload.skillId);
   const contextStartedAt = Date.now();
@@ -414,7 +433,8 @@ export async function runArcOpportunityDraft(
   payload: ArcOpportunityDraftPayload,
   client: ArcClient,
 ): Promise<ArcTurnResult> {
-  const step = (label: string, status: "running" | "done") => client.postStep(payload.agentTaskId, label, status);
+  const step = (label: string, status: "running" | "done", detail?: string | null) =>
+    client.postStep(payload.agentTaskId, label, status, detail);
 
   const business = await resolveBusinessContext(client);
   const memory = await resolveRecallMemory(client, payload.message);
@@ -458,7 +478,8 @@ export async function runArcOpportunityScan(
   payload: ArcOpportunityScanPayload,
   client: ArcClient,
 ): Promise<ArcTurnResult> {
-  const step = (label: string, status: "running" | "done") => client.postStep(payload.agentTaskId, label, status);
+  const step = (label: string, status: "running" | "done", detail?: string | null) =>
+    client.postStep(payload.agentTaskId, label, status, detail);
 
   const business = await resolveBusinessContext(client);
   const memory = await resolveRecallMemory(client, payload.message);
@@ -497,7 +518,8 @@ export async function runArcCampaignTask(
   payload: ArcCampaignTaskPayload,
   client: ArcClient,
 ): Promise<ArcTurnResult> {
-  const step = (label: string, status: "running" | "done") => client.postStep(payload.agentTaskId, label, status);
+  const step = (label: string, status: "running" | "done", detail?: string | null) =>
+    client.postStep(payload.agentTaskId, label, status, detail);
 
   const business = await resolveBusinessContext(client);
   const memory = await resolveRecallMemory(client, payload.message);

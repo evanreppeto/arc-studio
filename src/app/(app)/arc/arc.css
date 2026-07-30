@@ -706,7 +706,11 @@
 .arc-live-event-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-top: 2px; }
 .arc-live-event-copy b { color: currentColor; font-size: 12px; font-weight: 540; line-height: 1.35; }
 .arc-live-event-copy b[data-tool="true"] { font-family: var(--mono); font-size: 11px; font-weight: 560; letter-spacing: -.01em; }
-.arc-live-event-copy small { color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+/* A step's detail is now the reasoning that led to it, so it has to read as
+   prose rather than a caption: a comfortable measure and line-height, and no
+   truncation. This is the pairing the Codex reference gets its legibility from —
+   the action names what happened, the line beneath it says why. */
+.arc-live-event-copy small { max-width: 68ch; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
 .arc-live-event-result { max-width: 72ch; font-family: var(--mono); }
 .arc-live-event-state { width: 20px; height: 24px; display: grid; place-items: center; color: var(--muted); }
 .arc-live-event.is-done .arc-live-event-state { color: var(--ok); }
