@@ -240,6 +240,12 @@ async function runArcQuery(opts: {
   });
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
+  // Diagnostic for BSR-573: Arc had never captured a character of reasoning in
+  // production, and nothing in the code path said why — the thinking branch
+  // reads a defensively-typed field, so a shape change or an absent event fails
+  // silently. Record which stream events actually arrive so the next real run
+  // answers it from the logs instead of from guesswork.
+  const seenEventShapes = new Set<string>();
   // The model phase, split where the reader can actually see it change: reasoning
   // until the first token of prose, then writing. Tool calls report themselves in
   // between, so the trace reads as a sequence of real phases rather than a gap.
@@ -264,6 +270,13 @@ async function runArcQuery(opts: {
   })) {
     if (message.type === "stream_event") {
       const event = message.event;
+      seenEventShapes.add(
+        event.type === "content_block_delta"
+          ? `content_block_delta:${(event.delta as { type?: string }).type ?? "?"}`
+          : event.type === "content_block_start"
+            ? `content_block_start:${((event as { content_block?: { type?: string } }).content_block)?.type ?? "?"}`
+            : event.type,
+      );
       if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
         await beginWriting();
         // Awaited (not fire-and-forget) so throttled posts stay ordered;
@@ -300,6 +313,9 @@ async function runArcQuery(opts: {
 
   const body = assembleReplyBody(assistantChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
+  console.log(
+    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | reasoning chars: ${reasoning?.length ?? 0}`,
+  );
 
   // The last SDK deltas commonly land inside the throttle window. Flush the
   // canonical values before the completion write so the pending bubble reaches
