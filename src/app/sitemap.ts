@@ -3,6 +3,7 @@ import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/seo/site";
 
 import { COMPARISON_SLUGS } from "./compare/_data/comparisons";
+import { INDUSTRY_SLUGS } from "./industries/_data/industries";
 
 /**
  * Serves /sitemap.xml.
@@ -44,6 +45,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     ...COMPARISON_SLUGS.map((slug) => ({
       url: `${SITE_URL}/compare/${slug}`,
+      lastModified,
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+    })),
+    {
+      url: `${SITE_URL}/industries`,
+      lastModified,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    ...INDUSTRY_SLUGS.map((slug) => ({
+      url: `${SITE_URL}/industries/${slug}`,
       lastModified,
       changeFrequency: "monthly" as const,
       priority: 0.7,
