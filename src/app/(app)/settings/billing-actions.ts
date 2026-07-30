@@ -7,6 +7,7 @@ import { normalizePlanTier, planForTier, type PlanTier } from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isWorkspaceAdminRole } from "@/lib/auth/workspace-roles";
+import { isPlatformAdmin } from "@/lib/waitlist/admin";
 import { ensureStripeCustomer } from "@/lib/billing/customer";
 import { setOrgPlan } from "@/lib/billing/persistence";
 import { getStripeClient, isStripeConfigured } from "@/lib/billing/stripe";
@@ -41,15 +42,35 @@ async function requireBillingAdmin(): Promise<
 }
 
 /**
- * Change the current org's billing plan. Owner/admin only (checked here AND by
- * org_plans RLS). Offline/demo returns success-but-unpersisted so the picker can
- * update optimistically without claiming a real write.
+ * Set the current org's billing plan directly, without payment.
+ *
+ * This is a PLATFORM operator tool, not a customer-facing upgrade. A workspace
+ * owner/admin check is not sufficient here: in a self-serve product every
+ * customer is an owner of their own workspace, so a workspace-level gate would
+ * let anyone grant themselves the Scale cap for nothing. The settings UI hides
+ * the picker once Stripe is configured, but a hidden control is not an
+ * authorization boundary — the action has to refuse on its own.
+ *
+ * Paying customers reach a paid tier through `createCheckoutSessionAction` and
+ * the Stripe webhook, which is the only path that involves money.
+ *
+ * Platform admins are the `ARC_PLATFORM_ADMIN_EMAILS` allowlist; unset means
+ * nobody, so an unconfigured deployment can no longer be talked into a free
+ * upgrade by anyone at all.
  */
 export async function updateOrgPlanAction(input: { tier: string }): Promise<SettingsWriteResult> {
   await requireOperator();
   const tier = normalizePlanTier(input.tier);
 
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const actor = await getSupabaseAuthenticatedUser().catch(() => null);
+  if (!isPlatformAdmin(actor?.email)) {
+    return {
+      ok: false,
+      error: "Paid plans are set by checkout. Ask a platform operator if you need this changed directly.",
+    };
+  }
 
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   if (!ctx?.orgId) return { ok: false, error: "No active org to update." };
