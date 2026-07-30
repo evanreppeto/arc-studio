@@ -8,7 +8,9 @@ import { isPlatformAdmin } from "@/lib/waitlist/admin";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured, type TypedSupabaseClient } from "@/lib/supabase/server";
 import { seedDefaultMediaFolders } from "@/lib/media-library/persistence";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { seedDefaultPersonas } from "@/lib/personas/persistence";
+import { seedDefaultPipelineStages } from "@/lib/pipeline-stages/definitions";
 import { canonicalIndustryKey } from "@/lib/product-language";
 
 type WorkspaceType = "individual" | "company" | "agency";
@@ -346,6 +348,16 @@ async function createWorkspaceDefaults(
 
   await seedDefaultMediaFolders({ orgId: org.id, client });
   await seedDefaultPersonas({ orgId: org.id, client, industry });
+
+  // Pipeline stages. Best-effort, unlike the two above: every read falls back to
+  // DEFAULT_PIPELINE_STAGES, so a workspace without seeded rows behaves
+  // identically — it just can't be edited in Settings until the first save
+  // materialises the set. Failing workspace creation over that trades a working
+  // workspace for a cosmetic one.
+  await seedDefaultPipelineStages({ orgId: org.id, client }).catch((error) => {
+    reportDegraded(error, { scope: "workspace-onboarding.seedDefaultPipelineStages", surface: "secondary" });
+    return 0;
+  });
 
   // Start the free trial. Best-effort and non-renewing: a failure must not fail
   // workspace creation, and a workspace with no trial dates is fully usable

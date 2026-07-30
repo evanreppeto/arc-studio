@@ -6,6 +6,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useTransition,
@@ -1056,6 +1057,7 @@ export function ArcView({
   const composerMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLElement | null>(null);
+  const spacerRef = useRef<HTMLDivElement | null>(null);
   const chatRootRef = useRef<HTMLDivElement | null>(null);
   // Bottom-follow tracking. `guard()` covers the deliberate scroll-to-top calls
   // (opening a thread at its start, a new chat) that move scrollTop up exactly
@@ -1192,22 +1194,92 @@ export function ArcView({
     setWorkPanelOpen(true);
   }, [assetMessageId]);
 
-  // Follow the answer as it types out — but only while pinned, so a reader who
-  // scrolled up to re-read isn't yanked back down.
+  /**
+   * Follow the answer only once it actually reaches the bottom of the viewport.
+   *
+   * Previously this pinned to the bottom on every tick, which held the reply
+   * against the composer and dragged it upward for the whole response — the
+   * reader had to track a moving line rather than read a still one. Now the turn
+   * starts with the question at the top (below) and the answer grows downward
+   * into the space beneath it; following only kicks in when the message has
+   * genuinely outgrown the screen, which is the point at which staying put would
+   * mean losing the newest text.
+   *
+   * Still gated on `pinnedRef`, so a reader who scrolled up is never yanked back.
+   */
   useEffect(() => {
     if (!isStreaming) return;
     const interval = window.setInterval(() => {
-      if (pinnedRef.current) scrollToEnd();
+      if (!pinnedRef.current) return;
+      const container = scrollRef.current;
+      const active = container?.querySelector(".arc-assistant-message.is-active");
+      if (!container || !active) {
+        scrollToEnd();
+        return;
+      }
+      // Only chase it once the growing reply has reached the bottom edge.
+      if (active.getBoundingClientRect().bottom > container.getBoundingClientRect().bottom) scrollToEnd();
     }, 120);
     return () => window.clearInterval(interval);
   }, [isStreaming, scrollToEnd, pinnedRef]);
 
-  // A new turn (yours or Arc's) re-pins and jumps to the latest. Scrolling to the
-  // bottom fires onScroll, which clears the jump pill — so we don't setState here.
+  /**
+   * Keep the tail spacer at exactly the height needed for the newest question to
+   * reach the top of the view, and no more.
+   *
+   * Measured rather than fixed: a `62vh` block was enough to anchor the turn but
+   * had to be removed when the run ended, and removing it moved the view half a
+   * screen. Sizing it to the shortfall means it is already near zero by the time
+   * the reply is long, so nothing changes when the run settles, and a finished
+   * conversation carries no dead space.
+   */
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    const spacer = spacerRef.current;
+    if (!container || !spacer) return;
+    const resize = () => {
+      const asked = [...container.querySelectorAll(".arc-operator-message")].at(-1);
+      if (!asked) {
+        spacer.style.height = "0px";
+        return;
+      }
+      const containerTop = container.getBoundingClientRect().top;
+      const askedTop = asked.getBoundingClientRect().top - containerTop;
+      // How much of the view the newest turn already fills, measured from the
+      // question down to the end of the content (excluding this spacer).
+      const filled = container.scrollHeight - spacer.offsetHeight - (askedTop + container.scrollTop);
+      spacer.style.height = `${Math.max(0, Math.round(container.clientHeight - filled - 24))}px`;
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+    const column = container.querySelector(".arc-conversation-column");
+    if (column) observer.observe(column);
+    return () => observer.disconnect();
+  }, [turnCount, isStreaming]);
+
+  /**
+   * A new turn puts the question at the top of the view, so the answer has room
+   * to arrive underneath it and can be read without moving.
+   *
+   * The feed reserves space below the in-flight reply (`.arc-turn-spacer`) so
+   * this scroll has somewhere to go even before Arc has written anything —
+   * without it the container isn't tall enough to put the question at the top,
+   * and the view wouldn't move at all.
+   */
   useEffect(() => {
     if (turnCount === 0) return;
     repin();
-    scrollToEnd();
+    requestAnimationFrame(() => {
+      const container = scrollRef.current;
+      const asked = container ? [...container.querySelectorAll(".arc-operator-message")].at(-1) : null;
+      if (!container || !asked) {
+        scrollToEnd();
+        return;
+      }
+      const offset = asked.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      container.scrollTo({ top: container.scrollTop + offset - 16, behavior: "instant" });
+    });
   }, [turnCount, scrollToEnd, repin]);
 
   // Opening or switching conversations should resume at the latest turn. This
@@ -1745,6 +1817,14 @@ export function ArcView({
         <div className="arc-conversation-column">
           {live && historyLoadError ? <div className="arc-history-load-error" role="status"><CircleAlert size={15} /><span><b>History is temporarily unavailable.</b>{historyLoadError}</span></div> : null}
           {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
+          {/* Room for the reply to arrive into, so the question can sit at the
+              top of the view while the answer grows downward beneath it.
+              Always mounted, and sized to exactly the shortfall — it shrinks as
+              the reply grows and is zero once the turn fills the screen. An
+              earlier version mounted it only while streaming, which meant
+              unmounting it at completion moved the view 512px: the very jump
+              this whole area exists to remove. */}
+          <div ref={spacerRef} className="arc-turn-spacer" aria-hidden="true" />
           <div ref={endRef} />
         </div>
       </main>

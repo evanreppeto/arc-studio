@@ -1,8 +1,16 @@
 import { resolveAgentConnection } from "@/lib/agent/connection";
 import { getViewerAvatarUrl } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
-import { CUSTOM_FIELD_OBJECT_KEYS, type CustomFieldObjectKey } from "@/domain";
+import {
+  CUSTOM_FIELD_OBJECT_KEYS,
+  DEFAULT_PIPELINE_STAGES,
+  PIPELINE_OBJECT_KEYS,
+  type CustomFieldObjectKey,
+  type PipelineObjectKey,
+  type PipelineStage,
+} from "@/domain";
 import { listAllFieldDefinitions } from "@/lib/custom-fields/definitions";
+import { countRecordsByStage, listAllStageSets } from "@/lib/pipeline-stages/definitions";
 import { getProductLanguage } from "@/lib/product-language";
 import { getSettingsTeamView } from "@/lib/auth/team-view";
 import { getSettingsWorkspacesView } from "@/lib/auth/workspaces-view";
@@ -19,6 +27,7 @@ import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getAppSettings } from "@/lib/settings/store";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
+import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { getWaitlistView } from "@/lib/waitlist/read-model";
 import { getHealthConsoleView } from "@/lib/observability/health-console";
 
@@ -110,9 +119,48 @@ export default async function SettingsPage() {
         return [];
       })
     : [];
+  // The tenant's own pipeline, plus how many records sit in each stage — the
+  // occupancy is what lets the panel refuse to archive a stage full of records
+  // without asking where they go.
+  //
+  // PRIMARY on both halves. Falling back to the defaults here would show a
+  // tenant a pipeline that isn't theirs and invite them to "fix" it, overwriting
+  // the one they have; reporting zero occupants would let them archive an
+  // occupied stage with no warning at all. Null renders as unavailable instead.
+  const pipeline = ctx?.orgId && isSupabaseAdminConfigured()
+    ? await Promise.all([
+        listAllStageSets(ctx.orgId),
+        Promise.all(
+          PIPELINE_OBJECT_KEYS.map((k) =>
+            countRecordsByStage(ctx.orgId, k).then((counts) => [k, counts] as const),
+          ),
+        ).then((entries) => Object.fromEntries(entries) as Record<PipelineObjectKey, Record<string, number>>),
+      ]).catch((error) => {
+        reportDegraded(error, { scope: "settings.pipelineStages", surface: "primary" });
+        return null;
+      })
+    : // No workspace, or no database at all — the backend-less preview. The
+      // defaults are honest there, being exactly what every read falls back to in
+      // that state, and it stays distinct from the FAILED read above, which shows
+      // nothing rather than inviting an edit over data we could not see.
+      //
+      // The distinction matters: "there is no database" and "the database did not
+      // answer" look identical from a null, and only one of them is safe to show
+      // an editable pipeline for.
+      ([
+        DEFAULT_PIPELINE_STAGES as unknown as Record<PipelineObjectKey, PipelineStage[]>,
+        Object.fromEntries(PIPELINE_OBJECT_KEYS.map((k) => [k, {}])) as Record<
+          PipelineObjectKey,
+          Record<string, number>
+        >,
+      ] as [Record<PipelineObjectKey, PipelineStage[]>, Record<PipelineObjectKey, Record<string, number>>]);
+
   const language = getProductLanguage(settings.industry || businessProfile?.industry);
   const crmObjectLabels = Object.fromEntries(
     CUSTOM_FIELD_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<CustomFieldObjectKey, string>;
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} customFields={customFields} crmObjectLabels={crmObjectLabels} />;
+  const pipelineObjectLabels = Object.fromEntries(
+    PIPELINE_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
+  ) as Record<PipelineObjectKey, string>;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} />;
 }

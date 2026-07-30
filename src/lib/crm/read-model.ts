@@ -1,7 +1,21 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
+import {
+  DEFAULT_PIPELINE_STAGES,
+  findStage,
+  isLostStatus,
+  isPipelineObjectKey,
+  isWonStatus,
+  orderedStages,
+  statusAccent,
+  statusTone,
+  type PipelineObjectKey,
+  type PipelineStage,
+  type PipelineTone,
+} from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 import { resolveTenantReadHandle } from "../supabase/tenant-client";
 
@@ -40,7 +54,17 @@ export type CrmObjectRow = {
   id: string;
   name: string;
   detail: string;
+  /** The tenant's own word for the stage this record sits in. */
   status: string;
+  /**
+   * Display tone for that status, resolved HERE rather than in the page.
+   *
+   * The page only receives the label, and a label is exactly what stops being
+   * readable once a tenant renames a stage — "Retained" matches none of the
+   * won patterns. Deciding the tone next to the stage set, where the semantic
+   * flags are, is what keeps the pill honest after a rename.
+   */
+  statusTone: PipelineTone;
   owner: string;
   updated: string;
   objectKey: CrmObjectKey;
@@ -202,7 +226,51 @@ type CrmBundleShape = {
   leads: LeadRow[];
   jobs: JobRow[];
   outcomes: OutcomeRow[];
+  /**
+   * The org's own pipeline stages, carried on the bundle so every builder below
+   * can ask a status what it MEANS instead of comparing it to "won".
+   *
+   * On the bundle rather than threaded through a dozen signatures because these
+   * builders are called from six entry points; a parameter would have been
+   * optional at each one, and an optional stage set is one that gets forgotten.
+   */
+  stages: Record<PipelineObjectKey, PipelineStage[]>;
 };
+
+/** The stage a record's status refers to, or null when it maps to none. */
+function stageFor(data: CrmBundleShape, objectKey: PipelineObjectKey, status: string | null | undefined) {
+  return findStage(data.stages[objectKey], status);
+}
+
+/**
+ * The tenant's own word for a stage.
+ *
+ * Falls back to titleizing the stored key, which is exactly what every call
+ * site below did before — so an unmapped status still reads as something rather
+ * than blank, and a workspace on the default stages sees the same words it
+ * always has.
+ */
+function stageLabel(
+  stages: readonly PipelineStage[],
+  status: string | null | undefined,
+  fallback: string,
+): string {
+  return findStage(stages, status)?.label ?? titleize(status ?? fallback);
+}
+
+/**
+ * The tenant's word for winning, lowercased, for use inside a sentence.
+ *
+ * These KPI deltas read "12 completed" / "9 won outcomes". Once a workspace
+ * renames its closing stage, our word for it is simply wrong — the count would
+ * be right and the label would still say someone else's vocabulary. Uses the
+ * first won stage; a pipeline with two (the default outcomes set has Won and
+ * Paid) is summarised by the earlier one.
+ */
+function wonWord(stages: readonly PipelineStage[], fallback: string): string {
+  const won = orderedStages(stages).find((stage) => stage.isWon);
+  return (won?.label ?? fallback).toLowerCase();
+}
 
 // ---------------------------------------------------------------------------
 // Demo fallback bundle
@@ -870,7 +938,16 @@ function buildDemoCrmBundle(): CrmBundleShape {
     },
   ];
 
-  return { companies, contacts, properties, leads, jobs, outcomes };
+  // The demo bundle uses the default stages, which are the same values the
+  // migration seeds — so a preview and a real workspace agree.
+  return {
+    companies, contacts, properties, leads, jobs, outcomes,
+    stages: {
+      leads: [...DEFAULT_PIPELINE_STAGES.leads],
+      jobs: [...DEFAULT_PIPELINE_STAGES.jobs],
+      outcomes: [...DEFAULT_PIPELINE_STAGES.outcomes],
+    },
+  };
 }
 
 function isDemoBundleEmpty(data: CrmBundleShape): boolean {
@@ -1005,7 +1082,13 @@ function buildOverviewFromBundle(data: CrmBundleShape): Extract<CrmOverviewData,
         {
           label: "Leads found",
           value: data.leads.length,
-          delta: `${data.leads.filter((lead) => ["new", "needs_review", "validated"].includes(lead.status ?? "")).length} need review`,
+          delta: `${data.leads.filter((lead) => {
+            // "Not triaged yet" — everything before the qualified line that
+            // hasn't already left the pipeline. Was a literal list of the three
+            // default stage keys, which counts zero once a tenant renames one.
+            const stage = stageFor(data, "leads", lead.status);
+            return stage ? !stage.isQualified && !stage.isTerminal : false;
+          }).length} need review`,
           forecast: "New lead records appear here before routing or approval.",
         },
         {
@@ -1017,13 +1100,13 @@ function buildOverviewFromBundle(data: CrmBundleShape): Extract<CrmOverviewData,
         {
           label: "Projects tracked",
           value: data.jobs.length,
-          delta: `${data.jobs.filter((job) => job.status === "completed").length} completed`,
+          delta: `${data.jobs.filter((job) => isWonStatus(data.stages.jobs, job.status)).length} ${wonWord(data.stages.jobs, "completed")}`,
           forecast: "Projects connect qualified demand to downstream outcomes.",
         },
         {
           label: "Revenue linked",
           value: formatMoney(data.outcomes.reduce((sum, outcome) => sum + (outcome.gross_revenue_cents ?? 0), 0)),
-          delta: `${data.outcomes.filter((outcome) => outcome.status === "won").length} won outcomes`,
+          delta: `${data.outcomes.filter((outcome) => isWonStatus(data.stages.outcomes, outcome.status)).length} ${wonWord(data.stages.outcomes, "won")} outcomes`,
           forecast: "Attribution connects campaigns, relationships, and work back to revenue.",
         },
     ],
@@ -1224,7 +1307,7 @@ function buildRecordDataFromBundle(key: CrmObjectKey, recordId: string, data: Cr
       label: objectMeta.label,
       href: `/crm/${key}/${recordId}`,
       id: recordId,
-      name: recordName(key, record),
+      name: recordName(key, record, data),
       detail: recordDetail(key, record, data),
       lifecycleStatus,
       owner,
@@ -1237,7 +1320,7 @@ function buildRecordDataFromBundle(key: CrmObjectKey, recordId: string, data: Cr
       partnerScore: scoreSet.partnerScore,
       revenueScore: scoreSet.revenueScore,
       attentionReason: attentionReasonForRecord(key, record, metadata, agentName),
-      nextBestAction: nextBestActionForRecord(key, record, metadata, agentName),
+      nextBestAction: nextBestActionForRecord(key, record, metadata, data, agentName),
       cta: ctaForPersona(persona),
       messageAngle: messageAngleForPersona(persona),
       guardrailStatus: "Internal CRM review only. No outreach, publishing, spend, or dispatch is enabled from this record.",
@@ -1246,7 +1329,7 @@ function buildRecordDataFromBundle(key: CrmObjectKey, recordId: string, data: Cr
       fields: fieldsForRecord(key, record),
       relationships: relationshipsForRecord(key, record, data),
       missingFields: missingFieldsForRecord(key, record, evidence),
-      headerMetrics: headerMetricsForRecord(key, record, metadata, scoreSet),
+      headerMetrics: headerMetricsForRecord(key, record, metadata, scoreSet, data),
       quickStats: quickStatsForRecord(key, record, data, scoreSet),
       scoreBars: scoreBarsForRecord(key, scoreSet),
       engagement: engagementForRecord(key, record, data, metadata),
@@ -1342,6 +1425,15 @@ async function getCrmTableBundle(client?: SupabaseClient, orgId?: string | null)
   assertResult("jobs", jobs.error);
   assertResult("outcomes", outcomes.error);
 
+  // getPipelineStages already falls back to the defaults rather than returning
+  // empty, precisely so a stage-table problem cannot make every record read as
+  // meaningless. Nothing to guard here beyond that.
+  const [leadStages, jobStages, outcomeStages] = await Promise.all([
+    getPipelineStages(orgId ?? "", "leads", { client: supabase }),
+    getPipelineStages(orgId ?? "", "jobs", { client: supabase }),
+    getPipelineStages(orgId ?? "", "outcomes", { client: supabase }),
+  ]);
+
   return {
     companies: (companies.data ?? []) as CompanyRow[],
     contacts: (contacts.data ?? []) as ContactRow[],
@@ -1349,6 +1441,7 @@ async function getCrmTableBundle(client?: SupabaseClient, orgId?: string | null)
     leads: (leads.data ?? []) as LeadRow[],
     jobs: (jobs.data ?? []) as JobRow[],
     outcomes: (outcomes.data ?? []) as OutcomeRow[],
+    stages: { leads: leadStages, jobs: jobStages, outcomes: outcomeStages },
   };
 }
 
@@ -1383,10 +1476,10 @@ function buildPipelineRows(data: Awaited<ReturnType<typeof getCrmTableBundle>>):
       account: company?.name ?? contactName(contact) ?? "Unassigned account",
       type: titleize(lead.persona ?? "Lead"),
       objectType: "lead",
-      stage: titleize(lead.status ?? "new"),
+      stage: stageLabel(data.stages.leads, lead.status, "new"),
       owner: getString(metadata.owner) ?? "Arc",
       value: scoreValue(lead.lead_score),
-      nextStep: nextStepForLead(lead.status),
+      nextStep: nextStepForLead(stageFor(data, "leads", lead.status)),
       updated: lead.updated_at ?? lead.received_at ?? "Now",
       score,
       personaTag: normalizeTag(lead.persona ?? getString(metadata.persona) ?? "unassigned_persona"),
@@ -1402,7 +1495,7 @@ function buildPipelineRows(data: Awaited<ReturnType<typeof getCrmTableBundle>>):
         source: lead.source,
       }),
       href: `/crm/leads/${lead.id}`,
-      tone: toneForStatus(lead.status ?? "new"),
+      tone: statusAccent(lead.status ?? "new", stageFor(data, "leads", lead.status)),
     } satisfies CrmPipelineRow;
   });
 
@@ -1410,7 +1503,7 @@ function buildPipelineRows(data: Awaited<ReturnType<typeof getCrmTableBundle>>):
     const company = job.company_id ? companyById.get(job.company_id) : undefined;
     const contact = job.contact_id ? contactById.get(job.contact_id) : undefined;
     const metadata = asRecord(job.metadata);
-    const score = job.status === "completed" ? 80 : 62;
+    const score = isWonStatus(data.stages.jobs, job.status) ? 80 : 62;
     const revenueCents = job.estimated_revenue_cents ?? 0;
 
     return {
@@ -1419,10 +1512,10 @@ function buildPipelineRows(data: Awaited<ReturnType<typeof getCrmTableBundle>>):
       account: company?.name ?? contactName(contact) ?? "Linked project",
       type: titleize(job.persona ?? "Project"),
       objectType: "job",
-      stage: titleize(job.status ?? "pending"),
+      stage: stageLabel(data.stages.jobs, job.status, "pending"),
       owner: getString(metadata.owner) ?? "Ops",
       value: formatMoney(revenueCents),
-      nextStep: job.status === "completed" ? "Review outcome" : "Coordinate project step",
+      nextStep: isWonStatus(data.stages.jobs, job.status) ? "Review outcome" : "Coordinate project step",
       updated: job.updated_at ?? job.created_at ?? "Now",
       score,
       personaTag: normalizeTag(job.persona ?? getString(metadata.persona) ?? "unassigned_persona"),
@@ -1438,7 +1531,7 @@ function buildPipelineRows(data: Awaited<ReturnType<typeof getCrmTableBundle>>):
         source: getString(metadata.source),
       }),
       href: `/crm/jobs/${job.id}`,
-      tone: toneForStatus(job.status ?? "pending"),
+      tone: statusAccent(job.status ?? "pending", stageFor(data, "jobs", job.status)),
     } satisfies CrmPipelineRow;
   });
 
@@ -1473,7 +1566,7 @@ function buildPipelineRows(data: Awaited<ReturnType<typeof getCrmTableBundle>>):
           source: getString(metadata.source),
         }),
         href: `/crm/companies/${company.id}`,
-        tone: toneForStatus(company.status ?? "active"),
+        tone: statusAccent(company.status ?? "active"),
       } satisfies CrmPipelineRow;
     });
 
@@ -1521,9 +1614,17 @@ function decorateObjectRow(
 
   return {
     id: record.id,
-    name: recordName(key, record),
+    name: recordName(key, record, data),
     detail: recordDetail(key, record, data),
-    status: titleize(recordStatus(key, record)),
+    status: isPipelineObjectKey(key)
+      ? stageLabel(data.stages[key], recordStatus(key, record), "")
+      : titleize(recordStatus(key, record)),
+    statusTone: statusTone(
+      isPipelineObjectKey(key)
+        ? stageLabel(data.stages[key], recordStatus(key, record), "")
+        : titleize(recordStatus(key, record)),
+      isPipelineObjectKey(key) ? stageFor(data, key, recordStatus(key, record)) : null,
+    ),
     owner: getString(metadata.owner) ?? fallbackOwner,
     updated,
     objectKey: key,
@@ -1532,7 +1633,7 @@ function decorateObjectRow(
     sourceLabel: sourceLabelForObjectRow(key, record, metadata),
     score,
     valueLabel: valueLabelForObjectRow(key, record, scores),
-    nextStep: nextBestActionForRecord(key, record, metadata),
+    nextStep: nextBestActionForRecord(key, record, metadata, data),
     relationships: relationshipsForRecord(key, record, data).slice(0, 5),
     missingFields: missingFieldsForRecord(key, record, evidence),
   };
@@ -1571,13 +1672,13 @@ function findRecord(key: CrmObjectKey, recordId: string, data: CrmBundle): AnyCr
   return data.outcomes.find((row) => row.id === recordId) ?? null;
 }
 
-function recordName(key: CrmObjectKey, record: AnyCrmRecord) {
+function recordName(key: CrmObjectKey, record: AnyCrmRecord, data: CrmBundle) {
   if (key === "companies") return (record as CompanyRow).name ?? `Company ${shortId(record.id)}`;
   if (key === "contacts") return contactName(record as ContactRow) ?? `Contact ${shortId(record.id)}`;
   if (key === "properties") return propertyAddress(record as PropertyRow);
   if (key === "leads") return (record as LeadRow).loss_summary ?? titleize((record as LeadRow).source ?? "Lead");
   if (key === "jobs") return (record as JobRow).job_number ?? `Project ${shortId(record.id)}`;
-  return outcomeName(record as OutcomeRow);
+  return outcomeName(record as OutcomeRow, data.stages.outcomes);
 }
 
 /**
@@ -1585,11 +1686,11 @@ function recordName(key: CrmObjectKey, record: AnyCrmRecord) {
  * (the old "Won demo-oc-…" form) by naming the result by its service line
  * and revenue instead.
  */
-function outcomeName(outcome: OutcomeRow) {
-  const result = titleize(outcome.status ?? "outcome");
+function outcomeName(outcome: OutcomeRow, stages: readonly PipelineStage[]) {
+  const result = stageLabel(stages, outcome.status, "outcome");
   const service = serviceLineForPersona(outcome.persona);
   const revenue = outcome.gross_revenue_cents ? formatMoney(outcome.gross_revenue_cents) : null;
-  if (outcome.status === "lost") {
+  if (isLostStatus(stages, outcome.status)) {
     return service ? `${service} — lost` : "Closed-lost outcome";
   }
   return [service ? `${service} ${result.toLowerCase()}` : `${result} outcome`, revenue].filter(Boolean).join(" · ");
@@ -1695,11 +1796,11 @@ function attentionReasonForRecord(key: CrmObjectKey, record: AnyCrmRecord, metad
   return `Record is available for ${agentName} review and enrichment.`;
 }
 
-function nextBestActionForRecord(key: CrmObjectKey, record: AnyCrmRecord, metadata: Record<string, unknown>, agentName: string = "Agent") {
+function nextBestActionForRecord(key: CrmObjectKey, record: AnyCrmRecord, metadata: Record<string, unknown>, data: CrmBundle, agentName: string = "Agent") {
   void agentName;
   const explicit = getString(metadata.next_best_action) ?? getString(metadata.recommended_action);
   if (explicit) return explicit;
-  if (key === "leads") return nextStepForLead((record as LeadRow).status);
+  if (key === "leads") return nextStepForLead(findStage(data.stages.leads, (record as LeadRow).status));
   if (key === "companies") return `Review fit, missing context, and next touch before drafting outreach.`;
   if (key === "contacts") return "Confirm role, persona, consent, and company relationship before campaign use.";
   if (key === "jobs") return "Connect project status and revenue context back to the originating lead or campaign.";
@@ -1926,6 +2027,7 @@ function headerMetricsForRecord(
   record: AnyCrmRecord,
   metadata: Record<string, unknown>,
   scores: ReturnType<typeof getScores>,
+  data: CrmBundle,
 ): CrmRecordMetric[] {
   const metrics: CrmRecordMetric[] = [];
 
@@ -1961,12 +2063,12 @@ function headerMetricsForRecord(
   } else if (key === "jobs") {
     const job = record as JobRow;
     metrics.push({ label: "Project", value: job.job_number ?? `MRD-${shortId(job.id)}` });
-    metrics.push({ label: "Status", value: titleize(job.status ?? "pending"), tone: job.status === "completed" ? "ok" : "accent" });
+    metrics.push({ label: "Status", value: stageLabel(data.stages.jobs, job.status, "pending"), tone: isWonStatus(data.stages.jobs, job.status) ? "ok" : "accent" });
     metrics.push({ label: "Est. revenue", value: formatMoney(job.estimated_revenue_cents ?? 0) });
     metrics.push({ label: "Scheduled", value: job.scheduled_at ? formatDateOnly(job.scheduled_at) : "—" });
   } else {
     const outcome = record as OutcomeRow;
-    metrics.push({ label: "Result", value: titleize(outcome.status ?? "pending"), tone: outcome.status === "won" ? "ok" : outcome.status === "lost" ? "red" : "neutral" });
+    metrics.push({ label: "Result", value: stageLabel(data.stages.outcomes, outcome.status, "pending"), tone: isWonStatus(data.stages.outcomes, outcome.status) ? "ok" : isLostStatus(data.stages.outcomes, outcome.status) ? "red" : "neutral" });
     metrics.push({ label: "Revenue", value: formatMoney(outcome.gross_revenue_cents ?? 0) });
     metrics.push({ label: "Margin", value: formatMoney(outcome.gross_margin_cents ?? 0) });
     metrics.push({ label: "Closed", value: outcome.closed_at ? formatDateOnly(outcome.closed_at) : "—" });
@@ -1984,7 +2086,7 @@ function quickStatsForRecord(
 ): CrmRecordMetric[] {
   if (key === "companies") {
     const company = record as CompanyRow;
-    const companyOutcomes = data.outcomes.filter((o) => o.company_id === company.id && o.status === "won");
+    const companyOutcomes = data.outcomes.filter((o) => o.company_id === company.id && isWonStatus(data.stages.outcomes, o.status));
     const companyJobs = data.jobs.filter((j) => j.company_id === company.id);
     const companyLeads = data.leads.filter((l) => l.company_id === company.id);
     const realLifetime = companyOutcomes.reduce((sum, o) => sum + (o.gross_revenue_cents ?? 0), 0);
@@ -2010,7 +2112,7 @@ function quickStatsForRecord(
     const job = record as JobRow;
     return [
       { label: "Est. revenue", value: formatMoney(job.estimated_revenue_cents ?? 0), tone: "accent" },
-      { label: "Status", value: titleize(job.status ?? "pending"), tone: job.status === "completed" ? "ok" : "neutral" },
+      { label: "Status", value: stageLabel(data.stages.jobs, job.status, "pending"), tone: isWonStatus(data.stages.jobs, job.status) ? "ok" : "neutral" },
       { label: "Scheduled", value: job.scheduled_at ? formatDateOnly(job.scheduled_at) : "—" },
       { label: "Completed", value: job.completed_at ? formatDateOnly(job.completed_at) : "In progress" },
     ];
@@ -2024,7 +2126,7 @@ function quickStatsForRecord(
       { label: "Revenue", value: formatMoney(revenue), tone: "accent" },
       { label: "Margin", value: formatMoney(margin) },
       { label: "Margin %", value: revenue > 0 ? `${marginPct}%` : "—", tone: marginPct >= 35 ? "ok" : "amber" },
-      { label: "Result", value: titleize(outcome.status ?? "pending"), tone: outcome.status === "won" ? "ok" : outcome.status === "lost" ? "red" : "neutral" },
+      { label: "Result", value: stageLabel(data.stages.outcomes, outcome.status, "pending"), tone: isWonStatus(data.stages.outcomes, outcome.status) ? "ok" : isLostStatus(data.stages.outcomes, outcome.status) ? "red" : "neutral" },
     ];
   }
   return [];
@@ -2106,7 +2208,7 @@ function dataQualityForRecord(key: CrmObjectKey, record: AnyCrmRecord, evidence:
 
 function graphForRecord(key: CrmObjectKey, record: AnyCrmRecord, data: CrmBundle): CrmRecordGraphNode[] {
   const nodes: CrmRecordGraphNode[] = [
-    { id: record.id, label: recordName(key, record), kind: selfKind(key), href: undefined },
+    { id: record.id, label: recordName(key, record, data), kind: selfKind(key), href: undefined },
   ];
   const seen = new Set<string>([record.id]);
   const add = (node: CrmRecordGraphNode) => {
@@ -2191,19 +2293,20 @@ const objectMetaByKey: Record<
   },
 };
 
-function nextStepForLead(status: string | null) {
-  if (status === "needs_review" || status === "new") return "Review and approve lead";
-  if (status === "qualified") return "Create opportunity";
-  if (status === "converted") return "Review outcome";
-  if (status === "lost") return "Archive or learn";
-  return "Review next step";
-}
-
-function toneForStatus(status: string): CrmTone {
-  if (["active", "validated", "qualified", "converted", "completed", "won", "paid"].includes(status)) return "green";
-  if (["lost", "canceled", "written_off", "archived", "inactive", "do_not_contact"].includes(status)) return "red";
-  if (["running", "in_progress", "scheduled"].includes(status)) return "blue";
-  return "amber";
+/**
+ * What to do next with a lead, from what its stage MEANS.
+ *
+ * Was a chain of comparisons against the four default keys, which all fall
+ * through to the generic "Review next step" the moment a tenant renames one —
+ * silently turning the most actionable column in the CRM into filler.
+ */
+function nextStepForLead(stage: PipelineStage | null) {
+  if (!stage) return "Review next step";
+  if (stage.isWon) return "Review outcome";
+  if (stage.isLost) return "Archive or learn";
+  if (stage.isTerminal) return "Closed — no action";
+  if (stage.isQualified) return "Create opportunity";
+  return "Review and approve lead";
 }
 
 function partnerScore(tier: string | null) {

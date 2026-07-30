@@ -300,7 +300,7 @@ export async function runNextIterationDetection(client?: SupabaseClient): Promis
     if (!c.id) continue;
     const name = c.name?.trim() || `Campaign ${c.id.slice(0, 8)}`;
     // Reuse the exact panel + learning the campaign detail renders.
-    const panel = await getCampaignPerformancePanel(c.id);
+    const panel = await getCampaignPerformancePanel(c.id, orgId);
     if (panel.status !== "live" || panel.channels.length === 0) continue;
     const learning = buildPerformanceLearning(panel, name);
     if (!learning) continue;
