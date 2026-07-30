@@ -1,6 +1,7 @@
-import { matchPersonaSlug } from "@/domain";
+import { isWonStatus, matchPersonaSlug } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { listPersonas, type Persona } from "@/lib/personas/console";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import { PersonasView, type PersonaVM } from "./_components/personas-view";
@@ -62,10 +63,15 @@ async function personaPerf(orgId: string): Promise<{ rows: Map<string, PerfRow>;
     const cur = out.get(key) ?? { leads: 0, jobs: 0, revenueCents: 0 };
     out.set(key, { leads: cur.leads + (patch.leads ?? 0), jobs: cur.jobs + (patch.jobs ?? 0), revenueCents: cur.revenueCents + (patch.revenueCents ?? 0) });
   };
+  // Revenue per persona counts WON outcomes — asked of the org's own stages
+  // rather than filtered on the literal keys `["won", "paid"]` in the query.
+  // A workspace that renamed its closing stage would have seen every persona's
+  // revenue read $0 here, with nothing in the logs to say why (BSR-563).
+  const outcomeStages = await getPipelineStages(orgId, "outcomes", { client: admin });
   const [leads, jobs, outcomes] = await Promise.all([
     admin.from("leads").select("persona").eq("org_id", orgId).gte("created_at", since),
     admin.from("jobs").select("persona").eq("org_id", orgId),
-    admin.from("outcomes").select("persona, gross_revenue_cents, status").eq("org_id", orgId).in("status", ["won", "paid"]),
+    admin.from("outcomes").select("persona, gross_revenue_cents, status").eq("org_id", orgId),
   ]);
   const errors = [leads.error, jobs.error, outcomes.error].filter(Boolean);
   if (errors.length > 0) {
@@ -74,7 +80,9 @@ async function personaPerf(orgId: string): Promise<{ rows: Map<string, PerfRow>;
   }
   for (const r of (leads.data ?? []) as { persona: string | null }[]) if (r.persona) bump(r.persona, { leads: 1 });
   for (const r of (jobs.data ?? []) as { persona: string | null }[]) if (r.persona) bump(r.persona, { jobs: 1 });
-  for (const r of (outcomes.data ?? []) as { persona: string | null; gross_revenue_cents: number | null }[]) if (r.persona) bump(r.persona, { revenueCents: r.gross_revenue_cents ?? 0 });
+  for (const r of (outcomes.data ?? []) as { persona: string | null; gross_revenue_cents: number | null; status: string | null }[]) {
+    if (r.persona && isWonStatus(outcomeStages, r.status)) bump(r.persona, { revenueCents: r.gross_revenue_cents ?? 0 });
+  }
   return { rows: out, failed: false };
 }
 

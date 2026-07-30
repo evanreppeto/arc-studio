@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { entityTypeFromCrmObjectKey, type CustomFieldObjectKey } from "@/domain";
+import { entityTypeFromCrmObjectKey, isPipelineObjectKey, orderedStages, type CustomFieldObjectKey } from "@/domain";
 import { getCustomFieldsForRecord } from "@/lib/custom-fields/values";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getCrmRecordData, type CrmObjectKey } from "@/lib/crm/read-model";
 import { getRecordNotes, getRecordTasks, getRecordTimeline } from "@/lib/interactions/read-model";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 import { getProductLanguage } from "@/lib/product-language";
 import { getAppSettings } from "@/lib/settings/store";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
@@ -100,6 +101,16 @@ export default async function CrmRecordPage({
   // Correctly silent (BSR-546): picker options. An empty dropdown is visible.
   const personaOptions = await getOrgPersonaOptions().catch(() => []);
 
+  // The org's own stages, so the edit picker offers this tenant's vocabulary
+  // rather than a hardcoded list that may no longer map to anything.
+  const stageOptions =
+    ctxForLabel?.orgId && isPipelineObjectKey(objectKey)
+      ? orderedStages(await getPipelineStages(ctxForLabel.orgId, objectKey)).map((s) => ({
+          key: s.key,
+          label: s.label,
+        }))
+      : undefined;
+
   // The tenant's own custom fields for this object, with this record's values.
   // Degrades to empty on its own: a record must still render if the field layer
   // is unavailable (or its migration hasn't been applied yet).
@@ -112,5 +123,5 @@ export default async function CrmRecordPage({
   return <RecordView
       crmLabel={crmLabel}
       customFields={customFields}
-      record={record} activity={activity} personaOptions={personaOptions} />;
+      record={record} activity={activity} personaOptions={personaOptions} stageOptions={stageOptions} />;
 }

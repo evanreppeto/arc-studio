@@ -1,10 +1,42 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { computeCampaignEconomics, type CampaignEconomics } from "@/domain";
+import {
+  computeCampaignEconomics,
+  DEFAULT_PIPELINE_STAGES,
+  isTerminalStatus,
+  isWonStatus,
+  type CampaignEconomics,
+  type PipelineStage,
+} from "@/domain";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 
-const WON_OUTCOME_STATUSES = ["won", "paid"];
-const OPEN_JOB_STATUSES = ["pending", "scheduled", "in_progress"];
+/**
+ * Attributed revenue asks the stage what it MEANS (BSR-563).
+ *
+ * These were the literal lists `["won", "paid"]` and
+ * `["pending", "scheduled", "in_progress"]` — the same shape that would have
+ * made analytics read zero, missed when BSR-495 fixed that one. A workspace
+ * that renames "Won" to "Retained" would have seen every campaign's attributed
+ * revenue drop to nothing, with no error anywhere.
+ *
+ * `orgId` is optional because these are called from paths that don't all carry
+ * one; without it the defaults stand in, which are exactly the values the two
+ * lists used to hold, so nothing regresses.
+ */
+async function stagesFor(
+  orgId: string | undefined,
+  objectKey: "jobs" | "outcomes",
+  client: SupabaseClient,
+): Promise<PipelineStage[]> {
+  if (!orgId) return [...DEFAULT_PIPELINE_STAGES[objectKey]];
+  return getPipelineStages(orgId, objectKey, { client });
+}
+
+/** Open = in the pipeline and not yet closed, whatever the tenant calls it. */
+function isOpenStatus(stages: readonly PipelineStage[], status: string | null | undefined): boolean {
+  return Boolean(status) && !isTerminalStatus(stages, status);
+}
 // Explicit row caps so totals are never silently truncated by PostgREST's
 // default page size (1000). A campaign's attributed leads are bounded, and
 // their jobs/outcomes are a small multiple of that.
@@ -27,6 +59,7 @@ type ResultRow = { spend_cents: number | null; won_revenue_cents: number | null;
 export async function getCampaignEconomics(
   campaignId: string,
   client?: SupabaseClient,
+  orgId?: string,
 ): Promise<CampaignEconomicsReadModel> {
   if (!client && !isSupabaseAdminConfigured()) {
     return { status: "unavailable", message: "Supabase env vars are not configured." };
@@ -54,10 +87,15 @@ export async function getCampaignEconomics(
     const outcomes = (outcomesRes.data ?? []) as OutcomeRow[];
     const results = (resultsRes.data ?? []) as ResultRow[];
 
-    const won = outcomes.filter((o) => WON_OUTCOME_STATUSES.includes(o.status ?? ""));
+    const [outcomeStages, jobStages] = await Promise.all([
+      stagesFor(orgId, "outcomes", supabase),
+      stagesFor(orgId, "jobs", supabase),
+    ]);
+
+    const won = outcomes.filter((o) => isWonStatus(outcomeStages, o.status));
     const wonRevenueCents = won.reduce((sum, o) => sum + (o.gross_revenue_cents ?? 0), 0);
     const openPipelineCents = jobs
-      .filter((j) => OPEN_JOB_STATUSES.includes(j.status ?? ""))
+      .filter((j) => isOpenStatus(jobStages, j.status))
       .reduce((sum, j) => sum + (j.estimated_revenue_cents ?? 0), 0);
     const spendCents = results.reduce((sum, r) => sum + (r.spend_cents ?? 0), 0);
 
@@ -183,7 +221,7 @@ export type CampaignTrendRows =
 type LeadDateRow = { id: string; created_at: string | null };
 type OutcomeDateRow = { status: string | null; gross_revenue_cents: number | null; closed_at: string | null; created_at: string | null };
 
-export async function getCampaignTrendRows(campaignId: string, client?: SupabaseClient): Promise<CampaignTrendRows> {
+export async function getCampaignTrendRows(campaignId: string, client?: SupabaseClient, orgId?: string): Promise<CampaignTrendRows> {
   if (!client && !isSupabaseAdminConfigured()) {
     return { status: "unavailable", message: "Supabase env vars are not configured." };
   }
@@ -204,8 +242,9 @@ export async function getCampaignTrendRows(campaignId: string, client?: Supabase
     if (outcomesRes.error) throw new Error(`outcomes lookup: ${outcomesRes.error.message}`);
     const outcomeRows = (outcomesRes.data ?? []) as OutcomeDateRow[];
 
+    const outcomeStages = await stagesFor(orgId, "outcomes", supabase);
     const wonEvents = outcomeRows
-      .filter((o) => WON_OUTCOME_STATUSES.includes(o.status ?? ""))
+      .filter((o) => isWonStatus(outcomeStages, o.status))
       .map((o) => ({ at: o.closed_at ?? o.created_at, cents: o.gross_revenue_cents ?? 0 }));
 
     return { status: "live", leadDates: leadRows.map((row) => row.created_at), wonEvents };

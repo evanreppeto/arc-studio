@@ -1,11 +1,12 @@
 import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
-import { humanizePersonaLabel } from "@/domain";
+import { humanizePersonaLabel, orderedStages, PIPELINE_OBJECT_KEYS, type PipelineObjectKey } from "@/domain";
 import { getAnalyticsOverview } from "@/lib/analytics/overview";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getCrmMentionSamples, getCrmNavCounts, type CrmObjectKey, type CrmObjectRow } from "@/lib/crm/read-model";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 import { getProductLanguage } from "@/lib/product-language";
 import { getAppSettings } from "@/lib/settings/store";
 
@@ -50,19 +51,6 @@ function personaDot(persona: string): string {
   if (/past|repeat|existing|customer|reactivat/.test(p)) return "#b58fd0"; // light purple
   if (/property|manager|realtor|commercial|reit/.test(p)) return "#c8a24a"; // gold
   return "#c8a24a"; // gold default
-}
-
-function statusTone(status: string): string {
-  const t = (status || "").toLowerCase();
-  if (/do not contact|dnc|blocked|suppress/.test(t)) return "dnc";
-  if (/lost|dead|cancel|churn/.test(t)) return "lost";
-  if (/won|complete|closed.?won|paid/.test(t)) return "won";
-  if (/qualified/.test(t)) return "qualified";
-  if (/schedul|booked|dispatch/.test(t)) return "sched";
-  if (/review|pending|needs|hold/.test(t)) return "review";
-  if (/new|open|fresh|inbound/.test(t)) return "new";
-  if (/active|live|engaged|in progress/.test(t)) return "active";
-  return "inactive";
 }
 
 function scoreColor(score: number): string {
@@ -111,7 +99,7 @@ function toRow(row: CrmObjectRow): CrmRowVM {
     initials: initials(row.name),
     isCompany: row.objectKey === "companies",
     statusLabel: row.status || "—",
-    statusTone: statusTone(row.status),
+    statusTone: row.statusTone,
     persona,
     dot: personaDot(row.personaTag),
     score: typeof row.score === "number" ? Math.round(row.score) : null,
@@ -157,6 +145,18 @@ export default async function CrmPage() {
       : Promise.resolve(null),
     listCampaignNames(orgId || undefined).catch(() => []),
   ]);
+
+  // The org's own stage names, for the add/edit pickers. getPipelineStages
+  // already falls back to the defaults rather than returning empty — an empty
+  // status picker would block record creation outright.
+  const stageOptions = Object.fromEntries(
+    await Promise.all(
+      PIPELINE_OBJECT_KEYS.map(async (key) => [
+        key,
+        orderedStages(await getPipelineStages(orgId, key)).map((s) => ({ key: s.key, label: s.label })),
+      ]),
+    ),
+  ) as Record<PipelineObjectKey, { key: string; label: string }[]>;
   const productLanguage = getProductLanguage(appSettings?.industry || businessProfile?.industry);
 
   // A failed counts read is NOT an empty CRM. Without this the object tiles
@@ -246,5 +246,5 @@ export default async function CrmPage() {
     );
   }
 
-  return <CrmBoard loadError={loadError} objects={objects} rowsByKey={rowsByKey} defaultKey="contacts" kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} customColumnsByKey={customColumnsByKey} customFieldDefsByKey={customFieldDefsByKey} />;
+  return <CrmBoard loadError={loadError} objects={objects} rowsByKey={rowsByKey} defaultKey="contacts" kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} customColumnsByKey={customColumnsByKey} customFieldDefsByKey={customFieldDefsByKey} stageOptions={stageOptions} />;
 }

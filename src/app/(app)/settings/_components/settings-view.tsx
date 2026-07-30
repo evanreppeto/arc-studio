@@ -6,9 +6,10 @@ import { createContext, useContext, useEffect, useState, useTransition, type Rea
 import type { SettingsTeamInvite, SettingsTeamMember, SettingsTeamView, WorkspaceActivityEntry } from "@/lib/auth/team-view";
 import type { WaitlistView } from "@/lib/waitlist/read-model";
 import type { HealthConsoleView } from "@/lib/observability/health-console";
-import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
+import type { CustomFieldDefinition, CustomFieldObjectKey, PipelineObjectKey, PipelineStage } from "@/domain";
 
 import { CustomFieldsPanel } from "./custom-fields-panel";
+import { PipelineStagesPanel } from "./pipeline-stages-panel";
 import type { LoopState } from "@/lib/observability/health-grading";
 import { WORKSPACE_ROLES } from "@/lib/auth/workspace-roles";
 import type { SettingsWorkspace, SettingsWorkspacesView } from "@/lib/auth/workspaces-view";
@@ -102,7 +103,7 @@ const Ic = ({ d }: { d: string }) => <svg viewBox="0 0 24 24" dangerouslySetInne
 const NAVGROUPS = [
   { g: "WORKSPACE", items: [["overview", "Overview"], ["general", "Organization & brand"], ["appearance", "Appearance"], ["team", "Team"], ["workspaces", "Workspaces"]] },
   { g: "ARC", items: [["connections", "Connections"]] },
-  { g: "RECORDS", items: [["fields", "Custom fields"]] },
+  { g: "RECORDS", items: [["fields", "Custom fields"], ["stages", "Pipeline stages"]] },
   { g: "ACCOUNT", items: [["account", "Account"], ["usage", "Usage & billing"]] },
   { g: "ADVANCED", items: [["media", "Media models"], ["system", "System status"]] },
 ] as const;
@@ -132,6 +133,7 @@ const SECTION_KEYWORDS: Record<string, string> = {
   team: "members invite invitation role permission access seat",
   workspaces: "switch organization org tenant",
   connections: "integration api token credential connector gemini higgsfield mcp vault",
+  stages: "pipeline stage status funnel column won lost qualified closed rename reorder archive vocabulary",
   media: "models image video audio gemini veo higgsfield generation default aspect",
   account: "profile photo security sign-in login session sign out",
   usage: "billing cost spend tokens runs plan cap invoice budget",
@@ -609,7 +611,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, customFields = [], crmObjectLabels }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string> }) {
+export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string> }) {
   const [cur, setCur] = useState("overview");
   // Health and the waitlist are platform-level, not workspace-level: the server
   // sends null unless the viewer is a platform admin, so the group — and every
@@ -815,6 +817,34 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
           d="Track what the built-in fields don't cover. Fields you add here appear on the record, in the add and edit forms, and in what Arc reads when it drafts."
         />
         <CustomFieldsPanel definitions={customFields} objectLabels={crmObjectLabels} />
+      </>
+    ),
+    stages: (
+      <>
+        <Head
+          t="Pipeline stages"
+          d="The steps your records move through. Rename them to your team's words, reorder them, or add the ones you're missing — reporting follows the meaning you give each stage, not its name."
+        />
+        {pipelineStages && pipelineOccupancy ? (
+          <PipelineStagesPanel
+            stagesByObject={pipelineStages}
+            occupancyByObject={pipelineOccupancy}
+            objectLabels={pipelineObjectLabels}
+          />
+        ) : (
+          // The read failed. Rendering the default stages here would show a
+          // pipeline that may not be this tenant's and invite them to "correct"
+          // it, overwriting the one they actually have.
+          <div className="panel">
+            <div className="panel-b">
+              <p className="cxm-hint">
+                Your pipeline stages couldn&apos;t be loaded just now, so they aren&apos;t shown —
+                editing them against data we couldn&apos;t read could overwrite your setup. Nothing
+                has changed. Reload to try again.
+              </p>
+            </div>
+          </div>
+        )}
       </>
     ),
     health: health ? (

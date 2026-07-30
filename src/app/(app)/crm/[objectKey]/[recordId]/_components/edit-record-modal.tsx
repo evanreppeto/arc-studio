@@ -6,8 +6,14 @@ import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel } from "@/domain";
 
 import { Modal } from "../../../../_components/modal";
 
-// Per-object status options — the real DB enum values (verified against the
-// schema; e.g. company_status has no "prospect").
+// Per-object status options.
+//
+// Companies and contacts are not pipelines — their statuses are app machinery
+// and stay fixed. Leads, jobs and outcomes ARE pipelines: these three lists are
+// now only the fallback for when the org's own stages could not be read, and
+// they match DEFAULT_PIPELINE_STAGES, which is what every stage read falls back
+// to. Offering a stale hardcoded list to a tenant who has renamed their stages
+// would write a status that maps to nothing.
 const STATUS_OPTIONS: Record<string, string[]> = {
   companies: ["active", "inactive", "archived"],
   contacts: ["active", "inactive", "do_not_contact", "archived"],
@@ -32,6 +38,7 @@ export function EditRecordModal({
   currentPersona,
   currentStatus,
   personaOptions,
+  stageOptions,
   onClose,
   onSubmit,
 }: {
@@ -41,6 +48,8 @@ export function EditRecordModal({
   currentStatus: string;
   /** The org's own personas. Falls back to the BSR demo set when not provided. */
   personaOptions?: PersonaOption[];
+  /** The org's own pipeline stages, in its own words. Absent for non-pipeline objects. */
+  stageOptions?: { key: string; label: string }[];
   onClose: () => void;
   onSubmit: (value: EditRecordValue) => Promise<{ ok: boolean; error?: string }>;
 }) {
@@ -49,7 +58,9 @@ export function EditRecordModal({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const statusOptions = STATUS_OPTIONS[objectKey] ?? [];
+  const statusOptions = stageOptions?.length
+    ? stageOptions
+    : (STATUS_OPTIONS[objectKey] ?? []).map((key) => ({ key, label: titleize(key) }));
   const personaChoices =
     personaOptions?.length ? personaOptions : OFFICIAL_PERSONA_MAPPINGS.map((key) => ({ key, label: personaLabel(key) }));
   const canSubmit = (persona || status) && !pending;
@@ -108,8 +119,8 @@ export function EditRecordModal({
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Keep current</option>
               {statusOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {titleize(opt)}
+                <option key={opt.key} value={opt.key}>
+                  {opt.label}
                 </option>
               ))}
             </select>
