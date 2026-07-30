@@ -618,7 +618,6 @@ export function ArcWorkPanel({
 }) {
   const reduceMotion = useReducedMotion();
   const [tab, setTab] = useState<WorkPanelTab>("work");
-  const [scope, setScope] = useState<ArcWorkspaceScope>("latest");
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [demoActiveIndex, setDemoActiveIndex] = useState(0);
 
@@ -648,8 +647,15 @@ export function ArcWorkPanel({
     sources: ["Workspace knowledge", "CRM records", "Campaign context"],
   }) : null;
   const conversationArcMessages = messages?.filter((item) => item.role === "arc") ?? [];
-  const canUseConversationScope = conversationArcMessages.length > 1;
-  const activeScope: ArcWorkspaceScope = canUseConversationScope ? scope : "latest";
+  // The panel owns the conversation; the message owns its own run.
+  //
+  // It used to default to the latest run and offer a toggle, which meant that
+  // for a single turn it restated the inline trace — the same steps, the same
+  // reasoning, in a second place, with nothing to say which to trust. The inline
+  // trace now narrates a run properly, so mirroring it is pure duplication.
+  // What the panel can do that the trace can't is span runs, so that is what it
+  // does: every run's work, all the deliverables, the audience, and recovery.
+  const activeScope: ArcWorkspaceScope = "conversation";
   const scopedMessages = messages
     ? selectArcWorkspaceMessages(messages, activeScope)
     : message
@@ -659,11 +665,6 @@ export function ArcWorkPanel({
   const scopedCards = messages
     ? collectArcWorkspaceCards(messages, activeScope, cards)
     : cards;
-  const reasoning = activeScope === "conversation" && scopedMessages.length > 1
-    ? `${scopedMessages.length} Arc runs are collected here. Review the full activity trail, created work, and audience context from this conversation.`
-    : activeMessage?.reasoning?.trim()
-    || (demoPending ? demoWork?.commentary : demoOutcome === "canceled" ? "The run ended at your request. Completed work remains visible, and no external action was taken." : demoProfile?.completedSummary)
-    || (demoSeed ? "Arc matched storm exposure against CRM history, ranked the strongest opportunities, and used those signals to shape a review-ready campaign package." : null);
 
   useEffect(() => {
     if (!demoPending || reduceMotion || !demoWork?.rows.length) return;
@@ -726,7 +727,9 @@ export function ArcWorkPanel({
     messageStatus: scopedMessageStatus,
     outcome: demoOutcome,
     rows: activityRows,
-    hasContent: Boolean(reasoning),
+    // No reasoning here by design: it is fed by `metadata.reasoning`, which is
+    // permanently empty (BSR-573), and narrating a run is the inline trace's job.
+    hasContent: false,
   });
   const hasActiveWork = runView.state === "working";
   const hasFailedWork = runView.state === "failed";
@@ -761,22 +764,20 @@ export function ArcWorkPanel({
             </button>
           ))}
         </div>
-        {canUseConversationScope ? (
-          <div className="arc-work-scope" role="group" aria-label="Workspace history scope">
-            <button type="button" aria-pressed={activeScope === "latest"} className={activeScope === "latest" ? "is-active" : ""} onClick={() => { setScope("latest"); setShowAllActivity(false); }}>Latest run</button>
-            <button type="button" aria-pressed={activeScope === "conversation"} className={activeScope === "conversation" ? "is-active" : ""} onClick={() => { setScope("conversation"); setShowAllActivity(false); }}>Entire conversation <span>{conversationArcMessages.length}</span></button>
-          </div>
-        ) : null}
         <div className="arc-artifact-content">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div key={tab} role="tabpanel" id={`arc-work-panel-${tab}`} aria-labelledby={`arc-work-tab-${tab}`} className="arc-work-view" initial={reduceMotion ? false : { opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: -4 }} transition={{ duration: 0.16 }}>
               {tab === "work" ? (
                 <>
-                  {activityRows.length > 0 || reasoning ? <div className="arc-work-run-status" data-state={runView.state}><span><i />{runView.label}</span>{runView.progressLabel ? <em>{runView.progressLabel}</em> : null}</div> : null}
-                  <div className="arc-work-heading"><span>{reasoning ? "Run context" : "Run"}</span><h3>{runView.heading}</h3></div>
-                  {reasoning ? <div className="arc-work-reasoning"><ReasoningMarkdown text={reasoning} /></div> : activityRows.length === 0 ? <div className="arc-work-empty">Activity and decisions will appear here as Arc works.</div> : null}
+                  {activityRows.length > 0 ? <div className="arc-work-run-status" data-state={runView.state}><span><i />{runView.label}</span>{runView.progressLabel ? <em>{runView.progressLabel}</em> : null}</div> : null}
+                  <div className="arc-work-heading">
+                    <span>This conversation</span>
+                    <h3>{conversationArcMessages.length > 0
+                      ? `${conversationArcMessages.length} ${conversationArcMessages.length === 1 ? "run" : "runs"}`
+                      : runView.heading}</h3>
+                  </div>
                   <section className="arc-artifact-section">
-                    <h4>Activity</h4>
+                    <h4>Everything Arc has done here</h4>
                     {activityRows.length > 0 ? (
                       <div className="arc-work-activity">
                         {visibleActivityRows.map((row) => (
@@ -789,7 +790,7 @@ export function ArcWorkPanel({
                         {!hasActiveWork && activityRows.length > visibleActivityRows.length ? <button type="button" className="arc-work-activity-toggle" onClick={() => setShowAllActivity(true)}>View all {activityRows.length} activities <ChevronDown size={13} /></button> : null}
                         {!hasActiveWork && showAllActivity && activityRows.length > 3 ? <button type="button" className="arc-work-activity-toggle" onClick={() => setShowAllActivity(false)}>Show key activity <ChevronDown size={13} className="is-up" /></button> : null}
                       </div>
-                    ) : <div className="arc-work-empty">Activity will collect here during the next run.</div>}
+                    ) : <div className="arc-work-empty">Work from every run in this conversation collects here.</div>}
                   </section>
                   {hasFailedWork ? <div className="arc-work-recovery"><div><RotateCcw size={15} /><span><b>One step needs attention</b><small>The rest of the run is still available.</small></span></div><div><button type="button" onClick={() => onRecover("Retry the failed step from the last run and keep the completed work.")}>Retry failed step</button><button type="button" onClick={() => onRecover("Continue the last request without the failed tool and explain any limitations.")}>Continue without it</button></div></div> : null}
                 </>
