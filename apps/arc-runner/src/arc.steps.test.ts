@@ -153,6 +153,45 @@ describe("runArcTurn phase narration", () => {
     expect(narrated[0]!.status).toBe("done");
   });
 
+  // Option 2: the trace owns Arc's commentary, the reply owns the answer.
+  // The hazard is withholding too much — assembleReplyBody exists because a turn
+  // that answered, called a tool, then closed was reporting only its closing
+  // next-steps and losing the finding.
+  it("moves pre-tool commentary into the trace but never withholds the closing message", async () => {
+    sdkMessages.push(
+      { type: "assistant", message: { content: [{ type: "text", text: "First up: CRM contacts — let me pull the live list." }] } },
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "search_contacts", input: {} }] } },
+      { type: "assistant", message: { content: [{ type: "text", text: "Confirmed empty: zero contacts on file." }] } },
+      { type: "result", subtype: "success", result: "Confirmed empty: zero contacts on file." },
+    );
+
+    const steps: StepCall[] = [];
+    const { runArcTurn } = await import("./arc");
+    const result = await runArcTurn(payload, makeClient(steps) as never);
+
+    // The commentary moved to the trace...
+    const narration = steps.filter((s) => s.label === "Arc").map((s) => s.detail ?? "");
+    expect(narration.some((n) => n.includes("let me pull the live list"))).toBe(true);
+    // ...and out of the reply, so it isn't read twice.
+    expect(result.body).not.toContain("let me pull the live list");
+    // ...but the closing message is still the answer.
+    expect(result.body).toContain("Confirmed empty");
+  });
+
+  it("keeps the reply intact when no tool follows the prose", async () => {
+    sdkMessages.push(
+      { type: "assistant", message: { content: [{ type: "text", text: "The CRM has 200 leads, 52 qualified." }] } },
+      { type: "result", subtype: "success", result: "The CRM has 200 leads, 52 qualified." },
+    );
+
+    const steps: StepCall[] = [];
+    const { runArcTurn } = await import("./arc");
+    const result = await runArcTurn(payload, makeClient(steps) as never);
+
+    // Nothing followed it, so it was the answer all along.
+    expect(result.body).toContain("200 leads");
+  });
+
   it("closes the reasoning phase when the turn streams no prose", async () => {
     sdkMessages.push({ type: "result", subtype: "success", result: "" });
 
