@@ -195,6 +195,33 @@ describe("runArcTurn phase narration", () => {
     expect(result.body).toContain("All three reads are done");
   });
 
+  // What is typed must match what lands. A lead-in used to be streamed into the
+  // answer and then disappear when the reply was assembled without it.
+  it("streams the same body the reply will end up being", async () => {
+    const posted: string[] = [];
+    sdkMessages.push(
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "First up: CRM contacts." } } },
+      { type: "assistant", message: { content: [{ type: "text", text: "First up: CRM contacts." }] } },
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "search_contacts", input: {} }] } },
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "Zero contacts on file." } } },
+      { type: "assistant", message: { content: [{ type: "text", text: "Zero contacts on file." }] } },
+      { type: "result", subtype: "success", result: "Zero contacts on file." },
+    );
+
+    const steps: StepCall[] = [];
+    const client = makeClient(steps) as unknown as Record<string, unknown>;
+    client.postChatChunk = async (_id: string, body: string) => { posted.push(body); };
+
+    const { runArcTurn } = await import("./arc");
+    const result = await runArcTurn(payload, client as never);
+
+    // The last thing streamed matches the reply — no content vanishes at the end.
+    expect(posted.at(-1)).toBe(result.body);
+    // And the lead-in is not in either.
+    expect(result.body).not.toContain("First up");
+    expect(posted.at(-1) ?? "").not.toContain("First up");
+  });
+
   it("keeps the reply intact when no tool follows the prose", async () => {
     sdkMessages.push(
       { type: "assistant", message: { content: [{ type: "text", text: "The CRM has 200 leads, 52 qualified." }] } },
