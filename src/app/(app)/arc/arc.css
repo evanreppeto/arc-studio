@@ -296,17 +296,17 @@
 .arc-assistant-message.is-active { margin-top: 2px; }
 .arc-assistant-content { min-width: 0; }
 
-/* Comfortable reading measure. Arc's prose was sprawling to ~107 characters per
-   line across the full column — a top tell of an unrefined chat. Constrain the
-   text blocks to a book-width measure so replies read like considered writing,
-   while code, tables, media, and receipt cards keep the full width they need
-   (they live in their own wrappers, not these top-level prose elements). */
+/* Replies use the full column. A tighter book measure was in here on the theory
+   that ~52 characters reads as considered writing, but in this app it left the
+   answer stranded in the left third of a wide screen with dead space beside it —
+   asked for directly, and right: the operator wants the reply to use the room
+   it has. Code, tables, and cards were already full-width in their own wrappers. */
 .arc-assistant-content :where(.arc-stream, .arc-markdown, .arc-answer) > :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote) {
-  max-width: 52ch;
+  max-width: none;
 }
 
 .arc-assistant-footer {
-  max-width: 52ch;
+  max-width: none;
   min-height: 18px;
   display: flex;
   align-items: center;
@@ -319,7 +319,7 @@
 
 .arc-answer,
 .arc-markdown {
-  max-width: 76ch;
+  max-width: none;
   color: color-mix(in srgb, var(--text) 78%, var(--text-2));
   font-size: 14.5px;
   line-height: 1.7;
@@ -379,7 +379,7 @@
 .arc-status-update span { min-width: 0; display: flex; gap: 5px; }
 .arc-status-update b { color: var(--ok-text); font-weight: 650; }
 .arc-response-evidence {
-  max-width: 76ch;
+  max-width: none;
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -389,6 +389,26 @@
 }
 .arc-response-evidence .arc-sources,
 .arc-response-evidence .arc-recall { margin-top: 0; }
+
+/* Everything that lands when a run resolves — evidence, deliverables, follow-up
+   suggestions, the action row — used to appear at full opacity in a single
+   frame, which read as a jolt after the answer had just finished typing calmly.
+   A short staggered settle lets them arrive in the order you'd read them. */
+@media (prefers-reduced-motion: no-preference) {
+  .arc-assistant-message .arc-response-evidence,
+  .arc-assistant-message .arc-response-output,
+  .arc-assistant-message .arc-suggestions,
+  .arc-assistant-message .arc-message-action-row {
+    animation: arc-settle-in 320ms var(--arc-curve) both;
+  }
+  .arc-assistant-message .arc-response-output { animation-delay: 60ms; }
+  .arc-assistant-message .arc-suggestions { animation-delay: 120ms; }
+  .arc-assistant-message .arc-message-action-row { animation-delay: 180ms; }
+}
+@keyframes arc-settle-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
 .arc-response-output { max-width: 100%; margin-top: 18px; }
 .arc-response-output-label {
   min-height: 24px;
