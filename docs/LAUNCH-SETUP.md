@@ -26,9 +26,20 @@ Shoulders Manager app**, which shares the same Resend account — so there is no
 matching dispatch and the receiver declines to record them, returning 200 so
 svix stops retrying. It is correctly ignoring another app's traffic.
 
-Arc Studio sees those payloads in transit but stores nothing from them. If the
-cross-app noise ever matters, the fix is a separate Resend account or sending
-domain for Arc Studio — not a code change.
+Arc Studio sees those payloads in transit but stores nothing from them.
+
+**Separate sending domains do NOT fix this** (Arc Studio and the Manager app
+already have their own). Resend registers a webhook **per account**, not per
+domain, so any endpoint on that account receives events for every email either
+app sends. Only a separate Resend *account* would isolate them, and that is
+probably not worth it — the receiver already filters correctly.
+
+What the cross-app traffic did expose: `provider_message_id` on
+`campaign_dispatches` had **no index**, so every foreign event ran a sequential
+scan before correctly finding nothing. Indexed in
+`20260730120000_dispatch_provider_message_id_idx.sql` — the scan count grows
+with both apps' combined volume while the table grows with every dispatch, so
+it was quietly quadratic.
 
 ### The one thing still unproven
 
