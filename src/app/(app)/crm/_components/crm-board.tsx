@@ -346,6 +346,7 @@ function buildOptimisticRow(objectKey: CrmObjectKey, id: string, v: AddRecordVal
 }
 
 export function CrmBoard({
+  loadError = null,
   objects,
   rowsByKey,
   defaultKey,
@@ -355,6 +356,8 @@ export function CrmBoard({
   customColumnsByKey = {},
   customFieldDefsByKey = {},
 }: {
+  /** Why the read FAILED, vs returning nothing. Null when it succeeded. */
+  loadError?: string | null;
   objects: CrmObjectVM[];
   rowsByKey: Record<string, CrmRowVM[]>;
   defaultKey: string;
@@ -615,6 +618,16 @@ export function CrmBoard({
 
   return (
     <div className="arc-grid arc-crm">
+      {/* A failed read is NOT an empty result. Rendering them the same is how a
+          live outage hid behind a normal-looking page (BSR-542). */}
+      {loadError && (
+        <div className="crm-error" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <b>Couldn&rsquo;t load your CRM counts.</b> The tiles below may read zero because a query failed, not because you have no records.
+            <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
+          </span>
+        </div>
+      )}
       <div className="chrow">
         <div>
           <h1 className="ct">{active.label}</h1>

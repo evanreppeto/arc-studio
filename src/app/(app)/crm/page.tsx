@@ -1,3 +1,4 @@
+import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
 import { humanizePersonaLabel } from "@/domain";
 import { getAnalyticsOverview } from "@/lib/analytics/overview";
 import { getCurrentOrgId } from "@/lib/auth/org";
@@ -130,7 +131,7 @@ export default async function CrmPage() {
   const orgId = await getCurrentOrgId().catch(() => "");
   const [samples, navCounts, overview, personaOptions, appSettings, businessProfile, campaigns] = await Promise.all([
     getCrmMentionSamples().catch(() => ({}) as Partial<Record<CrmObjectKey, CrmObjectRow[]>>),
-    getCrmNavCounts().catch(() => ({ status: "unavailable" }) as const),
+    getCrmNavCounts().catch(unavailable("crm.navCounts", orgId)),
     orgId ? getAnalyticsOverview(orgId).catch(() => null) : Promise.resolve(null),
     getOrgPersonaOptions(orgId || undefined).catch(() => []),
     getAppSettings(orgId).catch(() => null),
@@ -139,6 +140,10 @@ export default async function CrmPage() {
   ]);
   const productLanguage = getProductLanguage(appSettings?.industry || businessProfile?.industry);
 
+  // A failed counts read is NOT an empty CRM. Without this the object tiles
+  // render 0 across the board, indistinguishable from a workspace with no
+  // records — the confusion that hid a live outage on /campaigns (BSR-542).
+  const loadError = reasonIfUnavailable(navCounts);
   const counts = navCounts.status === "live" ? navCounts.counts : null;
 
   // Real KPI strip for the CRM header — leads volume, lead→won conversion, and
@@ -222,5 +227,5 @@ export default async function CrmPage() {
     );
   }
 
-  return <CrmBoard objects={objects} rowsByKey={rowsByKey} defaultKey="contacts" kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} customColumnsByKey={customColumnsByKey} customFieldDefsByKey={customFieldDefsByKey} />;
+  return <CrmBoard loadError={loadError} objects={objects} rowsByKey={rowsByKey} defaultKey="contacts" kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} customColumnsByKey={customColumnsByKey} customFieldDefsByKey={customFieldDefsByKey} />;
 }
