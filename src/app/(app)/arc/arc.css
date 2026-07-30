@@ -478,6 +478,11 @@
   border-bottom: 1px solid var(--line);
 }
 .arc-run-live { padding: 17px 0 0; }
+/* Waiting for the first sign of work: no bottom rule, no padding below — a
+   single line rather than an empty frame, so the pause doesn't look longer than
+   it is. */
+.arc-run-live[data-empty="true"] { padding-bottom: 0; border-bottom-color: transparent; }
+.arc-run-live[data-empty="true"] .arc-run-live-head { margin-bottom: 0; }
 .arc-run-live-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -555,22 +560,13 @@
   transition: opacity var(--arc-base) var(--arc-curve);
 }
 
-/* Streaming typewriter caret — a calm block cursor on the last rendered line
-   while text is still typing out. Attaches to the last block so it flows inline
-   after prose, list items, and headings alike. */
+/* No typewriter caret. A blinking block cursor chasing the last word is a
+   second moving thing to track on top of the text itself, and it reads as
+   nervous rather than considered — Claude doesn't use one either. The header
+   already carries the run state (spinner, shimmer, live elapsed), so the text
+   can simply flow. Removing it also took away the caret's habit of sitting and
+   blinking during a pause, which made every gap look like a stall. */
 .arc-stream { min-width: 0; }
-.arc-stream.is-streaming > :last-child::after {
-  content: "";
-  display: inline-block;
-  width: 0.46em;
-  height: 1.02em;
-  margin-left: 2px;
-  border-radius: 1.5px;
-  background: var(--accent);
-  vertical-align: -0.16em;
-  animation: arc-caret 1.05s steps(1) infinite;
-}
-@keyframes arc-caret { 50% { opacity: 0; } }
 
 /* Shimmer sweep on the live status label ("Thinking · 4s") — a soft highlight
    travels across the text while Arc works, then the label just resolves. */
@@ -587,7 +583,6 @@
 /* Live "Thinking" — the model's reasoning streaming in as it forms, kept quiet
    and secondary to the answer (a muted quote with a small label). */
 .arc-live-reasoning { padding-left: 13px; border-left: 1px solid var(--line-2); }
-.arc-live-reasoning .arc-stream.is-streaming > :last-child::after { height: 0.95em; opacity: .8; }
 
 /* One reasoning treatment, wherever it appears — streaming live, expanded from a
    collapsed run receipt, or read in the Work panel. Reasoning used to be
