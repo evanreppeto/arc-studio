@@ -202,6 +202,7 @@ export default async function OpportunitiesPage({
   const ctx = await getCurrentWorkspaceContext();
   const [records, storedPersonaOptions, params] = await Promise.all([
     listOpenOpportunities(undefined, ctx.orgId).catch(() => [] as OpportunityRecord[]),
+    // Correctly silent (BSR-546): picker options, as on /campaigns.
     getOrgPersonaOptions(ctx.orgId).catch(() => []),
     searchParams,
   ]);

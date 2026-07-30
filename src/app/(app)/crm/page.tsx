@@ -14,6 +14,7 @@ import { CrmBoard, type CrmObjectVM, type CrmRowVM } from "./_components/crm-boa
 import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
 import { listFieldDefinitions } from "@/lib/custom-fields/definitions";
 import { getCustomFieldsForRecords } from "@/lib/custom-fields/values";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 /** How many custom fields become list columns. See the note at the call site. */
 const MAX_CUSTOM_COLUMNS = 2;
@@ -132,10 +133,28 @@ export default async function CrmPage() {
   const [samples, navCounts, overview, personaOptions, appSettings, businessProfile, campaigns] = await Promise.all([
     getCrmMentionSamples().catch(() => ({}) as Partial<Record<CrmObjectKey, CrmObjectRow[]>>),
     getCrmNavCounts().catch(unavailable("crm.navCounts", orgId)),
+    // Correctly silent (BSR-546): the KPI strip and the pickers below are
+    // enrichment around the record list. Their absence is VISIBLE — an empty
+    // strip, an empty dropdown — so an operator can see something is off
+    // without an alert, and the records themselves still render.
     orgId ? getAnalyticsOverview(orgId).catch(() => null) : Promise.resolve(null),
     getOrgPersonaOptions(orgId || undefined).catch(() => []),
-    getAppSettings(orgId).catch(() => null),
-    orgId ? getBusinessProfile(orgId).catch(() => null) : Promise.resolve(null),
+    // These two carry the tenant's VOCABULARY (industry -> Matters / Assets /
+    // Projects). Failing them doesn't blank the page — it silently relabels
+    // every object back to our internal nouns, so a law firm's CRM quietly
+    // becomes "Properties" again. Wrong output is worse than missing output,
+    // because nothing looks broken. Reported as secondary: the page is still
+    // usable, it is just speaking the wrong language.
+    getAppSettings(orgId).catch((error) => {
+      reportDegraded(error, { scope: "crm.getAppSettings", surface: "secondary", detail: { orgId } });
+      return null;
+    }),
+    orgId
+      ? getBusinessProfile(orgId).catch((error) => {
+          reportDegraded(error, { scope: "crm.getBusinessProfile", surface: "secondary", detail: { orgId } });
+          return null;
+        })
+      : Promise.resolve(null),
     listCampaignNames(orgId || undefined).catch(() => []),
   ]);
   const productLanguage = getProductLanguage(appSettings?.industry || businessProfile?.industry);
