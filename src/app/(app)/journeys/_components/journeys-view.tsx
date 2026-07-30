@@ -188,10 +188,13 @@ function JourneyRow({ journey }: { journey: JourneyWithMeta }) {
 }
 
 export function JourneysView({
+  loadError = null,
   model,
   origin = "",
   consentMode = "implied",
 }: {
+  /** Why the read FAILED, vs returning nothing. Null when it succeeded. */
+  loadError?: string | null;
   model: JourneysReadModel;
   origin?: string;
   consentMode?: JourneyConsentMode;
@@ -242,6 +245,16 @@ export function JourneysView({
 
   return (
     <div className="journeys">
+      {/* A failed read is NOT an empty result. Rendering them the same is how a
+          live outage hid behind a normal-looking page (BSR-542). */}
+      {loadError && (
+        <div className="crm-error" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <b>Couldn&rsquo;t load journey data.</b> What&rsquo;s missing below is a failed query, not an absence of activity.
+            <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
+          </span>
+        </div>
+      )}
       <header className="jr-head">
         <div>
           <h1>

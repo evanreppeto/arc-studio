@@ -1,3 +1,4 @@
+import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
 import { buildOutboxKpis } from "@/lib/dispatch/kpis";
 import { getOutboxList } from "@/lib/dispatch/read-model";
 import { type DispatchStatus, type DispatchView } from "@/lib/dispatch/status";
@@ -81,10 +82,13 @@ function toOutboxCard(d: DispatchView, sender: string | null): OutboxCardVM {
 
 export default async function OutboxPage() {
   const [outbox, emailConnection] = await Promise.all([
-    getOutboxList().catch(() => ({ status: "unavailable" }) as const),
+    getOutboxList().catch(unavailable("outbox.list")),
     getEmailConnection().catch(() => null),
   ]);
   const sender = emailConnection?.fromEmail || process.env.RESEND_FROM || null;
+  // A failed read is NOT an empty send queue — the more dangerous direction
+  // here, since "nothing waiting to send" reads as reassuring.
+  const loadError = reasonIfUnavailable(outbox);
   const dispatches = outbox.status === "live" ? outbox.dispatches.map((dispatch) => toOutboxCard(dispatch, sender)) : [];
 
   // Priority-ordered send queue rather than one lane per lifecycle status: the
@@ -105,5 +109,5 @@ export default async function OutboxPage() {
   // Tiles: value counts dispatches, reach goes in the sub. See lib/dispatch/kpis.
   const kpis: KpiVM[] = buildOutboxKpis(outbox.status === "live" ? outbox.dispatches : []);
 
-  return <OutboxBoard groups={groups} kpis={kpis} channelCounts={channelCounts} />;
+  return <OutboxBoard loadError={loadError} groups={groups} kpis={kpis} channelCounts={channelCounts} />;
 }

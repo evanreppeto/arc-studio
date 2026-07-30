@@ -60,10 +60,13 @@ const CHANNELS: { key: string; label: string }[] = [
 ];
 
 export function OutboxBoard({
+  loadError = null,
   groups,
   kpis,
   channelCounts,
 }: {
+  /** Why the read FAILED, vs returning nothing. Null when it succeeded. */
+  loadError?: string | null;
   groups: OutboxGroups;
   kpis: KpiVM[];
   channelCounts: Record<string, number>;
@@ -197,6 +200,16 @@ export function OutboxBoard({
 
   return (
     <div className="arc-outbox">
+      {/* A failed read is NOT an empty result. Rendering them the same is how a
+          live outage hid behind a normal-looking page (BSR-542). */}
+      {loadError && (
+        <div className="crm-error" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <b>Couldn&rsquo;t load the send queue.</b> An empty queue here would mean nothing is waiting to send — don&rsquo;t read it that way until this clears.
+            <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
+          </span>
+        </div>
+      )}
       <div className="ohead">
         <div className="otitle">
           <div>

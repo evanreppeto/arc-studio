@@ -21,6 +21,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 
+import { revealAdvance } from "@/lib/arc-chat/stream-reveal";
 import { splitStreamedMarkdown } from "@/lib/arc-chat/stream-split";
 
 import { useBottomPin } from "./use-bottom-pin";
@@ -34,37 +35,34 @@ import { useBottomPin } from "./use-bottom-pin";
  * `app/api/arc/stream/[conversationId]/route.ts`). So the client still receives
  * visible chunks, and without smoothing the answer lands in steps.
  *
- * This reveals the target at a steady, backlog-aware cadence so it reads as
- * continuous typing — a bigger backlog reveals faster, so a fresh chunk catches
- * up in a beat instead of dumping — and snaps to full the instant streaming ends
- * or reduced-motion is requested.
- *
- * (An earlier version of this note claimed the client polled every 1–2.5s. That
- * was true before SSE landed; the chunking is finer now, but it is still
- * chunking, which is why the smoothing stays.)
+ * The pacing itself lives in `@/lib/arc-chat/stream-reveal` — it is the part
+ * worth testing, and it is tested against the cadences the SSE route actually
+ * delivers. This hook is just the animation loop around it.
  */
 export function useSmoothStream(target: string, streaming: boolean): string {
   const reduceMotion = useReducedMotion();
   const [count, setCount] = useState(streaming ? 0 : target.length);
+  const countRef = useRef(count);
   const rafRef = useRef<number | null>(null);
   const lastRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // No animation when not streaming or motion is reduced — the render below
-    // derives the full text directly, so there's nothing to advance here.
-    if (!streaming || reduceMotion) return;
+    if (reduceMotion) return;
+    // Keep animating while text is still arriving OR while we are behind — the
+    // second half is what lets a finished run settle instead of snapping.
+    if (!streaming && countRef.current >= target.length) return;
     const tick = (now: number) => {
       const last = lastRef.current ?? now;
       lastRef.current = now;
       const dt = Math.min(now - last, 120); // clamp gaps (backgrounded tab)
       setCount((current) => {
         const remaining = target.length - current;
-        if (remaining <= 0) return Math.min(current, target.length); // clamp on reset
-        // Reveal faster when the backlog is larger so a ~1.5s chunk catches up in
-        // well under a second of smooth typing, then settles to a calm cadence.
-        const cps = Math.max(45, remaining * 5);
-        const advance = Math.max(1, Math.round((cps * dt) / 1000));
-        return Math.min(target.length, current + advance);
+        if (remaining <= 0) {
+          countRef.current = Math.min(current, target.length);
+          return countRef.current; // clamp on reset
+        }
+        countRef.current = Math.min(target.length, current + revealAdvance(remaining, dt, streaming));
+        return countRef.current;
       });
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -75,7 +73,7 @@ export function useSmoothStream(target: string, streaming: boolean): string {
     };
   }, [streaming, reduceMotion, target]);
 
-  const revealed = streaming && !reduceMotion ? Math.min(count, target.length) : target.length;
+  const revealed = reduceMotion ? target.length : Math.min(count, target.length);
   return target.slice(0, revealed);
 }
 
@@ -166,7 +164,7 @@ export const REHYPE_HIGHLIGHT_PLUGINS: MarkdownPlugins = [[rehypeHighlight, { de
  *
  * react-markdown renders its blocks directly (no wrapper element), so splitting
  * the reply across two of these leaves the same flat run of children under
- * `.arc-stream` — which is what keeps the `> :last-child` caret rule working.
+ * `.arc-stream` — the markup is identical to rendering it undivided.
  */
 const SettledBlocks = memo(function SettledBlocks({ text }: { text: string }) {
   return <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{text}</ReactMarkdown>;

@@ -125,6 +125,20 @@ function makeSink() {
  *  floor. The client typewriter smooths between chunks either way. */
 const STREAM_THROTTLE_MS = 90;
 
+/**
+ * The run's own phases, reported the same way tool calls already are.
+ *
+ * Each label names what the code is actually doing at that moment. That
+ * constraint is the point: a trace that invents plausible-sounding activity is
+ * worse than one that says nothing, because it can't be caught being wrong.
+ * Keep them plain, present-tense, and free of internal vocabulary — the reader
+ * is waiting on an answer, not reading our call stack.
+ */
+const STEP_CONTEXT = "Reading your workspace";
+const STEP_WORKSPACE = "Checking what's active right now";
+const STEP_REASONING = "Working out an answer";
+const STEP_WRITING = "Writing the reply";
+
 /** The model input for a turn: a plain string, or content blocks for multimodal. */
 type TurnContent = Awaited<ReturnType<typeof buildTurnContentAsync>>;
 
@@ -173,8 +187,10 @@ async function runArcQuery(opts: {
   ]);
   const { mcpServers: remoteServers, allowedTools: remoteAllowed } = buildRemoteMcp(remote);
 
+  await opts.step(STEP_WORKSPACE, "running");
   const workspaceState = await resolveWorkspaceSummary(opts.client);
   const system = buildSystemPrompt(ARC_SYSTEM_PROMPT, { ...opts.ctx, workspaceState, mediaConfig });
+  await opts.step(STEP_WORKSPACE, "done");
 
   // Every assistant message's text, in order. Kept per-message (not one string)
   // so they can be rejoined with a blank line — the model ends a message without
@@ -198,6 +214,18 @@ async function runArcQuery(opts: {
   });
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
+  // The model phase, split where the reader can actually see it change: reasoning
+  // until the first token of prose, then writing. Tool calls report themselves in
+  // between, so the trace reads as a sequence of real phases rather than a gap.
+  let writing = false;
+  const beginWriting = async () => {
+    if (writing) return;
+    writing = true;
+    await opts.step(STEP_REASONING, "done");
+    await opts.step(STEP_WRITING, "running");
+  };
+
+  await opts.step(STEP_REASONING, "running");
 
   for await (const message of query({
     prompt: promptInput(opts.content, opts.ctx.scope.conversationId ?? "arc-turn"),
@@ -211,6 +239,7 @@ async function runArcQuery(opts: {
     if (message.type === "stream_event") {
       const event = message.event;
       if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        await beginWriting();
         // Awaited (not fire-and-forget) so throttled posts stay ordered;
         // postChatChunk swallows its own errors, so this never breaks the run.
         await partialStream.append(event.delta.text);
@@ -237,6 +266,11 @@ async function runArcQuery(opts: {
       }
     }
   }
+
+  // Close whichever model phase is still open. A turn that produced no streamed
+  // text (tools only, or an empty reply) never entered the writing phase, so the
+  // reasoning step is the one left running.
+  await opts.step(writing ? STEP_WRITING : STEP_REASONING, "done");
 
   const body = assembleReplyBody(assistantChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
@@ -267,11 +301,17 @@ export async function runArcTurn(payload: MarkChatMessagePayload, client: ArcCli
   const contextStartedAt = Date.now();
   // These reads are independent. Running them serially made every turn pay the
   // sum of three network round trips before the model could emit a first token.
+  //
+  // Narrate them. Until now the only steps Arc reported came from tool calls, so
+  // a turn spent these seconds — and an ask-mode turn that uses no tools, its
+  // entire run — reporting nothing at all while the reader watched a spinner.
+  await step(STEP_CONTEXT, "running");
   const [business, memory, memoryCtx] = await Promise.all([
     resolveBusinessContext(client),
     resolveRecallMemory(client, buildRecallQuery(payload.history, payload.message)),
     fetchConversationContext(client, payload.conversationId, payload.messageId),
   ]);
+  await step(STEP_CONTEXT, "done");
   console.log(`[arc-runner] context ready for task ${payload.agentTaskId} in ${Date.now() - contextStartedAt}ms`);
   const ctx: ArcTurnContext = {
     business,
