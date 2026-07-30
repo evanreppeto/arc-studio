@@ -5,6 +5,7 @@ import { getAuthMode } from "@/lib/auth/auth-mode";
 import { getViewerAvatarUrl, resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getSettingsWorkspacesView } from "@/lib/auth/workspaces-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getBillingNoticeView } from "@/lib/billing/billing-notice";
 import { getRecentArcConversations } from "@/lib/arc-chat/read-model";
@@ -60,7 +61,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // not be able to take down every signed-in screen.
   const { notice: billingNotice } = await getBillingNoticeView();
   // Workspaces the viewer can switch between — powers the rail's workspace menu.
-  const workspacesView = await getSettingsWorkspacesView().catch(() => ({ isDemo: false, workspaces: [] }));
+  // The shell's workspace switcher. An erased failure here reads as "this
+  // account has one workspace" on EVERY page, not just Settings (BSR-578).
+  const workspacesView = await getSettingsWorkspacesView().catch((error) => {
+    reportDegraded(error, { scope: "layout.getSettingsWorkspacesView", surface: "primary" });
+    return {
+      isDemo: false,
+      workspaces: [],
+      failed: error instanceof Error ? error.message : "Could not list your workspaces.",
+    };
+  });
   // Branding: workspace logo (org-scoped) + the viewer's profile photo, rendered
   // in the rail in place of the initials monograms when set.
   const [appSettings, businessProfile, avatarUrl, recentConversationResult] = await Promise.all([

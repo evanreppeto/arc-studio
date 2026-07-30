@@ -12,6 +12,7 @@
 
 import { resolveWorkspaceIdentity, type WorkspaceAccentKey } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import { getCurrentWorkspaceContext } from "./workspace";
@@ -44,7 +45,18 @@ export type SettingsWorkspace = {
   canManage: boolean;
 };
 
-export type SettingsWorkspacesView = { isDemo: boolean; workspaces: SettingsWorkspace[] };
+export type SettingsWorkspacesView = {
+  isDemo: boolean;
+  workspaces: SettingsWorkspace[];
+  /**
+   * Why the read failed, or null (BSR-578). Non-null means the list is unknown.
+   *
+   * This one is read by the app shell as well as by Settings, so an empty list
+   * silently replaces the workspace switcher on EVERY page — it reads as "this
+   * account has one workspace" rather than "we could not list them".
+   */
+  failed: string | null;
+};
 
 function titleCase(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
@@ -81,6 +93,7 @@ function demoWorkspace(
 function demoWorkspaces(): SettingsWorkspacesView {
   return {
     isDemo: true,
+    failed: null,
     workspaces: [
       // The active row carries a logo and the others don't, so the offline
       // preview exercises BOTH branches of the menu's mark — an uploaded logo
@@ -108,6 +121,7 @@ export async function getSettingsWorkspacesView(): Promise<SettingsWorkspacesVie
       if (mine.length) {
         return {
           isDemo: false,
+          failed: null,
           workspaces: mine.map((w) => {
             const orgName = w.orgName?.trim() || w.workspaceName;
             const resolved = resolveWorkspaceIdentity(
@@ -143,11 +157,18 @@ export async function getSettingsWorkspacesView(): Promise<SettingsWorkspacesVie
           }),
         };
       }
-    } catch {
-      // fall through to demo/empty
+    } catch (error) {
+      // Was an empty catch: no report, no message, no log (BSR-578).
+      reportDegraded(error, { scope: "auth.getSettingsWorkspacesView", surface: "primary" });
+      return {
+        isDemo: false,
+        workspaces: [],
+        failed: error instanceof Error ? error.message : "Could not list your workspaces.",
+      };
     }
   }
 
   if (isDemoDataEnabled()) return demoWorkspaces();
-  return { isDemo: false, workspaces: [] };
+  // Genuinely nothing to list, which is a true statement and stays one.
+  return { isDemo: false, workspaces: [], failed: null };
 }
