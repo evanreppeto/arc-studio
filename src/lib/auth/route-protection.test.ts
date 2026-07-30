@@ -84,12 +84,30 @@ describe("isPublicPath", () => {
     }
   });
 
+  it("keeps /compare and its comparison pages public in every mode", () => {
+    // Comparison pages are an organic search entry point — they are read by
+    // strangers who have no account and never will unless the page converts
+    // them. Gating them turns the highest-intent traffic we get into a 302.
+    for (const mode of ["open", "operator", "supabase"] as const) {
+      expect(isPublicPath("/compare", mode)).toBe(true);
+      expect(isPublicPath("/compare/vs-agency", mode)).toBe(true);
+      expect(isPublicPath("/compare/vs-hubspot", mode)).toBe(true);
+    }
+  });
+
   it("does not let a public marketing path leak neighbouring routes by prefix", () => {
     // The exposure this guards against: a bare-prefix match on a page name also
     // exempts every route that merely STARTS with it, so an unrelated gated page
     // silently renders to signed-out visitors. Only the exact path and real
     // sub-paths may be public.
-    for (const pathname of ["/pricing-internal", "/pricingsecret", "/pricing-admin/rates"]) {
+    for (const pathname of [
+      "/pricing-internal",
+      "/pricingsecret",
+      "/pricing-admin/rates",
+      "/compare-internal",
+      "/comparesecret",
+      "/compare-admin/tenants",
+    ]) {
       expect(isPublicPath(pathname, "supabase")).toBe(false);
     }
   });
