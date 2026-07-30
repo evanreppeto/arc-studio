@@ -366,6 +366,19 @@ async function runArcQuery(opts: {
             ? `content_block_start:${((event as { content_block?: { type?: string } }).content_block)?.type ?? "?"}`
             : event.type,
       );
+      // A new text block is a new assistant message's prose. The live stream
+      // concatenated raw deltas across that boundary with no separator, so the
+      // typing showed "…starting with CRM contacts.Checking CRM contacts now."
+      // while the settled reply — assembled by `assembleReplyBody`, which joins
+      // with a blank line — read correctly. Same separator here, so what is
+      // typed out matches what lands.
+      if (
+        event.type === "content_block_start" &&
+        ((event as { content_block?: { type?: string } }).content_block)?.type === "text"
+      ) {
+        const sofar = partialStream.value();
+        if (sofar && !sofar.endsWith("\n\n")) await partialStream.append(sofar.endsWith("\n") ? "\n" : "\n\n");
+      }
       if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
         await beginWriting();
         // Awaited (not fire-and-forget) so throttled posts stay ordered;
