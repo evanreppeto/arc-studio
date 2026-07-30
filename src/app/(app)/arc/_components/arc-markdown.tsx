@@ -67,8 +67,24 @@ export function useSmoothStream(target: string, streaming: boolean): string {
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
+
+    // Guarantee the end state without depending on rAF.
+    //
+    // Animating the settle instead of snapping to full removed the dump at the
+    // end of a reply — but it also made completion conditional on frames being
+    // delivered. A backgrounded tab stops delivering them, so a finished reply
+    // sat truncated (149 characters of 2,563, observed on prod) until the tab
+    // was looked at again. The animation is a nicety; arriving is not.
+    const settleGuard = streaming
+      ? null
+      : window.setTimeout(() => {
+          countRef.current = target.length;
+          setCount(target.length);
+        }, 1200);
+
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      if (settleGuard != null) window.clearTimeout(settleGuard);
       lastRef.current = null;
     };
   }, [streaming, reduceMotion, target]);
