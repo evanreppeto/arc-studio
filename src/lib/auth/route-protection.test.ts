@@ -95,6 +95,16 @@ describe("isPublicPath", () => {
     }
   });
 
+  it("keeps /industries and its industry pages public in every mode", () => {
+    // Same reasoning as /compare: these are organic search entry points read by
+    // people who do not have an account yet.
+    for (const mode of ["open", "operator", "supabase"] as const) {
+      expect(isPublicPath("/industries", mode)).toBe(true);
+      expect(isPublicPath("/industries/restoration", mode)).toBe(true);
+      expect(isPublicPath("/industries/hvac-plumbing", mode)).toBe(true);
+    }
+  });
+
   it("does not let a public marketing path leak neighbouring routes by prefix", () => {
     // The exposure this guards against: a bare-prefix match on a page name also
     // exempts every route that merely STARTS with it, so an unrelated gated page
@@ -107,6 +117,9 @@ describe("isPublicPath", () => {
       "/compare-internal",
       "/comparesecret",
       "/compare-admin/tenants",
+      "/industries-internal",
+      "/industriessecret",
+      "/industries-admin/tenants",
     ]) {
       expect(isPublicPath(pathname, "supabase")).toBe(false);
     }
