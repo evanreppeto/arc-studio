@@ -246,6 +246,11 @@ async function runArcQuery(opts: {
   // silently. Record which stream events actually arrive so the next real run
   // answers it from the logs instead of from guesswork.
   const seenEventShapes = new Set<string>();
+  // What a thinking_delta actually carries. The SDK notes that during a
+  // redacted-thinking phase these frames stream only token estimates — no text —
+  // which would explain thinking_delta arriving on every run while nothing is
+  // ever captured. Record the field names once so this stops being a guess.
+  let thinkingDeltaKeys: string | null = null;
   // The model phase, split where the reader can actually see it change: reasoning
   // until the first token of prose, then writing. Tool calls report themselves in
   // between, so the trace reads as a sequence of real phases rather than a gap.
@@ -285,6 +290,7 @@ async function runArcQuery(opts: {
       } else if (event.type === "content_block_delta" && event.delta.type === "thinking_delta") {
         // Extended-thinking tokens — streamed to the "Thinking…" trace. Typed as
         // unknown on some SDK versions, so read the field defensively.
+        thinkingDeltaKeys ??= Object.keys(event.delta as object).join("+");
         const thinking = (event.delta as { thinking?: unknown }).thinking;
         if (typeof thinking === "string") {
           await thinkingStream.append(thinking);
@@ -294,6 +300,17 @@ async function runArcQuery(opts: {
       let text = "";
       for (const block of message.message.content) {
         if (block.type === "text") text += block.text;
+        // Second, independent capture path. The delta stream was the only way
+        // reasoning was ever collected, so a delta that carries no text — which
+        // is exactly what a redacted-thinking phase sends — lost it completely
+        // and silently. A settled thinking block, when the model emits one, has
+        // the full text and no shape ambiguity.
+        else if (block.type === "thinking") {
+          const settled = (block as { thinking?: unknown }).thinking;
+          if (typeof settled === "string" && settled.trim() && !thinkingStream.value().includes(settled.trim())) {
+            await thinkingStream.append((thinkingStream.value() ? "\n\n" : "") + settled.trim());
+          }
+        }
       }
       if (text.trim()) assistantChunks.push(text);
     } else if (message.type === "result" && message.subtype === "success") {
@@ -314,7 +331,7 @@ async function runArcQuery(opts: {
   const body = assembleReplyBody(assistantChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
   console.log(
-    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | reasoning chars: ${reasoning?.length ?? 0}`,
+    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0}`,
   );
 
   // The last SDK deltas commonly land inside the throttle window. Flush the
