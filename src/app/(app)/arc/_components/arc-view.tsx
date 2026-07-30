@@ -1031,6 +1031,8 @@ export function ArcView({
   const [installingSkillKey, setInstallingSkillKey] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [workPanelOpen, setWorkPanelOpen] = useState(false);
+  /** The message we last auto-opened for, so closing the panel stays closed. */
+  const autoOpenedForRef = useRef<string | null>(null);
   // The assets open in the review workspace (null = closed), plus a per-asset
   // decision map so approvals persist while the panel is open and reflect back on
   // the inline package summary.
@@ -1067,6 +1069,12 @@ export function ArcView({
   const visibleConversationId = startingNewConversation ? null : activeConversationId;
   const visibleMessages = startingNewConversation ? [] : messages;
   const awaitingReply = live && (Boolean(optimisticTurn) || visibleMessages.some((message) => message.status === "pending" || (message.role === "arc" && !message.body.trim())));
+  // The newest reply that actually built something. A stable id (not the message
+  // array) so the auto-open effect below fires on a new asset-bearing run rather
+  // than on every render.
+  const assetMessageId = live
+    ? visibleMessages.findLast((message) => message.role === "arc" && message.actions.some((card) => card.approval || card.kind === "draft"))?.id ?? null
+    : null;
   const isStreaming = awaitingReply || demoPending;
   const turnCount = live ? visibleMessages.length + (optimisticTurn ? 2 : 0) : demoTurns.length;
 
@@ -1093,6 +1101,32 @@ export function ArcView({
       if (el) el.scrollTo({ top: el.scrollHeight, behavior });
     });
   }, []);
+
+  /**
+   * Land at the bottom of a conversation that is still laying out.
+   *
+   * One rAF isn't enough when opening a thread: markdown, code blocks, tables,
+   * and images all resolve their height after that first frame, so a single
+   * scroll lands short and the newest turn sits below the fold. Keep pinning to
+   * the bottom while the content is still growing, then stop.
+   */
+  const scrollToEndSettled = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let lastHeight = -1;
+    let stableFrames = 0;
+    const startedAt = performance.now();
+    const settle = () => {
+      const node = scrollRef.current;
+      if (!node || !pinnedRef.current) return;
+      node.scrollTo({ top: node.scrollHeight, behavior: "instant" });
+      stableFrames = node.scrollHeight === lastHeight ? stableFrames + 1 : 0;
+      lastHeight = node.scrollHeight;
+      // Two consecutive frames at the same height means layout has settled.
+      if (stableFrames < 2 && performance.now() - startedAt < 1500) requestAnimationFrame(settle);
+    };
+    requestAnimationFrame(settle);
+  }, [pinnedRef]);
 
   // Deliberate jump to the start of the feed (thread openers, new chat). Guarded
   // so the pin tracker doesn't read the upward jump as the reader scrolling away.
@@ -1146,6 +1180,18 @@ export function ArcView({
     return () => window.clearInterval(interval);
   }, [awaitingReply, router]);
 
+  // The workspace exists to hold campaign assets, so that is the only thing that
+  // opens it on its own. Sending a message doesn't (a conversational turn has
+  // nothing to put in it), and neither does a reply that is only prose.
+  //
+  // Keyed to the message, so an operator who closes it is not overruled — the
+  // panel reopens only when a *different* run produces assets.
+  useEffect(() => {
+    if (!assetMessageId || autoOpenedForRef.current === assetMessageId) return;
+    autoOpenedForRef.current = assetMessageId;
+    setWorkPanelOpen(true);
+  }, [assetMessageId]);
+
   // Follow the answer as it types out — but only while pinned, so a reader who
   // scrolled up to re-read isn't yanked back down.
   useEffect(() => {
@@ -1172,8 +1218,10 @@ export function ArcView({
       scrollToStart();
       return;
     }
-    scrollToEnd();
-  }, [visibleConversationId, live, selectedDemoId, scrollToEnd, scrollToStart, repin]);
+    // Opening a thread lands on the newest turn, and keeps landing there while
+    // the reply's markdown finishes laying out.
+    scrollToEndSettled();
+  }, [visibleConversationId, live, selectedDemoId, scrollToEndSettled, scrollToStart, repin]);
 
   useEffect(() => () => {
     if (demoTimer.current != null) window.clearTimeout(demoTimer.current);
@@ -1394,7 +1442,11 @@ export function ArcView({
     setComposerMenu(null);
     setContextInfoOpen(false);
     setComposerNotice(null);
-    if ((chatRootRef.current?.clientWidth ?? 0) >= 1000) setWorkPanelOpen(true);
+    // Sending a message no longer forces the workspace open. It used to, on any
+    // window wider than 1000px, whether or not the run would put anything in it
+    // — so "hi" opened a drawer reading "Activity will collect here during the
+    // next run", and closing it was overridden by the next message. The panel
+    // opens when it is earned: the Workspace button, or approval-gated assets.
     if (!live) {
       const demoContract = buildArcRunContract({ mode: resolvedMode, route: resolvedRoute, contextScopes });
       const demoProfile = buildArcRunProfile({ request: body, mode: resolvedMode, command, sources: demoContract.readScopes });

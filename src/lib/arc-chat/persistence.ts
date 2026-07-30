@@ -1210,7 +1210,7 @@ export function mergeStep(steps: ArcStep[], step: ArcStep): ArcStep[] {
 }
 
 export async function appendArcStep(
-  input: { agentTaskId: string; label: string; status: "running" | "done"; at: string },
+  input: { agentTaskId: string; label: string; status: "running" | "done"; at: string; detail?: string | null },
   client: SupabaseClient = getSupabaseAdminClient(),
   scope?: ArcChatTaskScope,
 ): Promise<boolean> {
@@ -1223,6 +1223,9 @@ export async function appendArcStep(
     p_label: input.label,
     p_status: input.status,
     p_at: input.at,
+    // The reasoning that led to this step. Omitted when closing a step — the RPC
+    // carries over whatever was recorded when it opened.
+    p_detail: input.detail ?? null,
   });
   assertOk("arc_messages step update", error);
   return data === true;

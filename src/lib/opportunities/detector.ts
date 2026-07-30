@@ -6,6 +6,7 @@ import {
   detectCompetitorOpportunities,
   detectNextIterationOpportunities,
   detectWeatherEventOpportunities,
+  effectiveLeadQuality,
   normalizeNwsSeverity,
   type ColdLeadInput,
   type CompetitorSignalInput,
@@ -69,6 +70,24 @@ export async function runColdLeadDetection(
   // lead ids as the queries above.
   const names = await resolveCrmNames(leads, null, db);
 
+  // Fit signals for records that arrived without intent signals. An imported
+  // contact never filled in a form, so calculateLeadScore gives it the base 10
+  // forever and it sits 20 points under the crm_inactivity floor — unreachable
+  // no matter how long it has been quiet. What we CAN judge is how well-formed
+  // and contactable it is. Bounded by the same org-scoped lead ids as the
+  // queries above.
+  const contactIds = leads.map((l) => l.contactId).filter((id): id is string => Boolean(id));
+  const contactDetail = new Map<string, { email: string | null; phone: string | null; city: string | null }>();
+  if (contactIds.length > 0) {
+    const { data: contactRows } = await db
+      .from("contacts")
+      .select("id,email,phone,city")
+      .in("id", contactIds);
+    for (const row of (contactRows ?? []) as Array<{ id: string; email: string | null; phone: string | null; city: string | null }>) {
+      contactDetail.set(row.id, { email: row.email, phone: row.phone, city: row.city });
+    }
+  }
+
   const inputs: ColdLeadInput[] = leads.map((l) => ({
     id: l.id,
     label: buildColdLeadLabel({
@@ -78,7 +97,17 @@ export async function runColdLeadDetection(
       lossSummary: l.lossSummary,
     }),
     persona: l.persona,
-    leadScore: l.leadScore,
+    // Whichever quality figure is meaningful: an inbound lead keeps the score
+    // its intent signals earned, and only a record the intent model had nothing
+    // to say about can be raised by fit.
+    leadScore: effectiveLeadQuality(l.leadScore, {
+      // "unassigned" is the internal placeholder, not a persona anyone sells to.
+      hasPersona: Boolean(l.persona) && l.persona !== "unassigned_persona",
+      hasEmail: Boolean(l.contactId && contactDetail.get(l.contactId)?.email),
+      hasPhone: Boolean(l.contactId && contactDetail.get(l.contactId)?.phone),
+      hasCompany: Boolean(l.companyId),
+      hasLocation: Boolean(l.contactId && contactDetail.get(l.contactId)?.city),
+    }),
     status: l.status,
     lastActivityAt: latestActivity.get(l.id) ?? l.receivedAt,
     hasActiveCampaign: leadsWithCampaign.has(l.id),

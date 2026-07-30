@@ -93,12 +93,17 @@ export function createArcClient(config: Config, identity?: WakeTenantIdentity) {
    * Append a live activity step to the pending chat bubble (the chain-of-thought
    * trace). Best-effort — a failed step must never break the run.
    */
-  async function postStep(agentTaskId: string, label: string, status: "running" | "done"): Promise<void> {
+  async function postStep(
+    agentTaskId: string,
+    label: string,
+    status: "running" | "done",
+    detail?: string | null,
+  ): Promise<void> {
     try {
       await fetch(`${config.appApiBaseUrl}/api/v1/arc/messages/${agentTaskId}/steps`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ label, status }),
+        body: JSON.stringify({ label, status, ...(detail ? { detail } : {}) }),
       });
     } catch {
       /* steps are cosmetic; ignore */
