@@ -17,6 +17,17 @@
  * simply keeps its row, which is the safe direction — a real action is never
  * hidden by a stale entry in this list.
  */
+/**
+ * A trace entry that is a line of Arc's own prose rather than an action. The
+ * runner emits these in the order Arc wrote them, so the trace reads
+ * prose → action → prose → action.
+ */
+export const ARC_NARRATION_LABEL = "Arc";
+
+export function isNarrationEntry(label: string): boolean {
+  return label.trim() === ARC_NARRATION_LABEL;
+}
+
 const RUN_PHASE_LABELS = new Set([
   "Reading your workspace",
   "Checking what's active right now",

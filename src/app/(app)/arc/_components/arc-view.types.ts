@@ -18,6 +18,9 @@ export type RunRow = {
   isTool?: boolean;
   status: "queued" | "running" | "done" | "error";
   kind: RunKind;
+  /** A line of Arc's own prose rather than an action — rendered as text, with no
+   *  label and no status tick. */
+  isNarration?: boolean;
 };
 
 /** One turn in the backend-less demo conversation (no persistence). */

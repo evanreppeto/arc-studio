@@ -60,7 +60,7 @@ import type {
 } from "@/lib/arc-chat/persistence";
 import type { ArcRunContract } from "@/lib/arc-chat/run-contract";
 import { visibleRecallCount } from "@/lib/arc-chat/recall-visibility";
-import { isRunPhaseLabel } from "@/lib/arc-chat/run-phases";
+import { isNarrationEntry, isRunPhaseLabel } from "@/lib/arc-chat/run-phases";
 import { visibleStepNarration } from "@/lib/arc-chat/step-narration";
 import { collapseTraceRows } from "@/lib/arc-chat/trace-rows";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
@@ -206,6 +206,18 @@ export function RunTrace({
       // Hidden when the answer already says the same thing, so a sentence that
       // survived into the reply isn't read twice.
       const narration = group.steps.map((item) => item.detail?.join(" · ")).find((value) => value?.trim());
+      // A narration entry is a line Arc wrote, not an action it took: no label,
+      // no status tick, and dropped entirely when the answer already says it.
+      if (isNarrationEntry(group.title)) {
+        return {
+          id: `step-${index}`,
+          label: "",
+          detail: visibleStepNarration(narration, answerText) ?? undefined,
+          status: group.status,
+          kind: group.kind,
+          isNarration: true,
+        };
+      }
       return {
         id: `step-${index}`,
         label: group.count > 1 ? `${group.title} · ${group.count}` : group.title,
@@ -317,7 +329,10 @@ export function RunTrace({
   // What the reader sees. The runner's own phases name the current activity in
   // the header above; as rows they are just our plumbing, listed back at someone
   // waiting on an answer. Arc's actions on their workspace keep their rows.
-  const visibleLiveRows = liveRows.filter((row) => row.isTool || !isRunPhaseLabel(row.label));
+  const visibleLiveRows = liveRows.filter((row) => {
+    if (row.isNarration) return Boolean(row.detail?.trim());
+    return row.isTool || !isRunPhaseLabel(row.label);
+  });
   const statusLabel = stopping
     ? "Stopping safely…"
     : hasError
@@ -372,7 +387,7 @@ export function RunTrace({
         <div className="arc-live-events" role="list" aria-label="Live activity">
         {(collapseTraceRows(visibleLiveRows) as RunRow[]).map((row, index) => (
           <motion.div
-            className={`arc-live-event is-${row.status}`}
+            className={`arc-live-event is-${row.status}${row.isNarration ? " is-narration" : ""}`}
             key={row.id}
             initial={reduceMotion ? false : { opacity: 0, y: 5 }}
             animate={{ opacity: row.status === "queued" ? 0.62 : 1, y: 0 }}
@@ -380,14 +395,14 @@ export function RunTrace({
             role="listitem"
             aria-current={row.status === "running" ? "step" : undefined}
           >
-            <span className="arc-live-event-icon"><RunIcon kind={row.kind} size={15} /></span>
+            {row.isNarration ? null : <span className="arc-live-event-icon"><RunIcon kind={row.kind} size={15} /></span>}
             <span className="arc-live-event-copy">
-              <b data-tool={row.isTool ? "true" : undefined}>{row.label}</b>
+              {row.label ? <b data-tool={row.isTool ? "true" : undefined}>{row.label}</b> : null}
               {row.detail ? <small>{row.detail}</small> : null}
               {row.result ? <small className="arc-live-event-result">{row.result}</small> : null}
             </span>
             <span className="arc-live-event-state">
-              {row.status === "done" ? <Check size={14} aria-label="Complete" /> : null}
+              {row.isNarration ? null : row.status === "done" ? <Check size={14} aria-label="Complete" /> : null}
               {row.status === "running" ? <LoaderCircle size={15} aria-label="Active" /> : null}
               {row.status === "queued" ? <Circle size={10} aria-label="Queued" /> : null}
               {row.status === "error" ? <X size={14} aria-label="Needs attention" /> : null}
