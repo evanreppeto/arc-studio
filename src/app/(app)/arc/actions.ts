@@ -231,6 +231,8 @@ export async function sendArcMessageAction(input: {
     const command = typeof input.command === "string" ? input.command.trim().replace(/^\//, "") || null : null;
     // Only resolved when a slash command is in play — a generated skill's
     // publisher is the workspace's own name.
+    // Correctly silent (BSR-546): skill context is optional enrichment for a
+    // slash command. Without it the command still runs, just less informed.
     const skillContext = command ? await getCurrentWorkspaceContext().catch(() => null) : null;
     const [operator, workspaceSkills, agentName] = await Promise.all([
       getOperatorActor(),
