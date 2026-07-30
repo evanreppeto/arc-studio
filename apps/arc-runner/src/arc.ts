@@ -251,6 +251,12 @@ async function runArcQuery(opts: {
   // which would explain thinking_delta arriving on every run while nothing is
   // ever captured. Record the field names once so this stops being a guess.
   let thinkingDeltaKeys: string | null = null;
+  // Does Arc actually write prose before it calls a tool? BSR-574 proposes using
+  // that text as the narration, and BSR-573 is a lesson in not building on an
+  // unverified source. Record the block order per assistant message, and how
+  // much text precedes the first tool call.
+  const blockSequences: string[] = [];
+  let preToolTextChars = 0;
   // The model phase, split where the reader can actually see it change: reasoning
   // until the first token of prose, then writing. Tool calls report themselves in
   // between, so the trace reads as a sequence of real phases rather than a gap.
@@ -298,6 +304,14 @@ async function runArcQuery(opts: {
       }
     } else if (message.type === "assistant") {
       let text = "";
+      const shape: string[] = [];
+      let sawTool = false;
+      for (const block of message.message.content) {
+        shape.push(block.type);
+        if (block.type === "tool_use") sawTool = true;
+        else if (block.type === "text" && !sawTool) preToolTextChars += (block as { text?: string }).text?.length ?? 0;
+      }
+      if (shape.length) blockSequences.push(shape.join(">"));
       for (const block of message.message.content) {
         if (block.type === "text") text += block.text;
         // Second, independent capture path. The delta stream was the only way
@@ -331,7 +345,7 @@ async function runArcQuery(opts: {
   const body = assembleReplyBody(assistantChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
   console.log(
-    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0}`,
+    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars}`,
   );
 
   // The last SDK deltas commonly land inside the throttle window. Flush the
