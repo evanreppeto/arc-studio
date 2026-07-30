@@ -138,6 +138,10 @@ const STEP_CONTEXT = "Reading your workspace";
 const STEP_WORKSPACE = "Checking what's active right now";
 const STEP_REASONING = "Working out an answer";
 const STEP_WRITING = "Writing the reply";
+/** A line of Arc's own prose, carried as a trace entry rather than a phase. The
+ *  chat renders these as prose and shows no label, so this string is a fallback
+ *  that only surfaces if that rendering is ever missed. */
+const STEP_NARRATION = "Arc";
 
 /** The model input for a turn: a plain string, or content blocks for multimodal. */
 type TurnContent = Awaited<ReturnType<typeof buildTurnContentAsync>>;
@@ -174,6 +178,16 @@ async function runArcQuery(opts: {
 }): Promise<ArcTurnResult> {
   const { actions, suggestions, sources, questions, drafts, sink } = makeSink();
 
+  // Interleaving of block arrivals and step() calls. The previous attempt
+  // assumed a text block would be processed before the tool that follows it
+  // reported — it wasn't, and nothing in the code said so. This records the
+  // real order, bounded so a long turn can't flood the log.
+  const timeline: string[] = [];
+  const startedAtMs = Date.now();
+  const mark = (what: string) => {
+    if (timeline.length < 24) timeline.push(`+${Date.now() - startedAtMs}ms ${what}`);
+  };
+
   // Live-thinking buffer, accumulated from thinking-token deltas. It feeds the
   // "Thinking…" stream, and — because it is declared before the tools — it also
   // lets each reported step carry the reasoning that led to it.
@@ -207,8 +221,6 @@ async function runArcQuery(opts: {
    * that also appears in the answer, which degrades the trace rather than the
    * reply.
    */
-  let pendingNarration: string | null = null;
-
   let narratedUpTo = 0;
   const step: StepFn = async (label, status, detail) => {
     // Both edges quote, because which edge holds the reasoning depends on the
@@ -225,11 +237,8 @@ async function runArcQuery(opts: {
     narratedUpTo = thinking.length;
     // Prose first — it is the source that actually has content. Thinking stays
     // as a fallback so this keeps working if these models stop redacting it.
-    const narration = detail ?? pendingNarration ?? (segment || null);
-    // Consumed by whichever step reports next, on either edge — holding it would
-    // let one sentence explain several unrelated actions.
-    pendingNarration = null;
-    return opts.step(label, status, narration);
+    mark(`step:${label}(${status})`);
+    return opts.step(label, status, detail ?? (segment || null));
   };
 
   const tools = toolsForMode(opts.mode, opts.client, step, sink, { ...(opts.toolContext ?? {}), skill: opts.skill });
@@ -337,13 +346,26 @@ async function runArcQuery(opts: {
         else if (block.type === "text" && !sawTool) preToolTextChars += (block as { text?: string }).text?.length ?? 0;
       }
       if (shape.length) blockSequences.push(shape.join(">"));
+      for (const type of shape) mark(`block:${type}`);
       for (const block of message.message.content) {
         if (block.type === "text") {
           text += block.text;
           const prose = block.text.trim();
-          // Held for the next tool call. Overwritten rather than accumulated:
-          // the sentence immediately before an action is the one explaining it.
-          if (prose) pendingNarration = prose;
+          // Emit the prose as its own entry in the trace, in the order it was
+          // written, rather than trying to hand it to a step.
+          //
+          // Attaching it to a step needed the text to be processed before the
+          // tool that follows it reported — and it isn't. A whole run's tool
+          // steps came back with no narration because of that assumption. Order
+          // in the steps array is append order, which we control, so emitting
+          // the prose directly sidesteps the correlation problem entirely: the
+          // trace reads prose, action, prose, action, which is the shape the
+          // reference actually has.
+          //
+          // Every text block is emitted, including the closing answer. The chat
+          // suppresses narration the answer already contains, so the final block
+          // disappears there rather than needing to be predicted here.
+          if (prose) await step(STEP_NARRATION, "done", prose);
         }
         // Second, independent capture path. The delta stream was the only way
         // reasoning was ever collected, so a delta that carries no text — which
@@ -376,7 +398,7 @@ async function runArcQuery(opts: {
   const body = assembleReplyBody(assistantChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
   console.log(
-    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars}`,
+    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars} | timeline: ${timeline.join(" ")}`,
   );
 
   // The last SDK deltas commonly land inside the throttle window. Flush the

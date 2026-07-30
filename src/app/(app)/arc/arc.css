@@ -703,6 +703,10 @@
 .arc-table-wrap tr:last-child td { border-bottom: 0; }
 
 .arc-live-events { display: flex; flex-direction: column; gap: 12px; }
+/* A line Arc wrote, sitting between the actions it explains. No icon column, no
+   label, no status tick — it reads as prose, which is the whole point. */
+.arc-live-event.is-narration { grid-template-columns: minmax(0, 1fr); }
+.arc-live-event.is-narration .arc-live-event-copy small { max-width: 74ch; color: var(--text-2); font-size: 12.5px; line-height: 1.65; }
 .arc-live-event {
   min-height: 28px;
   display: grid;

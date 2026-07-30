@@ -26,6 +26,8 @@ export type TraceRow = {
   status: "queued" | "running" | "done" | "error";
   /** Icon key, carried through so a grouped line still has one. */
   kind?: string;
+  /** Prose Arc wrote, not an action — never folded into a grouped summary. */
+  isNarration?: boolean;
 };
 
 /** Sentence-case a label so joined fragments read as one phrase. */
@@ -59,7 +61,8 @@ export function collapseTraceRows<T extends TraceRow>(rows: T[]): (T | TraceRow)
       flush();
       continue;
     }
-    const isBookkeeping = row.status === "done" && !row.isTool && !row.detail?.trim() && !row.result?.trim();
+    const isBookkeeping =
+      row.status === "done" && !row.isTool && !row.isNarration && !row.detail?.trim() && !row.result?.trim();
     if (isBookkeeping) {
       run.push(row);
       continue;

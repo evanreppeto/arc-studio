@@ -93,11 +93,16 @@ describe("runArcTurn phase narration", () => {
     expect(labels).toContain("Writing the reply");
 
     // Every phase that starts also finishes, so no row is left spinning.
-    for (const label of new Set(labels)) {
+    // Narration entries are excluded: they are a line Arc wrote, not a unit of
+    // work, so they are emitted once as `done` and have no running edge.
+    for (const label of new Set(labels.filter((label) => label !== "Arc"))) {
       const forLabel = steps.filter((s) => s.label === label);
       expect(forLabel.at(0)?.status, `${label} should start as running`).toBe("running");
       expect(forLabel.at(-1)?.status, `${label} should end as done`).toBe("done");
     }
+
+    const narration = steps.filter((s) => s.label === "Arc");
+    expect(narration.every((s) => s.status === "done")).toBe(true);
   });
 
   // The gap this closes: every phase opened before the model had thought
@@ -128,7 +133,7 @@ describe("runArcTurn phase narration", () => {
   // the narration source is the prose Arc writes before it acts — verified
   // against a real run before this was built: a turn's blocks read
   // "… text / tool_use / tool_use / text …".
-  it("carries the prose Arc wrote as the next step's narration", async () => {
+  it("emits Arc's prose as its own ordered trace entry", async () => {
     sdkMessages.push(
       { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "x" } } },
       { type: "assistant", message: { content: [{ type: "text", text: "The CRM is the only live source here, so I'll search it before answering." }] } },
@@ -139,10 +144,13 @@ describe("runArcTurn phase narration", () => {
     const { runArcTurn } = await import("./arc");
     await runArcTurn(payload, makeClient(steps) as never);
 
-    const narrated = steps.filter((s) => typeof s.detail === "string" && s.detail.includes("search it before answering"));
-    expect(narrated.length).toBeGreaterThan(0);
-    // Consumed once — one sentence must not end up explaining several actions.
+    // Emitted in place, as its own entry, rather than handed to a step — the
+    // previous approach needed the text to be processed before the tool that
+    // follows it reported, and it isn't, so a whole run's tool steps came back
+    // with no narration at all.
+    const narrated = steps.filter((s) => s.label === "Arc" && s.detail?.includes("search it before answering"));
     expect(narrated).toHaveLength(1);
+    expect(narrated[0]!.status).toBe("done");
   });
 
   it("closes the reasoning phase when the turn streams no prose", async () => {
