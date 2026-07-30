@@ -33,15 +33,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
     return NextResponse.json({ ok: false, status: "rejected", message: "Request body must be valid JSON." }, { status: 400 });
   }
 
-  const body = payload as { label?: unknown; status?: unknown };
+  const body = payload as { label?: unknown; status?: unknown; detail?: unknown };
   const label = typeof body.label === "string" ? body.label.trim() : "";
   const status = body.status === "done" ? "done" : "running";
+  // The reasoning that preceded this step, so the trace can pair each action
+  // with the thinking that led to it. Capped: this is a glanceable line in the
+  // transcript, not the whole thinking transcript.
+  const detail = typeof body.detail === "string" ? body.detail.trim().slice(0, 600) : null;
   if (!label) {
     return NextResponse.json({ ok: false, status: "rejected", message: "label is required." }, { status: 400 });
   }
 
   try {
-    const applied = await appendArcStep({ agentTaskId, label, status, at: new Date().toISOString() }, undefined, scope);
+    const applied = await appendArcStep({ agentTaskId, label, status, at: new Date().toISOString(), detail }, undefined, scope);
     if (!applied) {
       return NextResponse.json({ ok: false, status: "not_found", message: "No pending message for that agentTaskId." }, { status: 404 });
     }

@@ -339,7 +339,10 @@ export function RunTrace({
       <>
       <div className="arc-run-divider" />
       <div className="arc-live-worklog">
-        {reasoning?.trim() ? (
+        {/* Reasoning that arrived before Arc reported anything — the opening
+            thought, with no action attached to it yet. Once steps start landing
+            each one carries the thinking that led to it, inline below. */}
+        {reasoning?.trim() && liveRows.length === 0 ? (
           <motion.div initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }}>
             <LiveReasoning text={reasoning} streaming={!responding} />
           </motion.div>
