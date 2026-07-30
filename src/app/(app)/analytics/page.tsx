@@ -34,8 +34,19 @@ function toActivityRow(e: ActivityEntry) {
 export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
   const ctx = await getCurrentWorkspaceContext();
   const range = normalizeWindow((await searchParams).range);
+  const caught: { overview: string | null } = { overview: null };
   const [overview, activity, performance, conversion] = await Promise.all([
-    getAnalyticsOverview(ctx.orgId, range).catch(() => null),
+    // Keep WHY it failed. `.catch(() => null)` fell through to `safeOverview`
+    // below — all zeros, no `dataError` — so a thrown overview rendered
+    // "$0 / 0 leads / flat" underneath copy reading "straight from CRM". The
+    // banner for exactly this already existed; it just never fired for a throw,
+    // only for the read-model's own reported failure (BSR-546).
+    // Held on an object so TS does not narrow the closure assignment away.
+    getAnalyticsOverview(ctx.orgId, range).catch((error: unknown) => {
+      caught.overview = error instanceof Error ? error.message : "Analytics overview is unavailable.";
+      console.error(`[analytics.overview] read failed for org ${ctx.orgId}: ${caught.overview}`);
+      return null;
+    }),
     getRecentActivity({}, undefined, ctx.orgId).catch(unavailable("analytics.activity", ctx.orgId)),
     getPerformanceReadModel(undefined, undefined, ctx.orgId).catch(unavailable("analytics.performance", ctx.orgId)),
     getOpportunityConversion(ctx.orgId).catch(unavailable("analytics.conversion", ctx.orgId)),
@@ -69,6 +80,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     leadsBySource: [],
     arcRead: { text: "", cites: [], rec: "" },
     hasHistory: false,
+    // Only set when the read actually threw, so a legitimately empty overview
+    // is still reported as empty rather than as broken.
+    dataError: caught.overview,
   };
 
   // Which of the three secondary reads FAILED, as opposed to returning nothing.
