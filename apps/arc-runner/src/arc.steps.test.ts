@@ -178,6 +178,23 @@ describe("runArcTurn phase narration", () => {
     expect(result.body).toContain("Confirmed empty");
   });
 
+  // The prod regression: withholding every pre-tool chunk left the reply as a
+  // closing fragment while the findings sat in the trace.
+  it("keeps a mid-run finding in the reply even though a tool follows it", async () => {
+    sdkMessages.push(
+      { type: "assistant", message: { content: [{ type: "text", text: "**CRM contacts: confirmed empty.** search_contacts returns total: 0.\n\nNow the campaigns." }] } },
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "list_campaigns", input: {} }] } },
+      { type: "result", subtype: "success", result: "All three reads are done." },
+    );
+
+    const steps: StepCall[] = [];
+    const { runArcTurn } = await import("./arc");
+    const result = await runArcTurn(payload, makeClient(steps) as never);
+
+    expect(result.body).toContain("confirmed empty");
+    expect(result.body).toContain("All three reads are done");
+  });
+
   it("keeps the reply intact when no tool follows the prose", async () => {
     sdkMessages.push(
       { type: "assistant", message: { content: [{ type: "text", text: "The CRM has 200 leads, 52 qualified." }] } },
