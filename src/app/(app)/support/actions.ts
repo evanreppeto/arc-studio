@@ -44,6 +44,9 @@ export async function submitSupportRequest(input: SupportRequestInput): Promise<
   const appVersion = resolveAppVersion();
   if (appVersion) request.diagnostics.appVersion = appVersion;
 
+  // Correctly silent (BSR-546): a support request must be submittable even
+  // when workspace context can't be resolved — the request itself is the point,
+  // and the org is enrichment. Reporting this would be noise.
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   if (!ctx?.orgId || !isSupabaseAdminConfigured()) {
     return { ok: true, persisted: false, notified: false, reference: null };
