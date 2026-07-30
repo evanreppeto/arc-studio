@@ -264,6 +264,23 @@ async function runArcQuery(opts: {
   // trailing whitespace, so concatenating raw runs the last word of one into the
   // first word of the next.
   const assistantChunks: string[] = [];
+  /**
+   * Chunks that turned out to be narration — prose Arc wrote and then acted on.
+   *
+   * Whether a text block is narration or answer is only knowable in hindsight:
+   * it is narration if a tool call follows it. So chunks are collected as
+   * normal and marked here when the next `tool_use` arrives, then withheld from
+   * the reply at assembly time.
+   *
+   * The closing text block is never marked, because nothing follows it. That
+   * matters: `assembleReplyBody` exists because a turn that answered, called a
+   * tool, then closed was reporting only its closing next-steps and losing the
+   * finding. Withholding narration moves that finding into the trace, where it
+   * is displayed above the answer — but it must never withhold the closing
+   * message, or the reply would be empty.
+   */
+  const narrationChunks = new Set<number>();
+  let lastTextChunk: number | null = null;
   let resultText = "";
   // Live-streaming buffer, accumulated from token deltas purely for the typing
   // effect. The final body is assembled below, so if partial events are
@@ -379,7 +396,16 @@ async function runArcQuery(opts: {
           }
         }
       }
-      if (text.trim()) assistantChunks.push(text);
+      if (text.trim()) {
+        assistantChunks.push(text);
+        lastTextChunk = assistantChunks.length - 1;
+      }
+      // A tool call in this message means the text before it was commentary on
+      // work about to happen, not the reply.
+      if (sawTool && lastTextChunk !== null) {
+        narrationChunks.add(lastTextChunk);
+        lastTextChunk = null;
+      }
     } else if (message.type === "result" && message.subtype === "success") {
       resultText = message.result;
       const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
@@ -395,10 +421,14 @@ async function runArcQuery(opts: {
   // reasoning step is the one left running.
   await step(writing ? STEP_WRITING : STEP_REASONING, "done");
 
-  const body = assembleReplyBody(assistantChunks, resultText);
+  // The reply is the closing message plus anything substantive that wasn't
+  // commentary on work in progress. Narration lives in the trace instead, shown
+  // above the answer in the order Arc wrote it.
+  const replyChunks = assistantChunks.filter((_, index) => !narrationChunks.has(index));
+  const body = assembleReplyBody(replyChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
   console.log(
-    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars} | timeline: ${timeline.join(" ")}`,
+    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars} | narration chunks: ${narrationChunks.size}/${assistantChunks.length} | timeline: ${timeline.join(" ")}`,
   );
 
   // The last SDK deltas commonly land inside the throttle window. Flush the
