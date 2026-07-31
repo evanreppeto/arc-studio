@@ -72,6 +72,36 @@ describe("Arc UI accessibility contract", () => {
     expect(VIEW_SOURCE).toContain("else if (!result.persisted) setConnectorError(");
   });
 
+  it("declares the workspace drawer a modal dialog and lets Escape out of it", () => {
+    // It always behaved as one — the scrim takes pointer events and covers the
+    // conversation — while declaring none of it.
+    expect(VIEW_SOURCE).toContain('role="dialog" aria-modal="true" aria-label="Arc workspace"');
+    expect(VIEW_SOURCE).toContain('if (!dismissInnermost()) onDismiss();');
+    // On `document`, not the aside: dismissing an inner surface unmounts the
+    // element that had focus, and a handler on the aside would then never fire
+    // again — Escape would work exactly once.
+    expect(VIEW_SOURCE).toContain('document.addEventListener("keydown", onKeyDown, true);');
+    expect(VIEW_SOURCE).toContain("if (!inside) {");
+    // The trigger advertises what it opens, and gets focus back on dismissal.
+    expect(VIEW_SOURCE).toContain('aria-expanded={historyOpen} aria-haspopup="dialog"');
+    expect(VIEW_SOURCE).toContain("historyButtonRef.current?.focus();");
+  });
+
+  it("lets nested surfaces eat Escape before the drawer sees it", () => {
+    // React's synthetic stopPropagation does NOT reliably stop the native event
+    // reaching a document-bound listener, so the drawer checks the DOM for an
+    // open nested surface and bails. Without this the drawer closed underneath
+    // a thread menu that had just consumed the same keystroke.
+    expect(VIEW_SOURCE).toContain("if (targetOwnedByNestedSurface(event.target)) return;");
+    expect(VIEW_SOURCE).toContain('target.closest(".arc-history-menu") || target.closest(".arc-history-item.is-renaming")');
+    // Capture phase specifically: a bubble-phase listener runs after React has
+    // already unmounted the menu, so the DOM can no longer be asked.
+    expect(VIEW_SOURCE).toContain('document.addEventListener("keydown", onKeyDown, true);');
+    // Innermost first, in both the menu and the drawer body.
+    expect(VIEW_SOURCE).toContain("if (confirmDelete) setConfirmDelete(false);");
+    expect(VIEW_SOURCE).toContain('if (view === "skills" && skillsMode === "library") { setSkillsMode("installed"); return true; }');
+  });
+
   it("does not clamp connector copy into an unreadable stub", () => {
     // The old 2-line clamp cut settings prose mid-word in a 386px panel, and the
     // rest was unreachable. Rows size to the registry's one-line summary instead.
