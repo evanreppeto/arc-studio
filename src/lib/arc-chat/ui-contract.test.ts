@@ -53,4 +53,29 @@ describe("Arc UI accessibility contract", () => {
     expect(VIEW_SOURCE).toContain("History is temporarily unavailable.");
     expect(VIEW_SOURCE).toContain("live && historyLoadError");
   });
+
+  it("never calls a connector that was only ever off 'Paused'", () => {
+    // `disabled` is simply `!enabled`. Calling it "Paused" told operators a
+    // connector had been running and got suspended, which on a fresh workspace
+    // was true of nothing and shown on every row.
+    expect(VIEW_SOURCE).toContain('if (status === "disabled") return "Off";');
+    expect(VIEW_SOURCE).toContain('if (status === "unavailable") return "Not available yet";');
+    expect(VIEW_SOURCE).not.toContain('return "Paused"');
+  });
+
+  it("switches connectors through the shared Settings action, not a second write path", () => {
+    // The operator gate, org scoping and upsert behaviour must stay in one
+    // place; the drawer adds a control, not another way into the rows.
+    expect(VIEW_SOURCE).toContain('import { toggleConnectorEnabled } from "../../settings/connectors-actions"');
+    expect(VIEW_SOURCE).toContain("toggleConnectorEnabled({ connectorKey: connector.key, enabled: !connector.enabled })");
+    // A switch that silently fails to save is the failure this surface removes.
+    expect(VIEW_SOURCE).toContain("else if (!result.persisted) setConnectorError(");
+  });
+
+  it("does not clamp connector copy into an unreadable stub", () => {
+    // The old 2-line clamp cut settings prose mid-word in a 386px panel, and the
+    // rest was unreachable. Rows size to the registry's one-line summary instead.
+    expect(CSS_SOURCE).toContain(".arc-connector-copy p { margin: 0;");
+    expect(VIEW_SOURCE).toContain("connector.capabilitySummary || connector.description");
+  });
 });
