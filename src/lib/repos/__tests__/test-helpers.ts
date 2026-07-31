@@ -2,7 +2,12 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 export type MockResponse = {
   data: unknown;
-  error: { message: string } | null;
+  /**
+   * Shaped like a real PostgREST error, which carries `code`/`details`/`hint`
+   * alongside the message — `code` in particular is what a report needs to say
+   * WHICH failure happened (42703 missing column vs 42P01 missing relation).
+   */
+  error: { message: string; code?: string; details?: string; hint?: string } | null;
   count?: number | null;
 };
 

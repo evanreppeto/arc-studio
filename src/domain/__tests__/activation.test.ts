@@ -7,7 +7,8 @@ const NONE: ActivationSignals = {
   brandCaptured: false,
   dismissed: false,
   hasMedia: false,
-  hasCampaign: false,
+  hasOpportunity: false,
+  hasApprovedCampaign: false,
   hasTeammate: false,
 };
 
@@ -16,7 +17,8 @@ const ALL: ActivationSignals = {
   brandCaptured: true,
   dismissed: false,
   hasMedia: true,
-  hasCampaign: true,
+  hasOpportunity: true,
+  hasApprovedCampaign: true,
   hasTeammate: true,
 };
 
@@ -26,7 +28,7 @@ describe("buildActivationChecklist", () => {
   // the owner does.
   it("leads with records, then brand", () => {
     const result = buildActivationChecklist(NONE);
-    expect(result.steps.map((s) => s.key)).toEqual(["records", "brand", "campaign", "media", "team"]);
+    expect(result.steps.map((s) => s.key)).toEqual(["records", "brand", "opportunity", "campaign", "media", "team"]);
     expect(result.steps.every((s) => !s.done)).toBe(true);
   });
 
@@ -40,7 +42,7 @@ describe("buildActivationChecklist", () => {
       buildActivationChecklist({ ...NONE, hasRecords: true, hasMedia: true, hasTeammate: true })
         .steps.map((s) => [s.key, s.done]),
     );
-    expect(done).toEqual({ records: true, brand: false, campaign: false, media: true, team: true });
+    expect(done).toEqual({ records: true, brand: false, opportunity: false, campaign: false, media: true, team: true });
   });
 
   // Core is records, NOT brand. A workspace with a perfectly captured brand and
@@ -70,5 +72,30 @@ describe("buildActivationChecklist", () => {
     const result = buildActivationChecklist({ ...NONE, hasRecords: true, dismissed: true });
     expect(result.showChecklist).toBe(false);
     expect(result.nextStep).toBe("brand");
+  });
+});
+
+describe("the campaign step marks approval, not existence", () => {
+  // The regression this locks down: the signal used to be "has any campaign", so
+  // a draft nobody had looked at marked the step complete. BSR-504's acceptance
+  // is reaching an APPROVED campaign, and the checklist's own rule is that it
+  // cannot show complete while the underlying step isn't.
+  it("stays open while a campaign exists but is unapproved", () => {
+    const result = buildActivationChecklist({ ...NONE, hasRecords: true, hasOpportunity: true });
+    const campaign = result.steps.find((s) => s.key === "campaign");
+    expect(campaign?.done).toBe(false);
+    expect(result.nextStep).toBe("brand");
+  });
+
+  it("completes only once a campaign has actually been approved", () => {
+    const result = buildActivationChecklist({ ...NONE, hasApprovedCampaign: true });
+    expect(result.steps.find((s) => s.key === "campaign")?.done).toBe(true);
+  });
+
+  it("puts the opportunity step before the campaign step", () => {
+    // Arc finds something, then drafts from it. Asking someone to approve a
+    // campaign while the inbox is empty asks for something not yet possible.
+    const keys = buildActivationChecklist(NONE).steps.map((s) => s.key);
+    expect(keys.indexOf("opportunity")).toBeLessThan(keys.indexOf("campaign"));
   });
 });

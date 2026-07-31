@@ -109,5 +109,9 @@ export * from "./branding-image";
 // belongs to — the two never share a symbol, but the names are close enough
 // to be worth the signpost.
 export * from "./signup-attribution";
+
+// Pre-flight for arming ARC_BILLING_ENFORCEMENT (BSR-621).
+export * from "./billing-enforcement-preflight";
 export * from "./email-compliance";
 export * from "./lead-fit";
+export * from "./arc-eval";

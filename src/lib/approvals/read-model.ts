@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { buildDemoCampaignWorkspaceList } from "../campaigns/read-model";
@@ -212,7 +213,8 @@ export async function countActiveApprovals(
     throw new Error(`countActiveApprovals failed: ${error.message}`);
   }
 
-  return count ?? 0;
+  // null count = missing/inaccessible relation, not zero rows (BSR-575).
+  return requireCount("approval_items", { count, error });
 }
 
 /**

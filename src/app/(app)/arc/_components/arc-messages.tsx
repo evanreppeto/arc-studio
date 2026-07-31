@@ -123,6 +123,20 @@ export function RunIcon({ kind, size = 15 }: { kind: RunKind; size?: number }) {
   return <Brain size={size} />;
 }
 
+/** One anchor per evidence group. The section used to be five identical stacks
+ *  of uppercase text, which made scanning it work the reader had to do. */
+/** How many memories the panel shows before asking. Long enough to be useful,
+ *  short enough that the section stays scannable next to the deliverables. */
+const MEMORY_PREVIEW = 6;
+
+function EvidenceIcon({ group }: { group: string }) {
+  if (group === "memory") return <Brain size={12} />;
+  if (group === "records") return <Link2 size={12} />;
+  if (group === "audience") return <Target size={12} />;
+  if (group === "tools") return <Wrench size={12} />;
+  return <Database size={12} />;
+}
+
 export function formatWorkingTime(seconds: number) {
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
@@ -637,6 +651,7 @@ export function ArcWorkPanel({
 }) {
   const reduceMotion = useReducedMotion();
   const [openSections, setOpenSections] = useState<Record<WorkSectionId, boolean>>(DEFAULT_WORK_SECTIONS);
+  const [showAllMemory, setShowAllMemory] = useState(false);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [demoActiveIndex, setDemoActiveIndex] = useState(0);
 
@@ -829,13 +844,42 @@ export function ArcWorkPanel({
               evidence.length > 0 ? (
                 <div className="arc-work-evidence">
                   {evidence.map((group) => (
-                    <div key={group.id}>
-                      <h4>{group.label}</h4>
-                      {group.items.map((item, index) => (
-                        item.href
-                          ? <Link className="arc-work-evidence-item" key={`${group.id}-${index}`} href={item.href}><b>{item.label}</b>{item.detail ? <span>{item.detail}</span> : null}<ArrowRight size={12} /></Link>
-                          : <div className="arc-work-evidence-item" key={`${group.id}-${index}`}><b>{item.label}</b>{item.detail ? <span>{item.detail}</span> : null}</div>
-                      ))}
+                    // Memories are sentences Arc wrote; everything else is a
+                    // name and a number. They get different shapes because they
+                    // read differently — a sentence forced into a one-line row
+                    // is what made this section a wall of truncated keys.
+                    <div key={group.id} data-group={group.id}>
+                      <h4><span className="arc-work-evidence-icon"><EvidenceIcon group={group.id} /></span>{group.label}<i>{group.items.length}</i></h4>
+                      {group.id === "memory"
+                        ? (() => {
+                            // The parser no longer caps recall (BSR-624), so a
+                            // real turn can carry fifteen facts. Long is fine —
+                            // hiding some of them and printing a confident count
+                            // of the survivors is not. The limit is the reader's
+                            // to lift, and the button says what it is holding.
+                            const shown = showAllMemory ? group.items : group.items.slice(0, MEMORY_PREVIEW);
+                            return (
+                              <>
+                                {shown.map((item, index) => (
+                                  <p className="arc-work-fact" key={`${group.id}-${index}`}>
+                                    {item.label}
+                                    {item.detail ? <em>{item.detail}</em> : null}
+                                  </p>
+                                ))}
+                                {group.items.length > MEMORY_PREVIEW ? (
+                                  <button type="button" className="arc-work-more" aria-expanded={showAllMemory} onClick={() => setShowAllMemory((value) => !value)}>
+                                    {showAllMemory ? "Show fewer" : `Show all ${group.items.length}`}
+                                    <ChevronDown size={13} className={showAllMemory ? "is-open" : ""} />
+                                  </button>
+                                ) : null}
+                              </>
+                            );
+                          })()
+                        : group.items.map((item, index) => (
+                            item.href
+                              ? <Link className="arc-work-evidence-item" key={`${group.id}-${index}`} href={item.href}><b>{item.label}</b>{item.detail ? <span>{item.detail}</span> : null}<ArrowRight size={12} /></Link>
+                              : <div className="arc-work-evidence-item" key={`${group.id}-${index}`}><b>{item.label}</b>{item.detail ? <span>{item.detail}</span> : null}</div>
+                          ))}
                     </div>
                   ))}
                 </div>
@@ -1161,10 +1205,16 @@ export function RecallRow({ recall: rawRecall, onRecallContextMenu }: { recall: 
     <div className="arc-recall">
       <span><Brain size={14} /> Recalled</span>
       {recall.slice(0, visibleCount).map((item, index) => {
-        const inner = <>{item.label}{item.confidence != null ? <small>{Math.round(item.confidence * 100)}%</small> : null}</>;
+        // The fact, not the brain's node key. A chip reading
+        // `crm_contacts_empty` cites nothing a human can check; the summary is
+        // the sentence Arc actually recalled, clipped to chip length with the
+        // full text on hover.
+        const fact = item.summary?.trim() || item.label;
+        const short = fact.length > 52 ? `${fact.slice(0, 51).trimEnd()}…` : fact;
+        const inner = <>{short}{item.confidence != null ? <small>{Math.round(item.confidence * 100)}%</small> : null}</>;
         return item.nodeId
-          ? <Link key={`${item.label}-${index}`} href={`/brain?node=${encodeURIComponent(item.nodeId)}`} className="arc-recall-chip" onContextMenu={menuFor(item)}>{inner}</Link>
-          : <span key={`${item.label}-${index}`} className="arc-recall-chip is-static" onContextMenu={menuFor(item)}>{inner}</span>;
+          ? <Link key={`${item.label}-${index}`} href={`/brain?node=${encodeURIComponent(item.nodeId)}`} className="arc-recall-chip" title={fact} onContextMenu={menuFor(item)}>{inner}</Link>
+          : <span key={`${item.label}-${index}`} className="arc-recall-chip is-static" title={fact} onContextMenu={menuFor(item)}>{inner}</span>;
       })}
       {recall.length > visibleCount || expanded ? (
         <button

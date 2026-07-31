@@ -36,6 +36,15 @@ function toGraphNode(n: BrainNode): GraphNode {
 export default async function BrainPage({ searchParams }: { searchParams: Promise<{ node?: string }> }) {
   const sp = await searchParams;
   const focusNodeId = typeof sp.node === "string" && sp.node.trim() ? sp.node.trim() : null;
+  // These `.catch` handlers deliberately pass no org id (BSR-547).
+  //
+  // The read-model reports its own failures now, tagged with the org it
+  // ACTUALLY queried — see unavailableRead() in lib/observability/unavailable.
+  // Everything below therefore only fires when the read-model THROWS rather
+  // than returning `unavailable`, and the one thing that throws is org
+  // resolution itself. In that case the org genuinely is unknown, so logging it
+  // as "unknown" is the truthful answer rather than a missing detail. Resolving
+  // context here purely to label the log would report a guess.
   const [result, edgeResult, countResult, reviewResult] = await Promise.all([
     listNodes({}).catch(unavailable("brain.nodes")),
     listGraphEdges().catch(unavailable("brain.edges")),

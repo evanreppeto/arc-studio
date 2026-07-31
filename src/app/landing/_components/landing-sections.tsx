@@ -380,8 +380,12 @@ export function LandingFooter() {
       </div>
       <div className="border-t border-[color:var(--border-panel)]">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-5">
-          <span className="font-[family-name:var(--font-mono)] text-[0.8rem] text-[var(--text-muted)] sm:text-[0.7rem]">
-            © {new Date().getFullYear()} Arc Studio
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1 font-[family-name:var(--font-mono)] text-[0.8rem] text-[var(--text-muted)] sm:text-[0.7rem]">
+            <span>© {new Date().getFullYear()} Arc Studio</span>
+            {/* Legal has to be reachable from every public page — Stripe and any
+                serious buyer look for it in the footer before anywhere else. */}
+            <Link href="/legal/terms" className="transition-colors hover:text-[var(--text-secondary)]">Terms</Link>
+            <Link href="/legal/privacy" className="transition-colors hover:text-[var(--text-secondary)]">Privacy</Link>
           </span>
           <span className="font-[family-name:var(--font-mono)] text-[0.8rem] text-[var(--text-muted)] sm:text-[0.7rem]">
             Agent does the work · Human approves · Database remembers

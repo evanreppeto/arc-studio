@@ -30,21 +30,27 @@ export type OpportunityScanSummary = { added: number; filtered: number };
  * best-effort so one failing detector can't sink the others, and the whole pass is
  * idempotent (upsert per-subject dedup), which is what makes it safe to run daily.
  *
- * Org/workspace scope comes from the ambient request context: an operator session
- * for the button, or the default workspace for the unauthenticated cron. (The
- * scheduled scan therefore covers the default workspace only — multi-tenant fan-out
- * would iterate workspaces here, matching the single-tenant generative scan today.)
+ * Scope: pass one explicitly, or omit it and the ambient request context is used
+ * (an operator session for the "Scan" button). The scheduled cron MUST pass one —
+ * a session-less caller cannot resolve a tenant once a second active org exists,
+ * because fetchDefaultOrg deliberately refuses an ambiguous answer. Fanning out
+ * across workspaces is runOpportunityScanAcrossWorkspaces below (BSR-626).
  */
-export async function runDeterministicOpportunityScan(): Promise<OpportunityScanSummary> {
+export type OpportunityScanScope = { orgId: string; workspaceId: string | null };
+
+export async function runDeterministicOpportunityScan(
+  scope?: OpportunityScanScope,
+): Promise<OpportunityScanSummary> {
   const swallow = () => null;
   // Connector detection needs the workspace id; the CRM/weather/competitor/next-
-  // iteration detectors self-scope through getCurrentOrgId().
-  const ctx = await getCurrentWorkspaceContext().catch(() => null);
+  // iteration detectors take the org explicitly when given one.
+  const ctx = scope ?? (await getCurrentWorkspaceContext().catch(() => null));
+  const orgId = ctx?.orgId;
   const [cold, weather, competitor, nextIteration, connectors] = await Promise.all([
-    runColdLeadDetection().catch(swallow),
-    runWeatherEventDetection().catch(swallow),
-    runCompetitorSignalDetection().catch(swallow),
-    runNextIterationDetection().catch(swallow),
+    runColdLeadDetection(undefined, undefined, orgId).catch(swallow),
+    runWeatherEventDetection(undefined, undefined, undefined, orgId).catch(swallow),
+    runCompetitorSignalDetection(undefined, undefined, orgId).catch(swallow),
+    runNextIterationDetection(undefined, orgId).catch(swallow),
     ctx?.workspaceId
       ? runSignalSourceDetection({ workspaceId: ctx.workspaceId, orgId: ctx.orgId }).catch(swallow)
       : Promise.resolve(null),

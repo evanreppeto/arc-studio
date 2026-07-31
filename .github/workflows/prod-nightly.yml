@@ -62,22 +62,52 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ vars.ARC_SMOKE_ENABLED }}" != "1" ]; then
-            echo "::warning title=Arc known-fact check is SKIPPED::The nightly smoke is not exercising Arc's reasoning. Set the repo variable ARC_SMOKE_ENABLED=1 once the runner has a Secret Manager token scoped to the smoke workspace (BSR-478)."
+            echo "::warning title=The golden questions are SKIPPED::The nightly smoke is not exercising Arc's reasoning at all — every golden question is skipping, which reports as a green run. Set the repo variable ARC_SMOKE_ENABLED=1 once the runner has a Secret Manager token scoped to the smoke workspace (BSR-478, BSR-507)."
           fi
 
-      - name: Upload Playwright report on failure
-        if: ${{ failure() }}
+      # Per-question results, written to the job summary so a degradation is
+      # readable without opening an artifact (BSR-507). A total alone hides WHICH
+      # capability slipped, and that is the thing this suite exists to show.
+      - name: Summarize the golden questions
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          node scripts/summarize-golden-run.mjs playwright-report/results.json >>"$GITHUB_STEP_SUMMARY" || \
+            echo "No Playwright JSON report to summarize." >>"$GITHUB_STEP_SUMMARY"
+
+      # Always, not just on failure: a per-question record only shows a slow
+      # degradation if the passing runs are kept too.
+      - name: Upload Playwright report
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: prod-nightly-report
           path: playwright-report/
-          retention-days: 14
+          retention-days: 30
 
-      # SEAM FOR BSR-477 (alerting). That ticket owns routing failures to Slack;
-      # this step is the hook it fills in — add the webhook call here rather than
-      # rebuilding the trigger. Until then a failure surfaces as a red scheduled
-      # workflow with the failing step named in its message.
+      # Fills the seam BSR-477 left here. That ticket set ALERT_SLACK_WEBHOOK_URL
+      # on Vercel for the app's own alerting; CI needs its own copy as a repo
+      # secret before this can deliver.
       - name: Alert on failure
         if: ${{ failure() }}
+        env:
+          ALERT_SLACK_WEBHOOK_URL: ${{ secrets.ALERT_SLACK_WEBHOOK_URL }}
         run: |
-          echo "::error title=Nightly prod smoke FAILED::The deployed app failed an end-to-end check. See the named step in the log and the uploaded report. Slack routing lands with BSR-477."
+          set -euo pipefail
+          echo "::error title=Nightly prod smoke FAILED::The deployed app failed an end-to-end check. See the named step in the log and the uploaded report."
+          if [ -z "${ALERT_SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::warning title=Alert not delivered::ALERT_SLACK_WEBHOOK_URL is not set as a repository secret, so this failure reached nobody outside the Actions tab. Add it to route nightly failures to the alert channel (BSR-477 seam, BSR-507 acceptance)."
+            exit 0
+          fi
+          export RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          python3 - <<'PY' | curl -sS -X POST -H 'Content-Type: application/json' -d @- "$ALERT_SLACK_WEBHOOK_URL" >/dev/null
+          import json, os
+          text = (
+              "*Nightly prod smoke FAILED.*\n"
+              "The deployed app failed an end-to-end check against production. "
+              "If a golden question failed, Arc's answer quality has degraded — the run names which capability.\n"
+              f"<{os.environ['RUN_URL']}|Run log and per-question report>"
+          )
+          print(json.dumps({"text": "Nightly prod smoke FAILED", "attachments": [
+              {"color": "#cc6666", "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]}]}))
+          PY

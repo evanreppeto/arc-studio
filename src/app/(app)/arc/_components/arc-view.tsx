@@ -21,6 +21,8 @@ import {
   Binoculars,
   Blocks,
   Check,
+  Copy,
+  CornerDownLeft,
   ChevronRight,
   ChevronDown,
   Circle,
@@ -84,6 +86,12 @@ import {
 } from "@/lib/arc-skills/catalog";
 import type { WorkspaceArcSkill } from "@/lib/arc-skills/custom";
 import {
+  describeSkillRequirements,
+  unmetSkillConnectors,
+  type SkillConnectorStatus,
+  type SkillRequirement,
+} from "@/lib/arc-skills/requirements";
+import {
   readWorkPanelPreference,
   workPanelOpenOnConversationChange,
   writeWorkPanelPreference,
@@ -137,6 +145,9 @@ import {
   type ArchivedArcConversationVM,
   type SavedArcItemVM,
 } from "../actions";
+// Reused rather than reimplemented: the same `requireOperator()` gate and
+// org-scoped upsert Settings has always used to switch a connector.
+import { toggleConnectorEnabled } from "../../settings/connectors-actions";
 import type { GeneratedSkillRecord } from "@/lib/exemplar-skills/persistence";
 import {
   getChatSharingStateAction,
@@ -262,7 +273,13 @@ function ThreadRow({ thread, active, live, campaignName, showCampaignLabel, camp
   const handleThreadMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      if (campaignPicker) setCampaignPicker(false);
+      // Consume it: the drawer closes on Escape too, and dismissing this menu
+      // must not also dismiss the surface it is sitting on.
+      event.stopPropagation();
+      // Innermost first — backing out of a delete confirmation should cancel
+      // the confirmation, not tear down the whole menu behind it.
+      if (confirmDelete) setConfirmDelete(false);
+      else if (campaignPicker) setCampaignPicker(false);
       else setMenuOpen(false);
       return;
     }
@@ -291,7 +308,8 @@ function ThreadRow({ thread, active, live, campaignName, showCampaignLabel, camp
           onBlur={commitRename}
           onKeyDown={(event) => {
             if (event.key === "Enter") { event.preventDefault(); commitRename(); }
-            if (event.key === "Escape") { setName(thread.title); setRenaming(false); }
+            // Abandoning a rename must not also close the drawer behind it.
+            if (event.key === "Escape") { event.stopPropagation(); setName(thread.title); setRenaming(false); }
           }}
         />
       </div>
@@ -357,10 +375,35 @@ type DrawerConnectorItem = {
   description: string;
   status: DrawerConnectorStatus;
   statusLabel: string;
+  kind: ConnectorView["kind"] | "channel";
   kindLabel: string;
   accessLabel: string;
   mark: string;
   color: string;
+  /**
+   * Whether this row can be switched from here. True only when the credential
+   * question is already settled — `connected` or `disabled`. A connector that
+   * still needs a key, or that isn't built, has nothing to toggle; those keep
+   * their deep link into Settings, where credential entry genuinely belongs.
+   */
+  toggleable: boolean;
+  enabled: boolean;
+};
+
+/** Grouping order for the connector list — how an operator thinks about them:
+ *  what watches, what sends, what Arc can call, what comes in. */
+const CONNECTOR_KIND_ORDER: ReadonlyArray<ConnectorView["kind"]> = [
+  "signal_source",
+  "channel",
+  "mcp_tool",
+  "import_source",
+];
+
+const CONNECTOR_GROUP_LABEL: Record<ConnectorView["kind"], string> = {
+  signal_source: "Signal sources",
+  channel: "Channels",
+  mcp_tool: "Tools",
+  import_source: "Imports",
 };
 
 const CONNECTOR_PRESENTATION: Record<string, { mark: string; color: string }> = {
@@ -384,12 +427,19 @@ const CONNECTOR_KIND_LABEL: Record<ConnectorView["kind"], string> = {
   import_source: "Import",
 };
 
+/**
+ * Status in the operator's words.
+ *
+ * "Paused" was wrong for `disabled`: that status is simply `!enabled`, so a
+ * connector nobody has ever switched on read as one that had been running and
+ * got suspended. On a fresh workspace that was every row.
+ */
 function connectorStatusLabel(status: DrawerConnectorStatus): string {
   if (status === "connected") return "Connected";
-  if (status === "disabled") return "Paused";
+  if (status === "disabled") return "Off";
   if (status === "error") return "Needs attention";
-  if (status === "unavailable") return "Planned";
-  return "Not connected";
+  if (status === "unavailable") return "Not available yet";
+  return "Not set up";
 }
 
 function ThreadDrawer({
@@ -402,6 +452,7 @@ function ThreadDrawer({
   onStartNew,
   onOpenReview,
   onUseSkill,
+  onUseSaved,
   installedSkills,
   installedSkillKeys,
   installingSkillKey,
@@ -417,6 +468,7 @@ function ThreadDrawer({
   emailConnection,
   liveSendEnabled,
   onClose,
+  onDismiss,
 }: {
   live: boolean;
   groups: ArcThreadGroupVM[];
@@ -427,6 +479,8 @@ function ThreadDrawer({
   onStartNew: () => void;
   onOpenReview: () => void;
   onUseSkill: (skill: ArcSkillDefinition) => void;
+  /** Put a saved item's text into the composer for the current turn. */
+  onUseSaved: (text: string) => void;
   installedSkills: ArcSkillDefinition[];
   installedSkillKeys: string[];
   installingSkillKey: string | null;
@@ -441,20 +495,51 @@ function ThreadDrawer({
   connectors: ConnectorView[];
   emailConnection: ConnectionView | null;
   liveSendEnabled: boolean;
+  /** Programmatic close — following a link, opening review. Leaves focus alone,
+   *  because something else is about to take it. */
   onClose: () => void;
+  /** The operator dismissed the drawer (Escape, the ✕, the scrim). Focus goes
+   *  back to the control that opened it. */
+  onDismiss: () => void;
 }) {
   const router = useRouter();
+  const drawerRef = useRef<HTMLElement | null>(null);
   const [view, setView] = useState<"conversations" | "skills" | "connectors" | "saved">("conversations");
   // Saved items are loaded lazily the first time the Saved tab opens.
   const [savedItems, setSavedItems] = useState<SavedArcItemVM[] | null>(null);
   const [savedLoading, setSavedLoading] = useState(false);
   const [savedError, setSavedError] = useState<string | null>(null);
+  /** Which item just went to the clipboard, so the button can confirm it. */
+  const [copiedSavedId, setCopiedSavedId] = useState<string | null>(null);
   // Archived conversations: a lazy-loaded disclosure at the bottom of the list.
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [archivedConvos, setArchivedConvos] = useState<ArchivedArcConversationVM[] | null>(null);
   const [archivedError, setArchivedError] = useState<string | null>(null);
   const [skillsMode, setSkillsMode] = useState<"installed" | "library">("installed");
   const [skillSearch, setSkillSearch] = useState("");
+  /** Search over the skills you already have — distinct from `skillSearch`,
+   *  which searches the not-yet-installed library. */
+  const [installedSearch, setInstalledSearch] = useState("");
+  /** Authoring and installing are the rare case: collapsed by default. */
+  const [manageOpen, setManageOpen] = useState(false);
+  /** Connector the operator arrived at from an unmet skill requirement. */
+  const [focusedConnector, setFocusedConnector] = useState<string | null>(null);
+  const [connectorSearch, setConnectorSearch] = useState("");
+  const [plannedOpen, setPlannedOpen] = useState(false);
+  /** Key currently being switched, so only that row shows a spinner. */
+  const [togglingConnector, setTogglingConnector] = useState<string | null>(null);
+  const [connectorError, setConnectorError] = useState<string | null>(null);
+  /** Bring that connector into view — the list is 16 rows and it may be far down.
+   *  A callback ref rather than an effect: it fires exactly when the row mounts,
+   *  which is the render after `showConnector` switched to the Connectors tab.
+   *
+   *  Deliberately not `behavior: "smooth"`. An animation started from a commit
+   *  callback races the list's own layout and reliably stalled part-way, leaving
+   *  the row the operator asked for still off-screen. This is a jump they
+   *  explicitly requested, so it should just be there. */
+  const focusConnectorRef = useCallback((node: HTMLDivElement | null) => {
+    node?.scrollIntoView({ block: "center", behavior: "auto" });
+  }, []);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ArcThreadFilter>("all");
   const [threadGrouping, setThreadGrouping] = useState<"recent" | "campaign">("recent");
@@ -479,6 +564,21 @@ function ThreadDrawer({
       });
     }
   };
+  /** Copy the reusable artefact: the text for a draft or angle, the URL for media. */
+  const copySaved = async (item: SavedArcItemVM) => {
+    const text = item.kind === "media" ? item.mediaUrl : item.body;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedSavedId(item.id);
+      window.setTimeout(() => setCopiedSavedId((current) => (current === item.id ? null : current)), 1600);
+    } catch {
+      // Clipboard permission can be refused; say so rather than showing a
+      // "Copied" tick for something that never reached the clipboard.
+      setSavedError("Couldn't copy — your browser blocked clipboard access.");
+    }
+  };
+
   const removeSaved = (id: string) => {
     const prev = savedItems;
     setSavedItems((cur) => (cur ? cur.filter((s) => s.id !== id) : cur));
@@ -546,18 +646,27 @@ function ThreadDrawer({
       description: "Approved campaign and transactional email delivery.",
       status: emailConnection.status === "connected" && !liveSendEnabled ? "disabled" as const : emailConnection.status,
       statusLabel: emailConnection.status === "connected" && !liveSendEnabled ? "Not armed" : connectorStatusLabel(emailConnection.status),
+      kind: "channel" as const,
       kindLabel: "Channel",
       accessLabel: "gated write",
+      // Email arming is an env-level decision, not a per-workspace switch.
+      toggleable: false,
+      enabled: emailConnection.status === "connected" && liveSendEnabled,
       ...CONNECTOR_PRESENTATION.resend!,
     }] : []),
     ...connectors.map((connector) => ({
       key: connector.key,
       label: connector.label,
-      description: connector.description.replace(/^PLANNED —\s*/i, ""),
+      // The Settings-page `description` clamps mid-word at this width; the
+      // registry's one-line capability summary is written to fit.
+      description: (connector.capabilitySummary || connector.description).replace(/^PLANNED —\s*/i, ""),
       status: connector.status,
       statusLabel: connectorStatusLabel(connector.status),
+      kind: connector.kind,
       kindLabel: CONNECTOR_KIND_LABEL[connector.kind],
       accessLabel: connector.access === "read_only" ? "read-only" : "gated write",
+      toggleable: connector.status === "connected" || connector.status === "disabled",
+      enabled: connector.enabled,
       ...(CONNECTOR_PRESENTATION[connector.key] ?? { mark: connector.label.slice(0, 2), color: "#9aa0ac" }),
     })),
   ].sort((a, b) => {
@@ -565,9 +674,170 @@ function ThreadDrawer({
     return rank[a.status] - rank[b.status] || a.label.localeCompare(b.label);
   });
   const connectedCount = connectorItems.filter((connector) => connector.status === "connected").length;
+  const matchesConnectorQuery = (connector: DrawerConnectorItem) => {
+    const needle = connectorSearch.trim().toLocaleLowerCase();
+    return !needle || `${connector.label} ${connector.description} ${connector.kindLabel}`.toLocaleLowerCase().includes(needle);
+  };
+  /* "Not available yet" connectors aren't actionable and were sitting at the
+     same visual weight as the real ones. They get their own disclosure so the
+     list you can actually do something about stays short. */
+  const visibleConnectors = connectorItems.filter((connector) => connector.status !== "unavailable" && matchesConnectorQuery(connector));
+  const plannedConnectors = connectorItems.filter((connector) => connector.status === "unavailable" && matchesConnectorQuery(connector));
+  const connectorGroups = CONNECTOR_KIND_ORDER
+    .map((kind) => ({ kind, label: CONNECTOR_GROUP_LABEL[kind], items: visibleConnectors.filter((connector) => connector.kind === kind) }))
+    .filter((group) => group.items.length > 0);
   const visibleLibrarySkills = ARC_SKILL_LIBRARY.filter((skill) => {
     const needle = skillSearch.trim().toLocaleLowerCase();
     return !needle || `${skill.name} ${skill.description} ${skill.commands.join(" ")} ${skill.publisher ?? ""}`.toLocaleLowerCase().includes(needle);
+  });
+
+  /* A skill's data sources, resolved against this workspace's live connector
+     status, so an unmet one is named before the turn runs instead of the run
+     quietly coming back thinner. `connectors` is already the drawer's own
+     source of truth for the Connectors tab. */
+  const skillConnectors: SkillConnectorStatus[] = connectors.map((connector) => ({
+    key: connector.key,
+    label: connector.label,
+    status: connector.status,
+  }));
+  const requirementsFor = (skill: ArcSkillDefinition) => unmetSkillConnectors(skill, skillConnectors);
+  /** Send the operator to the connector that is missing, without leaving the chat. */
+  const showConnector = (key: string) => {
+    setView("connectors");
+    setFocusedConnector(key);
+    setConnectorSearch("");
+  };
+
+  /**
+   * Switch a connector on or off from here. Reuses the Settings action, so the
+   * `requireOperator()` gate, org scoping and upsert behaviour are the same ones
+   * Settings has always used — this surface adds a control, not a second path
+   * into the data.
+   *
+   * Turning a connector on never sends anything: signal sources only propose,
+   * and channels still dispatch solely from the approved path.
+   */
+  const toggleConnector = async (connector: DrawerConnectorItem) => {
+    if (!connector.toggleable || togglingConnector) return;
+    setTogglingConnector(connector.key);
+    setConnectorError(null);
+    const result = await toggleConnectorEnabled({ connectorKey: connector.key, enabled: !connector.enabled });
+    if (!result.ok) setConnectorError(result.error);
+    // `persisted: false` means the action ran but there was no workspace to write
+    // to. Say so — a switch that flips back with no explanation is the silent
+    // failure this whole surface exists to remove.
+    else if (!result.persisted) setConnectorError(`${connector.label} could not be saved — this workspace has no connected database yet.`);
+    else if (live) router.refresh();
+    setTogglingConnector(null);
+  };
+
+  /* Every skill this workspace has, in one list, whatever it came from. Before
+     this they were three separate lists with three different affordances —
+     "Your voice", "From GitHub" (over in the library sub-view) and "Installed" —
+     and only the first two could be removed where they were shown. */
+  const installedEntries: Array<{ skill: ArcSkillDefinition; detail: string; generated: GeneratedSkillRecord | null }> = [
+    ...generatedSkills.map((record) => ({
+      skill: toDrawerSkill(record, workspaceName),
+      // Keep saying how well grounded the ranking is: "a human approved these"
+      // and "these converted" look identical once rendered.
+      detail: `${VOICE_TIER_LABEL[record.evidenceTier]} · ${record.exemplarCount} example${record.exemplarCount === 1 ? "" : "s"}`,
+      generated: record,
+    })),
+    ...installedSkills.map((skill) => ({ skill, detail: skill.description, generated: null })),
+  ].filter((entry) => {
+    const needle = installedSearch.trim().toLocaleLowerCase();
+    return !needle || `${entry.skill.name} ${entry.skill.description} ${entry.skill.commands.join(" ")}`.toLocaleLowerCase().includes(needle);
+  });
+
+  /** Built-ins ship with Arc and can't be removed; everything else can, from
+   *  the row it appears on. */
+  const removeInstalledSkill = (skill: ArcSkillDefinition, generated: GeneratedSkillRecord | null) => {
+    if (generated) return void removeVoiceSkill(generated);
+    if (skill.source === "github") return void removeGithubSkill(skill as WorkspaceArcSkill);
+    if (skill.source === "library") return onSetSkillInstalled(skill, false);
+  };
+
+  /**
+   * The dialog contract for the drawer. It has always *behaved* as a modal —
+   * the scrim takes pointer events and covers the conversation — while
+   * declaring none of it: no role, no Escape, and Tab walked straight out into
+   * the chat the scrim was blocking from the mouse.
+   *
+   * Escape dismisses the innermost open thing and only closes the drawer when
+   * nothing is open. Surfaces with their own popup state (the thread menu, the
+   * rename field) consume Escape themselves and stop it before it reaches here;
+   * this handles the disclosures and sub-views, which are plain drawer state.
+   */
+  const dismissInnermost = (): boolean => {
+    if (view === "skills" && skillsMode === "library" && githubOpen) { setGithubOpen(false); return true; }
+    if (view === "skills" && skillsMode === "library") { setSkillsMode("installed"); return true; }
+    if (view === "skills" && manageOpen) { setManageOpen(false); return true; }
+    if (view === "conversations" && archivedOpen) { setArchivedOpen(false); return true; }
+    if (view === "connectors" && plannedOpen) { setPlannedOpen(false); return true; }
+    return false;
+  };
+
+  /*
+   * Bound on `document`, not on the aside, and deliberately so. Dismissing an
+   * inner surface usually unmounts whatever had focus — closing the GitHub
+   * disclosure removes the button you pressed Escape on — which drops focus to
+   * <body>. A handler on the aside then never fires again, so Escape appears to
+   * stop working after the first press. A document listener is focus-independent.
+   *
+   * Registered in the CAPTURE phase and gated on the event target, which is the
+   * only arrangement that survives both React quirks here:
+   *
+   *   - `stopPropagation()` on a synthetic event does not reliably stop the
+   *     native event reaching a document-bound listener, so a thread menu could
+   *     not fend the drawer off that way;
+   *   - by the time a *bubble*-phase document listener runs, React has already
+   *     flushed the menu's own close and unmounted it, so asking the DOM
+   *     "is a menu open?" answers no and the drawer closes too.
+   *
+   * Capture runs before React sees the event at all, so the target still tells
+   * the truth: a keystroke aimed inside a nested surface belongs to that
+   * surface's own handler, and this one stays out of the way.
+   */
+  const targetOwnedByNestedSurface = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest(".arc-history-menu") || target.closest(".arc-history-item.is-renaming"));
+  };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const drawer = drawerRef.current;
+      if (!drawer) return;
+      if (targetOwnedByNestedSurface(event.target)) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (!dismissInnermost()) onDismiss();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        drawer.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((node) => node.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+      const inside = active ? drawer.contains(active) : false;
+      // Focus outside the drawer (it fell to <body>, or Tab reached the chat
+      // behind the scrim) is pulled back to the appropriate edge.
+      if (!inside) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
   });
 
   const handleRovingListKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -686,13 +956,13 @@ function ThreadDrawer({
   };
 
   return (
-    <motion.aside className="arc-history" initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} aria-label="Arc workspace">
-      <div className="arc-history-topline"><span className="arc-history-eyebrow">Your Arc workspace</span><button type="button" className="arc-icon-button" onClick={onClose} aria-label="Close Arc workspace" autoFocus><X size={17} /></button></div>
+    <motion.aside ref={drawerRef} className="arc-history" initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} role="dialog" aria-modal="true" aria-label="Arc workspace">
+      <div className="arc-history-topline"><span className="arc-history-eyebrow">Your Arc workspace</span><button type="button" className="arc-icon-button" onClick={onDismiss} aria-label="Close Arc workspace" autoFocus><X size={17} /></button></div>
       <nav className="arc-drawer-nav" aria-label="Arc workspace sections">
-        <button type="button" className={view === "conversations" ? "is-active" : ""} aria-current={view === "conversations" ? "page" : undefined} onClick={() => setView("conversations")}><MessageSquareText size={14} />Conversations</button>
-        <button type="button" className={`is-skills${view === "skills" ? " is-active" : ""}`} aria-current={view === "skills" ? "page" : undefined} onClick={() => { setView("skills"); setSkillsMode("installed"); }}><Blocks size={14} />Skills</button>
-        <button type="button" className={view === "connectors" ? "is-active" : ""} aria-current={view === "connectors" ? "page" : undefined} onClick={() => setView("connectors")}><Link2 size={14} />Connectors</button>
-        <button type="button" className={view === "saved" ? "is-active" : ""} aria-current={view === "saved" ? "page" : undefined} onClick={openSaved}><Bookmark size={14} />Saved</button>
+        <button type="button" className={view === "conversations" ? "is-active" : ""} aria-current={view === "conversations" ? "page" : undefined} onClick={() => setView("conversations")}><MessageSquareText size={14} /><span>Conversations</span></button>
+        <button type="button" className={view === "skills" ? "is-active" : ""} aria-current={view === "skills" ? "page" : undefined} onClick={() => { setView("skills"); setSkillsMode("installed"); }}><Blocks size={14} /><span>Skills</span></button>
+        <button type="button" className={view === "connectors" ? "is-active" : ""} aria-current={view === "connectors" ? "page" : undefined} onClick={() => setView("connectors")}><Link2 size={14} /><span>Connectors</span></button>
+        <button type="button" className={view === "saved" ? "is-active" : ""} aria-current={view === "saved" ? "page" : undefined} onClick={openSaved}><Bookmark size={14} /><span>Saved</span></button>
       </nav>
 
       {view === "conversations" ? <section className="arc-drawer-view" aria-labelledby="arc-conversations-title">
@@ -771,37 +1041,48 @@ function ThreadDrawer({
       </section> : null}
 
       {view === "skills" && skillsMode === "installed" ? <section className="arc-drawer-view arc-drawer-skills" aria-labelledby="arc-skills-title">
-        <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-skills-title">Skills</h2><span>{installedSkills.length} installed</span></div><p>Reusable workflows you can call with <code>/</code> in any conversation.</p></header>
-        <div className="arc-skill-actions" onKeyDown={handleRovingListKeyDown}>
-          <button type="button" className="arc-skill-create" onClick={() => onUseSkill(ARC_SKILL_BUILDER)}><span><Plus size={15} /></span><span><b>Create a skill</b><small>Guided builder · /create-skill</small></span><ArrowRight size={14} /></button>
-          <button type="button" className="arc-skill-browse" onClick={() => { setSkillsMode("library"); setGithubOpen(true); }}><span><GitFork size={15} /></span><span><b>Add from GitHub</b><small>Review a public SKILL.md before installing</small></span><ArrowRight size={14} /></button>
-          <button type="button" className="arc-skill-browse" onClick={() => setSkillsMode("library")}><span><Download size={15} /></span><span><b>Browse Arc Library</b><small>Curated workflows reviewed by Arc</small></span><ArrowRight size={14} /></button>
-          <button type="button" className="arc-skill-browse" disabled={voiceBusy} onClick={() => void learnVoice()}><span>{voiceBusy ? <LoaderCircle size={15} className="is-spinning" /> : <Sparkles size={15} />}</span><span><b>Learn your voice</b><small>{voiceBusy ? "Reading approved campaign copy…" : "Build a skill from copy you already approved"}</small></span><ArrowRight size={14} /></button>
-        </div>
+        <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-skills-title">Skills</h2><span>{installedSkills.length + generatedSkills.length} installed</span></div><p>Reusable workflows you can call with <code>/</code> in any conversation.</p></header>
+        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search your skills" placeholder="Search your skills" value={installedSearch} onChange={(event) => setInstalledSearch(event.target.value)} /></label>
         {voiceStatus ? <p className="arc-voice-status" data-tone={voiceStatus.tone}>{voiceStatus.tone === "ok" ? <Check size={13} /> : <Info size={13} />}{voiceStatus.text}</p> : null}
-        {generatedSkills.length > 0 ? <>
-          <div className="arc-skills-section-head"><span>Your voice</span><small>Learned from {workspaceName || "this workspace"}</small></div>
-          <div className="arc-voice-list" onKeyDown={handleRovingListKeyDown}>
-            {generatedSkills.map((record) => (
-              <div className="arc-voice-skill" key={record.key}>
-                <button type="button" onClick={() => onUseSkill(toDrawerSkill(record, workspaceName))}>
-                  <span className="arc-skill-icon"><Sparkles size={17} /></span>
-                  <span><b>{record.name}</b><small>{VOICE_TIER_LABEL[record.evidenceTier]} · {record.exemplarCount} example{record.exemplarCount === 1 ? "" : "s"}</small><em>{record.command}</em></span>
-                </button>
-                <button type="button" aria-label={`Remove ${record.name}`} disabled={voiceBusy} onClick={() => void removeVoiceSkill(record)}><X size={13} /></button>
-              </div>
-            ))}
-          </div>
-        </> : null}
-        <div className="arc-skills-section-head"><span>Installed</span><small>{installedSkillKeys.length > 0 ? `${installedSkillKeys.length} from library` : "Included with Arc"}</small></div>
+        <div className="arc-skills-section-head"><span>Your skills</span><small>{installedEntries.length} of {installedSkills.length + generatedSkills.length}</small></div>
         <div className="arc-skills-list" onKeyDown={handleRovingListKeyDown}>
-          {installedSkills.map((skill) => (
-            <button type="button" className="arc-skill-row" data-source={skill.source} key={skill.key} onClick={() => onUseSkill(skill)}>
-              <span className="arc-skill-icon"><SkillIcon skill={skill} /></span>
-              <span><b>{skill.name}</b><small>{skill.description}</small><em>{skill.commands[0]}</em></span>
-              <ArrowRight size={14} />
-            </button>
-          ))}
+          {installedEntries.map(({ skill, detail, generated }) => {
+            const removable = Boolean(generated) || skill.source === "github" || skill.source === "library";
+            const unmet = requirementsFor(skill);
+            return (
+              <div className="arc-skill-item" key={skill.key} data-unmet={unmet.length > 0 ? "true" : undefined}>
+                <button type="button" className="arc-skill-row" onClick={() => onUseSkill(skill)}>
+                  <span className="arc-skill-icon"><SkillIcon skill={skill} /></span>
+                  <span>
+                    <span className="arc-skill-row-title">
+                      <b>{skill.name}</b>
+                      <span className="arc-skill-source" data-source={skill.source}>{SKILL_SOURCE_LABEL[skill.source]}</span>
+                    </span>
+                    <small>{detail}</small>
+                    {/* Every command the skill answers to. Showing only the first
+                        hid the aliases that make it findable from the composer. */}
+                    <span className="arc-skill-commands">{skill.commands.map((command) => <em key={command}>{command}</em>)}</span>
+                  </span>
+                </button>
+                {removable ? <button type="button" className="arc-skill-remove" aria-label={`Remove ${skill.name}`} disabled={voiceBusy || githubBusy || installingSkillKey === skill.key} onClick={() => removeInstalledSkill(skill, generated)}><X size={13} /></button> : <span />}
+                {/* A source this skill reads is unusable. Say so here rather than
+                    letting the run come back thin with no explanation. */}
+                {unmet.length > 0 ? <SkillRequirementNote requirements={unmet} onShowConnector={showConnector} /> : null}
+              </div>
+            );
+          })}
+          {installedEntries.length === 0 ? <div className="arc-skill-empty"><Search size={17} /><b>No skills match</b><span>Try another workflow name or command.</span></div> : null}
+        </div>
+        <div className="arc-skill-manage">
+          <button type="button" className="arc-skill-manage-toggle" aria-expanded={manageOpen} onClick={() => setManageOpen((open) => !open)}>
+            <Blocks size={13} /><span>Add or create a skill</span><ChevronDown size={14} className="arc-skill-manage-chevron" />
+          </button>
+          {manageOpen ? <div className="arc-skill-actions" onKeyDown={handleRovingListKeyDown}>
+            <button type="button" className="arc-skill-browse" onClick={() => setSkillsMode("library")}><span><Download size={15} /></span><span><b>Browse Arc Library</b><small>Curated workflows reviewed by Arc</small></span><ArrowRight size={14} /></button>
+            <button type="button" className="arc-skill-browse" onClick={() => { setSkillsMode("library"); setGithubOpen(true); }}><span><GitFork size={15} /></span><span><b>Add from GitHub</b><small>Review a public SKILL.md before installing</small></span><ArrowRight size={14} /></button>
+            <button type="button" className="arc-skill-create" onClick={() => onUseSkill(ARC_SKILL_BUILDER)}><span><Plus size={15} /></span><span><b>Create a skill</b><small>Guided builder · /create-skill</small></span><ArrowRight size={14} /></button>
+            <button type="button" className="arc-skill-browse" disabled={voiceBusy} onClick={() => void learnVoice()}><span>{voiceBusy ? <LoaderCircle size={15} className="is-spinning" /> : <Sparkles size={15} />}</span><span><b>Learn your voice</b><small>{voiceBusy ? "Reading approved campaign copy…" : "Build a skill from copy you already approved"}</small></span><ArrowRight size={14} /></button>
+          </div> : null}
         </div>
         <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Skills can prepare work, but outbound actions still require review.</p>
       </section> : null}
@@ -815,16 +1096,22 @@ function ThreadDrawer({
           {githubPreview ? <div className="arc-github-preview"><span className="arc-skill-icon"><SkillIcon skill={githubPreview} /></span><div><b>{githubPreview.name}</b><small>{githubPreview.description}</small><em>{githubPreview.commands[0]}</em><p>{githubPreview.publisher} · runs read-only</p></div><button type="button" disabled={githubBusy} onClick={() => void installGithubSkill()}><Download size={13} />Install</button></div> : null}
           {githubStatus ? <p className="arc-github-status">{githubStatus}</p> : null}
         </div> : null}
-        {workspaceSkills.length > 0 ? <div className="arc-github-installed"><div className="arc-skills-section-head"><span>From GitHub</span><small>{workspaceSkills.length} installed</small></div>{workspaceSkills.map((skill) => <div key={skill.key}><button type="button" onClick={() => onUseSkill(skill)}><span className="arc-skill-icon"><SkillIcon skill={skill} /></span><span><b>{skill.name}</b><small>{skill.publisher}</small><em>{skill.commands[0]}</em></span></button><button type="button" aria-label={`Remove ${skill.name}`} disabled={githubBusy} onClick={() => void removeGithubSkill(skill)}><X size={13} /></button></div>)}</div> : null}
+        {/* GitHub imports used to get their own list here, with the only remove
+            button in the product. They now sit in the main Installed list with
+            every other skill, badged and removable there. */}
         <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search online skills" placeholder="Search skills" value={skillSearch} onChange={(event) => setSkillSearch(event.target.value)} /></label>
         <div className="arc-skills-section-head"><span>Discover</span><small>{visibleLibrarySkills.length} skills</small></div>
         <div className="arc-skills-list arc-library-list" onKeyDown={handleRovingListKeyDown}>
           {visibleLibrarySkills.map((skill) => {
             const installed = installedSkillKeys.includes(skill.key);
             const saving = installingSkillKey === skill.key;
+            const unmet = requirementsFor(skill);
             return <article className="arc-library-skill" data-installed={installed ? "true" : "false"} key={skill.key}>
               <span className="arc-skill-icon"><SkillIcon skill={skill} /></span>
-              <div><span><b>{skill.name}</b><em>{skill.commands[0]}</em></span><small>{skill.description}</small><p>{skill.publisher} · Reviewed by Arc</p></div>
+              <div><span><b>{skill.name}</b></span><small>{skill.description}</small><span className="arc-skill-commands">{skill.commands.map((command) => <em key={command}>{command}</em>)}</span><p>{skill.publisher} · Reviewed by Arc</p></div>
+              {/* What this skill reads, before it is installed — so the gap is a
+                  decision at install time, not a disappointment at run time. */}
+              {unmet.length > 0 ? <SkillRequirementNote requirements={unmet} onShowConnector={showConnector} /> : null}
               <button type="button" disabled={saving} onClick={() => onSetSkillInstalled(skill, !installed)}>{saving ? <LoaderCircle size={13} className="is-spinning" /> : installed ? <Check size={13} /> : <Download size={13} />}{saving ? "Saving" : installed ? "Installed" : "Install"}</button>
             </article>;
           })}
@@ -836,22 +1123,60 @@ function ThreadDrawer({
       {view === "connectors" ? <section className="arc-drawer-view arc-drawer-connectors" aria-labelledby="arc-connectors-title">
         <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-connectors-title">Connectors</h2><span className="is-connector-count">{connectedCount} connected</span></div><p>Arc&apos;s plugins, with the live status for this workspace.</p></header>
         {!connectorsConfigured ? <div className="arc-connector-notice"><ShieldCheck size={14} /><span><b>Catalog preview</b><small>Connect a workspace to store credentials and live status.</small></span></div> : null}
-        <div className="arc-connectors-section-head"><span>{connectorItems.length} workspace connectors</span><Link href="/settings?s=connections">Manage all <ArrowRight size={12} /></Link></div>
+        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search connectors" placeholder="Search connectors" value={connectorSearch} onChange={(event) => setConnectorSearch(event.target.value)} /></label>
+        {connectorError ? <p className="arc-connector-error" role="alert">{connectorError}</p> : null}
         <div className="arc-connector-list">
-          {connectorItems.map((connector) => (
-            <Link href={`/settings?s=connections&c=${encodeURIComponent(connector.key)}`} className="arc-connector-row" data-status={connector.status} key={connector.key}>
-              <span className="arc-connector-logo" style={{ "--connector-color": connector.color } as React.CSSProperties}>{connector.mark}</span>
-              <span className="arc-connector-copy"><span><b>{connector.label}</b><em>{connector.statusLabel}</em></span><small>{connector.kindLabel} · {connector.accessLabel}</small><p>{connector.description}</p></span>
-              <ChevronRight size={14} />
-            </Link>
+          {connectorGroups.map((group) => (
+            <Fragment key={group.kind}>
+              <div className="arc-connectors-section-head"><span>{group.label}</span><small>{group.items.filter((item) => item.status === "connected").length} of {group.items.length} on</small></div>
+              {group.items.map((connector) => (
+                <div className="arc-connector-row" data-status={connector.status} data-focused={focusedConnector === connector.key ? "true" : undefined} ref={focusedConnector === connector.key ? focusConnectorRef : undefined} key={connector.key}>
+                  <span className="arc-connector-logo" style={{ "--connector-color": connector.color } as React.CSSProperties}>{connector.mark}</span>
+                  <span className="arc-connector-copy"><span><b>{connector.label}</b><em>{connector.statusLabel}</em></span><small>{connector.kindLabel} · {connector.accessLabel}</small><p>{connector.description}</p></span>
+                  {/* Switchable here; credential entry still belongs in Settings. */}
+                  {connector.toggleable ? (
+                    <button
+                      type="button"
+                      className="arc-connector-toggle"
+                      role="switch"
+                      aria-checked={connector.enabled}
+                      aria-label={`${connector.enabled ? "Turn off" : "Turn on"} ${connector.label}`}
+                      disabled={togglingConnector !== null || !connectorsConfigured}
+                      title={connectorsConfigured ? undefined : "Connect a workspace to switch connectors on."}
+                      onClick={() => void toggleConnector(connector)}
+                    >
+                      {togglingConnector === connector.key ? <LoaderCircle size={12} className="is-spinning" /> : <i />}
+                    </button>
+                  ) : (
+                    <Link href={`/settings?s=connections&c=${encodeURIComponent(connector.key)}`} className="arc-connector-setup" aria-label={`Set up ${connector.label} in Settings`}><ChevronRight size={14} /></Link>
+                  )}
+                </div>
+              ))}
+            </Fragment>
           ))}
-          {connectorItems.length === 0 ? <div className="arc-connector-empty"><Link2 size={17} /><b>No connectors found</b><span>Open Settings to refresh the workspace catalog.</span></div> : null}
+          {connectorGroups.length === 0 ? <div className="arc-connector-empty"><Link2 size={17} /><b>No connectors found</b><span>{connectorSearch.trim() ? "Try a different name or kind." : "Open Settings to refresh the workspace catalog."}</span></div> : null}
+          {/* Not built yet — nothing to act on, so out of the main list. */}
+          {plannedConnectors.length > 0 ? (
+            <div className="arc-planned">
+              <button type="button" className="arc-planned-toggle" aria-expanded={plannedOpen} onClick={() => setPlannedOpen((open) => !open)}>
+                <span>Not available yet · {plannedConnectors.length}</span>
+                <ChevronDown size={14} className="arc-planned-chevron" />
+              </button>
+              {plannedOpen ? plannedConnectors.map((connector) => (
+                <div className="arc-planned-item" key={connector.key}>
+                  <b>{connector.label}</b>
+                  <small>{connector.kindLabel}</small>
+                </div>
+              )) : null}
+            </div>
+          ) : null}
         </div>
-        <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Connections are workspace-scoped and controlled in Settings.</p>
+        <div className="arc-connectors-section-head"><span>{connectorItems.length} workspace connectors</span><Link href="/settings?s=connections">Manage all <ArrowRight size={12} /></Link></div>
+        <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Switching a connector on lets Arc read it — signal sources only propose, and nothing sends without your approval.</p>
       </section> : null}
 
       {view === "saved" ? <section className="arc-drawer-view arc-drawer-saved" aria-labelledby="arc-saved-title">
-        <header className="arc-drawer-view-head"><h2 id="arc-saved-title">Saved</h2><p>Responses and drafts you saved from Arc — kept for reuse.</p></header>
+        <header className="arc-drawer-view-head"><h2 id="arc-saved-title">Saved</h2><p>Responses, drafts and media you saved from Arc. Send one straight back into the conversation.</p></header>
         {savedError ? <p className="arc-saved-error" role="alert">{savedError}</p> : null}
         {savedLoading ? (
           <div className="arc-saved-empty"><LoaderCircle size={16} className="is-spinning" /> Loading your saved items…</div>
@@ -863,7 +1188,20 @@ function ThreadDrawer({
                   <span className={`arc-saved-kind is-${item.kind}`}>{item.kind === "draft" ? "Draft" : item.kind === "media" ? "Media" : "Angle"}</span>
                   <b className="arc-saved-title">{item.title}</b>
                   {item.preview ? <p className="arc-saved-preview">{item.preview}</p> : null}
-                  {item.conversationHref ? <Link href={item.conversationHref} className="arc-saved-open" onClick={onClose}>Open source chat <ArrowRight size={12} /></Link> : null}
+                  {/* The reuse the copy has always promised. Text goes into the
+                      composer; media has no body to insert, so its reusable
+                      artefact is the link. */}
+                  <div className="arc-saved-actions">
+                    {item.body ? (
+                      <button type="button" className="arc-saved-use" onClick={() => onUseSaved(item.body!)}>
+                        <CornerDownLeft size={12} /> Use in chat
+                      </button>
+                    ) : null}
+                    <button type="button" className="arc-saved-copy" onClick={() => void copySaved(item)}>
+                      {copiedSavedId === item.id ? <><Check size={12} /> Copied</> : <><Copy size={12} /> {item.kind === "media" ? "Copy link" : "Copy"}</>}
+                    </button>
+                    {item.conversationHref ? <Link href={item.conversationHref} className="arc-saved-open" onClick={onClose}>Open source chat <ArrowRight size={12} /></Link> : null}
+                  </div>
                 </div>
                 <button type="button" className="arc-saved-remove" onClick={() => removeSaved(item.id)} aria-label={`Remove saved item: ${item.title}`} title="Remove"><Trash2 size={14} /></button>
               </div>
@@ -872,7 +1210,7 @@ function ThreadDrawer({
         ) : (
           <div className="arc-saved-empty">
             <Bookmark size={18} />
-            <div><b>Nothing saved yet.</b><span>Use the bookmark on any Arc response to keep it here for reuse.</span></div>
+            <div><b>Nothing saved yet.</b><span>Bookmark any Arc response to keep it here and reuse it in a later conversation.</span></div>
           </div>
         )}
       </section> : null}
@@ -885,6 +1223,51 @@ function ThreadDrawer({
  * every voice skill so "a human approved these" is never mistaken for
  * "these converted" — the two look identical once rendered.
  */
+/**
+ * "This skill reads something you haven't switched on." Shown on the installed
+ * row, the library card and beside the composer chip — the three places a skill
+ * gets chosen — because the failure it replaces was silent at all three.
+ *
+ * It is a notice, never a gate: the copy always ends with what Arc will still do.
+ */
+function SkillRequirementNote({
+  requirements,
+  onShowConnector,
+  compact = false,
+}: {
+  requirements: SkillRequirement[];
+  onShowConnector?: (key: string) => void;
+  compact?: boolean;
+}) {
+  if (requirements.length === 0) return null;
+  const first = requirements[0]!;
+  return (
+    <p className="arc-skill-requirement" data-compact={compact ? "true" : undefined}>
+      <CircleAlert size={12} />
+      <span>{describeSkillRequirements(requirements)}</span>
+      {onShowConnector ? (
+        <button type="button" onClick={() => onShowConnector(first.key)}>
+          {requirements.length === 1 ? "Open connector" : "Open connectors"}
+        </button>
+      ) : null}
+    </p>
+  );
+}
+
+/**
+ * Where a skill came from, said out loud. This used to be a 4.5% background
+ * tint keyed off `data-source`, which made a skill Arc ships and an untrusted
+ * public GitHub import look the same — and they are not the same, which is why
+ * the GitHub footnote exists.
+ */
+const SKILL_SOURCE_LABEL: Record<ArcSkillDefinition["source"], string> = {
+  "built-in": "Built-in",
+  system: "Built-in",
+  library: "Library",
+  github: "GitHub",
+  generated: "Learned",
+};
+
 const VOICE_TIER_LABEL: Record<GeneratedSkillRecord["evidenceTier"], string> = {
   outcome: "Backed by booked work",
   engagement: "Backed by opens & clicks",
@@ -1029,6 +1412,16 @@ export function ArcView({
   const [composerNotice, setComposerNotice] = useState<string | null>(null);
   const [contextInfoOpen, setContextInfoOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const historyButtonRef = useRef<HTMLButtonElement | null>(null);
+  /**
+   * Dismissing the drawer hands focus back to the control that opened it —
+   * otherwise a keyboard user who presses Escape is left with focus on a
+   * detached node and has to Tab in from the top of the document.
+   */
+  const dismissHistory = useCallback(() => {
+    setHistoryOpen(false);
+    historyButtonRef.current?.focus();
+  }, []);
   const [startingNewConversation, setStartingNewConversation] = useState(false);
   const [optimisticTurn, setOptimisticTurn] = useState<(OptimisticArcTurn & { baselineMessageCount: number }) | null>(null);
   const [installedSkillKeys, setInstalledSkillKeys] = useState(initialInstalledSkillKeys);
@@ -1380,6 +1773,16 @@ export function ArcView({
     return skill.name.toLowerCase().includes(skillQuery)
       || skill.commands.some((candidate) => candidate.toLowerCase().includes(skillQuery));
   });
+  /* The same check the drawer runs, at the last moment it still matters: the
+     skill is chipped and the operator is about to type into it. Without this,
+     picking a skill from the `/` menu — which never passes through the drawer —
+     reaches the runner with no warning at all. */
+  const selectedSkillRequirements = selectedSkill
+    ? unmetSkillConnectors(
+        selectedSkill,
+        connectors.map((connector) => ({ key: connector.key, label: connector.label, status: connector.status })),
+      )
+    : [];
   const currentModel = MODEL_OPTIONS.find((option) => option.id === modelPreference) ?? MODEL_OPTIONS[0];
   const resolvedModelName = route === "fast" ? "Spark" : "Forge";
   const capabilityLabel = mode === "ask" ? "Read only" : "Work";
@@ -1804,6 +2207,29 @@ export function ArcView({
     window.requestAnimationFrame(() => composerInputRef.current?.focus());
   };
 
+  /**
+   * Put a saved item back to work in the current turn.
+   *
+   * Appends rather than replaces: the Saved tab is usually opened *while*
+   * writing something, and silently discarding a half-typed message to paste an
+   * angle over it would be its own small betrayal.
+   */
+  const useSavedItem = (text: string) => {
+    const addition = text.trim();
+    if (!addition) return;
+    const current = draft.trim();
+    updateDraft(current ? `${current}\n\n${addition}` : addition);
+    setHistoryOpen(false);
+    window.requestAnimationFrame(() => {
+      const input = composerInputRef.current;
+      if (!input) return;
+      input.focus();
+      // Caret at the end, so the next keystroke continues the message rather
+      // than landing in the middle of what was just inserted.
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  };
+
   const setLibrarySkillInstalled = (skill: ArcSkillDefinition, installed: boolean) => {
     if (isSavingSkill) return;
     const previous = installedSkillKeys;
@@ -1828,7 +2254,7 @@ export function ArcView({
   return (
     <div className="arc-chat" ref={chatRootRef} data-workspace-open={panelVisible ? "true" : "false"} data-new-conversation={live && !visibleConversationId && visibleMessages.length === 0 && !optimisticTurn ? "true" : "false"}>
       <header className="arc-conversation-header">
-        <button type="button" className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-label="Open conversations"><MessagesSquare size={17} /><span>Conversations</span></button>
+        <button type="button" ref={historyButtonRef} className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-expanded={historyOpen} aria-haspopup="dialog" aria-label="Open conversations"><MessagesSquare size={17} /><span>Conversations</span></button>
         <div className="arc-conversation-title"><h1>{header.title}</h1><p>{header.subtitle}</p></div>
         <div className="arc-conversation-actions">
           {needsReviewCards.length > 0 ? <button type="button" className="arc-header-attention" aria-label={`${needsReviewCards.length} items need review`} onClick={() => openReview(needsReviewCards)}><ClipboardCheck size={15} /><span>{needsReviewCards.length} need review</span></button> : null}
@@ -1932,6 +2358,11 @@ export function ArcView({
               </div>
             ) : null}
 
+            {/* Named before the turn is sent, never blocking it. */}
+            {selectedSkillRequirements.length > 0 ? (
+              <SkillRequirementNote requirements={selectedSkillRequirements} compact />
+            ) : null}
+
             <textarea ref={composerInputRef} aria-label="Message Arc" placeholder={selectedSkill?.key === "skill-authoring" ? "Describe the workflow you want Arc to learn…" : selectedSkill?.key === "skill-installation" ? "Paste a public GitHub repository or SKILL.md URL…" : selectedSkill ? `Add details for ${selectedSkill.name}…` : command ? "Add details for this skill…" : "Message Arc…"} value={draft} rows={2} disabled={isSending || demoPending || isSavingSkill} onChange={(event) => { const value = event.target.value; updateDraft(value); if (value.endsWith("@")) { composerMenuTriggerRef.current = null; setComposerMenu("mentions"); } else if (/^\s*\/[^\s]*$/.test(value)) { composerMenuTriggerRef.current = null; setComposerMenu("commands"); } }} onKeyDown={(event) => {
               if (event.key === "Escape") { closeComposerMenu(); return; }
               if (composerMenu && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -1988,7 +2419,7 @@ export function ArcView({
       </AnimatePresence>
       <AnimatePresence>
         {panelVisible ? <motion.button type="button" className="arc-workspace-scrim" aria-label="Close conversation workspace" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setReviewCards(null); setWorkPanelVisibility(false); }} /> : null}
-        {historyOpen ? <Fragment key="arc-workspace"><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setHistoryOpen(false)} aria-label="Close Arc workspace" /><ThreadDrawer live={live} groups={threadGroups} activeConversationId={visibleConversationId} selectedDemoId={selectedDemoId} needsReviewCount={needsReviewCards.length} onSelectDemo={selectDemoThread} onStartNew={startNewConversation} onOpenReview={() => { setHistoryOpen(false); openReview(needsReviewCards); }} onUseSkill={applyDrawerSkill} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} campaignItems={mentionGroups.find((group) => group.type === "campaign")?.items ?? []} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} /></Fragment> : null}
+        {historyOpen ? <Fragment key="arc-workspace"><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismissHistory} aria-label="Close Arc workspace" /><ThreadDrawer live={live} groups={threadGroups} activeConversationId={visibleConversationId} selectedDemoId={selectedDemoId} needsReviewCount={needsReviewCards.length} onSelectDemo={selectDemoThread} onStartNew={startNewConversation} onOpenReview={() => { setHistoryOpen(false); openReview(needsReviewCards); }} onUseSkill={applyDrawerSkill} onUseSaved={useSavedItem} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} campaignItems={mentionGroups.find((group) => group.type === "campaign")?.items ?? []} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} onDismiss={dismissHistory} /></Fragment> : null}
         {shareOpen ? <ShareDialog key="share-dialog" conversationId={visibleConversationId} onClose={() => setShareOpen(false)} /> : null}
       </AnimatePresence>
     </div>

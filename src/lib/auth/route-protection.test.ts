@@ -105,6 +105,18 @@ describe("isPublicPath", () => {
     }
   });
 
+  it("keeps /legal public in every mode", () => {
+    // Terms and Privacy have to be readable by someone deciding whether to sign
+    // up, and by Stripe's review. Gating them turns a compliance requirement
+    // into a 302.
+    for (const mode of ["open", "operator", "supabase"] as const) {
+      expect(isPublicPath("/legal", mode)).toBe(true);
+      expect(isPublicPath("/legal/terms", mode)).toBe(true);
+      expect(isPublicPath("/legal/privacy", mode)).toBe(true);
+      expect(isPublicPath("/legal/subprocessors", mode)).toBe(true);
+    }
+  });
+
   it("does not let a public marketing path leak neighbouring routes by prefix", () => {
     // The exposure this guards against: a bare-prefix match on a page name also
     // exempts every route that merely STARTS with it, so an unrelated gated page
@@ -120,6 +132,9 @@ describe("isPublicPath", () => {
       "/industries-internal",
       "/industriessecret",
       "/industries-admin/tenants",
+      "/legal-internal",
+      "/legalsecret",
+      "/legal-admin/contracts",
     ]) {
       expect(isPublicPath(pathname, "supabase")).toBe(false);
     }

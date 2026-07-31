@@ -49,10 +49,12 @@ export const DEMO_STEPS: ArcStep[] = [
   { label: "Prepared a review-safe campaign package", status: "done", at: "9:38 AM", kind: "draft" },
 ];
 
+/** Named the way the SDK delivers them, MCP prefix and all, so the preview
+ *  exercises the same label cleanup production needs. */
 export const DEMO_TOOLS: ArcToolCall[] = [
-  { name: "weather.lookup", status: "complete", output: "pricing-page surge" },
-  { name: "crm.search", status: "complete", output: "142 high-intent accounts" },
-  { name: "audience.score", status: "complete", output: "$1.4M estimated opportunity" },
+  { name: "mcp__arc__weather_lookup", status: "complete", output: "pricing-page surge" },
+  { name: "mcp__arc__crm_search", status: "complete", output: "142 high-intent accounts" },
+  { name: "mcp__arc__audience_score", status: "complete", output: "$1.4M estimated opportunity" },
 ];
 
 export const DEMO_BREAKDOWN_MD = `Here's how the 142 high-intent accounts break down, and the tracking I'd attach so we can attribute booked demos back to this run:
@@ -137,8 +139,19 @@ export const DEMO_SOURCES: ArcMention[] = [
 ];
 
 export const DEMO_RECALL: ArcRecall[] = [
-  { label: "Demo-first beats discount-led", confidence: 0.86, nodeId: "demo-node-inspection" },
-  { label: "Active-trial segment books fastest", confidence: 0.72, nodeId: "demo-node-insured" },
+  // `label` is the brain's node key and `summary` is the fact in Arc's words —
+  // the shape prod actually stores. The panel renders the sentence.
+  //
+  // Sized like a real turn (prod recalls ~15), not like a sample of two, so the
+  // preview exercises the overflow control instead of a case that never happens.
+  { label: "demo_first_beats_discount", summary: "Leading with a demo outperforms a discount offer on this segment by a wide margin.", confidence: 0.86, nodeId: "demo-node-inspection" },
+  { label: "active_trial_speed", summary: "Accounts in an active trial book a demo faster than any other segment.", confidence: 0.72, nodeId: "demo-node-insured" },
+  { label: "pricing_page_signal", summary: "Three or more pricing-page visits in a week is the strongest booking signal in the workspace.", confidence: 0.81, nodeId: "demo-node-pricing" },
+  { label: "multi_seat_expansion", summary: "Multi-seat teams expand rather than churn when contacted before renewal, not after.", confidence: 0.64, nodeId: "demo-node-expansion" },
+  { label: "plain_text_preference", summary: "Plain-text email outperforms designed templates with technical buyers here.", confidence: 0.77, nodeId: "demo-node-plaintext" },
+  { label: "tuesday_send_window", summary: "Tuesday and Wednesday mornings hold the highest reply rate for this audience.", confidence: 0.58, nodeId: "demo-node-timing" },
+  { label: "trial_expiry_urgency", summary: "Trials contacted within 48 hours of expiry convert at roughly twice the base rate.", confidence: 0.69, nodeId: "demo-node-expiry" },
+  { label: "champion_referral_path", summary: "Referrals from an existing champion close faster than any outbound sequence.", confidence: 0.74, nodeId: "demo-node-referral" },
 ];
 
 /**

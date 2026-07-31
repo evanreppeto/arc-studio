@@ -33,6 +33,7 @@ function registryFallback(): ConnectorView[] {
       kind: entry.kind,
       label: entry.label,
       description: entry.description,
+      capabilitySummary: entry.capability.summary,
       authKind: entry.authKind,
       access: entry.access,
       costTier: entry.costTier,

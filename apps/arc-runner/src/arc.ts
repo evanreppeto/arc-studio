@@ -17,6 +17,7 @@ import { promoteConversationMemory } from "./extract-memory";
 import { resolveArcSkill, type ArcSkill } from "./skills";
 import { reviewTurnDrafts } from "./critic";
 import { createCumulativeStreamBuffer } from "./live-stream-buffer";
+import { createToolCallLog, type ArcToolCall } from "./tool-calls";
 import type {
   ArcActionCard,
   ArcCampaignTaskPayload,
@@ -33,6 +34,9 @@ import type { StepFn, TurnSink } from "./tools/helpers";
 export type ArcTurnResult = {
   body: string;
   actions: ArcActionCard[];
+  /** Structured record of the tools this turn ran, for `metadata.toolCalls`
+   *  (BSR-618). Empty when the turn called nothing. */
+  toolCalls: ArcToolCall[];
   suggestions: string[];
   sources: ArcMention[];
   questions: ArcQuestion[];
@@ -367,6 +371,10 @@ async function runArcQuery(opts: {
   // much text precedes the first tool call.
   const blockSequences: string[] = [];
   let preToolTextChars = 0;
+  // What Arc actually called, paired with what came back (BSR-618). Captured
+  // here rather than in `runTool` because the SDK stream also carries remote MCP
+  // connector calls, which never pass through the app's own tool wrappers.
+  const toolLog = createToolCallLog();
   // The model phase, split where the reader can actually see it change: reasoning
   // until the first token of prose, then writing. Tool calls report themselves in
   // between, so the trace reads as a sequence of real phases rather than a gap.
@@ -419,8 +427,11 @@ async function runArcQuery(opts: {
       let sawTool = false;
       for (const block of message.message.content) {
         shape.push(block.type);
-        if (block.type === "tool_use") sawTool = true;
-        else if (block.type === "text" && !sawTool) preToolTextChars += (block as { text?: string }).text?.length ?? 0;
+        if (block.type === "tool_use") {
+          sawTool = true;
+          const use = block as { id?: string; name?: string; input?: unknown };
+          toolLog.start(use.id ?? "", use.name ?? "", use.input);
+        } else if (block.type === "text" && !sawTool) preToolTextChars += (block as { text?: string }).text?.length ?? 0;
       }
       if (shape.length) blockSequences.push(shape.join(">"));
       for (const type of shape) mark(`block:${type}`);
@@ -472,6 +483,17 @@ async function runArcQuery(opts: {
         }
         lastTextChunk = null;
       }
+    } else if (message.type === "user") {
+      // Tool results come back as a synthetic user turn. Pair each one with the
+      // call it answers so the record says what happened, not just what was asked.
+      const content = (message as { message?: { content?: unknown } }).message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          const result = block as { type?: string; tool_use_id?: string; content?: unknown; is_error?: boolean };
+          if (result.type !== "tool_result" || !result.tool_use_id) continue;
+          toolLog.settle(result.tool_use_id, result.content, result.is_error === true);
+        }
+      }
     } else if (message.type === "result" && message.subtype === "success") {
       resultText = message.result;
       const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
@@ -494,7 +516,7 @@ async function runArcQuery(opts: {
   const body = assembleReplyBody(replyChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
   console.log(
-    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars} | narration chunks: ${narrationChunks.size}/${assistantChunks.length} | timeline: ${timeline.join(" ")}`,
+    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars} | narration chunks: ${narrationChunks.size}/${assistantChunks.length} | tool calls: ${toolLog.value().length}${toolLog.dropped() ? ` (+${toolLog.dropped()} over cap, not recorded)` : ""} | timeline: ${timeline.join(" ")}`,
   );
 
   // The last SDK deltas commonly land inside the throttle window. Flush the
@@ -506,6 +528,7 @@ async function runArcQuery(opts: {
   return {
     body,
     actions,
+    toolCalls: toolLog.value(),
     suggestions: suggestions.slice(0, 4),
     sources,
     questions: questions.slice(0, 4),
