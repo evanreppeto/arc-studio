@@ -568,12 +568,14 @@ const CONFIG_FIELDS: Record<string, ConfigField[]> = {
 };
 const CONNECTOR_STATUS_PILL: Record<ConnectorStatus, { kind: string; label: string }> = {
   connected: { kind: "ok", label: "Connected" },
-  not_configured: { kind: "off", label: "Not connected" },
-  disabled: { kind: "warn", label: "Paused" },
+  not_configured: { kind: "off", label: "Not set up" },
+  // Not "Paused": `disabled` is simply `!enabled`, so a connector nobody has
+  // ever switched on was reading as one that had been running and got suspended.
+  disabled: { kind: "warn", label: "Off" },
   error: { kind: "err", label: "Error" },
   // The integration isn't written. "Planned" rather than "Not connected", which
   // would imply connecting is something you could go and do.
-  unavailable: { kind: "off", label: "Planned" },
+  unavailable: { kind: "off", label: "Not available yet" },
 };
 
 const MEDIA_MODELS: Record<string, [string, string, string, number?][]> = {
@@ -2144,8 +2146,8 @@ function ConnectorModal({ view, configured, hubspotOAuthConfigured = false, goog
           <div className="cxm-sec">
             <div className="cxm-label">{view.enabled ? "Turned on" : "Turn on"}</div>
             <p className="cxm-hint">{meta.credHint || "No key needed — just switch it on to let Arc use it. Signal sources only propose; channels send only from the approved path."}</p>
-            <button className="btn gold" disabled={pending} onClick={() => run(() => toggleConnectorEnabled({ connectorKey: view.key, enabled: !view.enabled }), view.enabled ? "Paused." : "Enabled.")}>
-              {view.enabled ? "Pause" : "Enable"}
+            <button className="btn gold" disabled={pending} onClick={() => run(() => toggleConnectorEnabled({ connectorKey: view.key, enabled: !view.enabled }), view.enabled ? "Turned off." : "Turned on.")}>
+              {view.enabled ? "Turn off" : "Turn on"}
             </button>
           </div>
         ) : view.credentialPresent ? (
@@ -2157,7 +2159,7 @@ function ConnectorModal({ view, configured, hubspotOAuthConfigured = false, goog
               <button className="btn gold" disabled={pending || !credential.trim()} onClick={connect}>Save</button>
             </div>
             <div className="cxm-actions">
-              <button className="btn sm" disabled={pending} onClick={() => run(() => toggleConnectorEnabled({ connectorKey: view.key, enabled: !view.enabled }), view.enabled ? "Paused." : "Enabled.")}>{view.enabled ? "Pause" : "Enable"}</button>
+              <button className="btn sm" disabled={pending} onClick={() => run(() => toggleConnectorEnabled({ connectorKey: view.key, enabled: !view.enabled }), view.enabled ? "Turned off." : "Turned on.")}>{view.enabled ? "Turn off" : "Turn on"}</button>
               <button className="btn sm danger" disabled={pending} onClick={() => run(() => disconnectConnector({ connectorKey: view.key }), `${view.label} disconnected.`)}>Disconnect</button>
             </div>
           </div>
@@ -2169,8 +2171,8 @@ function ConnectorModal({ view, configured, hubspotOAuthConfigured = false, goog
               nothing it produces goes outbound without your approval. Prefer your own {meta.credLabel}? Paste it
               below and calls run on your account instead (your billing, no metering).
             </p>
-            <button className="btn gold" disabled={pending} onClick={() => run(() => toggleConnectorEnabled({ connectorKey: view.key, enabled: !view.enabled }), view.enabled ? "Paused." : "Enabled.")}>
-              {view.enabled ? "Pause" : "Enable"}
+            <button className="btn gold" disabled={pending} onClick={() => run(() => toggleConnectorEnabled({ connectorKey: view.key, enabled: !view.enabled }), view.enabled ? "Turned off." : "Turned on.")}>
+              {view.enabled ? "Turn off" : "Turn on"}
             </button>
             <div className="cxm-field" style={{ marginTop: 12 }}>
               <input className="inp" type="password" placeholder={`Optional: your own ${meta.credLabel}`} value={credential} onChange={(e) => setCredential(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") connect(); }} />

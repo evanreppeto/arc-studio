@@ -373,7 +373,10 @@ export async function toggleConnectorEnabled(input: {
   }
 
   revalidatePath("/settings");
-  return { ok: true, persisted: true, message: input.enabled ? `${connector.label} enabled.` : `${connector.label} paused.` };
+  // The Arc drawer switches connectors on and off too, and reads the same rows.
+  revalidatePath("/arc");
+  // "Paused" implied it had been running; `enabled: false` just means off.
+  return { ok: true, persisted: true, message: input.enabled ? `${connector.label} turned on.` : `${connector.label} turned off.` };
 }
 
 /**

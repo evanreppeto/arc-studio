@@ -143,6 +143,9 @@ import {
   type ArchivedArcConversationVM,
   type SavedArcItemVM,
 } from "../actions";
+// Reused rather than reimplemented: the same `requireOperator()` gate and
+// org-scoped upsert Settings has always used to switch a connector.
+import { toggleConnectorEnabled } from "../../settings/connectors-actions";
 import type { GeneratedSkillRecord } from "@/lib/exemplar-skills/persistence";
 import {
   getChatSharingStateAction,
@@ -363,10 +366,35 @@ type DrawerConnectorItem = {
   description: string;
   status: DrawerConnectorStatus;
   statusLabel: string;
+  kind: ConnectorView["kind"] | "channel";
   kindLabel: string;
   accessLabel: string;
   mark: string;
   color: string;
+  /**
+   * Whether this row can be switched from here. True only when the credential
+   * question is already settled — `connected` or `disabled`. A connector that
+   * still needs a key, or that isn't built, has nothing to toggle; those keep
+   * their deep link into Settings, where credential entry genuinely belongs.
+   */
+  toggleable: boolean;
+  enabled: boolean;
+};
+
+/** Grouping order for the connector list — how an operator thinks about them:
+ *  what watches, what sends, what Arc can call, what comes in. */
+const CONNECTOR_KIND_ORDER: ReadonlyArray<ConnectorView["kind"]> = [
+  "signal_source",
+  "channel",
+  "mcp_tool",
+  "import_source",
+];
+
+const CONNECTOR_GROUP_LABEL: Record<ConnectorView["kind"], string> = {
+  signal_source: "Signal sources",
+  channel: "Channels",
+  mcp_tool: "Tools",
+  import_source: "Imports",
 };
 
 const CONNECTOR_PRESENTATION: Record<string, { mark: string; color: string }> = {
@@ -390,12 +418,19 @@ const CONNECTOR_KIND_LABEL: Record<ConnectorView["kind"], string> = {
   import_source: "Import",
 };
 
+/**
+ * Status in the operator's words.
+ *
+ * "Paused" was wrong for `disabled`: that status is simply `!enabled`, so a
+ * connector nobody has ever switched on read as one that had been running and
+ * got suspended. On a fresh workspace that was every row.
+ */
 function connectorStatusLabel(status: DrawerConnectorStatus): string {
   if (status === "connected") return "Connected";
-  if (status === "disabled") return "Paused";
+  if (status === "disabled") return "Off";
   if (status === "error") return "Needs attention";
-  if (status === "unavailable") return "Planned";
-  return "Not connected";
+  if (status === "unavailable") return "Not available yet";
+  return "Not set up";
 }
 
 function ThreadDrawer({
@@ -468,6 +503,11 @@ function ThreadDrawer({
   const [manageOpen, setManageOpen] = useState(false);
   /** Connector the operator arrived at from an unmet skill requirement. */
   const [focusedConnector, setFocusedConnector] = useState<string | null>(null);
+  const [connectorSearch, setConnectorSearch] = useState("");
+  const [plannedOpen, setPlannedOpen] = useState(false);
+  /** Key currently being switched, so only that row shows a spinner. */
+  const [togglingConnector, setTogglingConnector] = useState<string | null>(null);
+  const [connectorError, setConnectorError] = useState<string | null>(null);
   /** Bring that connector into view — the list is 16 rows and it may be far down.
    *  A callback ref rather than an effect: it fires exactly when the row mounts,
    *  which is the render after `showConnector` switched to the Connectors tab.
@@ -476,7 +516,7 @@ function ThreadDrawer({
    *  callback races the list's own layout and reliably stalled part-way, leaving
    *  the row the operator asked for still off-screen. This is a jump they
    *  explicitly requested, so it should just be there. */
-  const focusConnectorRef = useCallback((node: HTMLAnchorElement | null) => {
+  const focusConnectorRef = useCallback((node: HTMLDivElement | null) => {
     node?.scrollIntoView({ block: "center", behavior: "auto" });
   }, []);
   const [query, setQuery] = useState("");
@@ -570,18 +610,27 @@ function ThreadDrawer({
       description: "Approved campaign and transactional email delivery.",
       status: emailConnection.status === "connected" && !liveSendEnabled ? "disabled" as const : emailConnection.status,
       statusLabel: emailConnection.status === "connected" && !liveSendEnabled ? "Not armed" : connectorStatusLabel(emailConnection.status),
+      kind: "channel" as const,
       kindLabel: "Channel",
       accessLabel: "gated write",
+      // Email arming is an env-level decision, not a per-workspace switch.
+      toggleable: false,
+      enabled: emailConnection.status === "connected" && liveSendEnabled,
       ...CONNECTOR_PRESENTATION.resend!,
     }] : []),
     ...connectors.map((connector) => ({
       key: connector.key,
       label: connector.label,
-      description: connector.description.replace(/^PLANNED —\s*/i, ""),
+      // The Settings-page `description` clamps mid-word at this width; the
+      // registry's one-line capability summary is written to fit.
+      description: (connector.capabilitySummary || connector.description).replace(/^PLANNED —\s*/i, ""),
       status: connector.status,
       statusLabel: connectorStatusLabel(connector.status),
+      kind: connector.kind,
       kindLabel: CONNECTOR_KIND_LABEL[connector.kind],
       accessLabel: connector.access === "read_only" ? "read-only" : "gated write",
+      toggleable: connector.status === "connected" || connector.status === "disabled",
+      enabled: connector.enabled,
       ...(CONNECTOR_PRESENTATION[connector.key] ?? { mark: connector.label.slice(0, 2), color: "#9aa0ac" }),
     })),
   ].sort((a, b) => {
@@ -589,6 +638,18 @@ function ThreadDrawer({
     return rank[a.status] - rank[b.status] || a.label.localeCompare(b.label);
   });
   const connectedCount = connectorItems.filter((connector) => connector.status === "connected").length;
+  const matchesConnectorQuery = (connector: DrawerConnectorItem) => {
+    const needle = connectorSearch.trim().toLocaleLowerCase();
+    return !needle || `${connector.label} ${connector.description} ${connector.kindLabel}`.toLocaleLowerCase().includes(needle);
+  };
+  /* "Not available yet" connectors aren't actionable and were sitting at the
+     same visual weight as the real ones. They get their own disclosure so the
+     list you can actually do something about stays short. */
+  const visibleConnectors = connectorItems.filter((connector) => connector.status !== "unavailable" && matchesConnectorQuery(connector));
+  const plannedConnectors = connectorItems.filter((connector) => connector.status === "unavailable" && matchesConnectorQuery(connector));
+  const connectorGroups = CONNECTOR_KIND_ORDER
+    .map((kind) => ({ kind, label: CONNECTOR_GROUP_LABEL[kind], items: visibleConnectors.filter((connector) => connector.kind === kind) }))
+    .filter((group) => group.items.length > 0);
   const visibleLibrarySkills = ARC_SKILL_LIBRARY.filter((skill) => {
     const needle = skillSearch.trim().toLocaleLowerCase();
     return !needle || `${skill.name} ${skill.description} ${skill.commands.join(" ")} ${skill.publisher ?? ""}`.toLocaleLowerCase().includes(needle);
@@ -608,6 +669,30 @@ function ThreadDrawer({
   const showConnector = (key: string) => {
     setView("connectors");
     setFocusedConnector(key);
+    setConnectorSearch("");
+  };
+
+  /**
+   * Switch a connector on or off from here. Reuses the Settings action, so the
+   * `requireOperator()` gate, org scoping and upsert behaviour are the same ones
+   * Settings has always used — this surface adds a control, not a second path
+   * into the data.
+   *
+   * Turning a connector on never sends anything: signal sources only propose,
+   * and channels still dispatch solely from the approved path.
+   */
+  const toggleConnector = async (connector: DrawerConnectorItem) => {
+    if (!connector.toggleable || togglingConnector) return;
+    setTogglingConnector(connector.key);
+    setConnectorError(null);
+    const result = await toggleConnectorEnabled({ connectorKey: connector.key, enabled: !connector.enabled });
+    if (!result.ok) setConnectorError(result.error);
+    // `persisted: false` means the action ran but there was no workspace to write
+    // to. Say so — a switch that flips back with no explanation is the silent
+    // failure this whole surface exists to remove.
+    else if (!result.persisted) setConnectorError(`${connector.label} could not be saved — this workspace has no connected database yet.`);
+    else if (live) router.refresh();
+    setTogglingConnector(null);
   };
 
   /* Every skill this workspace has, in one list, whatever it came from. Before
@@ -919,18 +1004,56 @@ function ThreadDrawer({
       {view === "connectors" ? <section className="arc-drawer-view arc-drawer-connectors" aria-labelledby="arc-connectors-title">
         <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-connectors-title">Connectors</h2><span className="is-connector-count">{connectedCount} connected</span></div><p>Arc&apos;s plugins, with the live status for this workspace.</p></header>
         {!connectorsConfigured ? <div className="arc-connector-notice"><ShieldCheck size={14} /><span><b>Catalog preview</b><small>Connect a workspace to store credentials and live status.</small></span></div> : null}
-        <div className="arc-connectors-section-head"><span>{connectorItems.length} workspace connectors</span><Link href="/settings?s=connections">Manage all <ArrowRight size={12} /></Link></div>
+        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search connectors" placeholder="Search connectors" value={connectorSearch} onChange={(event) => setConnectorSearch(event.target.value)} /></label>
+        {connectorError ? <p className="arc-connector-error" role="alert">{connectorError}</p> : null}
         <div className="arc-connector-list">
-          {connectorItems.map((connector) => (
-            <Link href={`/settings?s=connections&c=${encodeURIComponent(connector.key)}`} className="arc-connector-row" data-status={connector.status} data-focused={focusedConnector === connector.key ? "true" : undefined} ref={focusedConnector === connector.key ? focusConnectorRef : undefined} key={connector.key}>
-              <span className="arc-connector-logo" style={{ "--connector-color": connector.color } as React.CSSProperties}>{connector.mark}</span>
-              <span className="arc-connector-copy"><span><b>{connector.label}</b><em>{connector.statusLabel}</em></span><small>{connector.kindLabel} · {connector.accessLabel}</small><p>{connector.description}</p></span>
-              <ChevronRight size={14} />
-            </Link>
+          {connectorGroups.map((group) => (
+            <Fragment key={group.kind}>
+              <div className="arc-connectors-section-head"><span>{group.label}</span><small>{group.items.filter((item) => item.status === "connected").length} of {group.items.length} on</small></div>
+              {group.items.map((connector) => (
+                <div className="arc-connector-row" data-status={connector.status} data-focused={focusedConnector === connector.key ? "true" : undefined} ref={focusedConnector === connector.key ? focusConnectorRef : undefined} key={connector.key}>
+                  <span className="arc-connector-logo" style={{ "--connector-color": connector.color } as React.CSSProperties}>{connector.mark}</span>
+                  <span className="arc-connector-copy"><span><b>{connector.label}</b><em>{connector.statusLabel}</em></span><small>{connector.kindLabel} · {connector.accessLabel}</small><p>{connector.description}</p></span>
+                  {/* Switchable here; credential entry still belongs in Settings. */}
+                  {connector.toggleable ? (
+                    <button
+                      type="button"
+                      className="arc-connector-toggle"
+                      role="switch"
+                      aria-checked={connector.enabled}
+                      aria-label={`${connector.enabled ? "Turn off" : "Turn on"} ${connector.label}`}
+                      disabled={togglingConnector !== null || !connectorsConfigured}
+                      title={connectorsConfigured ? undefined : "Connect a workspace to switch connectors on."}
+                      onClick={() => void toggleConnector(connector)}
+                    >
+                      {togglingConnector === connector.key ? <LoaderCircle size={12} className="is-spinning" /> : <i />}
+                    </button>
+                  ) : (
+                    <Link href={`/settings?s=connections&c=${encodeURIComponent(connector.key)}`} className="arc-connector-setup" aria-label={`Set up ${connector.label} in Settings`}><ChevronRight size={14} /></Link>
+                  )}
+                </div>
+              ))}
+            </Fragment>
           ))}
-          {connectorItems.length === 0 ? <div className="arc-connector-empty"><Link2 size={17} /><b>No connectors found</b><span>Open Settings to refresh the workspace catalog.</span></div> : null}
+          {connectorGroups.length === 0 ? <div className="arc-connector-empty"><Link2 size={17} /><b>No connectors found</b><span>{connectorSearch.trim() ? "Try a different name or kind." : "Open Settings to refresh the workspace catalog."}</span></div> : null}
+          {/* Not built yet — nothing to act on, so out of the main list. */}
+          {plannedConnectors.length > 0 ? (
+            <div className="arc-planned">
+              <button type="button" className="arc-planned-toggle" aria-expanded={plannedOpen} onClick={() => setPlannedOpen((open) => !open)}>
+                <span>Not available yet · {plannedConnectors.length}</span>
+                <ChevronDown size={14} className="arc-planned-chevron" />
+              </button>
+              {plannedOpen ? plannedConnectors.map((connector) => (
+                <div className="arc-planned-item" key={connector.key}>
+                  <b>{connector.label}</b>
+                  <small>{connector.kindLabel}</small>
+                </div>
+              )) : null}
+            </div>
+          ) : null}
         </div>
-        <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Connections are workspace-scoped and controlled in Settings.</p>
+        <div className="arc-connectors-section-head"><span>{connectorItems.length} workspace connectors</span><Link href="/settings?s=connections">Manage all <ArrowRight size={12} /></Link></div>
+        <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Switching a connector on lets Arc read it — signal sources only propose, and nothing sends without your approval.</p>
       </section> : null}
 
       {view === "saved" ? <section className="arc-drawer-view arc-drawer-saved" aria-labelledby="arc-saved-title">

@@ -226,7 +226,8 @@ describe("buildArcWorkspaceEvidence", () => {
       }),
     ], []);
 
-    expect(groups[0]!.items.map((item) => item.label)).toEqual(["Get workspace settings", "Toolsearch"]);
+    // ToolSearch keeps its own capitalisation — it is a name, not an identifier.
+    expect(groups[0]!.items.map((item) => item.label)).toEqual(["Get workspace settings", "ToolSearch"]);
   });
 
   it("keeps an acronym uppercase instead of turning CRM into Crm", () => {
