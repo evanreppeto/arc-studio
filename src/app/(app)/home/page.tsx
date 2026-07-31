@@ -118,10 +118,10 @@ export default async function HomePage() {
     <div className="scroll">
       <section className="content">
         <div className="date">{dateLabel}</div>
-        <h1 className="greet">
+        <h2 className="greet">
           {greeting}
           {firstName ? `, ${firstName}` : ""}
-        </h1>
+        </h2>
         <div className="subline">
           {approvalCount} {approvalCount === 1 ? "package" : "packages"} waiting
           <span className="dot">·</span>

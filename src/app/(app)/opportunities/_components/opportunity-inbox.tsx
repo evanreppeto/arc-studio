@@ -198,7 +198,7 @@ export function OpportunityInbox({
     return (
       <div className="arc-opps" style={{ display: "block" }}>
         <div className="oempty">
-          <h1 className="pt">Opportunities</h1>
+          <h2 className="pt">Opportunities</h2>
           <div className="psub">
             No open opportunities yet. Arc scans your CRM for source-backed signals — quiet leads worth re-engaging,
             and more.
@@ -370,7 +370,7 @@ export function OpportunityInbox({
             {o.statusLabel && <span className="sstat">{o.statusLabel}</span>}
             <span className="det">Surfaced by Arc</span>
           </div>
-          <h1 className="dttl">{o.title}</h1>
+          <h2 className="dttl">{o.title}</h2>
 
           <div className="opp-quick-actions" aria-label="Opportunity actions">
             {o.campaignHref ? (

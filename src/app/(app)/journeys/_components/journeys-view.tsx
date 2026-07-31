@@ -212,7 +212,7 @@ export function JourneysView({
       <div className="journeys">
         <header className="jr-head">
           <div>
-            <h1>Customer Journeys</h1>
+            <h2>Customer Journeys</h2>
             <p className="jr-lede">Every contact&rsquo;s path from first touch to conversion — one stitched timeline.</p>
           </div>
         </header>
@@ -257,10 +257,10 @@ export function JourneysView({
       )}
       <header className="jr-head">
         <div>
-          <h1>
+          <h2>
             Customer Journeys
             {isDemo ? <span className="jr-tag demo">demo data</span> : <span className="jr-tag wired">wired · live</span>}
-          </h1>
+          </h2>
           <p className="jr-lede">Every contact&rsquo;s path from first touch to conversion — one stitched timeline.</p>
         </div>
         <div className="jr-model" title="Attribution lens applied to channel credit">
