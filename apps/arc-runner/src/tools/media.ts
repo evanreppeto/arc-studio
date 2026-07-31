@@ -33,7 +33,7 @@ export function mediaTools(
 ) {
   const generateImage = tool(
     "generate_image",
-    "Generate an AI image for a campaign asset and surface it as an approval-gated draft with a thumbnail. Use for concept / background / lifestyle / variant creative — NEVER to fabricate proof of a real job or result. Describe the SCENE in `prompt` and the MEDIUM/LOOK in `style` (e.g. 'candid documentary photograph, natural lighting' for realism, or an illustration/3D style). Do NOT ask for any text, words, logos, or signage in the image — the server strips those and real branding is added later in design. Attach to an existing campaign with campaign_id, or start a new draft campaign with name + persona (a persona key) + campaign_theme. If the operator didn't specify these, DON'T interrogate them — infer a short descriptive campaign name and the best-fitting persona from the request and context, pick a sensible campaign_theme, generate now, and note your assumptions in your reply so they can adjust at approval. The image is AI-generated, tagged as such, risk-flagged, and awaits approval.",
+    "Generate an AI image for a campaign asset and surface it as an approval-gated draft with a thumbnail. Use for concept / background / lifestyle / variant creative — NEVER to fabricate proof of a real job or result. Describe the SCENE in `prompt` and the MEDIUM/LOOK in `style` (e.g. 'candid documentary photograph, natural lighting' for realism, or an illustration/3D style). Do NOT ask for any text, words, logos, or signage in the image — the server strips those and real branding is added later in design. Attach to an existing campaign with campaign_id, or start a new draft campaign with name + persona (a persona key) + campaign_theme. If the operator didn't specify these, DON'T interrogate them — infer a short descriptive campaign name and the best-fitting persona from the request and context, pick a sensible campaign_theme, generate now, and note your assumptions in your reply so they can adjust at approval. BUT if they asked for JUST an image — 'just the image', 'no campaign', a background or asset to use later — pass library_only: true and no campaign is created; the image lands in their Library, still held for review. Do not invent a campaign around an image they only wanted as an image. The image is AI-generated, tagged as such, risk-flagged, and awaits approval.",
     {
       prompt: z.string().describe("The scene/subject to generate — an illustrative concept, not a staged 'real job'. No text/logos."),
       title: z.string().describe("Short title for the asset"),
@@ -44,6 +44,10 @@ export function mediaTools(
       aspect_ratio: z.string().optional().describe("1:1 | 3:4 | 4:3 | 9:16 | 16:9 (default 1:1)"),
       asset_type: z.string().optional().describe("default image_prompt"),
       campaign_id: z.string().optional().describe("Existing campaign to attach to; omit to create a new draft campaign"),
+      library_only: z
+        .boolean()
+        .optional()
+        .describe("True when the operator wants the image ONLY — no campaign is created and it lands in the Library, held for review."),
       name: z.string().optional().describe("New campaign name (when campaign_id omitted)"),
       persona: z.string().optional(),
       campaign_theme: z.string().optional().describe("Short, industry-appropriate campaign theme (what the campaign is about) when creating a new campaign"),
@@ -59,6 +63,30 @@ export function mediaTools(
           aspect_ratio: args.aspect_ratio,
           level: ctx.level,
         });
+        // "Just an image" now has somewhere to land. Until the Library recorded
+        // generated media (BSR-634), a campaign was the ONLY way an image was
+        // reachable at all, so the tool always made one — which meant asking for
+        // a single background left a junk campaign behind and contradicted the
+        // operator outright. The image is in the Library either way, still held
+        // for review, so the campaign can be what it should be: optional.
+        if (args.library_only && !args.campaign_id && !ctx.campaignId) {
+          await step(label, "done");
+          collectCard({
+            kind: "result",
+            title: args.title,
+            rows: [],
+            flags: [],
+            media: gen.media,
+            href: "/library",
+          });
+          return textResult(
+            JSON.stringify({
+              media: gen.media,
+              campaignId: null,
+              status: "image generated and saved to the Library, held for review — no campaign created",
+            }),
+          );
+        }
         const draft = await client.apiPost<{ campaignId: string; assetId: string }>(
           "/api/v1/arc/campaigns/draft-asset",
           {
