@@ -366,8 +366,17 @@ export type ArcRecall = {
   nodeId?: string;
 };
 
-/** Parse Arc's recalled-memory items from message metadata. Defensive: requires a
- *  label, clamps confidence to [0,1], drops malformed entries, never throws. */
+/**
+ * Parse Arc's recalled-memory items from message metadata. Defensive: requires a
+ * label, clamps confidence to [0,1], drops malformed entries, never throws.
+ *
+ * Returns everything it is given (BSR-624). It used to stop at 8, a limit sized
+ * for the inline chip row — but the parser is shared, so every other surface
+ * inherited a cap meant for a different one. A prod turn recalled 15 facts and
+ * the workspace panel reported "8", which is a cap presented as a count.
+ * Truncation is the rendering surface's decision, and a surface that truncates
+ * has to say so.
+ */
 export function parseRecall(value: unknown): ArcRecall[] {
   if (!Array.isArray(value)) return [];
   const out: ArcRecall[] = [];
@@ -387,7 +396,6 @@ export function parseRecall(value: unknown): ArcRecall[] {
       ...(str((item as { kind?: unknown }).kind) ? { kind: str((item as { kind?: unknown }).kind) } : {}),
       ...(str((item as { nodeId?: unknown }).nodeId) ? { nodeId: str((item as { nodeId?: unknown }).nodeId) } : {}),
     });
-    if (out.length >= 8) break;
   }
   return out;
 }
