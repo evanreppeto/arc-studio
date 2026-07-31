@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { ArcClient } from "../arc-client";
 import { runTool, type StepFn } from "./helpers";
+import { enforce, expectRecord } from "./expectations";
 
 /**
  * Approval-item visibility (read, all modes). `get_approval` opens one item in
@@ -18,7 +19,7 @@ export function approvalReadTools(client: ArcClient, step: StepFn) {
     async (args) =>
       runTool(step, "Loading approval item", async () => {
         const r = await client.apiGet<{ approval: unknown }>(`/api/v1/arc/approvals/${args.id}`);
-        return r.approval ?? null;
+        return enforce(r, expectRecord("approval")).approval ?? null;
       }),
   );
 

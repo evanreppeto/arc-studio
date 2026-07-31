@@ -1,4 +1,6 @@
+import { captureRunnerError } from "../observability";
 import type { ArcActionCard, ArcMention, ArcQuestion, DraftForReview } from "../types";
+import { breachResult, ToolExpectationError, type Breach, type Expectation } from "./expectations";
 
 /** Step reporter signature shared by every tool (running -> done live trace). */
 /**
@@ -21,8 +23,18 @@ export type TurnSink = {
   draft: (draft: DraftForReview) => void;
 };
 
-/** SDK tool result shape. */
-export type ToolResult = { content: Array<{ type: "text"; text: string }> };
+/**
+ * SDK tool result shape.
+ *
+ * `isError` is MCP's own flag for "this call did not succeed". Setting it makes
+ * the run visibly fail without touching any UI: the SDK surfaces it as
+ * `is_error` on the tool_result block (arc.ts), `toolLog.settle` records the
+ * call as `status: "error"`, and `buildArcWorkspaceRuns` already treats a single
+ * errored tool call as a failed run. The model-facing TEXT is still the
+ * load-bearing part — see breachResult — because it is what stops Arc answering
+ * from nothing.
+ */
+export type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 const MAX_TOOL_TEXT = 8000;
 
@@ -118,20 +130,72 @@ function trimLongestList(data: unknown): string | null {
 }
 
 /**
+ * Options for checking that a result is plausible before the model sees it.
+ *
+ * `expect` runs against the RAW response, because the thing worth catching is a
+ * missing field — and `select` is exactly the `?? []` step that would erase the
+ * evidence. Validating after projection would always find a tidy empty list
+ * (BSR-508).
+ */
+export type RunToolOptions<T> = {
+  /** What a plausible response looks like. A breach becomes a loud failure. */
+  expect?: Expectation;
+  /** What the model actually sees. Runs only after `expect` passes. */
+  select?: (payload: T) => unknown;
+};
+
+/**
  * Run a tool's work with the live-trace bookend and uniform error handling:
  * emit `running`, run `fn`, emit `done` (even on error), and return the result
- * as JSON text (or a `<label> failed: <reason>` message). Never throws — the
- * SDK should receive a tool result, not an exception.
+ * as JSON text (or a failure message). Never throws — the SDK should receive a
+ * tool result, not an exception.
+ *
+ * A breached expectation is reported as a failure rather than passed off as
+ * data. It is deliberately NOT the same text as a thrown error: an operator
+ * reading the trace needs to tell "the endpoint refused" from "the endpoint
+ * answered with something unusable".
  */
-export async function runTool(step: StepFn, label: string, fn: () => Promise<unknown>): Promise<ToolResult> {
+export async function runTool<T = unknown>(
+  step: StepFn,
+  label: string,
+  fn: () => Promise<T>,
+  options: RunToolOptions<T> = {},
+): Promise<ToolResult> {
   await step(label, "running");
   try {
     const data = await fn();
+    if (options.expect) {
+      const breach = options.expect(data);
+      if (breach) {
+        await step(label, "done");
+        reportBreach(label, breach);
+        return breachResult(label, breach);
+      }
+    }
     await step(label, "done");
-    return jsonResult(data);
+    return jsonResult(options.select ? options.select(data) : data);
   } catch (error) {
     await step(label, "done");
+    // An expectation enforced deeper down (listPage, say) arrives as a throw so
+    // it can be raised from anywhere; render it as the breach it is.
+    if (error instanceof ToolExpectationError) {
+      reportBreach(label, error.breach);
+      return breachResult(label, error.breach);
+    }
     const reason = error instanceof Error ? error.message : "unknown error";
     return textResult(`${label} failed: ${reason}`);
   }
+}
+
+/**
+ * Make the breach findable outside the conversation. The model is told in the
+ * result text, the operator sees a failed run — this is the third audience:
+ * whoever is asking "has this been happening all week?".
+ */
+function reportBreach(label: string, breach: Breach): void {
+  const message = `tool expectation breached: ${label} — ${breach.reason}`;
+  captureRunnerError(new Error(message), { scope: "tool-expectation", tool: label });
+  // Sentry may be unconfigured (local, CI, a preview), and that is exactly when
+  // someone is most likely to be staring at a confidently wrong answer.
+  console.warn(`[tool-expectation] ${message}`);
 }

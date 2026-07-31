@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { ArcClient } from "../arc-client";
 import { runTool, type StepFn } from "./helpers";
+import { expectList } from "./expectations";
 
 /** Read-only brain (knowledge graph) query. Available in all modes. */
 export function brainReadTools(client: ArcClient, step: StepFn) {
@@ -18,10 +19,12 @@ export function brainReadTools(client: ArcClient, step: StepFn) {
       search: z.string().optional().describe("Free-text substring search across each node's title, body, and summary"),
     },
     async (args) =>
-      runTool(step, "Searching the marketing brain", async () => {
-        const r = await client.apiPost<{ nodes: unknown[] }>("/api/v1/arc/brain/query", args);
-        return r.nodes ?? [];
-      }),
+      runTool(
+        step,
+        "Searching the marketing brain",
+        () => client.apiPost<{ nodes: unknown[] }>("/api/v1/arc/brain/query", args),
+        { expect: expectList("nodes"), select: (r) => r.nodes },
+      ),
   );
 
   return [queryBrain];
