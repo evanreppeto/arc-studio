@@ -114,15 +114,51 @@ jobs:
         env:
           DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
           PGCLIENTENCODING: UTF8
+          PGSSLMODE: require
         run: |
           set -euo pipefail
           mkdir -p backup
           PG=/usr/lib/postgresql/17/bin
-          "$PG/pg_dump" "$DB_URL" --schema=public --schema-only --no-owner --no-privileges -f backup/schema.sql
-          "$PG/pg_dump" "$DB_URL" --schema=public --data-only   --no-owner --no-privileges -f backup/data.sql
+
+          # Do NOT hand the connection URI to pg_dump.
+          #
+          # The stored password contains an `@`, and libpq split the URI at the
+          # wrong one — it tried to resolve a host of `592800@aws-1-...` and
+          # failed. Percent-encoding the secret would also fix it, but that puts
+          # a parsing trap in a value a human maintains by hand.
+          #
+          # Splitting on the LAST `@` is unambiguous whatever the password
+          # contains, so the components go in as discrete parameters and the
+          # password via ~/.pgpass. Nothing is echoed: the URL is a secret, and
+          # while GitHub masks known secrets in logs, the safe move is to never
+          # print the pieces at all.
+          python3 - <<'PARSE'
+          import os, re, pathlib
+          url = os.environ["DB_URL"]
+          rest = re.sub(r"^[a-zA-Z0-9+]+://", "", url).split("?", 1)[0]
+          userinfo, hostpart = rest.rsplit("@", 1)          # last @ = the real separator
+          user, _, password = userinfo.partition(":")
+          hostport, _, database = hostpart.partition("/")
+          host, _, port = hostport.partition(":")
+          port = port or "5432"
+          database = database or "postgres"
+          pgpass = pathlib.Path.home() / ".pgpass"
+          pgpass.write_text(f"{host}:{port}:{database}:{user}:{password}\n")
+          pgpass.chmod(0o600)
+          # An env file sourced below, NOT $GITHUB_ENV — that only applies to
+          # later steps, and pg_dump runs in this one.
+          with open("/tmp/pgenv.sh", "w") as fh:
+              fh.write(f"export PGHOST={host}\nexport PGPORT={port}\n")
+              fh.write(f"export PGUSER={user}\nexport PGDATABASE={database}\n")
+          PARSE
+
+          . /tmp/pgenv.sh
+
+          "$PG/pg_dump" --schema=public --schema-only --no-owner --no-privileges -f backup/schema.sql
+          "$PG/pg_dump" --schema=public --data-only   --no-owner --no-privileges -f backup/data.sql
           # Accounts. Failing here must not fail the backup — the CRM data is
           # the point — but it must be visible rather than quietly absent.
-          if ! "$PG/pg_dump" "$DB_URL" --table=auth.users --data-only --no-owner --no-privileges -f backup/auth-users.sql; then
+          if ! "$PG/pg_dump" --table=auth.users --data-only --no-owner --no-privileges -f backup/auth-users.sql; then
             echo "::warning title=Accounts not dumped::auth.users could not be read; the restore will hold data but no logins. Everything else in this backup is intact."
             echo "-- auth.users dump failed at $(date -u +%FT%TZ); see the run log" > backup/auth-users.sql
           fi
