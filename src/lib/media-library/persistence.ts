@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { syncMediaRecordToBrain } from "@/lib/brain-ingestion/sync";
@@ -77,8 +78,8 @@ export async function seedDefaultMediaFolders(
     .from("media_folders" as string)
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId);
-  if (countError) throw new Error(`media_folders count failed: ${countError.message}`);
-  if ((count ?? 0) > 0) return 0;
+  // Fail closed — see personas/persistence: a null count would re-seed (BSR-575).
+  if (requireCount("media_folders", { count, error: countError }) > 0) return 0;
 
   const rows = DEFAULT_MEDIA_FOLDERS.map((folder, index) => ({
     org_id: orgId,
