@@ -48,7 +48,7 @@ function RunDetail({ run }: { run: ArcRunInspection }) {
           <p className="runkicker">
             {new Date(run.createdAt).toLocaleString()} · {run.mode ?? "—"} / {run.route ?? "—"}
           </p>
-          <h1>{run.request ?? "Run detail"}</h1>
+          <h2>{run.request ?? "Run detail"}</h2>
         </div>
         <span className={`runpill ${run.status === "failed" ? "bad" : run.status === "complete" ? "ok" : ""}`}>
           {run.status}

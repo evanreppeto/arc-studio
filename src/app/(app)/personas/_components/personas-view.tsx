@@ -250,7 +250,7 @@ export function PersonasView({ personas, initialSlug }: { personas: PersonaVM[];
       <div className="phead">
         <div className="ph1row">
           <div>
-            <h1 className="pt">Personas</h1>
+            <h2 className="pt">Personas</h2>
             <div className="psub">The revenue-intelligence layer — playbooks that power CRM, targeting &amp; campaigns</div>
           </div>
           <div style={{ display: "flex", gap: 9 }}>
@@ -423,7 +423,7 @@ function PersonaDetail({ p, onEdit, onArchive }: { p: PersonaVM; onEdit: () => v
       <div className="dhead">
         <span className="dav" style={{ background: `${p.segColor}22`, color: p.segColor, border: `1px solid ${p.segColor}55` }}>{p.initials}</span>
         <div className="dh-main">
-          <h1 className="dname">{p.name}</h1>
+          <h2 className="dname">{p.name}</h2>
           <div className="dmeta">
             <span className="chip seg">{p.segmentLabel}</span>
             <span className="chip org" style={{ color: p.stageColor }}>{p.stage}</span>

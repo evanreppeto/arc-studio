@@ -378,7 +378,7 @@ export function AnalyticsView({
             <>
               <div className="vhead">
                 <div>
-                  <h1 className="pt">Performance overview</h1>
+                  <h2 className="pt">Performance overview</h2>
                   <div className="psub">
                     {overview.dataError
                       ? `Last ${range} days · org-scoped`
@@ -492,14 +492,14 @@ export function AnalyticsView({
 
           {view === "personas" && (
             <>
-              <div className="vhead"><div><h1 className="pt">By persona</h1><div className="psub">Revenue per persona this period · wired from outcomes</div></div></div>
+              <div className="vhead"><div><h2 className="pt">By persona</h2><div className="psub">Revenue per persona this period · wired from outcomes</div></div></div>
               <div className="blk"><h2>Revenue by persona <span className="tg wired">wired · outcomes</span></h2><Breakdown rows={overview.revenueByPersona} /></div>
             </>
           )}
 
           {view === "channels" && (
             <>
-              <div className="vhead"><div><h1 className="pt">By channel</h1><div className="psub">Leads, booked work, revenue, spend, and ROAS per channel · attributed from CRM outcomes</div></div></div>
+              <div className="vhead"><div><h2 className="pt">By channel</h2><div className="psub">Leads, booked work, revenue, spend, and ROAS per channel · attributed from CRM outcomes</div></div></div>
               <div className="blk"><h2>Channel performance <span className="tg wired">wired · attribution</span></h2><ChannelTable rows={channels} /></div>
               <div className="blk" style={{ marginTop: 18 }}><h2>Leads by source <span className="tg wired">wired · CRM</span></h2><Breakdown rows={overview.leadsBySource} /></div>
             </>
@@ -507,7 +507,7 @@ export function AnalyticsView({
 
           {view === "activity" && (
             <>
-              <div className="vhead"><div><h1 className="pt">Activity</h1><div className="psub">The full audit trail — every Arc action, approval, and signal, merged from your workspace.</div></div></div>
+              <div className="vhead"><div><h2 className="pt">Activity</h2><div className="psub">The full audit trail — every Arc action, approval, and signal, merged from your workspace.</div></div></div>
               <div className="asum">
                 {activitySummary.map((s) => (
                   <div className="kpi" key={s.label}><div className="kl">{s.label}</div><div className="kv">{s.value}</div></div>

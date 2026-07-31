@@ -458,7 +458,10 @@ export function AppShell({
             >
               <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
             </button>
-            <span className="crumb">{crumb}</span>
+            {/* The page's h1. It is the one title that is correct and present on every
+                route, so it is the heading rather than a decorative label —
+                three routes had no h1 at all before this. */}
+            <h1 className="crumb">{crumb}</h1>
             <button
               type="button"
               className="search"
