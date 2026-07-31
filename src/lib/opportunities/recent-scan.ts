@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
+import { getCurrentAgentTaskTenantFields, type AgentTaskScope } from "@/lib/agent-tasks/scope";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 /**
@@ -12,11 +12,13 @@ import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabas
 export async function hasRecentOpportunityScan(
   withinHours: number,
   client?: SupabaseClient,
+  /** Explicit tenant; omit to resolve from the ambient request. */
+  scope?: AgentTaskScope,
 ): Promise<boolean> {
   if (!isSupabaseAdminConfigured()) return false;
   const db = client ?? getSupabaseAdminClient();
   try {
-    const tenant = await getCurrentAgentTaskTenantFields();
+    const tenant = await getCurrentAgentTaskTenantFields(scope);
     const since = new Date(Date.now() - withinHours * 60 * 60 * 1000).toISOString();
     const { data, error } = await db
       .from("agent_tasks")
