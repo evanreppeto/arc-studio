@@ -1748,9 +1748,11 @@ export function ArcView({
   });
   const latestQuestion = live ? [...visibleMessages].reverse().find((message) => message.role === "arc")?.questions?.[0] ?? null : null;
   const visibleQuestion = latestQuestion && latestQuestion.id !== dismissedQuestionId ? latestQuestion : null;
-  const contextState = visibleMessages.length > 0
-    ? contextUsage(visibleMessages.map((message) => message.body ?? ""))
-    : { tokens: 4_320, pct: 18, level: "ok" as const };
+  // No special case for the empty conversation: contextUsage([]) is already
+  // 0% (asserted in context-usage.test.ts). The branch that used to be here
+  // substituted a hardcoded 18%, so a conversation with nothing in it claimed
+  // a fifth of the window was spent.
+  const contextState = contextUsage(visibleMessages.map((message) => message.body ?? ""));
   // The context meter is a persistent affordance again: it always shows so the
   // operator can see (and click into) how full the window is at any point, not
   // only once usage crosses a threshold. Its ring still colors by level, so a
