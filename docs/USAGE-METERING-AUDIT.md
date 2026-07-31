@@ -23,7 +23,7 @@ being enforced against a number that is not the real spend.
 | Events | 69 |
 | Services ever recorded | `arc_claude` **only** |
 | Models | `claude-opus-4-8`, `claude-sonnet-5` |
-| Recorded cost | **$14.78** total, all of it from opus |
+| Recorded cost | **$14.78** total, all of it from opus (sonnet priced from 2026-07-31; the 36 earlier rows remain at $0) |
 | Input tokens | **620 total** (avg 9/event) |
 | Output tokens | 239,404 |
 | Null org / workspace | 0 / 0 |
@@ -79,8 +79,15 @@ if (!rate) return 0;
 `priced_model: false` on every one of them since 2026-07-10. The data to detect
 this has existed the whole time. Nothing read it.
 
-Fixed here by reporting; the **price itself is deliberately not invented** — see
-"What this change does" below.
+**Resolved 2026-07-31.** The operator supplied the published rate — 300/1500
+cents per Mtok — and it is now in `MODEL_PRICING`, with `PRICING_VERSION` bumped
+to `2026-07-31` so rows written under the old table stay attributable.
+
+The 36 historical rows remain at **$0.00**. Repricing them would add **64 cents**,
+all of it in the current month. Left as-is deliberately: nobody has been billed
+from this ledger, and rewriting historical usage rows is a bigger decision than
+correcting the table going forward. The 64 cents is recorded here so the gap is
+known rather than lost. Repricing is a one-statement update if wanted.
 
 ## Finding 3 — input tokens are essentially unmetered
 
@@ -139,11 +146,14 @@ Still open.
 instead of being recorded silently at zero, and a metering failure reports
 (`ai-usage.record`) instead of a `console.warn`. Both have tests.
 
-**Does not: invent a price for `claude-sonnet-5`.** Guessing a rate in a billing
-meter would replace a visible zero with an invisible wrong number, which is
-strictly worse — a wrong price that looks plausible is harder to find than a
-missing one that now alarms. Supply the real published rate and it is a two-line
-change.
+**Prices `claude-sonnet-5`** at the operator-supplied rate of 300/1500 cents per
+Mtok, with `PRICING_VERSION` bumped. The rate was **not inferred** — guessing in a
+billing meter replaces a visible zero with an invisible wrong number, which is
+strictly worse, so it waited for a real figure.
+
+**Does not reprice the 36 historical rows** (see Finding 2), and does not invent
+prices for any other unknown model: an unpriced model still records zero, but now
+reports while doing it.
 
 ---
 
