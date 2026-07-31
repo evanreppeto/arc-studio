@@ -455,6 +455,11 @@ function ThreadDrawer({
   const [archivedError, setArchivedError] = useState<string | null>(null);
   const [skillsMode, setSkillsMode] = useState<"installed" | "library">("installed");
   const [skillSearch, setSkillSearch] = useState("");
+  /** Search over the skills you already have — distinct from `skillSearch`,
+   *  which searches the not-yet-installed library. */
+  const [installedSearch, setInstalledSearch] = useState("");
+  /** Authoring and installing are the rare case: collapsed by default. */
+  const [manageOpen, setManageOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ArcThreadFilter>("all");
   const [threadGrouping, setThreadGrouping] = useState<"recent" | "campaign">("recent");
@@ -569,6 +574,32 @@ function ThreadDrawer({
     const needle = skillSearch.trim().toLocaleLowerCase();
     return !needle || `${skill.name} ${skill.description} ${skill.commands.join(" ")} ${skill.publisher ?? ""}`.toLocaleLowerCase().includes(needle);
   });
+
+  /* Every skill this workspace has, in one list, whatever it came from. Before
+     this they were three separate lists with three different affordances —
+     "Your voice", "From GitHub" (over in the library sub-view) and "Installed" —
+     and only the first two could be removed where they were shown. */
+  const installedEntries: Array<{ skill: ArcSkillDefinition; detail: string; generated: GeneratedSkillRecord | null }> = [
+    ...generatedSkills.map((record) => ({
+      skill: toDrawerSkill(record, workspaceName),
+      // Keep saying how well grounded the ranking is: "a human approved these"
+      // and "these converted" look identical once rendered.
+      detail: `${VOICE_TIER_LABEL[record.evidenceTier]} · ${record.exemplarCount} example${record.exemplarCount === 1 ? "" : "s"}`,
+      generated: record,
+    })),
+    ...installedSkills.map((skill) => ({ skill, detail: skill.description, generated: null })),
+  ].filter((entry) => {
+    const needle = installedSearch.trim().toLocaleLowerCase();
+    return !needle || `${entry.skill.name} ${entry.skill.description} ${entry.skill.commands.join(" ")}`.toLocaleLowerCase().includes(needle);
+  });
+
+  /** Built-ins ship with Arc and can't be removed; everything else can, from
+   *  the row it appears on. */
+  const removeInstalledSkill = (skill: ArcSkillDefinition, generated: GeneratedSkillRecord | null) => {
+    if (generated) return void removeVoiceSkill(generated);
+    if (skill.source === "github") return void removeGithubSkill(skill as WorkspaceArcSkill);
+    if (skill.source === "library") return onSetSkillInstalled(skill, false);
+  };
 
   const handleRovingListKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -689,10 +720,10 @@ function ThreadDrawer({
     <motion.aside className="arc-history" initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} aria-label="Arc workspace">
       <div className="arc-history-topline"><span className="arc-history-eyebrow">Your Arc workspace</span><button type="button" className="arc-icon-button" onClick={onClose} aria-label="Close Arc workspace" autoFocus><X size={17} /></button></div>
       <nav className="arc-drawer-nav" aria-label="Arc workspace sections">
-        <button type="button" className={view === "conversations" ? "is-active" : ""} aria-current={view === "conversations" ? "page" : undefined} onClick={() => setView("conversations")}><MessageSquareText size={14} />Conversations</button>
-        <button type="button" className={`is-skills${view === "skills" ? " is-active" : ""}`} aria-current={view === "skills" ? "page" : undefined} onClick={() => { setView("skills"); setSkillsMode("installed"); }}><Blocks size={14} />Skills</button>
-        <button type="button" className={view === "connectors" ? "is-active" : ""} aria-current={view === "connectors" ? "page" : undefined} onClick={() => setView("connectors")}><Link2 size={14} />Connectors</button>
-        <button type="button" className={view === "saved" ? "is-active" : ""} aria-current={view === "saved" ? "page" : undefined} onClick={openSaved}><Bookmark size={14} />Saved</button>
+        <button type="button" className={view === "conversations" ? "is-active" : ""} aria-current={view === "conversations" ? "page" : undefined} onClick={() => setView("conversations")}><MessageSquareText size={14} /><span>Conversations</span></button>
+        <button type="button" className={view === "skills" ? "is-active" : ""} aria-current={view === "skills" ? "page" : undefined} onClick={() => { setView("skills"); setSkillsMode("installed"); }}><Blocks size={14} /><span>Skills</span></button>
+        <button type="button" className={view === "connectors" ? "is-active" : ""} aria-current={view === "connectors" ? "page" : undefined} onClick={() => setView("connectors")}><Link2 size={14} /><span>Connectors</span></button>
+        <button type="button" className={view === "saved" ? "is-active" : ""} aria-current={view === "saved" ? "page" : undefined} onClick={openSaved}><Bookmark size={14} /><span>Saved</span></button>
       </nav>
 
       {view === "conversations" ? <section className="arc-drawer-view" aria-labelledby="arc-conversations-title">
@@ -771,37 +802,44 @@ function ThreadDrawer({
       </section> : null}
 
       {view === "skills" && skillsMode === "installed" ? <section className="arc-drawer-view arc-drawer-skills" aria-labelledby="arc-skills-title">
-        <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-skills-title">Skills</h2><span>{installedSkills.length} installed</span></div><p>Reusable workflows you can call with <code>/</code> in any conversation.</p></header>
-        <div className="arc-skill-actions" onKeyDown={handleRovingListKeyDown}>
-          <button type="button" className="arc-skill-create" onClick={() => onUseSkill(ARC_SKILL_BUILDER)}><span><Plus size={15} /></span><span><b>Create a skill</b><small>Guided builder · /create-skill</small></span><ArrowRight size={14} /></button>
-          <button type="button" className="arc-skill-browse" onClick={() => { setSkillsMode("library"); setGithubOpen(true); }}><span><GitFork size={15} /></span><span><b>Add from GitHub</b><small>Review a public SKILL.md before installing</small></span><ArrowRight size={14} /></button>
-          <button type="button" className="arc-skill-browse" onClick={() => setSkillsMode("library")}><span><Download size={15} /></span><span><b>Browse Arc Library</b><small>Curated workflows reviewed by Arc</small></span><ArrowRight size={14} /></button>
-          <button type="button" className="arc-skill-browse" disabled={voiceBusy} onClick={() => void learnVoice()}><span>{voiceBusy ? <LoaderCircle size={15} className="is-spinning" /> : <Sparkles size={15} />}</span><span><b>Learn your voice</b><small>{voiceBusy ? "Reading approved campaign copy…" : "Build a skill from copy you already approved"}</small></span><ArrowRight size={14} /></button>
-        </div>
+        <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-skills-title">Skills</h2><span>{installedSkills.length + generatedSkills.length} installed</span></div><p>Reusable workflows you can call with <code>/</code> in any conversation.</p></header>
+        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search your skills" placeholder="Search your skills" value={installedSearch} onChange={(event) => setInstalledSearch(event.target.value)} /></label>
         {voiceStatus ? <p className="arc-voice-status" data-tone={voiceStatus.tone}>{voiceStatus.tone === "ok" ? <Check size={13} /> : <Info size={13} />}{voiceStatus.text}</p> : null}
-        {generatedSkills.length > 0 ? <>
-          <div className="arc-skills-section-head"><span>Your voice</span><small>Learned from {workspaceName || "this workspace"}</small></div>
-          <div className="arc-voice-list" onKeyDown={handleRovingListKeyDown}>
-            {generatedSkills.map((record) => (
-              <div className="arc-voice-skill" key={record.key}>
-                <button type="button" onClick={() => onUseSkill(toDrawerSkill(record, workspaceName))}>
-                  <span className="arc-skill-icon"><Sparkles size={17} /></span>
-                  <span><b>{record.name}</b><small>{VOICE_TIER_LABEL[record.evidenceTier]} · {record.exemplarCount} example{record.exemplarCount === 1 ? "" : "s"}</small><em>{record.command}</em></span>
-                </button>
-                <button type="button" aria-label={`Remove ${record.name}`} disabled={voiceBusy} onClick={() => void removeVoiceSkill(record)}><X size={13} /></button>
-              </div>
-            ))}
-          </div>
-        </> : null}
-        <div className="arc-skills-section-head"><span>Installed</span><small>{installedSkillKeys.length > 0 ? `${installedSkillKeys.length} from library` : "Included with Arc"}</small></div>
+        <div className="arc-skills-section-head"><span>Your skills</span><small>{installedEntries.length} of {installedSkills.length + generatedSkills.length}</small></div>
         <div className="arc-skills-list" onKeyDown={handleRovingListKeyDown}>
-          {installedSkills.map((skill) => (
-            <button type="button" className="arc-skill-row" data-source={skill.source} key={skill.key} onClick={() => onUseSkill(skill)}>
-              <span className="arc-skill-icon"><SkillIcon skill={skill} /></span>
-              <span><b>{skill.name}</b><small>{skill.description}</small><em>{skill.commands[0]}</em></span>
-              <ArrowRight size={14} />
-            </button>
-          ))}
+          {installedEntries.map(({ skill, detail, generated }) => {
+            const removable = Boolean(generated) || skill.source === "github" || skill.source === "library";
+            return (
+              <div className="arc-skill-item" key={skill.key}>
+                <button type="button" className="arc-skill-row" onClick={() => onUseSkill(skill)}>
+                  <span className="arc-skill-icon"><SkillIcon skill={skill} /></span>
+                  <span>
+                    <span className="arc-skill-row-title">
+                      <b>{skill.name}</b>
+                      <span className="arc-skill-source" data-source={skill.source}>{SKILL_SOURCE_LABEL[skill.source]}</span>
+                    </span>
+                    <small>{detail}</small>
+                    {/* Every command the skill answers to. Showing only the first
+                        hid the aliases that make it findable from the composer. */}
+                    <span className="arc-skill-commands">{skill.commands.map((command) => <em key={command}>{command}</em>)}</span>
+                  </span>
+                </button>
+                {removable ? <button type="button" className="arc-skill-remove" aria-label={`Remove ${skill.name}`} disabled={voiceBusy || githubBusy || installingSkillKey === skill.key} onClick={() => removeInstalledSkill(skill, generated)}><X size={13} /></button> : <span />}
+              </div>
+            );
+          })}
+          {installedEntries.length === 0 ? <div className="arc-skill-empty"><Search size={17} /><b>No skills match</b><span>Try another workflow name or command.</span></div> : null}
+        </div>
+        <div className="arc-skill-manage">
+          <button type="button" className="arc-skill-manage-toggle" aria-expanded={manageOpen} onClick={() => setManageOpen((open) => !open)}>
+            <Blocks size={13} /><span>Add or create a skill</span><ChevronDown size={14} className="arc-skill-manage-chevron" />
+          </button>
+          {manageOpen ? <div className="arc-skill-actions" onKeyDown={handleRovingListKeyDown}>
+            <button type="button" className="arc-skill-browse" onClick={() => setSkillsMode("library")}><span><Download size={15} /></span><span><b>Browse Arc Library</b><small>Curated workflows reviewed by Arc</small></span><ArrowRight size={14} /></button>
+            <button type="button" className="arc-skill-browse" onClick={() => { setSkillsMode("library"); setGithubOpen(true); }}><span><GitFork size={15} /></span><span><b>Add from GitHub</b><small>Review a public SKILL.md before installing</small></span><ArrowRight size={14} /></button>
+            <button type="button" className="arc-skill-create" onClick={() => onUseSkill(ARC_SKILL_BUILDER)}><span><Plus size={15} /></span><span><b>Create a skill</b><small>Guided builder · /create-skill</small></span><ArrowRight size={14} /></button>
+            <button type="button" className="arc-skill-browse" disabled={voiceBusy} onClick={() => void learnVoice()}><span>{voiceBusy ? <LoaderCircle size={15} className="is-spinning" /> : <Sparkles size={15} />}</span><span><b>Learn your voice</b><small>{voiceBusy ? "Reading approved campaign copy…" : "Build a skill from copy you already approved"}</small></span><ArrowRight size={14} /></button>
+          </div> : null}
         </div>
         <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Skills can prepare work, but outbound actions still require review.</p>
       </section> : null}
@@ -815,7 +853,9 @@ function ThreadDrawer({
           {githubPreview ? <div className="arc-github-preview"><span className="arc-skill-icon"><SkillIcon skill={githubPreview} /></span><div><b>{githubPreview.name}</b><small>{githubPreview.description}</small><em>{githubPreview.commands[0]}</em><p>{githubPreview.publisher} · runs read-only</p></div><button type="button" disabled={githubBusy} onClick={() => void installGithubSkill()}><Download size={13} />Install</button></div> : null}
           {githubStatus ? <p className="arc-github-status">{githubStatus}</p> : null}
         </div> : null}
-        {workspaceSkills.length > 0 ? <div className="arc-github-installed"><div className="arc-skills-section-head"><span>From GitHub</span><small>{workspaceSkills.length} installed</small></div>{workspaceSkills.map((skill) => <div key={skill.key}><button type="button" onClick={() => onUseSkill(skill)}><span className="arc-skill-icon"><SkillIcon skill={skill} /></span><span><b>{skill.name}</b><small>{skill.publisher}</small><em>{skill.commands[0]}</em></span></button><button type="button" aria-label={`Remove ${skill.name}`} disabled={githubBusy} onClick={() => void removeGithubSkill(skill)}><X size={13} /></button></div>)}</div> : null}
+        {/* GitHub imports used to get their own list here, with the only remove
+            button in the product. They now sit in the main Installed list with
+            every other skill, badged and removable there. */}
         <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search online skills" placeholder="Search skills" value={skillSearch} onChange={(event) => setSkillSearch(event.target.value)} /></label>
         <div className="arc-skills-section-head"><span>Discover</span><small>{visibleLibrarySkills.length} skills</small></div>
         <div className="arc-skills-list arc-library-list" onKeyDown={handleRovingListKeyDown}>
@@ -824,7 +864,7 @@ function ThreadDrawer({
             const saving = installingSkillKey === skill.key;
             return <article className="arc-library-skill" data-installed={installed ? "true" : "false"} key={skill.key}>
               <span className="arc-skill-icon"><SkillIcon skill={skill} /></span>
-              <div><span><b>{skill.name}</b><em>{skill.commands[0]}</em></span><small>{skill.description}</small><p>{skill.publisher} · Reviewed by Arc</p></div>
+              <div><span><b>{skill.name}</b></span><small>{skill.description}</small><span className="arc-skill-commands">{skill.commands.map((command) => <em key={command}>{command}</em>)}</span><p>{skill.publisher} · Reviewed by Arc</p></div>
               <button type="button" disabled={saving} onClick={() => onSetSkillInstalled(skill, !installed)}>{saving ? <LoaderCircle size={13} className="is-spinning" /> : installed ? <Check size={13} /> : <Download size={13} />}{saving ? "Saving" : installed ? "Installed" : "Install"}</button>
             </article>;
           })}
@@ -885,6 +925,20 @@ function ThreadDrawer({
  * every voice skill so "a human approved these" is never mistaken for
  * "these converted" — the two look identical once rendered.
  */
+/**
+ * Where a skill came from, said out loud. This used to be a 4.5% background
+ * tint keyed off `data-source`, which made a skill Arc ships and an untrusted
+ * public GitHub import look the same — and they are not the same, which is why
+ * the GitHub footnote exists.
+ */
+const SKILL_SOURCE_LABEL: Record<ArcSkillDefinition["source"], string> = {
+  "built-in": "Built-in",
+  system: "Built-in",
+  library: "Library",
+  github: "GitHub",
+  generated: "Learned",
+};
+
 const VOICE_TIER_LABEL: Record<GeneratedSkillRecord["evidenceTier"], string> = {
   outcome: "Backed by booked work",
   engagement: "Backed by opens & clicks",

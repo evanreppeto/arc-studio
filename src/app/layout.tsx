@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 
+import { AttributionCapture } from "@/app/_components/attribution-capture";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { getAppSettings } from "@/lib/settings/store";
 
@@ -116,6 +117,12 @@ export default async function RootLayout({
             PII; respects Do Not Track. Mounted at the root so the landing page
             and the signed-in app are both covered. */}
         <Analytics />
+        {/* Records WHICH CHANNEL brought this visitor, into a first-party cookie
+            the server reads at waitlist/signup time (BSR-586). Complements
+            <Analytics /> rather than duplicating it: Vercel counts the sessions,
+            this one survives until the account is created so a workspace can be
+            traced back to its source. Channel data only — never PII. */}
+        <AttributionCapture />
       </body>
     </html>
   );

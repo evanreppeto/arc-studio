@@ -46,7 +46,12 @@ describe("product app surface smoke checks", () => {
 
   it("exposes one-command local verification scripts", () => {
     const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
-    expect(pkg.scripts.typecheck).toBe("tsc --noEmit --pretty false");
+    // `--incremental false` is load-bearing, not incidental: tsconfig sets
+    // `incremental: true`, and a stale tsconfig.tsbuildinfo carried across a
+    // branch switch reports phantom errors (126 of them, on a main that
+    // typechecks clean) while CI stays green because it always starts fresh.
+    // Pinned so the flag cannot be dropped as noise.
+    expect(pkg.scripts.typecheck).toBe("tsc --noEmit --pretty false --incremental false");
     expect(pkg.scripts["test:smoke"]).toContain("product-readiness");
     expect(pkg.scripts["smoke:http"]).toBe("node scripts/smoke-http.mjs");
     expect(pkg.scripts["health:supabase"]).toBe("node scripts/check-supabase-health.mjs");
