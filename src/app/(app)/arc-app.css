@@ -1760,7 +1760,7 @@
    scope defines local fallbacks; --ok/--warn/--accent are inherited.
    ============================================================================ */
 .arc-app .journeys { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px clamp(16px, 3vw, 30px) 48px; --jr-blue: #88b6d8; --jr-blue-soft: rgba(136, 182, 216, 0.14); --jr-vio: #cdbbe6; --jr-vio-soft: rgba(205, 187, 230, 0.14); }
-.arc-app .journeys h1 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 10px; }
+.arc-app .journeys .jr-head h2 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 10px; }
 .arc-app .journeys h2 { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 .arc-app .journeys .jr-sub2 { font-size: 11.5px; font-weight: 400; color: var(--muted); }
 .arc-app .journeys .jr-sub { font-size: 12.5px; color: var(--muted); padding: 8px 2px; }
