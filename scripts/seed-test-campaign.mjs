@@ -88,6 +88,7 @@ async function seedTestCampaign() {
 
   const campaignId = await insertOne(supabase, "campaigns", {
     name: `Spring Flood Recovery — North Shore Property Managers ${runId}`,
+    org_id: orgId,
     persona: PERSONA,
     restoration_focus: "water_backup",
     status: "pending_approval",
@@ -125,6 +126,7 @@ async function seedTestCampaign() {
   const assetIds = [];
   for (const asset of ASSETS) {
     const id = await insertOne(supabase, "campaign_assets", {
+    org_id: orgId,
       campaign_id: campaignId,
       asset_type: asset.asset_type,
       channel: asset.channel,
@@ -141,6 +143,7 @@ async function seedTestCampaign() {
 
   const emailAssetId = assetIds[3];
   const emailApprovalId = await insertOne(supabase, "approval_items", {
+    org_id: orgId,
     campaign_id: campaignId,
     campaign_asset_id: emailAssetId,
     company_id: companyId,
@@ -158,6 +161,7 @@ async function seedTestCampaign() {
   });
 
   await insertOne(supabase, "approval_decisions", {
+    org_id: orgId,
     approval_item_id: emailApprovalId,
     decision: "approved",
     decided_by: "Evan",
@@ -168,6 +172,7 @@ async function seedTestCampaign() {
   });
 
   await insertOne(supabase, "approval_items", {
+    org_id: orgId,
     campaign_id: campaignId,
     campaign_asset_id: assetIds[0],
     company_id: companyId,
@@ -181,6 +186,7 @@ async function seedTestCampaign() {
   });
 
   await insertOne(supabase, "approval_items", {
+    org_id: orgId,
     campaign_id: campaignId,
     campaign_asset_id: assetIds[1],
     company_id: companyId,
