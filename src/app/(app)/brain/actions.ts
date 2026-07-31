@@ -12,7 +12,7 @@ import {
   resyncMediaIntoBrain,
 } from "@/lib/brain-ingestion/sync";
 import { probeEmbedding } from "@/lib/embeddings/gemini-embeddings";
-import { archiveNode, decideNode } from "@/lib/knowledge-graph/persistence";
+import { archiveNode, decideNode, updateNode } from "@/lib/knowledge-graph/persistence";
 import { listNodes, sanitizeBrainSearch } from "@/lib/knowledge-graph/read-model";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -56,6 +56,46 @@ export async function archiveBrainNode(nodeId: string): Promise<BrainDecisionRes
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
 
   const result = await archiveNode(nodeId);
+  if (!result.ok) return { ok: false, error: result.error };
+
+  revalidatePath("/brain");
+  return { ok: true, persisted: true };
+}
+
+/**
+ * Correct what Arc believes (BSR-531).
+ *
+ * An operator could already ARCHIVE a wrong fact. They could not fix one — and
+ * "wrong memory is worse than no memory" cuts both ways: deleting a fact that is
+ * 90% right to remove the 10% that is wrong loses the 90% too.
+ *
+ * The write re-embeds, which is the part that makes this real rather than
+ * cosmetic. The stored vector is built from label+summary+body, so editing the
+ * text without rebuilding it would leave the node semantically searchable under
+ * its OLD wording: the operator sees the fix on screen and Arc carries on saying
+ * the old thing. That is the acceptance criterion — "a corrected fact changes
+ * Arc's answer on the next turn" — and it lives or dies on the re-embed.
+ *
+ * Corrections come from a human, so unlike Arc's own writes this does not touch
+ * the trust tier: fixing a trusted fact leaves it trusted, and fixing one that
+ * is awaiting review leaves it awaiting review. Correcting a fact is not the
+ * same act as approving it.
+ */
+export async function correctBrainFact(
+  nodeId: string,
+  fields: { label?: string; summary?: string | null; body?: string | null },
+): Promise<BrainDecisionResult> {
+  await requireOperator();
+  if (!nodeId) return { ok: false, error: "Missing node." };
+
+  const label = fields.label?.trim();
+  if (fields.label !== undefined && !label) return { ok: false, error: "A fact needs a label." };
+
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  // Org scope is enforced by updateNode's own `.eq("org_id", …)`, resolved from
+  // the session rather than accepted from the caller.
+  const result = await updateNode(nodeId, fields);
   if (!result.ok) return { ok: false, error: result.error };
 
   revalidatePath("/brain");
