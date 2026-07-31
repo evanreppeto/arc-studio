@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DEFAULT_WORK_SECTIONS,
   readWorkPanelPreference,
+  readWorkSectionPreference,
   workPanelOpenOnConversationChange,
   writeWorkPanelPreference,
+  writeWorkSectionPreference,
 } from "./work-panel-preference";
 
 function stubStorage(impl: Partial<Storage> = {}) {
@@ -81,5 +84,33 @@ describe("storage that misbehaves must not take the chat down", () => {
     const storage = stubStorage();
     storage.setItem("arc.workPanel.open", "yes please");
     expect(readWorkPanelPreference()).toBeNull();
+  });
+});
+
+describe("which sections the operator left open", () => {
+  it("defaults to evidence open and run history closed", () => {
+    // Evidence answers "where did that come from", which is why the panel gets
+    // reopened. Run history is reference material and stays out of the way.
+    expect(DEFAULT_WORK_SECTIONS).toEqual({ evidence: true, runs: false });
+    expect(readWorkSectionPreference()).toBeNull();
+  });
+
+  it("round-trips a choice", () => {
+    writeWorkSectionPreference({ evidence: false, runs: true });
+    expect(readWorkSectionPreference()).toEqual({ evidence: false, runs: true });
+  });
+
+  it("fills in a section the stored value does not mention", () => {
+    // A stored shape from an older build must not collapse a section the
+    // operator never touched into `false`.
+    const storage = stubStorage();
+    storage.setItem("arc.workPanel.sections", JSON.stringify({ runs: true }));
+    expect(readWorkSectionPreference()).toEqual({ evidence: true, runs: true });
+  });
+
+  it("ignores junk rather than throwing", () => {
+    const storage = stubStorage();
+    storage.setItem("arc.workPanel.sections", "{not json");
+    expect(readWorkSectionPreference()).toBeNull();
   });
 });
