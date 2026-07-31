@@ -108,11 +108,7 @@ export function estimateGeminiTextCostCents(
   inputTokens: number | null | undefined,
   outputTokens: number | null | undefined,
 ): number {
-  const rate = resolveGeminiTextRate(model);
-  if (!rate) return 0;
-  const cents =
-    ((inputTokens ?? 0) * rate.inputCentsPerMTok + (outputTokens ?? 0) * rate.outputCentsPerMTok) / 1_000_000;
-  return Math.round(cents);
+  return centsFromMicrocents(estimateGeminiTextCostMicrocents(model, inputTokens, outputTokens));
 }
 
 /** The token fields Gemini returns on `generateContent`. All optional. */
@@ -175,9 +171,7 @@ export function estimateEmbeddingCostCents(
   model: string,
   inputTokens: number | null | undefined,
 ): number {
-  const rate = resolveEmbeddingRate(model);
-  if (rate === null) return 0;
-  return Math.round(((inputTokens ?? 0) * rate) / 1_000_000);
+  return centsFromMicrocents(estimateEmbeddingCostMicrocents(model, inputTokens));
 }
 
 /** Resolve a model's token rate: exact id first, then a known-prefix match. */
@@ -206,8 +200,34 @@ export function isPricedUsage(service: AiUsageService, model: string): boolean {
   return true;
 }
 
-/** Estimated cost (cents) of a Claude turn. Unknown model -> 0. */
-export function estimateClaudeCostCents(
+/**
+ * ============================================================================
+ * MICROCENTS ARE THE UNIT OF RECORD (BSR-502 Finding 5)
+ * ============================================================================
+ *
+ * These functions used to return whole cents, ending in `Math.round(cents)`.
+ * That rounded EVERY event independently, so any call costing under half a cent
+ * recorded as zero — 13 of the 36 repriced sonnet rows still sit at $0.00 for
+ * exactly that reason.
+ *
+ * It is not a rounding wobble that averages out. It only ever rounds DOWN to
+ * zero, never up, so the error is a systematic floor that scales with the number
+ * of small calls — and short turns are what a chat-heavy product makes most of.
+ *
+ * So cost is computed and stored in microcents (1 cent = 1,000 microcents) and
+ * rounded to cents exactly ONCE, at display or at the cap comparison, after
+ * summing. The `*Cents` functions below are thin wrappers kept so existing
+ * callers and the `cost_estimate_cents` column keep their current meaning.
+ */
+export const MICROCENTS_PER_CENT = 1_000;
+
+/** Round a microcent total to whole cents. The ONLY place rounding should happen. */
+export function centsFromMicrocents(microcents: number): number {
+  return Math.round(microcents / MICROCENTS_PER_CENT);
+}
+
+/** Estimated cost (microcents) of a Claude turn. Unknown model -> 0. */
+export function estimateClaudeCostMicrocents(
   model: string,
   inputTokens: number | null | undefined,
   outputTokens: number | null | undefined,
@@ -216,8 +236,61 @@ export function estimateClaudeCostCents(
   if (!rate) return 0;
   const inTok = inputTokens ?? 0;
   const outTok = outputTokens ?? 0;
-  const cents = (inTok * rate.inputCentsPerMTok + outTok * rate.outputCentsPerMTok) / 1_000_000;
-  return Math.round(cents);
+  const micro =
+    ((inTok * rate.inputCentsPerMTok + outTok * rate.outputCentsPerMTok) * MICROCENTS_PER_CENT) / 1_000_000;
+  return Math.round(micro);
+}
+
+/** Estimated cost (microcents) of an embedding call. Unpriced model -> 0. */
+export function estimateEmbeddingCostMicrocents(
+  model: string,
+  inputTokens: number | null | undefined,
+): number {
+  const rate = resolveEmbeddingRate(model);
+  if (rate === null) return 0;
+  return Math.round(((inputTokens ?? 0) * rate * MICROCENTS_PER_CENT) / 1_000_000);
+}
+
+/** Estimated cost (microcents) of a Gemini text call. Unpriced model -> 0. */
+export function estimateGeminiTextCostMicrocents(
+  model: string,
+  inputTokens: number | null | undefined,
+  outputTokens: number | null | undefined,
+): number {
+  const rate = resolveGeminiTextRate(model);
+  if (!rate) return 0;
+  const micro =
+    (((inputTokens ?? 0) * rate.inputCentsPerMTok + (outputTokens ?? 0) * rate.outputCentsPerMTok) *
+      MICROCENTS_PER_CENT) /
+    1_000_000;
+  return Math.round(micro);
+}
+
+/**
+ * Estimated cost (microcents) of N media generations. Missing units -> 1.
+ *
+ * Returns 0 rather than NaN for a service with no entry. `MEDIA_PRICING[service]`
+ * on an unknown key is `undefined`, and `undefined * count` is NaN — which then
+ * flows into an integer column as a value that is neither a number nor an honest
+ * zero. A service this does not know how to price is worth 0 and is flagged
+ * unpriced by `isPricedUsage`; it is never worth NaN.
+ */
+export function estimateMediaCostMicrocents(
+  service: MediaUsageService,
+  units: number | null | undefined,
+): number {
+  const rate = MEDIA_PRICING[service];
+  if (typeof rate !== "number") return 0;
+  return rate * (units ?? 1) * MICROCENTS_PER_CENT;
+}
+
+/** Estimated cost (cents) of a Claude turn. Unknown model -> 0. */
+export function estimateClaudeCostCents(
+  model: string,
+  inputTokens: number | null | undefined,
+  outputTokens: number | null | undefined,
+): number {
+  return centsFromMicrocents(estimateClaudeCostMicrocents(model, inputTokens, outputTokens));
 }
 
 /** Estimated cost (cents) of N media generations. Missing units -> 1. */
@@ -225,8 +298,7 @@ export function estimateMediaCostCents(
   service: MediaUsageService,
   units: number | null | undefined,
 ): number {
-  const count = units ?? 1;
-  return MEDIA_PRICING[service] * count;
+  return centsFromMicrocents(estimateMediaCostMicrocents(service, units));
 }
 
 export type UsageRollupEvent = {
@@ -237,8 +309,22 @@ export type UsageRollupEvent = {
   outputTokens: number | null;
   units: number | null;
   costCents: number;
+  /**
+   * Precise cost (BSR-502 Finding 5). Optional because rows written before
+   * 2026-07-31 never had it; `eventMicrocents` falls back to costCents * 1000,
+   * which is the honest reading of a row whose precision was already lost.
+   */
+  costMicrocents?: number | null;
   occurredAt: string; // ISO timestamp
 };
+
+/** An event's cost in microcents, tolerating rows from before precision existed. */
+export function eventMicrocents(event: {
+  costCents: number;
+  costMicrocents?: number | null;
+}): number {
+  return event.costMicrocents ?? event.costCents * MICROCENTS_PER_CENT;
+}
 
 export type ServiceRollup = {
   service: AiUsageService;
@@ -286,12 +372,21 @@ export function summarizeUsage(events: UsageRollupEvent[]): UsageSummary {
   const models = new Map<string, ModelRollup>();
   const users = new Map<string, UserRollup>();
 
+  // Accumulate in microcents, round ONCE at the end (BSR-502 Finding 5). Adding
+  // pre-rounded per-event cents drops every sub-half-cent call to zero before it
+  // reaches the total, and always downward.
+  let totalMicro = 0;
+  const serviceMicro = new Map<AiUsageService, number>();
+  const modelMicro = new Map<string, number>();
+  const userMicro = new Map<string, number>();
+
   for (const e of events) {
     const inTok = e.inputTokens ?? 0;
     const outTok = e.outputTokens ?? 0;
     const units = e.units ?? 0;
+    const micro = eventMicrocents(e);
 
-    summary.totalCostCents += e.costCents;
+    totalMicro += micro;
     summary.totalInputTokens += inTok;
     summary.totalOutputTokens += outTok;
     summary.totalUnits += units;
@@ -304,7 +399,7 @@ export function summarizeUsage(events: UsageRollupEvent[]): UsageSummary {
       units: 0,
       count: 0,
     };
-    svc.costCents += e.costCents;
+    serviceMicro.set(e.service, (serviceMicro.get(e.service) ?? 0) + micro);
     svc.inputTokens += inTok;
     svc.outputTokens += outTok;
     svc.units += units;
@@ -312,7 +407,7 @@ export function summarizeUsage(events: UsageRollupEvent[]): UsageSummary {
     services.set(e.service, svc);
 
     const mdl = models.get(e.model) ?? { model: e.model, costCents: 0, count: 0 };
-    mdl.costCents += e.costCents;
+    modelMicro.set(e.model, (modelMicro.get(e.model) ?? 0) + micro);
     mdl.count += 1;
     models.set(e.model, mdl);
 
@@ -329,13 +424,19 @@ export function summarizeUsage(events: UsageRollupEvent[]): UsageSummary {
       outputTokens: 0,
       units: 0,
     };
-    usr.costCents += e.costCents;
+    userMicro.set(userKey, (userMicro.get(userKey) ?? 0) + micro);
     usr.count += 1;
     usr.inputTokens += inTok;
     usr.outputTokens += outTok;
     usr.units += units;
     users.set(userKey, usr);
   }
+
+  // One rounding per reported figure, applied to the summed microcents.
+  summary.totalCostCents = centsFromMicrocents(totalMicro);
+  for (const [key, svc] of services) svc.costCents = centsFromMicrocents(serviceMicro.get(key) ?? 0);
+  for (const [key, mdl] of models) mdl.costCents = centsFromMicrocents(modelMicro.get(key) ?? 0);
+  for (const [key, usr] of users) usr.costCents = centsFromMicrocents(userMicro.get(key) ?? 0);
 
   const byCostDesc = (a: { costCents: number }, b: { costCents: number }) => b.costCents - a.costCents;
   summary.byService = [...services.values()].sort(byCostDesc);
@@ -352,9 +453,10 @@ export function bucketCostByDay(
   const totals = new Map<string, number>(dayKeys.map((d) => [d, 0]));
   for (const e of events) {
     const day = e.occurredAt.slice(0, 10);
-    if (totals.has(day)) totals.set(day, (totals.get(day) ?? 0) + e.costCents);
+    if (totals.has(day)) totals.set(day, (totals.get(day) ?? 0) + eventMicrocents(e));
   }
-  return dayKeys.map((date) => ({ date, costCents: totals.get(date) ?? 0 }));
+  // Rounded once per bucket, not once per event (BSR-502 Finding 5).
+  return dayKeys.map((date) => ({ date, costCents: centsFromMicrocents(totals.get(date) ?? 0) }));
 }
 
 export type UsageSummaryCard = {
