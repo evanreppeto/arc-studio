@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { CRM_NODE_KINDS, type CrmIngestTable, type TrustTier } from "@/domain";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getCurrentOrgId } from "@/lib/auth/org";
@@ -268,6 +269,12 @@ export async function countNodesByTier(
     ]);
     const firstError = [total, trusted, observed, proposed].find((r) => r.error);
     if (firstError?.error) return { status: "unavailable", message: firstError.error.message };
+    // A null count carries NO error — a HEAD count against a missing relation
+    // returns { count: null, error: null }, so the check above cannot see it and
+    // the tiles would read a confident zero (BSR-575).
+    if ([total, trusted, observed, proposed].some((r) => r.count === null)) {
+      return { status: "unavailable", message: "knowledge_nodes count returned no result — the relation is missing or inaccessible." };
+    }
     const counts: BrainTierCounts = {
       total: total.count ?? 0,
       trusted: trusted.count ?? 0,
@@ -387,7 +394,13 @@ export async function getBrainCrmCoverage(
         .select("id", { count: "exact", head: true })
         .eq("org_id", resolved.orgId);
       if (error) return { status: "unavailable", message: error.message };
-      crmRecords += count ?? 0;
+      // A null count carries no error on a HEAD request, and this feeds
+      // `behind` — a false zero would report the Brain fully caught up when it
+      // is not (BSR-575).
+      if (count === null) {
+        return { status: "unavailable", message: `${table} count returned no result — the relation is missing or inaccessible.` };
+      }
+      crmRecords += count;
     }
     const brain = await resolved.client
       .from("knowledge_nodes")
@@ -395,7 +408,10 @@ export async function getBrainCrmCoverage(
       .eq("org_id", resolved.orgId)
       .in("kind", CRM_COVERAGE_KINDS);
     if (brain.error) return { status: "unavailable", message: brain.error.message };
-    const brainRecords = brain.count ?? 0;
+    if (brain.count === null) {
+      return { status: "unavailable", message: "knowledge_nodes count returned no result — the relation is missing or inaccessible." };
+    }
+    const brainRecords = brain.count;
     return { status: "live", crmRecords, brainRecords, behind: Math.max(0, crmRecords - brainRecords) };
   } catch (error) {
     return { status: "unavailable", message: error instanceof Error ? error.message : "Brain coverage unavailable." };

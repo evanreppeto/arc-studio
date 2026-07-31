@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { randomBytes } from "node:crypto";
 
 import type { User } from "@supabase/supabase-js";
@@ -118,8 +119,9 @@ async function organizationHasMemberships(client: TypedSupabaseClient, orgId: st
     .eq("org_id", orgId)
     .in("status", ["active", "invited"]);
 
-  if (error) throw error;
-  return (count ?? 0) > 0;
+  // Fail closed: a null count read as 0 would claim the org has no members
+  // when it may have several (BSR-575).
+  return requireCount("organization_memberships", { count, error }) > 0;
 }
 
 async function createOrganization(client: TypedSupabaseClient, name: string, slug: string) {
