@@ -333,3 +333,11 @@
 .extsend .exdone { color: var(--ok-text); }
 .extsend .exmarkrow { display: flex; gap: 8px; margin-top: 8px; }
 .extsend .exinput { flex: 1; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text); font-size: 12px; padding: 8px 10px; }
+
+/* This sheet was the one route stylesheet with motion and no reduced-motion
+   escape. Everything here is a short colour transition except `.perflearn-cta`,
+   which also moves — drop the movement, keep the colour feedback. */
+@media (prefers-reduced-motion: reduce) {
+  .arc-campaign .perflearn-cta { transition: background 0.15s var(--ease); }
+  .arc-campaign .perflearn-cta:hover { transform: none; }
+}

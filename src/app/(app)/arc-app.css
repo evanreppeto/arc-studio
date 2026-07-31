@@ -302,7 +302,13 @@
 
   & .scroll { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr) 312px; }
   & .content { min-width: 0; padding: 26px 30px 48px 34px; }
-  & .content > * { animation: arcRise 0.5s var(--ease) both; }
+  /* Gated, like every other entrance in this sheet. This one was ungated: it
+     animates *every* top-level child of the content column on *every* page, so
+     it was the one piece of motion a reduced-motion user could not escape.
+     `no-preference` rather than a `reduce` override, to match `.arc-grid`. */
+  @media (prefers-reduced-motion: no-preference) {
+    & .content > * { animation: arcRise 0.5s var(--ease) both; }
+  }
   & .col-r { border-left: 1px solid var(--line); padding: 26px 24px 48px; background: color-mix(in srgb, var(--canvas-deep) 22%, transparent); }
 
   & .date { font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: 0.02em; }
