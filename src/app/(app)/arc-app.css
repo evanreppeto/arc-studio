@@ -1959,3 +1959,47 @@
   outline: none;
   border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
 }
+
+/* ── Full-screen state pages (404, error boundary) ──────────────────────────
+   These render inside the shell, so the operator keeps the rail and header and
+   stays oriented. Before this the app had no not-found.tsx and no error.tsx at
+   all: a missing record fell through to Next's stock unstyled 404, and an
+   uncaught render error to a bare "Application error" with no way onward. */
+.arc-app .state-page {
+  max-width: 560px;
+  padding: 72px 28px;
+  margin: 0 auto;
+}
+.arc-app .state-eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent-contrast);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.arc-app .state-page h1 {
+  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 550;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+.arc-app .state-body {
+  margin: 0 0 24px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.arc-app .state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.arc-app .state-ref {
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}

@@ -4,34 +4,77 @@
     {
       "name": "arc-dev",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev", "--port", "6001"],
+      "runtimeArgs": [
+        "dev",
+        "--port",
+        "6001"
+      ],
       "port": 6001,
       "autoPort": false,
-      "env": { "ARC_DEMO_DATA": "1", "DEFAULT_ORG_SLUG": "meridian" }
+      "env": {
+        "ARC_DEMO_DATA": "1",
+        "DEFAULT_ORG_SLUG": "meridian"
+      }
     },
     {
       "name": "arc-dev-alt",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev", "--port", "6031"],
+      "runtimeArgs": [
+        "dev",
+        "--port",
+        "6031"
+      ],
       "port": 6031,
       "autoPort": true,
-      "env": { "ARC_DEMO_DATA": "1", "DEFAULT_ORG_SLUG": "meridian" }
+      "env": {
+        "ARC_DEMO_DATA": "1",
+        "DEFAULT_ORG_SLUG": "meridian"
+      }
     },
     {
       "name": "arc-open",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev", "--port", "6041"],
+      "runtimeArgs": [
+        "dev",
+        "--port",
+        "6041"
+      ],
       "port": 6041,
       "autoPort": true,
-      "env": { "ARC_DEMO_DATA": "1", "ARC_AUTH_MODE": "open", "DEFAULT_ORG_SLUG": "meridian" }
+      "env": {
+        "ARC_DEMO_DATA": "1",
+        "ARC_AUTH_MODE": "open",
+        "DEFAULT_ORG_SLUG": "meridian"
+      }
     },
     {
       "name": "arc-sandbox",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev", "--port", "6051"],
+      "runtimeArgs": [
+        "dev",
+        "--port",
+        "6051"
+      ],
       "port": 6051,
       "autoPort": true,
-      "env": { "ARC_DEMO_DATA": "0", "ARC_SELF_SERVE_SIGNUP": "1" }
+      "env": {
+        "ARC_DEMO_DATA": "0",
+        "ARC_SELF_SERVE_SIGNUP": "1"
+      }
+    },
+    {
+      "name": "arc-prod",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "start",
+        "--port",
+        "6061"
+      ],
+      "port": 6061,
+      "autoPort": false,
+      "env": {
+        "ARC_AUTH_MODE": "open"
+      }
     }
   ]
 }
