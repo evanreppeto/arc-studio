@@ -1,0 +1,101 @@
+name: Deploy notifications
+
+# Post both deploy halves into #arc-deploys (BSR-536).
+#
+# "Merged ≠ live" is a recurring bite here: a green PR has repeatedly been
+# mistaken for shipped code. Confirming a deploy means opening the Vercel
+# dashboard AND Cloud Build, and doing it from the CLI has a known trap —
+# `vercel` writes to stderr, so a piped check with `2>/dev/null` reports "not
+# deployed" for something that is live. A passive feed removes the need to check
+# at all, and makes the FAILURE case arrive instead of needing to be looked for.
+#
+# ── Why these two triggers ────────────────────────────────────────────────────
+# Neither half is a GitHub Actions job, so neither can simply post at the end of
+# itself. But both already report INTO GitHub:
+#
+#   Vercel      creates a Deployment  → `deployment_status`
+#   Cloud Build posts a check run     → `check_run`
+#
+# So this reads what they already publish. No Pub/Sub notifier, no second Slack
+# integration, nothing to configure outside this repo except the webhook secret.
+#
+# ── The asymmetry this exists to express ──────────────────────────────────────
+# The app deploys on every push to main; the runner only when a merge touches
+# `apps/arc-runner/**`. Observed on 2026-07-31: of five merges, four were app
+# only and one moved both. So "app deployed, runner unchanged" is the COMMON
+# case and is stated explicitly — a bare "deployed ✅" would be misleading, and
+# a silent runner is exactly how it ends up on a stale image.
+
+on:
+  deployment_status:
+  check_run:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      drill:
+        description: "Post a delivery test to #arc-deploys (proves the webhook without a real deploy)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Never cancel: each event describes a different deploy, and a dropped one is a
+# silence this workflow exists to prevent.
+concurrency:
+  group: deploy-notify-${{ github.event.deployment_status.target_url || github.event.check_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Cheap pre-filter so preview deploys and the ~6 other check runs on every
+    # commit do not each start a job. The script filters properly; this just
+    # keeps the Actions list readable.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'deployment_status' && github.event.deployment.environment == 'Production') ||
+      (github.event_name == 'check_run' && startsWith(github.event.check_run.name, 'arc-runner-deploy'))
+    steps:
+      - uses: actions/checkout@v5
+
+      # Which half moved, and what was merged. Resolved from the commit rather
+      # than guessed, so the "runner unchanged" line is a fact.
+      - name: Describe the commit being deployed
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.deployment.sha || github.event.check_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SHA:-}" ]; then
+            echo "runner_touched=0" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A squash merge's commit carries the whole PR's diff, so its file
+          # list is the right thing to test against the Cloud Build trigger.
+          FILES=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}" --jq '.files[].filename' 2>/dev/null || true)
+          if printf '%s\n' "$FILES" | grep -q '^apps/arc-runner/'; then
+            echo "runner_touched=1" >>"$GITHUB_OUTPUT"
+          else
+            echo "runner_touched=0" >>"$GITHUB_OUTPUT"
+          fi
+
+          # Multiline-safe: the subject is all the script parses, but a body
+          # with a newline would corrupt $GITHUB_OUTPUT without a delimiter.
+          MESSAGE=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}" --jq '.commit.message' 2>/dev/null || echo "")
+          {
+            echo "message<<COMMIT_MESSAGE_EOF"
+            echo "$MESSAGE"
+            echo "COMMIT_MESSAGE_EOF"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Post to #arc-deploys
+        env:
+          SLACK_DEPLOY_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}
+          RUNNER_TOUCHED: ${{ steps.commit.outputs.runner_touched }}
+          COMMIT_MESSAGE: ${{ steps.commit.outputs.message }}
+          DEPLOY_NOTIFY_DRILL: ${{ github.event_name == 'workflow_dispatch' && inputs.drill && '1' || '0' }}
+        run: node scripts/deploy-notify.mjs
