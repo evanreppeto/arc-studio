@@ -12,7 +12,17 @@ pnpm build          # next build
 pnpm test           # vitest run (one-shot; no watch by default)
 pnpm test path/to/file.test.ts   # run a single test file
 pnpm lint           # eslint (flat config in eslint.config.mjs)
+pnpm typecheck      # tsc --noEmit, deliberately NON-incremental (see below)
 ```
+
+`typecheck` passes `--incremental false` on purpose. `tsconfig.json` sets
+`incremental: true` (good for builds), which makes `tsc` write
+`tsconfig.tsbuildinfo` — and that cache carried across a branch switch reports
+**phantom errors against files the current branch never changed**. It is
+reproducible: a stale cache produced 126 errors on a `main` that typechecks
+clean, while CI stayed green because CI always starts from a fresh checkout.
+Local typecheck has to agree with CI or it is not a gate. If you ever see a wall
+of unexplained type errors, `rm tsconfig.tsbuildinfo` before believing them.
 
 ## Architecture
 

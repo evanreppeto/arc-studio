@@ -82,22 +82,86 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq age
 
-      - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
+      # Postgres 17 client, matched to the server.
+      #
+      # The first version of this used `supabase db dump`, on the reasoning that
+      # the CLI ships its own client so there could be no version mismatch. That
+      # was wrong: the CLI runs pg_dump inside a container pinned to Postgres 15,
+      # and prod is 17.6, so it aborted with
+      #   `pg_dumpall: aborting because of server version mismatch`.
+      # pg_dump refuses to dump a NEWER server than itself, by design — a dump
+      # taken by an older client could silently miss newer syntax.
+      - name: Install the Postgres 17 client
+        run: |
+          set -euo pipefail
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
 
-      # Three parts, because restoring needs all three and a schema-only dump is
+      # Three parts, because a restore needs all three and a schema-only dump is
       # the classic "backup" that turns out to hold no data.
-      - name: Dump roles, schema and data
+      #
+      # `public` is this application. `auth.users` comes along separately so
+      # people can still sign in to a restored copy — without it the data is
+      # intact and nobody can reach it. Supabase-managed internals are left out
+      # deliberately: a fresh project recreates them, and restoring ours over
+      # them is how a restore fails in a confusing way.
+      - name: Dump schema, data and accounts
         env:
           DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+          PGCLIENTENCODING: UTF8
+          PGSSLMODE: require
         run: |
           set -euo pipefail
           mkdir -p backup
-          supabase db dump --db-url "$DB_URL" --role-only -f backup/roles.sql
-          supabase db dump --db-url "$DB_URL"             -f backup/schema.sql
-          supabase db dump --db-url "$DB_URL" --data-only -f backup/data.sql
+          PG=/usr/lib/postgresql/17/bin
+
+          # Do NOT hand the connection URI to pg_dump.
+          #
+          # The stored password contains an `@`, and libpq split the URI at the
+          # wrong one — it tried to resolve a host of `592800@aws-1-...` and
+          # failed. Percent-encoding the secret would also fix it, but that puts
+          # a parsing trap in a value a human maintains by hand.
+          #
+          # Splitting on the LAST `@` is unambiguous whatever the password
+          # contains, so the components go in as discrete parameters and the
+          # password via ~/.pgpass. Nothing is echoed: the URL is a secret, and
+          # while GitHub masks known secrets in logs, the safe move is to never
+          # print the pieces at all.
+          python3 - <<'PARSE'
+          import os, re, pathlib
+          url = os.environ["DB_URL"]
+          rest = re.sub(r"^[a-zA-Z0-9+]+://", "", url).split("?", 1)[0]
+          userinfo, hostpart = rest.rsplit("@", 1)          # last @ = the real separator
+          user, _, password = userinfo.partition(":")
+          hostport, _, database = hostpart.partition("/")
+          host, _, port = hostport.partition(":")
+          port = port or "5432"
+          database = database or "postgres"
+          pgpass = pathlib.Path.home() / ".pgpass"
+          pgpass.write_text(f"{host}:{port}:{database}:{user}:{password}\n")
+          pgpass.chmod(0o600)
+          # An env file sourced below, NOT $GITHUB_ENV — that only applies to
+          # later steps, and pg_dump runs in this one.
+          with open("/tmp/pgenv.sh", "w") as fh:
+              fh.write(f"export PGHOST={host}\nexport PGPORT={port}\n")
+              fh.write(f"export PGUSER={user}\nexport PGDATABASE={database}\n")
+          PARSE
+
+          . /tmp/pgenv.sh
+
+          "$PG/pg_dump" --schema=public --schema-only --no-owner --no-privileges -f backup/schema.sql
+          "$PG/pg_dump" --schema=public --data-only   --no-owner --no-privileges -f backup/data.sql
+          # Accounts. Failing here must not fail the backup — the CRM data is
+          # the point — but it must be visible rather than quietly absent.
+          if ! "$PG/pg_dump" --table=auth.users --data-only --no-owner --no-privileges -f backup/auth-users.sql; then
+            echo "::warning title=Accounts not dumped::auth.users could not be read; the restore will hold data but no logins. Everything else in this backup is intact."
+            echo "-- auth.users dump failed at $(date -u +%FT%TZ); see the run log" > backup/auth-users.sql
+          fi
           ls -l backup/
 
       # A backup nobody checked is a hypothesis. This does not prove the dump
@@ -108,7 +172,7 @@ jobs:
           set -euo pipefail
           fail() { echo "::error title=Backup failed its own check::$1"; exit 1; }
 
-          for f in roles schema data; do
+          for f in schema data; do
             [ -s "backup/$f.sql" ] || fail "backup/$f.sql is empty."
           done
 
@@ -129,7 +193,7 @@ jobs:
           [ "$DATA_BYTES" -gt 200000 ] \
             || fail "data.sql is only ${DATA_BYTES} bytes. Expected megabytes. Treat this run as failed rather than as a small backup."
 
-          echo "roles $(stat -c%s backup/roles.sql)B · schema $(stat -c%s backup/schema.sql)B · data ${DATA_BYTES}B"
+          echo "schema $(stat -c%s backup/schema.sql)B · data ${DATA_BYTES}B · accounts $(stat -c%s backup/auth-users.sql)B"
 
       - name: Encrypt
         env:
@@ -138,7 +202,7 @@ jobs:
           set -euo pipefail
           STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
           echo "STAMP=$STAMP" >>"$GITHUB_ENV"
-          tar -czf "arc-prod-$STAMP.tar.gz" -C backup roles.sql schema.sql data.sql
+          tar -czf "arc-prod-$STAMP.tar.gz" -C backup schema.sql data.sql auth-users.sql
           age -r "$RECIPIENT" -o "arc-prod-$STAMP.tar.gz.age" "arc-prod-$STAMP.tar.gz"
 
           # Remove every plaintext copy before anything can upload it. The

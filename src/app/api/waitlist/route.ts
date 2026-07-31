@@ -5,6 +5,7 @@ import {
   persistWaitlistSignup,
 } from "@/lib/waitlist/persistence";
 import { notifyWaitlistSignup } from "@/lib/waitlist/notify";
+import { readAttributionRecord } from "@/lib/signup-attribution/server";
 import { normalizeWaitlistEmail } from "@/lib/waitlist/validate";
 
 /**
@@ -38,7 +39,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: "not_configured" }, { status: 202 });
   }
 
-  const result = await persistWaitlistSignup(parsed.email, source);
+  // Which channel produced this signup (BSR-586). Read from the first-party
+  // cookie the AttributionCapture component wrote; null when absent or edited
+  // into nonsense, which persists as "unattributed" rather than failing.
+  const attribution = await readAttributionRecord();
+
+  const result = await persistWaitlistSignup(parsed.email, source, attribution);
   if (!result.ok) {
     return NextResponse.json({ error: "Couldn't save your signup. Try again." }, { status: 502 });
   }
