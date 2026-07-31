@@ -156,28 +156,44 @@ The runner takes its numbers from the SDK's final result message:
 inputTokens = typeof usage.input_tokens === "number" ? usage.input_tokens : inputTokens;
 ```
 
-**Strong hypothesis, not yet confirmed:** with prompt caching enabled,
-`input_tokens` excludes cached tokens — those are reported separately as
-`cache_read_input_tokens` and `cache_creation_input_tokens`, which nothing reads.
-That would explain the magnitude exactly. Cache reads are cheaper than base input
-but **not free**, and cache *creation* is more expensive than base input, so the
-missing side is real money.
+**CONFIRMED against production 2026-07-31.** With prompt caching enabled,
+`input_tokens` excludes cached tokens. The first turn recorded after
+instrumenting:
 
-**Instrumented 2026-07-31.** Rather than log one payload and read it once, the
-runner now captures `cache_read_input_tokens`, `cache_creation_input_tokens`
-**and the raw key set** of the SDK's `usage` object, and posts them to the ledger
-as `metadata.usage_detail`. The key set matters: if the hypothesis is wrong, the
-list says what the SDK actually reports, so the next person reads a fact instead
-of inferring from an absence.
+| Field | Value |
+| --- | --- |
+| `input_tokens` (what the ledger stored) | **8** |
+| `cache_read_input_tokens` | **92,215** |
+| `cache_creation_input_tokens` | **12,707** |
+| `output_tokens` | 1,051 |
 
-`input_tokens` still means exactly what the SDK returns. Folding cache tokens
-into it would redefine a column mid-ledger and make the whole series
-uncomparable.
+A real input side of **~104,930 tokens, recorded as 8.** The row's
+`cost_estimate_cents` is 8 — effectively output-only pricing. At Anthropic's
+standard cache multipliers the same turn is nearer **45 cents**, a **~5.7×
+undercount on the product's most-used path**. Those multipliers are the published
+defaults and are **not yet verified** here; they are stated to show the scale, not
+to be billed against.
 
-**Nothing is priced off this yet.** Cache reads are cheaper than base input and
-cache creation is dearer, so the correction is not a single multiplier. The next
-live Arc run produces the data; pricing it is a follow-up with real numbers
-behind it rather than a plausible guess.
+**The raw key-set capture is what earned its place.** The hedge — recording
+`Object.keys(usage)` alongside the two fields the hypothesis named — surfaced
+fields nobody knew to ask for: **`cache_creation`** (an *object*, the per-TTL
+split, whose halves bill at **different** multipliers), **`service_tier`**,
+`server_tool_use`, `speed`, `iterations`, `inference_geo`. Their *values* were not
+captured, because the capture enumerated fields.
+
+So the capture no longer enumerates. `buildUsageDetail` records the whole payload
+under a structural guard — scalars and one level of scalar-valued objects survive;
+anything larger or deeper is dropped **by name** into `dropped_keys`, so an
+omission is visible in the row instead of silent. The full key set is still always
+recorded, since that list is the tripwire that caught this in the first place.
+
+`input_tokens` still means exactly what the SDK returns. Folding cache tokens into
+it would redefine a column mid-ledger and make the whole series uncomparable.
+
+**Still not priced.** Cache reads are cheaper than base input and cache creation
+is dearer, and the 5-minute and 1-hour cache tiers differ again — so the
+correction is not one multiplier, and `service_tier` may move it too. Pricing
+this needs the published rates confirmed, not inferred.
 
 ## Finding 4 — a metering failure was invisible
 
@@ -260,11 +276,15 @@ cache tokens are not priced at all. The gaps are now instrumented rather than
 closed — which is the necessary first step, and is not the same thing.
 
 Enforcement blocks real customer work. Doing it against a number this incomplete
-is not defensible yet. Order: ~~price sonnet-5~~ (done) → ~~meter embeddings~~
-(done) → ~~meter Gemini text~~ (done) → **supply Gemini embedding + text rates
-and backfill** (the text rows hold measured tokens, so that backfill is exact) →
-read `metadata.usage_detail` off a live run and price the cache tokens → decide
-on sub-cent precision → reconcile one month against real invoices → then arm.
+is not defensible yet — and Finding 3 now puts a number on *how* incomplete: the
+one turn measured end-to-end was out by roughly **5.7×**.
+
+Order: ~~price sonnet-5~~ (done) → ~~meter embeddings~~ (done) → ~~meter Gemini
+text~~ (done) → ~~confirm the cache-token hypothesis~~ (**confirmed**) →
+**confirm Anthropic's cache multipliers and price cache tokens** (the largest
+single correction) → **supply Gemini embedding + text rates and backfill** (the
+text rows hold measured tokens, so that backfill is exact) → decide on sub-cent
+precision → reconcile one month against real invoices → then arm.
 
 Every metered path now exists. What is missing is **prices**, not plumbing.
 
