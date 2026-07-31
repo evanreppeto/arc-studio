@@ -1463,7 +1463,7 @@ export function ArcView({
   const composerMenuRef = useRef<HTMLDivElement | null>(null);
   const composerMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
-  const scrollRef = useRef<HTMLElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
   const chatRootRef = useRef<HTMLDivElement | null>(null);
   // Bottom-follow tracking. `guard()` covers the deliberate scroll-to-top calls
@@ -2263,7 +2263,9 @@ export function ArcView({
         </div>
       </header>
 
-      <main className="arc-conversation-scroll" ref={scrollRef}>
+      {/* A <div>, not <main>: the shell now provides the page's single main
+          landmark, and nesting one inside another is invalid. */}
+      <div className="arc-conversation-scroll" ref={scrollRef}>
         <div className="arc-conversation-column">
           {live && historyLoadError ? <div className="arc-history-load-error" role="status"><CircleAlert size={15} /><span><b>History is temporarily unavailable.</b>{historyLoadError}</span></div> : null}
           {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
@@ -2277,7 +2279,7 @@ export function ArcView({
           <div ref={spacerRef} className="arc-turn-spacer" aria-hidden="true" />
           <div ref={endRef} />
         </div>
-      </main>
+      </div>
 
       <footer className="arc-composer-dock">
         <div className="arc-composer-column">

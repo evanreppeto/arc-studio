@@ -160,6 +160,7 @@ async function seedMediaCampaign() {
 
   const campaignId = await insertOne(supabase, "campaigns", {
     name: `Creative Showcase — North Shore Spring Launch ${runId}`,
+    org_id: orgId,
     persona: PERSONA,
     restoration_focus: "water_backup",
     status: "pending_approval",
@@ -187,6 +188,7 @@ async function seedMediaCampaign() {
   const assetIds = [];
   for (const asset of ASSETS) {
     const id = await insertOne(supabase, "campaign_assets", {
+    org_id: orgId,
       campaign_id: campaignId,
       asset_type: asset.asset_type,
       channel: asset.channel,
@@ -203,6 +205,7 @@ async function seedMediaCampaign() {
 
   // One approved + two pending so the decision stepper and Approvals tab populate.
   const emailApprovalId = await insertOne(supabase, "approval_items", {
+    org_id: orgId,
     campaign_id: campaignId,
     campaign_asset_id: assetIds[4],
     company_id: companyId,
@@ -220,6 +223,7 @@ async function seedMediaCampaign() {
   });
 
   await insertOne(supabase, "approval_decisions", {
+    org_id: orgId,
     approval_item_id: emailApprovalId,
     decision: "approved",
     decided_by: "Evan",
@@ -230,6 +234,7 @@ async function seedMediaCampaign() {
   });
 
   await insertOne(supabase, "approval_items", {
+    org_id: orgId,
     campaign_id: campaignId,
     campaign_asset_id: assetIds[1],
     company_id: companyId,
@@ -245,6 +250,7 @@ async function seedMediaCampaign() {
   });
 
   await insertOne(supabase, "approval_items", {
+    org_id: orgId,
     campaign_id: campaignId,
     campaign_asset_id: assetIds[0],
     company_id: companyId,
