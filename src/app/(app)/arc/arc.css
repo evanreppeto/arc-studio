@@ -1813,6 +1813,10 @@
    surface, full wrapping, and no hairline chopping it into a table row. */
 .arc-work-fact { position: relative; margin: 0 0 5px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 60%, transparent); color: var(--text-2); padding: 9px 10px; font-size: 11.5px; line-height: 1.55; }
 .arc-work-fact:last-child { margin-bottom: 0; }
+.arc-work-more { width: 100%; min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 6px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; }
+.arc-work-more:hover { background: rgba(255, 255, 255, .03); color: var(--text-2); }
+.arc-work-more svg { transition: transform var(--arc-fast); }
+.arc-work-more svg.is-open { transform: rotate(180deg); }
 .arc-work-fact em { display: block; margin-top: 4px; color: var(--muted); font-family: var(--mono); font-size: 9px; font-style: normal; }
 .arc-work-evidence-item { display: flex; align-items: baseline; gap: 9px; min-height: 30px; padding: 6px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
 .arc-work-evidence > div > .arc-work-evidence-item:last-child { border-bottom: 0; }

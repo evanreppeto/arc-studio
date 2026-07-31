@@ -125,6 +125,10 @@ export function RunIcon({ kind, size = 15 }: { kind: RunKind; size?: number }) {
 
 /** One anchor per evidence group. The section used to be five identical stacks
  *  of uppercase text, which made scanning it work the reader had to do. */
+/** How many memories the panel shows before asking. Long enough to be useful,
+ *  short enough that the section stays scannable next to the deliverables. */
+const MEMORY_PREVIEW = 6;
+
 function EvidenceIcon({ group }: { group: string }) {
   if (group === "memory") return <Brain size={12} />;
   if (group === "records") return <Link2 size={12} />;
@@ -647,6 +651,7 @@ export function ArcWorkPanel({
 }) {
   const reduceMotion = useReducedMotion();
   const [openSections, setOpenSections] = useState<Record<WorkSectionId, boolean>>(DEFAULT_WORK_SECTIONS);
+  const [showAllMemory, setShowAllMemory] = useState(false);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [demoActiveIndex, setDemoActiveIndex] = useState(0);
 
@@ -846,12 +851,30 @@ export function ArcWorkPanel({
                     <div key={group.id} data-group={group.id}>
                       <h4><span className="arc-work-evidence-icon"><EvidenceIcon group={group.id} /></span>{group.label}<i>{group.items.length}</i></h4>
                       {group.id === "memory"
-                        ? group.items.map((item, index) => (
-                            <p className="arc-work-fact" key={`${group.id}-${index}`}>
-                              {item.label}
-                              {item.detail ? <em>{item.detail}</em> : null}
-                            </p>
-                          ))
+                        ? (() => {
+                            // The parser no longer caps recall (BSR-624), so a
+                            // real turn can carry fifteen facts. Long is fine —
+                            // hiding some of them and printing a confident count
+                            // of the survivors is not. The limit is the reader's
+                            // to lift, and the button says what it is holding.
+                            const shown = showAllMemory ? group.items : group.items.slice(0, MEMORY_PREVIEW);
+                            return (
+                              <>
+                                {shown.map((item, index) => (
+                                  <p className="arc-work-fact" key={`${group.id}-${index}`}>
+                                    {item.label}
+                                    {item.detail ? <em>{item.detail}</em> : null}
+                                  </p>
+                                ))}
+                                {group.items.length > MEMORY_PREVIEW ? (
+                                  <button type="button" className="arc-work-more" aria-expanded={showAllMemory} onClick={() => setShowAllMemory((value) => !value)}>
+                                    {showAllMemory ? "Show fewer" : `Show all ${group.items.length}`}
+                                    <ChevronDown size={13} className={showAllMemory ? "is-open" : ""} />
+                                  </button>
+                                ) : null}
+                              </>
+                            );
+                          })()
                         : group.items.map((item, index) => (
                             item.href
                               ? <Link className="arc-work-evidence-item" key={`${group.id}-${index}`} href={item.href}><b>{item.label}</b>{item.detail ? <span>{item.detail}</span> : null}<ArrowRight size={12} /></Link>
