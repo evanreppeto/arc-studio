@@ -1,8 +1,15 @@
 # Launch Checklist — reopening self-serve signup (BSR-505)
 
-**Verdict as of 2026-07-31: DO NOT FLIP.** Six of the eight preconditions are
-open, two of them are hard legal/commercial blockers, and one item on the
-checklist as written would break the live workspace if actioned literally.
+**Verdict as of 2026-07-31: DO NOT FLIP.** Still open, by name: **Stripe verified
+end to end** (1b), **quota enforcement** (3, and actioning it literally today
+would break the live workspace), **security review** (4), **legal in effect** (5
+— pages are live but labelled draft), **activation timed** (7), and **support**
+(8). Done: pricing published (1a), trial lifecycle (2), tenant-isolation CI (6),
+and rollback.
+
+Nothing remaining is an engineering problem. Every open item needs a Stripe
+dashboard, a real card, a lawyer, a dashboard setting, or a stopwatch — which is
+also why none of it can be closed by reading the code.
 
 BSR-505 asks for each precondition to be *"confirmed with evidence — not
 asserted."* This document is that evidence. Every claim below was checked
@@ -19,10 +26,10 @@ down so it can be re-run rather than re-believed.
 | 1b | Stripe verified end to end on prod | ❌ | **`org_plans` has 0 rows.** No customer, no subscription, ever. BSR-499 |
 | 2 | Trial lifecycle complete | ✅ | BSR-500 Done; `trial_started_at` / `trial_ends_at` / `trial_notices_sent` columns exist |
 | 3 | Quota enforcement on, warnings working | ⚠️ | BSR-501 Done, but **arming it today blocks the live tenant** — see the trap below |
-| 4 | Security review, public signup in mind | ❌ | BSR-520 Todo |
-| 5 | Legal live: ToS, privacy | ❌ | **No routes exist.** `/terms` and `/privacy` 307 to login; nothing in `src/app`. BSR-522 |
-| 6 | Tenant isolation regression-tested in CI | ❌ | BSR-521 Todo |
-| 7 | Activation path timed and passing | ❌ | BSR-504 Todo |
+| 4 | Security review, public signup in mind | ❌ | BSR-520 Todo — worth doing *after* the Stripe run, so there is a real payment path to review |
+| 5 | Legal live: ToS, privacy | ⚠️ | **Pages shipped and live** (`/legal/terms`, `/legal/privacy`, `/legal/subprocessors`) but they render a "Draft — not yet in effect" notice: entity name, registered address and jurisdiction are still placeholders, and counsel has not reviewed. BSR-522 |
+| 6 | Tenant isolation regression-tested in CI | ✅ | **BSR-521 DONE.** Route census fails CI on an unclassified route or unguarded API; RLS cross-tenant denial runs against real Postgres in the Migrations workflow. Both proven to fail when isolation is deliberately broken. |
+| 7 | Activation path timed and passing | ❌ | Checklist correctness fixed (it was marking unapproved drafts complete), but the **timed ten-minute run has not happened**. BSR-504 |
 | 8 | Support channel staffed, expectation set | ❌ | BSR-598 Backlog |
 | — | Rollback tested first | ✅ | Covered at the API level — see Rollback below |
 
@@ -99,6 +106,16 @@ moves, and add a real end-to-end confirmation test to BSR-499's scope.
 
 ---
 
+## What changed since this audit was written
+
+Same-day follow-ups, so the table above is current rather than a snapshot:
+
+* **BSR-521 closed.** Route exposure census (#776) and cross-tenant RLS on real Postgres (#780), both demonstrated failing when isolation is broken on purpose.
+* **Legal pages shipped** (#765) — live, footer-linked, in the sitemap, and honestly labelled as a draft until the entity details land.
+* **A paying customer was being silently written as free-tier** (#772). `planUpdateForSubscription` fell back to `free` when a Stripe price id mapped to no configured tier — Stripe got a 200 and nothing logged. Relevant here because it sat directly on the path this checklist gates.
+* **Billing-enforcement pre-flight** (`pnpm health:billing`, #767) — refuses to let precondition 3 be actioned blind. **It has still never been run with real credentials.**
+* **BSR-626, found and fixed** (#786, #788): the nightly opportunity scan resolved its tenant from an ambient request the cron does not have, so it would have silently stopped finding opportunities for *every* tenant the day a second one signed up — which is precisely the event this checklist gates. All three cron stages now scope explicitly and fan out per workspace.
+
 ## The order to actually do this in
 
 1. **BSR-522 legal** — ToS and privacy must exist before taking money from
@@ -109,7 +126,7 @@ moves, and add a real end-to-end confirmation test to BSR-499's scope.
    run once. Includes creating the first real row.
 4. **`org_plans` row for the live workspace**, then arm `ARC_BILLING_ENFORCEMENT`
    (precondition 3, in the safe order).
-5. **BSR-520 security review** and **BSR-521 tenant-isolation CI**.
+5. **BSR-520 security review.** (BSR-521's CI suites are done.)
 6. **BSR-504 activation** — a stranger reaching a first approved campaign
    unaided. This is also what makes directory listings (BSR-587) worth
    publishing.
@@ -123,6 +140,6 @@ a page that cannot convert.
 
 ---
 
-**Last verified:** 2026-07-31. Re-run the SQL in this document rather than
+**Last verified:** 2026-07-31 (revised the same day — see "What changed" above). Re-run the SQL in this document rather than
 trusting the table above — the whole point of BSR-505 is that these are
 confirmed, not asserted.
