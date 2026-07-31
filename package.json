@@ -16,6 +16,7 @@
     "health:billing": "node scripts/check-billing-enforcement-safety.mjs",
     "db:verify-chain": "node scripts/verify-migration-chain.mjs",
     "db:check-drift": "node scripts/check-migration-drift.mjs",
+    "db:check-rls": "node scripts/check-rls-cross-tenant.mjs",
     "verify": "node scripts/verify-product.mjs",
     "verify:live": "node scripts/verify-product.mjs && node scripts/check-supabase-health.mjs && node scripts/check-agent-task-constraints.mjs",
     "seed:arc-demo": "node scripts/seed-arc-demo.mjs",
