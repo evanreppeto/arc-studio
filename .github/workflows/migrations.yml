@@ -19,6 +19,8 @@ on:
       - "supabase/migrations/**"
       - "supabase/config.toml"
       - "scripts/verify-migration-chain.mjs"
+      - "scripts/check-rls-cross-tenant.mjs"
+      - "supabase/tests/**"
       - ".github/workflows/migrations.yml"
   push:
     branches: [main]
@@ -26,6 +28,8 @@ on:
       - "supabase/migrations/**"
       - "supabase/config.toml"
       - "scripts/verify-migration-chain.mjs"
+      - "scripts/check-rls-cross-tenant.mjs"
+      - "supabase/tests/**"
       - ".github/workflows/migrations.yml"
   workflow_dispatch:
 
@@ -55,6 +59,12 @@ jobs:
       # job stays fast and cannot be broken by an unrelated lockfile change.
       - name: Apply the whole chain to an empty database
         run: node scripts/verify-migration-chain.mjs
+
+      # Runs against the database verify-migration-chain.mjs just reset, so the
+      # policies under test are the ones the chain actually produces and this
+      # costs one psql invocation rather than a second stack.
+      - name: Prove cross-tenant denial on real Postgres
+        run: node scripts/check-rls-cross-tenant.mjs
 
       - name: Stop the stack
         if: always()
