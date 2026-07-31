@@ -38,6 +38,10 @@ on:
 
 permissions:
   contents: read
+  # Workload Identity Federation: GitHub mints a short-lived OIDC token that
+  # Google exchanges for a scoped credential. No service-account key exists to
+  # leak, rotate, or forget about.
+  id-token: write
 
 concurrency:
   group: backup-prod
@@ -46,7 +50,7 @@ concurrency:
 jobs:
   dump:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
@@ -115,6 +119,7 @@ jobs:
           DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
           PGCLIENTENCODING: UTF8
           PGSSLMODE: require
+          PGCONNECT_TIMEOUT: "30"
         run: |
           set -euo pipefail
           mkdir -p backup
@@ -154,8 +159,30 @@ jobs:
 
           . /tmp/pgenv.sh
 
-          "$PG/pg_dump" --schema=public --schema-only --no-owner --no-privileges -f backup/schema.sql
-          "$PG/pg_dump" --schema=public --data-only   --no-owner --no-privileges -f backup/data.sql
+          # Retry the connection. A run on 2026-07-31 failed with
+          #   `connection to ... port 5432 failed: Connection timed out`
+          # on a step that had worked forty minutes earlier — a pooler blip, not
+          # a configuration fault. Without this, one transient timeout costs a
+          # whole night's backup, and the next chance is 24 hours later.
+          #
+          # Still fails loudly after three tries: a backup that quietly gives up
+          # is the failure mode this whole workflow exists to avoid.
+          dump_with_retry() {
+            local desc="$1"; shift
+            local attempt=1
+            until "$PG/pg_dump" "$@"; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "::error title=Dump failed::$desc failed after 3 attempts."
+                return 1
+              fi
+              echo "::warning title=Retrying::$desc failed on attempt ${attempt}; retrying in $((attempt * 20))s."
+              sleep $((attempt * 20))
+              attempt=$((attempt + 1))
+            done
+          }
+
+          dump_with_retry "schema" --schema=public --schema-only --no-owner --no-privileges -f backup/schema.sql
+          dump_with_retry "data"   --schema=public --data-only   --no-owner --no-privileges -f backup/data.sql
           # Accounts. Failing here must not fail the backup — the CRM data is
           # the point — but it must be visible rather than quietly absent.
           if ! "$PG/pg_dump" --table=auth.users --data-only --no-owner --no-privileges -f backup/auth-users.sql; then
@@ -214,13 +241,67 @@ jobs:
           head -c 22 "arc-prod-$STAMP.tar.gz.age" | grep -q "age-encryption.org" \
             || { echo "::error title=Not encrypted::The artifact does not look like an age file. Refusing to upload it."; exit 1; }
 
-      - name: Upload
+      # PRIMARY destination. Private bucket, 365-day lifecycle, in the same GCP
+      # project as the runner.
+      #
+      # The service account holds `roles/storage.objectCreator` and nothing else:
+      # this job can WRITE a new backup but cannot read one back or delete one.
+      # So a compromised workflow can neither exfiltrate history nor destroy it —
+      # and combined with the age encryption above, it cannot read even the file
+      # it just wrote.
+      - name: Authenticate to Google Cloud
+        id: gcp_auth
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_BACKUP_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      # Uploaded through the JSON API rather than `gcloud storage cp`.
+      #
+      # `cp` does a preflight `storage.objects.get` to decide whether it is
+      # overwriting, and this service account deliberately cannot read:
+      #   403 ... does not have storage.objects.get access
+      # The fix is NOT to grant objectViewer. That would let a compromised
+      # workflow download every historical backup, which is exactly the reach
+      # this design removes. A plain upload needs only `storage.objects.create`,
+      # so the API call keeps create-only intact.
+      - name: Upload to the bucket
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        env:
+          TOKEN: ${{ steps.gcp_auth.outputs.access_token }}
+          BUCKET: ${{ vars.GCP_BACKUP_BUCKET }}
+        run: |
+          set -euo pipefail
+          OBJ="arc-prod-$STAMP.tar.gz.age"
+          CODE=$(curl -sS -o /tmp/gcs.json -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@$OBJ" \
+            "https://storage.googleapis.com/upload/storage/v1/b/$BUCKET/o?uploadType=media&name=$OBJ")
+          if [ "$CODE" != "200" ]; then
+            echo "::error title=Backup not stored::GCS upload returned HTTP $CODE. The encrypted dump exists on this runner and as an artifact, but it did NOT reach the bucket."
+            cat /tmp/gcs.json || true
+            exit 1
+          fi
+          # The API echoes the stored object's size; compare it to what we sent.
+          # Create-only means we cannot read the object back, so this response is
+          # the only confirmation available that the bytes landed intact.
+          SENT=$(stat -c%s "$OBJ")
+          STORED=$(python3 -c "import json;print(json.load(open('/tmp/gcs.json')).get('size','?'))")
+          echo "sent ${SENT}B · stored ${STORED}B"
+          [ "$SENT" = "$STORED" ] || { echo "::error title=Size mismatch::Sent ${SENT}B but the bucket recorded ${STORED}B."; exit 1; }
+          echo "Stored gs://$BUCKET/$OBJ"
+
+      # SECOND copy, deliberately kept. Two independent destinations is the point
+      # of a backup; if the GCP project is the thing that breaks, an artifact in
+      # GitHub is still there. It is encrypted, so a public repo is not a leak.
+      - name: Upload artifact (second copy)
         uses: actions/upload-artifact@v4
         with:
           name: arc-prod-backup-${{ env.STAMP }}
-          # Encrypted, so the 90-day public-artifact exposure is not a data risk.
-          # 90 is the maximum GitHub allows; see the runbook for why this is a
-          # floor on the retention story rather than the whole of it.
           retention-days: 90
           if-no-files-found: error
           path: "*.tar.gz.age"
@@ -230,7 +311,10 @@ jobs:
           {
             echo "### Prod backup — \`$STAMP\`"
             echo ""
-            echo "Encrypted to \`${{ vars.BACKUP_AGE_RECIPIENT }}\`, retained 90 days."
+            echo "Encrypted to \`${{ vars.BACKUP_AGE_RECIPIENT }}\`."
+            echo ""
+            echo "- \`gs://${{ vars.GCP_BACKUP_BUCKET }}\` — primary, 365-day lifecycle"
+            echo "- GitHub artifact — second copy, 90 days"
             echo ""
             echo "This is a compensating control while the Supabase org is on the free plan (BSR-532)."
             echo "RPO ~24h. No point-in-time recovery. Restore steps: \`docs/runbooks/backup-and-restore.md\`."

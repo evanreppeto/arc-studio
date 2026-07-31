@@ -24,6 +24,7 @@ export async function handleChatMessage(
     if (result.suggestions.length > 0) metadata.suggestions = result.suggestions;
     if (result.questions.length > 0) metadata.questions = result.questions;
     if (result.memory.length > 0) metadata.recall = result.memory;
+    if (result.toolCalls?.length) metadata.toolCalls = result.toolCalls;
     if (result.reasoning) metadata.reasoning = result.reasoning;
     metadata.runDurationMs = Math.max(0, Date.now() - started);
     await client.postChatReply({
@@ -156,6 +157,7 @@ export async function handleCampaignTask(
     if (result.suggestions.length > 0) metadata.suggestions = result.suggestions;
     if (result.questions.length > 0) metadata.questions = result.questions;
     if (result.memory.length > 0) metadata.recall = result.memory;
+    if (result.toolCalls?.length) metadata.toolCalls = result.toolCalls;
 
     if (payload.conversationId) {
       await client.postChatReply({
