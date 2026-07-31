@@ -35,13 +35,19 @@ const ACTIVE_CAMPAIGN_STATUSES = ["draft", "briefing", "generating", "pending_ap
 export async function runColdLeadDetection(
   client?: SupabaseClient,
   now: string = new Date().toISOString(),
+  /**
+   * Explicit tenant. Omit and the org is resolved from the ambient request, which
+   * only works when there IS one — a session-less caller (the cron) cannot resolve
+   * a tenant once a second active org exists. See runOpportunityScanAcrossWorkspaces.
+   */
+  orgId?: string,
 ): Promise<PersistResult> {
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "not_configured" };
   const db = client ?? getSupabaseAdminClient();
 
-  // Org-scope at the source: listLeads() (no client) applies the org filter, so the
-  // lead ids — and the events/campaigns queries bounded by them — stay org-scoped.
-  const leads = await listLeads({ limit: 500 });
+  // Org-scope at the source: listLeads() applies the org filter, so the lead ids —
+  // and the events/campaigns queries bounded by them — stay org-scoped.
+  const leads = await listLeads({ limit: 500, ...(orgId ? { orgId } : {}) });
   if (leads.length === 0) return { ok: true, count: 0 };
   const leadIds = leads.map((l) => l.id);
 
@@ -224,11 +230,13 @@ export async function runWeatherEventDetection(
   source?: WeatherEventSource,
   client?: SupabaseClient,
   now: string = new Date().toISOString(),
+  /** Explicit tenant; omit to resolve from the ambient request. */
+  scopedOrgId?: string,
 ): Promise<PersistResult> {
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "not_configured" };
   const db = client ?? getSupabaseAdminClient();
   const src = source ?? supabaseWeatherEventSource(db);
-  const orgId = await getCurrentOrgId();
+  const orgId = scopedOrgId ?? (await getCurrentOrgId());
 
   const events = await src.listActiveEvents(now);
   if (events.length === 0) return { ok: true, count: 0 };
@@ -280,10 +288,14 @@ type CampaignRow = { id: string; name: string | null; persona: string | null; st
  * never disagree. Read-only — the draft it recommends stays approval-gated. The
  * upsert's per-subject dedup keeps one open "draft round two" per campaign.
  */
-export async function runNextIterationDetection(client?: SupabaseClient): Promise<PersistResult> {
+export async function runNextIterationDetection(
+  client?: SupabaseClient,
+  /** Explicit tenant; omit to resolve from the ambient request. */
+  scopedOrgId?: string,
+): Promise<PersistResult> {
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "not_configured" };
   const db = client ?? getSupabaseAdminClient();
-  const orgId = await getCurrentOrgId();
+  const orgId = scopedOrgId ?? (await getCurrentOrgId());
 
   const { data, error } = await db
     .from("campaigns")
@@ -350,10 +362,12 @@ type CompetitorRow = {
 export async function runCompetitorSignalDetection(
   client?: SupabaseClient,
   now: string = new Date().toISOString(),
+  /** Explicit tenant; omit to resolve from the ambient request. */
+  scopedOrgId?: string,
 ): Promise<PersistResult> {
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "not_configured" };
   const db = client ?? getSupabaseAdminClient();
-  const orgId = await getCurrentOrgId();
+  const orgId = scopedOrgId ?? (await getCurrentOrgId());
 
   const { data, error } = await db
     .from("competitor_campaigns")

@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { formatAutoDraftLog, runScheduledAutoDraft, type AutoDraftRunSummary } from "@/lib/opportunities/auto-draft";
 import { enqueueOpportunityScanTask } from "@/lib/opportunities/enqueue";
 import { hasRecentOpportunityScan } from "@/lib/opportunities/recent-scan";
-import { runDeterministicOpportunityScan, type OpportunityScanSummary } from "@/lib/opportunities/scan";
+import { runOpportunityScanAcrossWorkspaces } from "@/lib/opportunities/fan-out";
+import { type OpportunityScanSummary } from "@/lib/opportunities/scan";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -37,15 +38,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, skipped: "not_configured" });
   }
 
-  // Refresh deterministic opportunities every scheduled pass. Best-effort — a
-  // detector failure must not block the generative scan below.
+  // Refresh deterministic opportunities for EVERY active workspace. This used to
+  // call the scan directly, which relied on ambient tenant resolution — and a
+  // session-less cron cannot resolve a tenant once a second active org exists, so
+  // the whole pass would silently produce nothing for everyone (BSR-626).
+  //
+  // Still best-effort at the top level, but a single tenant's failure no longer
+  // takes the pass down: the fan-out records and reports it and carries on.
   let deterministic: "ok" | "error" = "ok";
   // Carried into the response so a scheduled pass that rejects everything below
   // the confidence floor is visible in the cron log, not indistinguishable from
   // a pass that genuinely found nothing.
   let scan: OpportunityScanSummary = { added: 0, filtered: 0 };
+  let fanOut: { workspaces: number; scanned: number; failed: number } = {
+    workspaces: 0,
+    scanned: 0,
+    failed: 0,
+  };
   try {
-    scan = await runDeterministicOpportunityScan();
+    const result = await runOpportunityScanAcrossWorkspaces();
+    scan = { added: result.added, filtered: result.filtered };
+    fanOut = { workspaces: result.workspaces, scanned: result.scanned, failed: result.failed };
+    if (result.failed > 0) deterministic = "error";
   } catch {
     deterministic = "error";
   }
@@ -66,9 +80,9 @@ export async function GET(request: Request) {
   console.log(formatAutoDraftLog(autoDraft));
 
   if (await hasRecentOpportunityScan(RECENT_HOURS)) {
-    return NextResponse.json({ ok: true, deterministic, scan, autoDraft, skipped: "recent" });
+    return NextResponse.json({ ok: true, deterministic, scan, fanOut, autoDraft, skipped: "recent" });
   }
 
   const result = await enqueueOpportunityScanTask({ operator: "Scheduled scan" });
-  return NextResponse.json({ ok: result.ok, deterministic, scan, autoDraft, queued: result.ok, ...(result.error ? { error: result.error } : {}) });
+  return NextResponse.json({ ok: result.ok, deterministic, scan, fanOut, autoDraft, queued: result.ok, ...(result.error ? { error: result.error } : {}) });
 }
