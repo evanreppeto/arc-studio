@@ -8,7 +8,10 @@
 
 export const PRICING_VERSION = "2026-07-31";
 
-export type AiUsageService = "arc_claude" | "gemini_image" | "gemini_video";
+export type AiUsageService = "arc_claude" | "gemini_image" | "gemini_video" | "gemini_embedding";
+
+/** Services billed per generation, not per token. */
+export type MediaUsageService = "gemini_image" | "gemini_video";
 
 type ModelRate = { inputCentsPerMTok: number; outputCentsPerMTok: number };
 
@@ -25,10 +28,65 @@ const MODEL_PRICING: Record<string, ModelRate> = {
 };
 
 /** Per-generation media pricing, in cents per unit. */
-const MEDIA_PRICING: Record<Exclude<AiUsageService, "arc_claude">, number> = {
+const MEDIA_PRICING: Record<MediaUsageService, number> = {
   gemini_image: 4,
   gemini_video: 200,
 };
+
+/**
+ * Embedding pricing, cents per 1,000,000 input tokens.
+ *
+ * DELIBERATELY EMPTY. The embedding path is now metered — volume, model and
+ * character counts all reach the ledger — but no rate has been supplied, so
+ * every embedding row records a cost of ZERO.
+ *
+ * That is the same shape as the claude-sonnet-5 hole this audit found, with one
+ * decisive difference: it is LOUD. `recordUsageEvent` reports an unpriced model
+ * to Sentry (`ai-usage.unpriced-model`), so a zero here announces itself instead
+ * of sitting in the ledger for three weeks. Recording the volume now is what
+ * makes a backfill possible the moment a real rate arrives — the rows will
+ * exist, with exact character counts on them.
+ *
+ * Do NOT populate this by inference. A plausible wrong price in a billing meter
+ * replaces a visible zero with an invisible error, which is strictly worse.
+ */
+const EMBEDDING_PRICING: Record<string, number> = {};
+
+/** Resolve an embedding model's per-Mtok input rate, or null when unpriced. */
+export function resolveEmbeddingRate(model: string): number | null {
+  if (model in EMBEDDING_PRICING) return EMBEDDING_PRICING[model];
+  for (const [id, rate] of Object.entries(EMBEDDING_PRICING)) {
+    if (model.startsWith(id)) return rate;
+  }
+  return null;
+}
+
+/**
+ * Gemini bills embeddings per input token but — on the developer API — returns
+ * no token count for `embedContent`: `billableCharacterCount` and the per-
+ * embedding `statistics` are Enterprise-only fields. So the token figure on an
+ * embedding row is ESTIMATED from characters at the usual ~4-chars-per-token
+ * approximation, and the row records the exact character count in `units`
+ * alongside it.
+ *
+ * The estimate is flagged in row metadata (`token_source`) precisely so nobody
+ * later mistakes it for a measured value and reconciles an invoice against it.
+ */
+export const CHARS_PER_TOKEN_ESTIMATE = 4;
+
+export function estimateTokensFromChars(chars: number): number {
+  return Math.ceil(Math.max(0, chars) / CHARS_PER_TOKEN_ESTIMATE);
+}
+
+/** Estimated cost (cents) of an embedding call. Unpriced model -> 0. */
+export function estimateEmbeddingCostCents(
+  model: string,
+  inputTokens: number | null | undefined,
+): number {
+  const rate = resolveEmbeddingRate(model);
+  if (rate === null) return 0;
+  return Math.round(((inputTokens ?? 0) * rate) / 1_000_000);
+}
 
 /** Resolve a model's token rate: exact id first, then a known-prefix match. */
 export function resolveModelRate(model: string): ModelRate | null {
@@ -41,6 +99,18 @@ export function resolveModelRate(model: string): ModelRate | null {
 
 export function isPricedModel(model: string): boolean {
   return resolveModelRate(model) !== null;
+}
+
+/**
+ * Can this (service, model) pair produce a non-zero cost? Service-aware, because
+ * "priced" means a different table per service and a Claude-only check would
+ * report every embedding as priced-at-zero without ever saying so. Media is
+ * priced per generation, so the model id is irrelevant there.
+ */
+export function isPricedUsage(service: AiUsageService, model: string): boolean {
+  if (service === "arc_claude") return isPricedModel(model);
+  if (service === "gemini_embedding") return resolveEmbeddingRate(model) !== null;
+  return true;
 }
 
 /** Estimated cost (cents) of a Claude turn. Unknown model -> 0. */
@@ -59,7 +129,7 @@ export function estimateClaudeCostCents(
 
 /** Estimated cost (cents) of N media generations. Missing units -> 1. */
 export function estimateMediaCostCents(
-  service: Exclude<AiUsageService, "arc_claude">,
+  service: MediaUsageService,
   units: number | null | undefined,
 ): number {
   const count = units ?? 1;

@@ -155,6 +155,8 @@ export function createArcClient(config: Config, identity?: WakeTenantIdentity) {
     outputTokens: number | null;
     actorUser?: string | null;
     taskId?: string | null;
+    /** Usage fields with no ledger column; the app folds these into row metadata. */
+    detail?: Record<string, unknown> | null;
   }): Promise<void> {
     try {
       await fetch(`${config.appApiBaseUrl}/api/v1/arc/usage`, {
@@ -166,6 +168,7 @@ export function createArcClient(config: Config, identity?: WakeTenantIdentity) {
           output_tokens: input.outputTokens ?? undefined,
           actor_user: input.actorUser ?? undefined,
           task_id: input.taskId ?? undefined,
+          usage_detail: input.detail ?? undefined,
         }),
       });
     } catch {

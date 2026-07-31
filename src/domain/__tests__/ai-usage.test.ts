@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   PRICING_VERSION,
   estimateClaudeCostCents,
+  estimateEmbeddingCostCents,
   estimateMediaCostCents,
+  estimateTokensFromChars,
   isPricedModel,
+  isPricedUsage,
 } from "../ai-usage";
 import type { UsageRollupEvent, UsageSummary } from "../ai-usage";
 import { summarizeUsage, bucketCostByDay, summarizeUsageForSettings } from "../ai-usage";
@@ -174,5 +177,38 @@ describe("claude-sonnet-5 pricing (BSR-502)", () => {
     // The zero must stay VISIBLE for anything unpriced — persistence reports it.
     expect(isPricedModel("claude-nonexistent-9")).toBe(false);
     expect(estimateClaudeCostCents("claude-nonexistent-9", 1_000_000, 1_000_000)).toBe(0);
+  });
+});
+
+describe("embedding pricing (BSR-502 Finding 1)", () => {
+  it("estimates tokens from characters, rounding UP", () => {
+    // Gemini's developer API returns no token count for embedContent — the
+    // billableCharacterCount / statistics fields are Enterprise-only — so the
+    // token figure is derived. Rounding up keeps the estimate from being the
+    // optimistic side of an already-undercounting meter.
+    expect(estimateTokensFromChars(0)).toBe(0);
+    expect(estimateTokensFromChars(1)).toBe(1);
+    expect(estimateTokensFromChars(4)).toBe(1);
+    expect(estimateTokensFromChars(5)).toBe(2);
+    expect(estimateTokensFromChars(-10)).toBe(0);
+  });
+
+  it("records ZERO for an unpriced embedding model — and says so", () => {
+    // The rate table is deliberately empty: no published figure has been
+    // supplied, and inferring one would swap a visible zero for an invisible
+    // wrong number. What matters is that the zero is DECLARED unpriced, so
+    // recordUsageEvent reports it instead of filing it silently — the exact
+    // failure that let claude-sonnet-5 bill nothing for three weeks.
+    expect(estimateEmbeddingCostCents("gemini-embedding-2", 10_000)).toBe(0);
+    expect(isPricedUsage("gemini_embedding", "gemini-embedding-2")).toBe(false);
+  });
+
+  it("does not let a Claude-only priced check vouch for another service", () => {
+    // isPricedModel consults the Claude table. Asking it about an embedding
+    // model would answer "unpriced" for the right reason by accident, and would
+    // answer "priced" for a media row that has no model id at all.
+    expect(isPricedUsage("arc_claude", "claude-opus-4-8")).toBe(true);
+    expect(isPricedUsage("arc_claude", "claude-not-a-real-model-9")).toBe(false);
+    expect(isPricedUsage("gemini_image", "")).toBe(true);
   });
 });

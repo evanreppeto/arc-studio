@@ -4,7 +4,9 @@
 `ai_usage_events` row ever written: 69 events, 2026-07-10 → 2026-07-31.
 
 **Verdict: the meter undercounts, and cannot currently be reconciled.** Five
-distinct gaps, four of them quantified from live data. None of them overcharge a
+distinct gaps, four of them quantified from live data. Findings 1–4 have been
+addressed to different depths — read each one's status rather than assuming the
+audit is closed. None of them overcharge a
 customer — every failure mode found runs in the direction of billing too little,
 which is the safer direction but still means the caps in `src/domain/plans.ts` are
 being enforced against a number that is not the real spend.
@@ -52,8 +54,35 @@ been counted. Embeddings are individually cheap, which is exactly why this can
 run for months unnoticed — and why it will scale with tenant count once signup
 opens.
 
-**Fix:** add enum values and meter the embedding path. Requires a migration, so
-it is not in this change.
+**Structurally fixed 2026-07-31.** `gemini_embedding` is now an
+`ai_usage_service` value, and every successful `embedText` call records to the
+ledger. The scope argument is **required**, so a new embedding call site cannot
+compile without deciding who it bills to — the gap was never a call site that
+forgot, it was that nothing forced the question.
+
+Two things about those rows:
+
+- **They record ZERO, loudly.** No published rate for `gemini-embedding-2` has
+  been supplied, and inferring one would repeat Finding 2's mistake in the
+  opposite direction. `EMBEDDING_PRICING` is deliberately empty, `priced_model`
+  writes `false`, and `recordUsageEvent` reports every one to Sentry. Recording
+  the volume now is what makes a backfill possible the moment a rate arrives —
+  with exact character counts already on the rows.
+- **The token count is estimated.** Gemini's developer API returns no usage
+  figures for `embedContent` (`billableCharacterCount` and the per-embedding
+  `statistics` are Enterprise-only). Characters are exact and go in `units`;
+  tokens are derived at ~4 chars each and stamped
+  `token_source: "estimated_from_chars"` so nobody reconciles an invoice against
+  a guess.
+
+Embedding rows carry a **null `workspace_id`** on purpose. The Brain is
+org-scoped — `knowledge_nodes` has an `org_id` and no workspace — so there is no
+workspace to attribute to, and resolving a default one would fabricate an
+attribution instead of recording its absence. Null here means org-scoped.
+
+**Still not metered:** the two Gemini *text* call sites — `research/gemini-web-search.ts`
+and `brand-knowledge/gemini-parser.ts`. Those are a smaller job than this one was:
+`generateContent` returns a real `usageMetadata` block, so they need no estimation.
 
 **Not a gap:** `gemini_image` / `gemini_video` have 0 events, but `media_assets`
 is also 0 — media generation is credential-gated and genuinely unused. Correct,
@@ -115,8 +144,21 @@ That would explain the magnitude exactly. Cache reads are cheaper than base inpu
 but **not free**, and cache *creation* is more expensive than base input, so the
 missing side is real money.
 
-Confirming this needs one raw `usage` payload logged from a live run — cheap to
-do, and worth doing before anyone trusts an input-token figure.
+**Instrumented 2026-07-31.** Rather than log one payload and read it once, the
+runner now captures `cache_read_input_tokens`, `cache_creation_input_tokens`
+**and the raw key set** of the SDK's `usage` object, and posts them to the ledger
+as `metadata.usage_detail`. The key set matters: if the hypothesis is wrong, the
+list says what the SDK actually reports, so the next person reads a fact instead
+of inferring from an absence.
+
+`input_tokens` still means exactly what the SDK returns. Folding cache tokens
+into it would redefine a column mid-ledger and make the whole series
+uncomparable.
+
+**Nothing is priced off this yet.** Cache reads are cheaper than base input and
+cache creation is dearer, so the correction is not a single multiplier. The next
+live Arc run produces the data; pricing it is a follow-up with real numbers
+behind it rather than a plausible guess.
 
 ## Finding 4 — a metering failure was invisible
 
@@ -191,13 +233,18 @@ records zero, but now reports while doing it.
 
 The caps in `src/domain/plans.ts` say in their own header that they are
 *reasoned, not measured*. This audit does not change that — it establishes that
-the meter they would be enforced against is **known to undercount**: the entire
-embedding path, most of the input side, and every call too small to round up to a
-cent. Pricing sonnet-5 closed the largest of the gaps, not the category.
+the meter they would be enforced against is **known to undercount**.
+
+What changed on 2026-07-31 is mostly *observability*, not accuracy: embeddings
+and cache tokens now reach the ledger, but embeddings still price at zero and
+cache tokens are not priced at all. The gaps are now instrumented rather than
+closed — which is the necessary first step, and is not the same thing.
 
 Enforcement blocks real customer work. Doing it against a number this incomplete
-is not defensible yet. Order: ~~price sonnet-5~~ (done 2026-07-31) → confirm the
-cache-token hypothesis → meter embeddings → decide on sub-cent precision →
-reconcile one month against real invoices → then arm.
+is not defensible yet. Order: ~~price sonnet-5~~ (done) → ~~meter embeddings~~
+(done — rows exist, rate still needed) → **supply an embedding rate and backfill**
+→ read `metadata.usage_detail` off a live run and price the cache tokens →
+meter the two Gemini text call sites → decide on sub-cent precision → reconcile
+one month against real invoices → then arm.
 
 **Last verified:** 2026-07-31.
