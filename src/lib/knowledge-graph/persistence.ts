@@ -298,14 +298,20 @@ export async function decideNode(
  */
 export async function updateNode(
   nodeId: string,
-  fields: { label?: string; body?: string | null },
+  fields: { label?: string; summary?: string | null; body?: string | null },
   deps: WriteDeps = {},
 ): Promise<WriteResult> {
-  const patch: { label?: string; body?: string | null } = {};
+  const patch: { label?: string; summary?: string | null; body?: string | null } = {};
   if (fields.label !== undefined) {
     const label = fields.label.trim();
     if (!label) return { ok: false, error: "A node needs a label." };
     patch.label = label;
+  }
+  // `summary` is the fact in Arc's own words — what every recall surface shows
+  // and what recall's own text is built from. Leaving it out of the patch meant
+  // the only correctable field was one nobody reads (BSR-531).
+  if (fields.summary !== undefined) {
+    patch.summary = (fields.summary ?? "").trim() || null;
   }
   if (fields.body !== undefined) {
     patch.body = (fields.body ?? "").trim() || null;
@@ -318,12 +324,24 @@ export async function updateNode(
   const { data, error } = await client
     .from("knowledge_nodes")
     .update(patch)
+    // Re-select the whole text, not just the id: the embedding has to be
+    // rebuilt from the node's FULL content, and only some of it was patched.
     .eq("id", nodeId)
     .eq("org_id", orgId)
-    .select("id")
-    .single<{ id: string }>();
+    .select("id, label, summary, body")
+    .single<{ id: string; label: string; summary: string | null; body: string | null }>();
   if (error) return { ok: false, error: error.message };
   if (!data?.id) return { ok: false, error: MISSING_WRITE_ID };
+
+  // Re-embed, or the correction never reaches Arc.
+  //
+  // The stored vector is built from label+summary+body. Editing the text
+  // without rebuilding it leaves the node semantically searchable under its OLD
+  // wording — so a corrected fact would keep surfacing for the question it no
+  // longer answers, and stop surfacing for the one it now does. The operator
+  // would see their fix on screen and Arc would carry on saying the old thing,
+  // which is the exact class of silent failure this milestone exists to remove.
+  await storeEmbeddingBestEffort(client, orgId, data.id, await embedNodeTextBestEffort(data));
   return { ok: true, id: data.id };
 }
 
