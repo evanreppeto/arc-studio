@@ -1,5 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 import { reportDegraded } from "@/lib/observability/report-degraded";
+import { unavailableRead } from "@/lib/observability/unavailable";
 
 import {
   DEFAULT_PIPELINE_STAGES,
@@ -1391,50 +1392,65 @@ export async function getCrmRecordData(key: CrmObjectKey, recordId: string, clie
   }
 }
 
-async function getCrmTableBundle(client?: SupabaseClient, orgId?: string | null) {
+/**
+ * Fetch specific rows for ONE object instead of its recency window.
+ *
+ * The window exists so a board render is bounded. That is fine for rendering
+ * and wrong for finding: a record past the 1,000th is simply not in the browser,
+ * so the client-side filter cannot match it while the counter — a real COUNT —
+ * insists it exists (BSR-633). Focusing lets a search fetch exactly its hits and
+ * still decorate them with the same relationship/stage context every other row
+ * gets.
+ */
+type CrmBundleFocus = { key: CrmObjectKey; ids: string[] };
+
+async function getCrmTableBundle(client?: SupabaseClient, orgId?: string | null, focus?: CrmBundleFocus) {
   const supabase = client ?? getSupabaseAdminClient();
+  /** Focused object: fetch by id. Everything else keeps its window. */
+  const scope = <T extends { in: (col: string, v: string[]) => T; limit: (n: number) => T }>(key: CrmObjectKey, q: T): T =>
+    focus && focus.key === key ? q.in("id", focus.ids) : q.limit(CRM_TABLE_BUNDLE_LIMIT);
 
   let companiesQ = supabase
     .from("companies")
     .select("id,name,persona,status,website_url,phone,email,partner_tier,metadata,created_at,updated_at,origin")
-    .order("updated_at", { ascending: false })
-    .limit(CRM_TABLE_BUNDLE_LIMIT);
+    .order("updated_at", { ascending: false });
   if (orgId) companiesQ = companiesQ.eq("org_id", orgId);
+  companiesQ = scope("companies", companiesQ as never) as typeof companiesQ;
 
   let contactsQ = supabase
     .from("contacts")
     .select("id,company_id,persona,status,first_name,last_name,full_name,email,phone,title,metadata,created_at,updated_at,origin")
-    .order("updated_at", { ascending: false })
-    .limit(CRM_TABLE_BUNDLE_LIMIT);
+    .order("updated_at", { ascending: false });
   if (orgId) contactsQ = contactsQ.eq("org_id", orgId);
+  contactsQ = scope("contacts", contactsQ as never) as typeof contactsQ;
 
   let propertiesQ = supabase
     .from("properties")
     .select("id,company_id,contact_id,persona,street_line_1,street_line_2,city,state,postal_code,property_type,metadata,created_at,updated_at,origin")
-    .order("updated_at", { ascending: false })
-    .limit(CRM_TABLE_BUNDLE_LIMIT);
+    .order("updated_at", { ascending: false });
   if (orgId) propertiesQ = propertiesQ.eq("org_id", orgId);
+  propertiesQ = scope("properties", propertiesQ as never) as typeof propertiesQ;
 
   let leadsQ = supabase
     .from("leads")
     .select("id,company_id,contact_id,property_id,persona,status,routing_recommendation,source,loss_summary,loss_signals,lead_score,received_at,metadata,created_at,updated_at,origin")
-    .order("updated_at", { ascending: false })
-    .limit(CRM_TABLE_BUNDLE_LIMIT);
+    .order("updated_at", { ascending: false });
   if (orgId) leadsQ = leadsQ.eq("org_id", orgId);
+  leadsQ = scope("leads", leadsQ as never) as typeof leadsQ;
 
   let jobsQ = supabase
     .from("jobs")
     .select("id,lead_id,company_id,contact_id,property_id,persona,status,job_number,scheduled_at,completed_at,estimated_revenue_cents,metadata,created_at,updated_at")
-    .order("updated_at", { ascending: false })
-    .limit(CRM_TABLE_BUNDLE_LIMIT);
+    .order("updated_at", { ascending: false });
   if (orgId) jobsQ = jobsQ.eq("org_id", orgId);
+  jobsQ = scope("jobs", jobsQ as never) as typeof jobsQ;
 
   let outcomesQ = supabase
     .from("outcomes")
     .select("id,job_id,lead_id,company_id,contact_id,property_id,persona,status,gross_revenue_cents,gross_margin_cents,closed_at,metadata,created_at,updated_at")
-    .order("updated_at", { ascending: false })
-    .limit(CRM_TABLE_BUNDLE_LIMIT);
+    .order("updated_at", { ascending: false });
   if (orgId) outcomesQ = outcomesQ.eq("org_id", orgId);
+  outcomesQ = scope("outcomes", outcomesQ as never) as typeof outcomesQ;
 
   const [companies, contacts, properties, leads, jobs, outcomes] = await Promise.all([
     companiesQ,
@@ -1470,6 +1486,94 @@ async function getCrmTableBundle(client?: SupabaseClient, orgId?: string | null)
     outcomes: (outcomes.data ?? []) as OutcomeRow[],
     stages: { leads: leadStages, jobs: jobStages, outcomes: outcomeStages },
   };
+}
+
+/**
+ * Server-side search for one CRM object (BSR-633).
+ *
+ * The board fetches a 1,000-row recency window and filters it in the browser.
+ * That is honest for rendering and wrong for finding: on a workspace with 2,719
+ * contacts, 1,719 of them — 63% — were not in the browser at all, so the filter
+ * returned nothing while the counter, a real COUNT, insisted the record existed.
+ * The UI stated the record was there and then failed to find it.
+ *
+ * This pushes the term into the query instead. Matching is over the record's OWN
+ * text columns; derived values the board also filters on (owner, relationship
+ * names, custom fields) are not searchable server-side, so a client-side pass
+ * still refines whatever comes back.
+ */
+export const CRM_SEARCH_LIMIT = 200;
+
+/** Columns worth matching per object — the ones a human would type. */
+const CRM_SEARCH_COLUMNS: Record<CrmObjectKey, string[]> = {
+  companies: ["name", "website_url", "email", "phone"],
+  contacts: ["full_name", "first_name", "last_name", "email", "phone", "title"],
+  properties: ["street_line_1", "street_line_2", "city", "state", "postal_code"],
+  leads: ["loss_summary", "source", "status", "routing_recommendation"],
+  jobs: ["job_number", "status"],
+  outcomes: ["status"],
+};
+
+/**
+ * Neutralize a term for PostgREST's `.or()` grammar, which embeds it in a
+ * comma/paren-delimited filter string and treats `*` as the wildcard. A raw
+ * comma, paren or star would break the filter — or inject an extra OR
+ * condition. Mirrors `sanitizeBrainSearch`, which exists for the same hazard.
+ */
+export function sanitizeCrmSearch(raw: string): string {
+  return raw.replace(/[,()*%"\\]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+export type CrmSearchResult =
+  | { status: "live"; rows: CrmObjectRow[]; capped: boolean }
+  | { status: "unavailable"; message: string };
+
+export async function searchCrmObjectRows(
+  key: CrmObjectKey,
+  rawQuery: string,
+  orgId: string,
+  client?: SupabaseClient,
+): Promise<CrmSearchResult> {
+  const term = sanitizeCrmSearch(rawQuery);
+  // One character matches most of the table; the caller filters the page anyway.
+  if (term.length < 2) return { status: "live", rows: [], capped: false };
+  if (!client && !isSupabaseAdminConfigured()) {
+    return { status: "unavailable", message: "CRM search is unavailable." };
+  }
+  const supabase = client ?? getSupabaseAdminClient();
+
+  try {
+    // Ids first, so the expensive decoration only runs for real hits.
+    const filter = CRM_SEARCH_COLUMNS[key].map((column) => `${column}.ilike.*${term}*`).join(",");
+    const { data, error } = await supabase
+      .from(key)
+      .select("id")
+      .eq("org_id", orgId)
+      .or(filter)
+      .order("updated_at", { ascending: false })
+      .limit(CRM_SEARCH_LIMIT + 1);
+    if (error) {
+      return unavailableRead("crm.searchCrmObjectRows", orgId, error, {
+        surface: "primary",
+        fallbackMessage: "CRM search is unavailable.",
+      });
+    }
+
+    const ids = ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+    const capped = ids.length > CRM_SEARCH_LIMIT;
+    const page = capped ? ids.slice(0, CRM_SEARCH_LIMIT) : ids;
+    if (!page.length) return { status: "live", rows: [], capped: false };
+
+    // Focused bundle: the hits themselves, plus the usual windows for the
+    // relationship and stage context every other row is decorated with.
+    const bundle = await getCrmTableBundle(supabase, orgId, { key, ids: page });
+    return { status: "live", rows: mapObjectRows(key, bundle), capped };
+  } catch (error) {
+    return unavailableRead("crm.searchCrmObjectRows", orgId, error, {
+      surface: "primary",
+      fallbackMessage: "CRM search is unavailable.",
+    });
+  }
 }
 
 function assertResult(table: string, error: { message?: string } | null) {
