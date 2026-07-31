@@ -227,26 +227,50 @@ jobs:
       # and combined with the age encryption above, it cannot read even the file
       # it just wrote.
       - name: Authenticate to Google Cloud
+        id: gcp_auth
         if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_BACKUP_SERVICE_ACCOUNT }}
+          token_format: access_token
 
-      - name: Upload to GCS
+      # Uploaded through the JSON API rather than `gcloud storage cp`.
+      #
+      # `cp` does a preflight `storage.objects.get` to decide whether it is
+      # overwriting, and this service account deliberately cannot read:
+      #   403 ... does not have storage.objects.get access
+      # The fix is NOT to grant objectViewer. That would let a compromised
+      # workflow download every historical backup, which is exactly the reach
+      # this design removes. A plain upload needs only `storage.objects.create`,
+      # so the API call keeps create-only intact.
+      - name: Upload to the bucket
         if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Copy the backup to the bucket
-        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        env:
+          TOKEN: ${{ steps.gcp_auth.outputs.access_token }}
+          BUCKET: ${{ vars.GCP_BACKUP_BUCKET }}
         run: |
           set -euo pipefail
-          gcloud storage cp "arc-prod-$STAMP.tar.gz.age" \
-            "gs://${{ vars.GCP_BACKUP_BUCKET }}/arc-prod-$STAMP.tar.gz.age"
-          # objectCreator cannot list or read, so there is no point trying to
-          # verify by reading it back — `cp` failing is the signal, and it would
-          # have exited non-zero above.
-          echo "Uploaded to gs://${{ vars.GCP_BACKUP_BUCKET }}/arc-prod-$STAMP.tar.gz.age"
+          OBJ="arc-prod-$STAMP.tar.gz.age"
+          CODE=$(curl -sS -o /tmp/gcs.json -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@$OBJ" \
+            "https://storage.googleapis.com/upload/storage/v1/b/$BUCKET/o?uploadType=media&name=$OBJ")
+          if [ "$CODE" != "200" ]; then
+            echo "::error title=Backup not stored::GCS upload returned HTTP $CODE. The encrypted dump exists on this runner and as an artifact, but it did NOT reach the bucket."
+            cat /tmp/gcs.json || true
+            exit 1
+          fi
+          # The API echoes the stored object's size; compare it to what we sent.
+          # Create-only means we cannot read the object back, so this response is
+          # the only confirmation available that the bytes landed intact.
+          SENT=$(stat -c%s "$OBJ")
+          STORED=$(python3 -c "import json;print(json.load(open('/tmp/gcs.json')).get('size','?'))")
+          echo "sent ${SENT}B · stored ${STORED}B"
+          [ "$SENT" = "$STORED" ] || { echo "::error title=Size mismatch::Sent ${SENT}B but the bucket recorded ${STORED}B."; exit 1; }
+          echo "Stored gs://$BUCKET/$OBJ"
 
       # SECOND copy, deliberately kept. Two independent destinations is the point
       # of a backup; if the GCP project is the thing that breaks, an artifact in
