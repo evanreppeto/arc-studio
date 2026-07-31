@@ -46,7 +46,24 @@ export type ArcTurnResult = {
   /** The model's extended-thinking transcript for this turn, preserved so the
    *  completed reply keeps the "Thought for Ns" trace. Null when none was emitted. */
   reasoning?: string | null;
-  usage: { model: string; inputTokens: number | null; outputTokens: number | null };
+  usage: {
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    /** Raw usage fields the ledger does not have columns for (BSR-502 Finding 3). */
+    detail: UsageDetail | null;
+  };
+};
+
+/**
+ * The parts of the SDK's `usage` payload that no column exists for. Recorded to
+ * row metadata so the input-token undercount becomes measurable rather than
+ * hypothesised. Not priced — see the capture site.
+ */
+export type UsageDetail = {
+  cache_read_input_tokens: number | null;
+  cache_creation_input_tokens: number | null;
+  usage_keys: string[];
 };
 
 /**
@@ -354,6 +371,7 @@ async function runArcQuery(opts: {
   });
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
+  let usageDetail: UsageDetail | null = null;
   // Diagnostic for BSR-573: Arc had never captured a character of reasoning in
   // production, and nothing in the code path said why — the thinking branch
   // reads a defensively-typed field, so a shape change or an absent event fails
@@ -496,10 +514,27 @@ async function runArcQuery(opts: {
       }
     } else if (message.type === "result" && message.subtype === "success") {
       resultText = message.result;
-      const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+      const usage = (message as { usage?: Record<string, unknown> }).usage;
       if (usage) {
-        inputTokens = typeof usage.input_tokens === "number" ? usage.input_tokens : inputTokens;
-        outputTokens = typeof usage.output_tokens === "number" ? usage.output_tokens : outputTokens;
+        const count = (k: string): number | null => (typeof usage[k] === "number" ? (usage[k] as number) : null);
+        inputTokens = count("input_tokens") ?? inputTokens;
+        outputTokens = count("output_tokens") ?? outputTokens;
+        // BSR-502 Finding 3: 620 input tokens across 69 production turns — an
+        // average of NINE, for an agent that reads CRM records, history and tool
+        // results. The standing hypothesis is that prompt caching moves the bulk
+        // of the input side into cache_* fields that nothing has ever read.
+        //
+        // Capture them, and capture the RAW KEY SET too. If the hypothesis is
+        // wrong, the key list says what the SDK actually reports and the next
+        // person is not guessing from an absence. Recording is not pricing:
+        // cache reads are cheaper than base input and cache creation is dearer,
+        // and no rate goes into the meter until this data says what is real.
+        usageDetail = {
+          cache_read_input_tokens: count("cache_read_input_tokens"),
+          cache_creation_input_tokens: count("cache_creation_input_tokens"),
+          usage_keys: Object.keys(usage).sort(),
+        };
+        console.log(`[arc-runner] usage payload: ${JSON.stringify(usage)}`);
       }
     }
   }
@@ -535,7 +570,7 @@ async function runArcQuery(opts: {
     memory: opts.ctx.memory ?? [],
     drafts,
     reasoning,
-    usage: { model: opts.inference.model, inputTokens, outputTokens },
+    usage: { model: opts.inference.model, inputTokens, outputTokens, detail: usageDetail },
   };
 }
 

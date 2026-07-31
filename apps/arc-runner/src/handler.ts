@@ -38,6 +38,7 @@ export async function handleChatMessage(
       model: result.usage.model,
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
+      detail: result.usage.detail,
       actorUser: payload.operator ?? null,
       taskId: payload.agentTaskId,
     });
@@ -84,6 +85,7 @@ export async function handleOpportunityDraft(
       model: result.usage.model,
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
+      detail: result.usage.detail,
       actorUser: payload.operator ?? null,
       taskId: payload.agentTaskId,
     });
@@ -113,6 +115,7 @@ export async function handleOpportunityScan(
       model: result.usage.model,
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
+      detail: result.usage.detail,
       actorUser: payload.operator ?? null,
       taskId: payload.agentTaskId,
     });

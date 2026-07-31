@@ -30,6 +30,23 @@ export async function POST(request: Request) {
   const asCount = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
 
+  // Usage fields the ledger has no column for — today, the prompt-cache token
+  // counts (BSR-502 Finding 3). Recorded to metadata rather than given columns
+  // because what the SDK reports is still being established; `usage_keys` in the
+  // payload says what actually arrived, so the next reader is not inferring from
+  // an absence. NOT priced: cache reads are cheaper than base input and cache
+  // creation is dearer, and no rate enters the meter on a guess.
+  const detail = body.usage_detail;
+  const usageDetail =
+    detail && typeof detail === "object" && !Array.isArray(detail)
+      ? { usage_detail: detail as Record<string, unknown> }
+      : {};
+
+  const callerMetadata =
+    body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+      ? (body.metadata as Record<string, unknown>)
+      : {};
+
   const result = await recordUsageEvent({
     orgId: allowed.scope.orgId,
     workspaceId: allowed.scope.workspaceId,
@@ -40,7 +57,7 @@ export async function POST(request: Request) {
     outputTokens: asCount(body.output_tokens),
     taskId: typeof body.task_id === "string" ? body.task_id : null,
     campaignId: typeof body.campaign_id === "string" ? body.campaign_id : null,
-    metadata: body.metadata && typeof body.metadata === "object" ? (body.metadata as Record<string, unknown>) : undefined,
+    metadata: { ...callerMetadata, ...usageDetail },
   });
 
   if (!result.recorded) {
