@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit --pretty false",
+    "typecheck": "tsc --noEmit --pretty false --incremental false",
     "test:smoke": "vitest run src/lib/product-readiness/app-surface.test.ts src/lib/product-readiness/backend-boundary.test.ts src/lib/auth/route-protection.test.ts src/app/api/auth/sign-in/route.test.ts src/app/api/auth/sign-up/route.test.ts src/app/api/auth/workspace-invites/route.test.ts src/app/api/auth/workspace-members/route.test.ts src/app/api/v1/arc/health/route.test.ts src/app/api/v1/arc/tasks/route.test.ts",
     "smoke:http": "node scripts/smoke-http.mjs",
     "health:supabase": "node scripts/check-supabase-health.mjs",
