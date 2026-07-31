@@ -14,8 +14,12 @@ substitutions:
   _REPO: arc-runner
 
 steps:
+  # TEMPORARY — BSR-536 failure drill. Deliberately unresolvable builder image
+  # so this build fails at step ONE: nothing is built, nothing is pushed, and
+  # the deploy step never runs, so Cloud Run keeps serving its current revision.
+  # Reverted immediately after the failure notification is confirmed.
   - id: build
-    name: gcr.io/cloud-builders/docker
+    name: gcr.io/cloud-builders/docker-bsr536-does-not-exist
     args:
       - build
       - -t
