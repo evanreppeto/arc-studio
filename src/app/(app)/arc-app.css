@@ -1923,6 +1923,43 @@
   }
 }
 
+/* Brain fact correction dialog (BSR-531). */
+.fcorr-l {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fcorr-l small {
+  display: block;
+  margin-top: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.fcorr-i {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: 0;
+  resize: vertical;
+}
+.fcorr-i:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+}
+
 /* ── Full-screen state pages (404, error boundary) ──────────────────────────
    These render inside the shell, so the operator keeps the rail and header and
    stays oriented. Before this the app had no not-found.tsx and no error.tsx at

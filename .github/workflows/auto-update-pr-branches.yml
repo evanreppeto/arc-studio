@@ -24,10 +24,28 @@ name: Auto-update PR branches
 on:
   push:
     branches: [main]
+  pull_request_target:
+    # The gap the other two triggers leave: a PR armed with auto-merge AFTER the
+    # last push to `main` is already behind at the moment it is armed, and no
+    # push is coming to notice. It then waits on the cron.
+    #
+    # That wait is not bounded in practice. GitHub drops scheduled runs under
+    # load — observed here as a 55-minute stretch with no `schedule` run at all
+    # despite `*/15`, which is what left #790 parked with green checks while it
+    # looked merged. Arming is the moment we learn the PR wants to land, so it
+    # is the moment to check.
+    #
+    # `pull_request_target` (not `pull_request`) because this needs
+    # AUTO_UPDATE_PAT, which fork-triggered `pull_request` runs cannot read.
+    # The usual danger of `pull_request_target` is that it grants secrets to a
+    # run that then checks out untrusted PR code — this workflow never checks
+    # out any code at all, it only calls the API, so that danger does not apply.
+    types: [auto_merge_enabled, ready_for_review]
   schedule:
     # Safety net: catches PRs that fell behind while their own update was in
     # flight, and any push-triggered run that raced. Measured merge cadence on
     # this repo is a ~9.5 min median gap, so a third of attempts get overtaken.
+    # Kept as a backstop, not a primary path — see the drop note above.
     - cron: "*/15 * * * *"
   workflow_dispatch:
 

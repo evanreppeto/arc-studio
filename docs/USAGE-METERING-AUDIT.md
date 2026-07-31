@@ -3,8 +3,8 @@
 **Audited 2026-07-31 against production** (`qqbecyrhnowmooyjiztz`), covering every
 `ai_usage_events` row ever written: 69 events, 2026-07-10 → 2026-07-31.
 
-**Verdict: the meter undercounts, and cannot currently be reconciled.** Four
-distinct gaps, three of them quantified from live data. None of them overcharge a
+**Verdict: the meter undercounts, and cannot currently be reconciled.** Five
+distinct gaps, four of them quantified from live data. None of them overcharge a
 customer — every failure mode found runs in the direction of billing too little,
 which is the safer direction but still means the caps in `src/domain/plans.ts` are
 being enforced against a number that is not the real spend.
@@ -23,7 +23,7 @@ being enforced against a number that is not the real spend.
 | Events | 69 |
 | Services ever recorded | `arc_claude` **only** |
 | Models | `claude-opus-4-8`, `claude-sonnet-5` |
-| Recorded cost | **$14.78** total, all of it from opus |
+| Recorded cost | **$15.37** total ($14.78 opus + $0.59 sonnet, the latter repriced 2026-07-31) |
 | Input tokens | **620 total** (avg 9/event) |
 | Output tokens | 239,404 |
 | Null org / workspace | 0 / 0 |
@@ -79,8 +79,22 @@ if (!rate) return 0;
 `priced_model: false` on every one of them since 2026-07-10. The data to detect
 this has existed the whole time. Nothing read it.
 
-Fixed here by reporting; the **price itself is deliberately not invented** — see
-"What this change does" below.
+**Resolved 2026-07-31.** The operator supplied the published rate — 300/1500
+cents per Mtok — and it is now in `MODEL_PRICING`, with `PRICING_VERSION` bumped
+to `2026-07-31` so rows written under the old table stay attributable.
+
+**The 36 historical rows were repriced on 2026-07-31**, taking them from $0.00 to
+**59 cents** and the whole ledger from $14.78 to $15.37. Each carries an audit
+trail in metadata — `repriced_at`, `repriced_from_version`, and the reason — and
+`priced_model` was corrected to `true` alongside the amount, since leaving it
+`false` would keep flagging rows that now hold a real cost in exactly the audit
+that found them.
+
+⚠️ **An earlier revision of this document said 64 cents. That was wrong**, and the
+error is worth keeping visible because it is easy to repeat: 64 is what you get
+rounding the *aggregate*, while `estimateClaudeCostCents` applies `Math.round` to
+**each event**. Summing per-row roundings gives 59. A backfill computed from the
+aggregate would have written a total the code itself could never produce.
 
 ## Finding 3 — input tokens are essentially unmetered
 
@@ -111,6 +125,25 @@ serverless function that is effectively nowhere. **Consumption that fails to
 meter is unbilled consumption** — the spend happened, we simply stopped knowing
 about it. Fixed here.
 
+## Finding 5 — every sub-half-cent call is free
+
+Found while repricing Finding 2, and not visible before there was anything to
+reprice. `estimateClaudeCostCents` ends in `Math.round(cents)`, so any event
+costing less than half a cent records as **zero**.
+
+Of the 36 repriced sonnet rows, **13 still hold $0.00** — not because the model is
+unpriced any more, but because each individual call rounds to nothing.
+
+At 69 events this is noise. It is a *systematic floor*, though, not a rounding
+wobble: it only ever rounds down to zero, never up, so it cannot average out. The
+error scales with the number of small calls, and short calls are exactly what a
+chat-heavy product makes most of. A thousand tenants making brief turns would
+accumulate a permanent, invisible discount.
+
+**Fix:** store sub-cent precision — micro-cents in the ledger, rounded only at
+display and at the cap comparison — rather than rounding at write time. Not done
+here; it is a column change.
+
 ---
 
 ## The ticket's other questions
@@ -139,11 +172,18 @@ Still open.
 instead of being recorded silently at zero, and a metering failure reports
 (`ai-usage.record`) instead of a `console.warn`. Both have tests.
 
-**Does not: invent a price for `claude-sonnet-5`.** Guessing a rate in a billing
-meter would replace a visible zero with an invisible wrong number, which is
-strictly worse — a wrong price that looks plausible is harder to find than a
-missing one that now alarms. Supply the real published rate and it is a two-line
-change.
+**Prices `claude-sonnet-5`** at the operator-supplied rate of 300/1500 cents per
+Mtok, with `PRICING_VERSION` bumped. The rate was **not inferred** — guessing in a
+billing meter replaces a visible zero with an invisible wrong number, which is
+strictly worse, so it waited for a real figure.
+
+**The 36 historical rows were repriced separately**, as a direct database
+operation rather than a code change (see Finding 2). Nothing in this repository
+backfills the ledger, and nothing should: a backfill script that reprices rows on
+deploy is a billing mutation running unattended.
+
+**Does not invent prices for any other unknown model.** An unpriced model still
+records zero, but now reports while doing it.
 
 ---
 
@@ -151,12 +191,13 @@ change.
 
 The caps in `src/domain/plans.ts` say in their own header that they are
 *reasoned, not measured*. This audit does not change that — it establishes that
-the meter they would be enforced against is **known to undercount** by at least
-one whole model, the entire embedding path, and most of the input side.
+the meter they would be enforced against is **known to undercount**: the entire
+embedding path, most of the input side, and every call too small to round up to a
+cent. Pricing sonnet-5 closed the largest of the gaps, not the category.
 
 Enforcement blocks real customer work. Doing it against a number this incomplete
-is not defensible yet. Order: price sonnet-5 → confirm the cache-token
-hypothesis → meter embeddings → reconcile one month against real invoices → then
-arm.
+is not defensible yet. Order: ~~price sonnet-5~~ (done 2026-07-31) → confirm the
+cache-token hypothesis → meter embeddings → decide on sub-cent precision →
+reconcile one month against real invoices → then arm.
 
 **Last verified:** 2026-07-31.
