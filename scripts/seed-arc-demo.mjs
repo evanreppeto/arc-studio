@@ -189,6 +189,7 @@ async function seedArcDemo() {
 
   const campaignId = await insertOne(supabase, "campaigns", {
     name: `${s.company} — Referral Outreach`,
+    org_id: orgId,
     persona,
     restoration_focus: "water_backup",
     status: "pending_approval",
@@ -239,6 +240,7 @@ async function seedArcDemo() {
   ].join("\n");
 
   const campaignAssetId = await insertOne(supabase, "campaign_assets", {
+    org_id: orgId,
     campaign_id: campaignId,
     asset_type: "email",
     channel: "email",
@@ -272,6 +274,7 @@ async function seedArcDemo() {
   });
 
   const approvalItemId = await insertOne(supabase, "approval_items", {
+    org_id: orgId,
     campaign_id: campaignId,
     campaign_asset_id: campaignAssetId,
     company_id: companyId,
@@ -339,6 +342,7 @@ async function seedArcDemo() {
   });
 
   await insertOne(supabase, "agent_task_inputs", {
+    org_id: orgId,
     task_id: agentTaskId,
     input_type: "lead_discovery_signal",
     source_table: "leads",
@@ -353,6 +357,7 @@ async function seedArcDemo() {
   });
 
   const agentOutputId = await insertOne(supabase, "agent_outputs", {
+    org_id: orgId,
     task_id: agentTaskId,
     approval_item_id: approvalItemId,
     campaign_asset_id: campaignAssetId,
@@ -373,6 +378,7 @@ async function seedArcDemo() {
   });
 
   await insertOne(supabase, "agent_run_logs", {
+    org_id: orgId,
     task_id: agentTaskId,
     agent_id: agentId,
     run_status: "completed",
@@ -393,6 +399,7 @@ async function seedArcDemo() {
   });
 
   await insertOne(supabase, "campaign_events", {
+    org_id: orgId,
     campaign_id: campaignId,
     campaign_asset_id: campaignAssetId,
     approval_item_id: approvalItemId,

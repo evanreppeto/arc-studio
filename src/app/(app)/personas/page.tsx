@@ -21,7 +21,7 @@ const STAGE_COLOR: Record<string, { color: string; bg: string }> = {
   Active: { color: "#ecd596", bg: "rgba(200,162,74,.12)" },
   New: { color: "#9cc1e0", bg: "rgba(136,182,216,.13)" },
   "At risk": { color: "#e6cf8e", bg: "rgba(216,182,94,.14)" },
-  Dormant: { color: "#777c80", bg: "rgba(255,255,255,.04)" },
+  Dormant: { color: "var(--text-muted)", bg: "rgba(255,255,255,.04)" },
 };
 
 function scoreColor(score: number): string {
