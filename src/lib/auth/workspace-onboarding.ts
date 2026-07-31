@@ -12,6 +12,8 @@ import { reportDegraded } from "@/lib/observability/report-degraded";
 import { seedDefaultPersonas } from "@/lib/personas/persistence";
 import { seedDefaultPipelineStages } from "@/lib/pipeline-stages/definitions";
 import { canonicalIndustryKey } from "@/lib/product-language";
+import { attributionColumnValue, readAttributionRecord } from "@/lib/signup-attribution/server";
+import type { AttributionRecord } from "@/domain/signup-attribution";
 
 type WorkspaceType = "individual" | "company" | "agency";
 
@@ -35,6 +37,12 @@ export type CreateWorkspaceInput = {
   workspaceType?: string;
   /** Industry template key (see industry-templates.ts) — drives the seeded persona pack. */
   industry?: string;
+  /**
+   * Which channel produced this workspace (BSR-586). Passed in rather than read
+   * here: this module runs from contexts that have no request (provisioning,
+   * scripts), and the cookie only exists at a request boundary. Null = unattributed.
+   */
+  attribution?: AttributionRecord | null;
 };
 
 export type CreateWorkspaceResult =
@@ -195,6 +203,7 @@ async function upsertDefaultWorkspace(
   workspaceName: string,
   workspaceType: WorkspaceType,
   userId: string,
+  attribution: AttributionRecord | null = null,
 ) {
   const workspaceSlug = slugify(workspaceName || org.name);
   const { data: existing, error: existingError } = await client
@@ -234,6 +243,10 @@ async function upsertDefaultWorkspace(
       created_by: userId,
       settings: { createdFromOnboarding: true },
       metadata: {},
+      // Only on INSERT. The update branch above reclaims a pre-existing default
+      // workspace, and overwriting its attribution there would rewrite the
+      // channel credit of a workspace that was already acquired.
+      attribution: attributionColumnValue(attribution),
     })
     .select("id,org_id,key,slug,name")
     .single<WorkspaceRow>();
@@ -405,11 +418,21 @@ export async function createWorkspaceForAuthenticatedUser(input: CreateWorkspace
     };
   }
 
+  // Which channel produced this workspace (BSR-586). Read here because this is a
+  // request boundary and the cookie only exists in one; the caller may also pass
+  // it explicitly, which wins. Never fails the creation — null is "unattributed".
+  const attribution = input.attribution ?? (await readAttributionRecord());
+
   // The explicit "create workspace" UI must create a genuinely NEW workspace, even
   // for users who already belong to one — otherwise it's a silent no-op that drops
   // them back into their existing org. Provisioning (which auto-creates on first
   // sign-in) calls createWorkspaceForUser directly and keeps the reuse default.
-  return createWorkspaceForUser(getSupabaseAdminClient(), user, input, { reuseExistingMembership: false });
+  return createWorkspaceForUser(
+    getSupabaseAdminClient(),
+    user,
+    { ...input, attribution },
+    { reuseExistingMembership: false },
+  );
 }
 
 export async function createWorkspaceForUser(
@@ -448,7 +471,7 @@ export async function createWorkspaceForUser(
     }
 
     const org = await createOrganizationUnique(client, organizationName, organizationName);
-    const workspace = await upsertDefaultWorkspace(client, org, workspaceName, workspaceType, user.id);
+    const workspace = await upsertDefaultWorkspace(client, org, workspaceName, workspaceType, user.id, input.attribution ?? null);
 
     await createOwnerMemberships(client, org.id, workspace.id, user.id, email);
     await createWorkspaceDefaults(client, org, workspace, user.id, industry);
