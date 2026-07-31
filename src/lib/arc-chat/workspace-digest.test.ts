@@ -125,14 +125,14 @@ describe("buildArcWorkspaceEvidence", () => {
     flags: [],
   };
 
-  it("groups records, memory, audience, context and tools", () => {
+  it("groups records, memory, audience and tools", () => {
     const groups = buildArcWorkspaceEvidence([
       message("m1", "operator", {
         mentions: [{ type: "campaign", id: "c1", label: "Spring storm push", href: "/campaigns/c1" }],
         contextScopes: ["crm", "brand"],
       }),
       message("m2", "arc", {
-        recall: [{ label: "Owner prefers plain-text email", confidence: 0.82 }],
+        recall: [{ label: "email_pref", summary: "Owner prefers plain-text email" }],
         toolCalls: [
           { name: "crm_lookup", status: "complete" },
           { name: "crm_lookup", status: "complete" },
@@ -140,11 +140,101 @@ describe("buildArcWorkspaceEvidence", () => {
       }),
     ], [card]);
 
-    expect(groups.map((group) => group.id)).toEqual(["records", "memory", "audience", "scopes", "tools"]);
-    expect(groups[1]!.items[0]).toMatchObject({ label: "Owner prefers plain-text email", detail: "82% match" });
+    expect(groups.map((group) => group.id)).toEqual(["records", "memory", "audience", "tools"]);
+    expect(groups[1]!.items[0]).toMatchObject({ label: "Owner prefers plain-text email" });
     expect(groups[2]!.items[0]).toMatchObject({ label: "142 storm-zone homes", detail: "Email" });
-    expect(groups[3]!.items.map((item) => item.label)).toEqual(["CRM records", "Brand kit"]);
-    expect(groups[4]!.items[0]).toMatchObject({ label: "Crm Lookup", detail: "2 calls" });
+    expect(groups[3]!.items[0]).toMatchObject({ label: "CRM lookup", detail: "2 times" });
+  });
+
+  it("never renders the context scopes — the app sends the same four every turn", () => {
+    // They shipped as "Context you selected" and the operator selected nothing:
+    // a row that is always identical is not evidence.
+    const groups = buildArcWorkspaceEvidence(
+      [message("m1", "operator", { contextScopes: ["workspace", "brand", "crm", "campaigns"] })],
+      [],
+    );
+    expect(groups).toEqual([]);
+  });
+
+  it("shows the fact Arc wrote, not the brain's node key", () => {
+    const groups = buildArcWorkspaceEvidence([
+      message("m1", "arc", {
+        recall: [{ label: "crm_contacts_empty", summary: "The operator's CRM contains 0 contacts as of 2026-07-30." }],
+      }),
+    ], []);
+
+    expect(groups[0]!.items[0]!.label).toBe("The operator's CRM contains 0 contacts as of 2026-07-30.");
+  });
+
+  it("falls back to the key when a memory carries no sentence", () => {
+    const groups = buildArcWorkspaceEvidence([
+      message("m1", "arc", { recall: [{ label: "crm_contacts_empty" }] }),
+    ], []);
+
+    expect(groups[0]!.items[0]!.label).toBe("crm_contacts_empty");
+  });
+
+  it("collapses memories that say the same thing in different words", () => {
+    // Prod's brain holds five separate nodes all stating the CRM is empty.
+    const groups = buildArcWorkspaceEvidence([
+      message("m1", "arc", {
+        recall: [
+          { label: "crm_status", summary: "The CRM is completely empty." },
+          { label: "crm_state", summary: "The CRM is completely empty" },
+          { label: "crm_other", summary: "The brand has 4 personas." },
+        ],
+      }),
+    ], []);
+
+    expect(groups[0]!.items.map((item) => item.label)).toEqual([
+      "The CRM is completely empty.",
+      "The brand has 4 personas.",
+    ]);
+  });
+
+  it("hides a confidence figure that is identical on every item", () => {
+    // Prod returns 0.5 across the board; "50% match" on every row dresses a
+    // constant up as precision.
+    const flat = buildArcWorkspaceEvidence([
+      message("m1", "arc", {
+        recall: [
+          { label: "a", summary: "Fact A", confidence: 0.5 },
+          { label: "b", summary: "Fact B", confidence: 0.5 },
+        ],
+      }),
+    ], []);
+    expect(flat[0]!.items.every((item) => item.detail === undefined)).toBe(true);
+
+    const varied = buildArcWorkspaceEvidence([
+      message("m1", "arc", {
+        recall: [
+          { label: "a", summary: "Fact A", confidence: 0.9 },
+          { label: "b", summary: "Fact B", confidence: 0.4 },
+        ],
+      }),
+    ], []);
+    expect(varied[0]!.items[0]!.detail).toBe("90% match");
+  });
+
+  it("strips the MCP transport prefix from a tool name", () => {
+    const groups = buildArcWorkspaceEvidence([
+      message("m1", "arc", {
+        toolCalls: [
+          { name: "mcp__arc__get_workspace_settings", status: "complete" },
+          { name: "ToolSearch", status: "complete" },
+        ],
+      }),
+    ], []);
+
+    expect(groups[0]!.items.map((item) => item.label)).toEqual(["Get workspace settings", "Toolsearch"]);
+  });
+
+  it("keeps an acronym uppercase instead of turning CRM into Crm", () => {
+    const groups = buildArcWorkspaceEvidence([
+      message("m1", "arc", { toolCalls: [{ name: "mcp__arc__crm_search", status: "complete" }] }),
+    ], []);
+
+    expect(groups[0]!.items[0]!.label).toBe("CRM search");
   });
 
   it("omits groups with nothing in them", () => {

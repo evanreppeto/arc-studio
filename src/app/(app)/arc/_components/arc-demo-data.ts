@@ -49,10 +49,12 @@ export const DEMO_STEPS: ArcStep[] = [
   { label: "Prepared a review-safe campaign package", status: "done", at: "9:38 AM", kind: "draft" },
 ];
 
+/** Named the way the SDK delivers them, MCP prefix and all, so the preview
+ *  exercises the same label cleanup production needs. */
 export const DEMO_TOOLS: ArcToolCall[] = [
-  { name: "weather.lookup", status: "complete", output: "pricing-page surge" },
-  { name: "crm.search", status: "complete", output: "142 high-intent accounts" },
-  { name: "audience.score", status: "complete", output: "$1.4M estimated opportunity" },
+  { name: "mcp__arc__weather_lookup", status: "complete", output: "pricing-page surge" },
+  { name: "mcp__arc__crm_search", status: "complete", output: "142 high-intent accounts" },
+  { name: "mcp__arc__audience_score", status: "complete", output: "$1.4M estimated opportunity" },
 ];
 
 export const DEMO_BREAKDOWN_MD = `Here's how the 142 high-intent accounts break down, and the tracking I'd attach so we can attribute booked demos back to this run:
@@ -137,8 +139,10 @@ export const DEMO_SOURCES: ArcMention[] = [
 ];
 
 export const DEMO_RECALL: ArcRecall[] = [
-  { label: "Demo-first beats discount-led", confidence: 0.86, nodeId: "demo-node-inspection" },
-  { label: "Active-trial segment books fastest", confidence: 0.72, nodeId: "demo-node-insured" },
+  // `label` is the brain's node key and `summary` is the fact in Arc's words —
+  // the shape prod actually stores. The panel renders the sentence.
+  { label: "demo_first_beats_discount", summary: "Leading with a demo outperforms a discount offer on this segment by a wide margin.", confidence: 0.86, nodeId: "demo-node-inspection" },
+  { label: "active_trial_speed", summary: "Accounts in an active trial book a demo faster than any other segment.", confidence: 0.72, nodeId: "demo-node-insured" },
 ];
 
 /**
