@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { ArcClient } from "../arc-client";
 import { runTool, type StepFn } from "./helpers";
+import { enforce, expectList } from "./expectations";
 
 /** Read-only performance signals so Arc can cite what's actually working. Available in all modes. */
 export function performanceReadTools(client: ArcClient, step: StepFn) {
@@ -23,7 +24,8 @@ export function performanceReadTools(client: ArcClient, step: StepFn) {
           persona: args.persona,
           channel: args.channel,
         });
-        return { dimension: r.dimension, slices: r.slices ?? [] };
+        enforce(r, expectList("slices"));
+        return { dimension: r.dimension, slices: r.slices };
       }),
   );
 
