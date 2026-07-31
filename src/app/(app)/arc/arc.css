@@ -2305,8 +2305,13 @@ a.arc-work-evidence-item:hover > svg { color: var(--accent); }
 .arc-connector-notice b { color: var(--text-2); font-size: var(--dz-sm); font-weight: 620; }
 .arc-connector-notice small { font-size: var(--dz-xs); }
 .arc-connector-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; margin: 0 -4px; padding: 0 4px 4px; }
-.arc-connector-row { min-height: 78px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 14px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--text-2); padding: 9px 10px; text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast); }
-.arc-connector-row:hover { border-color: var(--line-3); background: color-mix(in srgb, var(--panel) 90%, var(--accent-soft)); transform: translateY(-1px); }
+.arc-connector-list .arc-connectors-section-head { margin: 12px 2px 2px; }
+.arc-connector-list .arc-connectors-section-head:first-child { margin-top: 2px; }
+.arc-connector-list .arc-connectors-section-head small { color: var(--muted); font-size: var(--dz-xs); }
+/* `flex: none` — these are flex children and would otherwise shrink below their
+   own content once a group head or toggle changes the row height. */
+.arc-connector-row { flex: none; min-height: 72px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 30px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--text-2); padding: 9px 10px; text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-connector-row:hover { border-color: var(--line-3); background: color-mix(in srgb, var(--panel) 90%, var(--accent-soft)); }
 /* Arrived at from an unmet skill requirement — mark which row was meant. */
 .arc-connector-row[data-focused="true"] { border-color: var(--warn-border); background: color-mix(in srgb, var(--panel) 88%, var(--warn-soft)); }
 .arc-connector-logo { --connector-color: #9aa0ac; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--connector-color) 42%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--connector-color) 14%, transparent); color: var(--connector-color); font-family: var(--mono); font-size: var(--dz-xs); font-weight: 650; }
@@ -2320,7 +2325,33 @@ a.arc-work-evidence-item:hover > svg { color: var(--accent); }
 .arc-connector-row[data-status="disabled"] .arc-connector-copy em { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
 .arc-connector-row[data-status="error"] .arc-connector-copy em { border-color: var(--red-border); background: var(--red-soft); color: var(--red-text); }
 .arc-connector-copy small { color: var(--muted); font-size: var(--dz-xs); }
-.arc-connector-copy p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; margin: 0; color: var(--muted); font-size: var(--dz-sm); line-height: 1.4; }
+/* No line clamp. The old one cut settings-page prose mid-word ("…deduped on
+   email/phone (a…"), which is worse than a slightly taller row: the operator
+   could never read the rest. Rows now size to their one-line capability
+   summary, and the list is grouped and searchable to keep it navigable. */
+.arc-connector-copy p { margin: 0; color: var(--muted); font-size: var(--dz-sm); line-height: 1.4; }
+.arc-connector-setup { display: grid; place-items: center; color: var(--muted); text-decoration: none; }
+.arc-connector-setup:hover { color: var(--text-2); }
+/* Switch a connector on or off without leaving the conversation. Reads as a
+   switch, not a nav chevron — the row is no longer a link. */
+.arc-connector-toggle { width: 30px; height: 18px; justify-self: center; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 999px; background: var(--inset); padding: 0; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-connector-toggle i { width: 12px; height: 12px; display: block; border-radius: 50%; background: var(--muted); transform: translateX(-5px); transition: transform var(--arc-fast), background var(--arc-fast); }
+.arc-connector-toggle[aria-checked="true"] { border-color: var(--ok-border); background: var(--ok-soft); }
+.arc-connector-toggle[aria-checked="true"] i { background: var(--ok-text); transform: translateX(5px); }
+.arc-connector-toggle:hover:not(:disabled) { border-color: var(--accent-border); }
+.arc-connector-toggle:disabled { cursor: default; opacity: .55; }
+.arc-connector-toggle .is-spinning { color: var(--muted); }
+.arc-connector-error { margin: 0 2px 8px; border: 1px solid var(--red-border); border-radius: 8px; background: var(--red-soft); color: var(--red-text); padding: 7px 9px; font-size: var(--dz-sm); line-height: 1.45; }
+/* Connectors that are catalogued but not built. Nothing to act on, so they sit
+   behind a disclosure instead of padding the list at full row weight. */
+.arc-planned { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+.arc-history .arc-planned-toggle { width: 100%; min-height: 32px; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 6px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
+.arc-history .arc-planned-toggle:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
+.arc-planned-toggle .arc-planned-chevron { margin-left: auto; transition: transform var(--arc-fast); }
+.arc-planned-toggle[aria-expanded="true"] .arc-planned-chevron { transform: rotate(180deg); }
+.arc-planned-item { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; color: var(--muted); }
+.arc-planned-item b { color: var(--text-2); font-size: var(--dz-sm); font-weight: 600; }
+.arc-planned-item small { font-size: var(--dz-xs); }
 .arc-connector-row > svg { color: var(--muted); }
 .arc-connector-empty { min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--muted); text-align: center; }
 .arc-connector-empty b { color: var(--text-2); font-size: var(--dz-md); }
