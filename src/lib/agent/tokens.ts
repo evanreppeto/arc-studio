@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { createHash, randomBytes } from "node:crypto";
 
 import { type SupabaseClient } from "@supabase/supabase-js";
@@ -181,7 +182,8 @@ export async function hasActiveAgentTokens(client?: SupabaseClient): Promise<boo
   }
 
   if (error) return false;
-  return (count ?? 0) > 0;
+  // Fail closed: a null count read as 0 claims no token exists (BSR-575).
+  return requireCount("agent_tokens", { count, error }) > 0;
 }
 
 export async function verifyAgentToken(
