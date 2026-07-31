@@ -1,0 +1,173 @@
+name: Back up prod
+
+# Prod has NO automated backups (BSR-532).
+#
+# The Supabase org is on the `free` plan, and daily backups + point-in-time
+# recovery are paid features. So today a dropped project, a bad migration, or an
+# accidental bulk delete is unrecoverable — on a database holding a real
+# workspace, about to receive real customer contacts in M2.
+#
+# This is a COMPENSATING CONTROL, not a substitute for Pro-tier backups. It gives
+# a ~24h RPO and an off-database copy. It does not give point-in-time recovery,
+# and it cannot recover the fifteen minutes before a mistake. Upgrading the plan
+# is still the right answer; this exists so that "unrecoverable" stops being true
+# while that decision is made.
+#
+# ── Why the dump is encrypted ─────────────────────────────────────────────────
+# THIS REPOSITORY IS PUBLIC. Artifacts on a public repo are downloadable by
+# anyone who can see the workflow run. A plaintext dump here would publish every
+# contact, email address and campaign in the CRM.
+#
+# So the dump is encrypted with `age` to a PUBLIC key held in the repo variable
+# BACKUP_AGE_RECIPIENT. Asymmetric on purpose: CI can encrypt and cannot decrypt,
+# so nothing in this workflow — or in the artifact it produces — can be used to
+# read the backup. Only the holder of the matching private key can.
+#
+# Setup, once (see docs/runbooks/backup-and-restore.md):
+#   age-keygen -o arc-backup.key      # keep this file OFF this repo
+#   gh variable set BACKUP_AGE_RECIPIENT --body "age1..."   # the public half
+#
+# Until that variable exists this workflow FAILS rather than silently producing
+# nothing, or worse, producing a plaintext dump.
+
+on:
+  schedule:
+    # 07:10 UTC daily — after the nightly smoke, before the working day here.
+    - cron: "10 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-prod
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fail loudly if the database URL is missing
+        env:
+          DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error title=PROD_SUPABASE_DB_URL is not set::Prod cannot be backed up. Store the prod Postgres connection string as the PROD_SUPABASE_DB_URL secret (the same one migrate-prod.yml uses)."
+            exit 1
+          fi
+
+      - name: Fail loudly if there is nobody to encrypt to
+        env:
+          RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RECIPIENT:-}" ]; then
+            echo "::error title=BACKUP_AGE_RECIPIENT is not set::This repository is PUBLIC, so an unencrypted dump would publish the whole CRM. Generate a key with 'age-keygen -o arc-backup.key', keep the private file off this repo, and set the public half: gh variable set BACKUP_AGE_RECIPIENT --body 'age1...'. See docs/runbooks/backup-and-restore.md."
+            exit 1
+          fi
+          # A wrong-shaped value here would produce an artifact nobody can read,
+          # which is worse than failing: it looks like a working backup.
+          case "$RECIPIENT" in
+            age1*) : ;;
+            *) echo "::error title=BACKUP_AGE_RECIPIENT looks wrong::Expected an age public key starting 'age1'. A malformed recipient produces an unreadable artifact that still looks like a successful backup."; exit 1 ;;
+          esac
+
+      - name: Install age
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Three parts, because restoring needs all three and a schema-only dump is
+      # the classic "backup" that turns out to hold no data.
+      - name: Dump roles, schema and data
+        env:
+          DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p backup
+          supabase db dump --db-url "$DB_URL" --role-only -f backup/roles.sql
+          supabase db dump --db-url "$DB_URL"             -f backup/schema.sql
+          supabase db dump --db-url "$DB_URL" --data-only -f backup/data.sql
+          ls -l backup/
+
+      # A backup nobody checked is a hypothesis. This does not prove the dump
+      # RESTORES — only a real restore does that, and the runbook covers it —
+      # but it does prove the file is not empty, truncated, or schema-only.
+      - name: Sanity-check the dump before trusting it
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Backup failed its own check::$1"; exit 1; }
+
+          for f in roles schema data; do
+            [ -s "backup/$f.sql" ] || fail "backup/$f.sql is empty."
+          done
+
+          # Tables that must exist in any real dump of this app. If the schema
+          # dump lost them, the restore would come up missing the CRM.
+          for t in organizations contacts leads campaigns pipeline_stages; do
+            grep -q "CREATE TABLE.*\.$t " backup/schema.sql \
+              || fail "schema.sql has no CREATE TABLE for '$t' — the dump is not this application's schema."
+          done
+
+          # Data, not just structure. COPY blocks are how pg_dump emits rows.
+          grep -q "^COPY " backup/data.sql \
+            || fail "data.sql contains no COPY blocks — this is a schema-only dump wearing a data filename."
+
+          DATA_BYTES=$(stat -c%s backup/data.sql)
+          # The database was 29 MB in July 2026; a data dump far under a
+          # megabyte means something went wrong, not that the CRM shrank.
+          [ "$DATA_BYTES" -gt 200000 ] \
+            || fail "data.sql is only ${DATA_BYTES} bytes. Expected megabytes. Treat this run as failed rather than as a small backup."
+
+          echo "roles $(stat -c%s backup/roles.sql)B · schema $(stat -c%s backup/schema.sql)B · data ${DATA_BYTES}B"
+
+      - name: Encrypt
+        env:
+          RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "STAMP=$STAMP" >>"$GITHUB_ENV"
+          tar -czf "arc-prod-$STAMP.tar.gz" -C backup roles.sql schema.sql data.sql
+          age -r "$RECIPIENT" -o "arc-prod-$STAMP.tar.gz.age" "arc-prod-$STAMP.tar.gz"
+
+          # Remove every plaintext copy before anything can upload it. The
+          # encrypted file is the only thing that may leave this runner.
+          rm -rf backup "arc-prod-$STAMP.tar.gz"
+          ls -l "arc-prod-$STAMP.tar.gz.age"
+
+          # Cheap proof it is really encrypted: age files begin with this header.
+          head -c 22 "arc-prod-$STAMP.tar.gz.age" | grep -q "age-encryption.org" \
+            || { echo "::error title=Not encrypted::The artifact does not look like an age file. Refusing to upload it."; exit 1; }
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: arc-prod-backup-${{ env.STAMP }}
+          # Encrypted, so the 90-day public-artifact exposure is not a data risk.
+          # 90 is the maximum GitHub allows; see the runbook for why this is a
+          # floor on the retention story rather than the whole of it.
+          retention-days: 90
+          if-no-files-found: error
+          path: "*.tar.gz.age"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Prod backup — \`$STAMP\`"
+            echo ""
+            echo "Encrypted to \`${{ vars.BACKUP_AGE_RECIPIENT }}\`, retained 90 days."
+            echo ""
+            echo "This is a compensating control while the Supabase org is on the free plan (BSR-532)."
+            echo "RPO ~24h. No point-in-time recovery. Restore steps: \`docs/runbooks/backup-and-restore.md\`."
+          } >>"$GITHUB_STEP_SUMMARY"
