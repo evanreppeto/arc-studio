@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { archiveBrainNode, decideBrainNode, rebuildBrainMemoryAction, searchBrainFacts } from "../actions";
+import { Modal } from "../../_components/modal";
+import { archiveBrainNode, correctBrainFact, decideBrainNode, rebuildBrainMemoryAction, searchBrainFacts } from "../actions";
 import { KnowledgeGraph, type GraphEdge, type GraphNode } from "./knowledge-graph";
 
 export type FactVM = {
@@ -195,6 +196,40 @@ export function BrainView({
     }
   }
 
+  // The fact being corrected, and the edits in flight. `null` closes the dialog.
+  const [editing, setEditing] = useState<FactVM | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editSummary, setEditSummary] = useState("");
+  const [saving, setSaving] = useState(false);
+  // Corrections applied this session, so the row updates before the refetch.
+  const [corrections, setCorrections] = useState<Record<string, { label: string; summary: string }>>({});
+
+  function openCorrection(fact: FactVM) {
+    setError(null);
+    setEditing(fact);
+    setEditLabel(fact.label);
+    setEditSummary(fact.summary ?? "");
+  }
+
+  async function saveCorrection() {
+    if (!editing) return;
+    const label = editLabel.trim();
+    if (!label) {
+      setError("A fact needs a label.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const res = await correctBrainFact(editing.id, { label, summary: editSummary });
+    setSaving(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setCorrections((prev) => ({ ...prev, [editing.id]: { label, summary: editSummary.trim() } }));
+    setEditing(null);
+  }
+
   async function archive(nodeId: string) {
     setError(null);
     setPendingId(nodeId);
@@ -214,6 +249,48 @@ export function BrainView({
 
   return (
     <div className={`arc-brain${tab === "web" ? " graph" : ""}`}>
+      {/* Correcting a fact, not approving it: the trust tier is untouched, and
+          the write re-embeds so the fix reaches Arc's recall on the next turn. */}
+      <Modal
+        open={editing !== null}
+        onClose={() => !saving && setEditing(null)}
+        title="Correct this fact"
+        description="Arc will use the corrected wording from its next turn. The trust level is unchanged."
+        footer={
+          <>
+            <button type="button" className="mbtn" disabled={saving} onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+            <button type="button" className="mbtn primary" disabled={saving} onClick={saveCorrection}>
+              {saving ? "Saving…" : "Save correction"}
+            </button>
+          </>
+        }
+      >
+        <label className="fcorr-l" htmlFor="brain-correct-label">
+          Label
+          <input
+            id="brain-correct-label"
+            className="fcorr-i"
+            value={editLabel}
+            onChange={(e) => setEditLabel(e.target.value)}
+            placeholder="Short name for this fact"
+          />
+        </label>
+        <label className="fcorr-l" htmlFor="brain-correct-summary">
+          The fact, in plain words
+          <textarea
+            id="brain-correct-summary"
+            className="fcorr-i"
+            rows={4}
+            value={editSummary}
+            onChange={(e) => setEditSummary(e.target.value)}
+            placeholder="What Arc should believe about your business"
+          />
+          <small>This is what Arc recalls and quotes. Empty it to leave only the label.</small>
+        </label>
+      </Modal>
+
       {/* A failed read is NOT an empty Brain. Without this, a broken query looks
           identical to a workspace Arc hasn't learned anything about yet — the
           confusion that hid a live outage on /campaigns (BSR-542). */}
@@ -328,13 +405,25 @@ export function BrainView({
                           <tr key={f.id}>
                             <td><span className="kindchip"><span className="d" style={{ background: f.kindColor }} />{f.kindLabel}</span></td>
                             <td>
-                              <div className="fact-label">{f.label}</div>
-                              {f.summary && <div className="fact-sum">{f.summary}</div>}
+                              <div className="fact-label">{corrections[f.id]?.label ?? f.label}</div>
+                              {(corrections[f.id]?.summary ?? f.summary) && (
+                                <div className="fact-sum">{corrections[f.id]?.summary ?? f.summary}</div>
+                              )}
                             </td>
                             <td><span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{f.trustTier}</span></td>
                             <td><Confidence value={f.confidence} /></td>
                             <td><span className="src">{f.source || "—"}</span></td>
                             <td className="factact">
+                              <button
+                                type="button"
+                                className="farch"
+                                disabled={pendingId === f.id}
+                                onClick={() => openCorrection(f)}
+                                title="Correct this fact"
+                                aria-label={`Correct: ${f.label}`}
+                              >
+                                <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" /></svg>
+                              </button>
                               <button
                                 type="button"
                                 className="farch"

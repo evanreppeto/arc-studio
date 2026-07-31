@@ -5,7 +5,7 @@ vi.mock("@/lib/embeddings/gemini-embeddings", () => ({ embedText: vi.fn() }));
 import { embedText } from "@/lib/embeddings/gemini-embeddings";
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
-import { createNode } from "./persistence";
+import { createNode, updateNode } from "./persistence";
 
 const embedMock = vi.mocked(embedText);
 const ORG = "org-dedup-1";
@@ -138,5 +138,71 @@ describe("anything short of near-identity is inserted", () => {
     );
     expect(result).toEqual({ ok: true, id: "new-5" });
     expect(embedMock).toHaveBeenCalledTimes(1); // still embedded for storage, just not used to merge
+  });
+});
+
+describe("correcting a fact reaches Arc, not just the screen", () => {
+  it("re-embeds from the node's full text after an edit", async () => {
+    // The load-bearing assertion for BSR-531's "a corrected fact changes Arc's
+    // answer on the next turn". The stored vector is built from
+    // label+summary+body; editing the text without rebuilding it leaves the node
+    // searchable under its OLD wording, so the operator sees the fix and Arc
+    // keeps saying the old thing.
+    const supabase = createSupabaseQueryMock({
+      knowledge_nodes: [
+        { data: { id: "n-1", label: "corrected label", summary: "the corrected fact", body: null }, error: null },
+        { data: null, error: null }, // the embedding write
+      ],
+    });
+
+    const result = await updateNode("n-1", { label: "corrected label", summary: "the corrected fact" }, {
+      client: supabase as never,
+      orgId: ORG,
+    });
+
+    expect(result).toEqual({ ok: true, id: "n-1" });
+    expect(embedMock).toHaveBeenCalledTimes(1);
+    const embedded = embedMock.mock.calls[0]?.[0] as string;
+    // Rebuilt from what the row now HOLDS, not from the patch alone — a patch
+    // that touched only the label must still embed the untouched summary.
+    expect(embedded).toContain("corrected label");
+    expect(embedded).toContain("the corrected fact");
+  });
+
+  it("can correct the summary, which is the field every recall surface shows", async () => {
+    const supabase = createSupabaseQueryMock({
+      knowledge_nodes: [
+        { data: { id: "n-2", label: "unchanged", summary: "fixed wording", body: null }, error: null },
+        { data: null, error: null },
+      ],
+    });
+    await updateNode("n-2", { summary: "fixed wording" }, { client: supabase as never, orgId: ORG });
+    const update = supabase.calls.find((c) => c[0] === "update");
+    expect((update?.[1] as { summary?: string }).summary).toBe("fixed wording");
+  });
+
+  it("scopes the correction to the org", async () => {
+    const supabase = createSupabaseQueryMock({
+      knowledge_nodes: [{ data: { id: "n-3", label: "x", summary: null, body: null }, error: null }, { data: null, error: null }],
+    });
+    await updateNode("n-3", { label: "x" }, { client: supabase as never, orgId: ORG });
+    expect(supabase.calls).toContainEqual(["eq", "org_id", ORG]);
+  });
+
+  it("still saves the correction when re-embedding fails", async () => {
+    // Recall degrades to keyword/graph without a vector; refusing the operator's
+    // fix because the embedding service is down would be the worse trade.
+    embedMock.mockRejectedValue(new Error("embeddings down"));
+    const supabase = createSupabaseQueryMock({
+      knowledge_nodes: [{ data: { id: "n-4", label: "x", summary: null, body: null }, error: null }],
+    });
+    const result = await updateNode("n-4", { label: "x" }, { client: supabase as never, orgId: ORG });
+    expect(result).toEqual({ ok: true, id: "n-4" });
+  });
+
+  it("refuses an empty label rather than blanking the fact", async () => {
+    const supabase = createSupabaseQueryMock({ knowledge_nodes: [{ data: null, error: null }] });
+    const result = await updateNode("n-5", { label: "   " }, { client: supabase as never, orgId: ORG });
+    expect(result).toEqual({ ok: false, error: "A node needs a label." });
   });
 });
