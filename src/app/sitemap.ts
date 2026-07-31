@@ -4,6 +4,7 @@ import { SITE_URL } from "@/lib/seo/site";
 
 import { COMPARISON_SLUGS } from "./compare/_data/comparisons";
 import { INDUSTRY_SLUGS } from "./industries/_data/industries";
+import { LEGAL_PAGES } from "./legal/_components/legal-view";
 
 /**
  * Serves /sitemap.xml.
@@ -60,6 +61,21 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified,
       changeFrequency: "monthly" as const,
       priority: 0.7,
+    })),
+    {
+      url: `${SITE_URL}/legal`,
+      lastModified,
+      changeFrequency: "yearly",
+      priority: 0.3,
+    },
+    // Derived from the same list the legal nav renders, so a new policy page
+    // cannot ship un-indexed. Low priority but genuinely public: Stripe and
+    // app-store style reviews both expect to reach these by URL.
+    ...LEGAL_PAGES.map((page) => ({
+      url: `${SITE_URL}${page.href}`,
+      lastModified,
+      changeFrequency: "yearly" as const,
+      priority: 0.3,
     })),
   ];
 }
