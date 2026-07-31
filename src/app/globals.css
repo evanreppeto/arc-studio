@@ -23,7 +23,11 @@
   /* Text tiers — warm ivory */
   --text-primary: #f2eee4;
   --text-secondary: #b8b4aa;
-  --text-muted: #777c80;
+  /* #777c80 measured 3.84:1 on --inset and 4.02:1 on --panel — under the 4.5:1
+     floor for body text on every surface except the deepest. Lightened just
+     enough to clear it everywhere (worst case 4.96:1) while staying clearly
+     recessive against --text-secondary. */
+  --text-muted: #8a8f93;
 
   /* Borders */
   --border-hairline: rgba(232, 224, 205, 0.08);

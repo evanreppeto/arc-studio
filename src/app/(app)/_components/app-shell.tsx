@@ -273,6 +273,10 @@ export function AppShell({
     <div className={embedded ? "arc-app is-embedded" : "arc-app"}>
       <NavProgress />
       <RoutePrewarm hrefs={PREWARM_HREFS} />
+      {/* First thing in the tab order, invisible until focused. Without it a
+          keyboard user tabs through the whole rail on every page before
+          reaching content. */}
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <div className="app" data-nav-open={navOpen}>
         {/* Backdrop behind the mobile drawer — tap to dismiss. Inert on desktop
             (the rail is docked, so this never covers content there). */}
@@ -481,7 +485,12 @@ export function AppShell({
           </header>
           <CommandPalette items={commandItems} />
           <BillingNoticeBar banner={billingNotice} />
-          {children}
+          {/* The app had no <main> on any route, so assistive tech had no way to
+              skip the rail and the header on every single page. This is the one
+              main landmark; Arc's own scroll region is a <div> beneath it. */}
+          <main id="main-content" tabIndex={-1}>
+            {children}
+          </main>
         </div>
       </div>
       <ComingSoonToasts />
