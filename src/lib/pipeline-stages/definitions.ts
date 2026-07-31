@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -151,7 +152,9 @@ export async function countRecordsInStage(
   // Fail loud, not low. Reporting zero occupants would let the caller archive a
   // stage full of records without ever showing the warning.
   if (error) throw new Error(`Could not count records in "${stageKey}": ${error.message}`);
-  return count ?? 0;
+  // ...and a null count is exactly that low reading: a missing relation on a
+  // HEAD count reports no error at all (BSR-575).
+  return requireCount(`records in "${stageKey}"`, { count, error });
 }
 
 /** Occupancy for every stage in one set, so the panel can label each row. */
@@ -230,8 +233,8 @@ export async function seedDefaultPipelineStages(
     .from(TABLE)
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId);
-  if (countError) throw new Error(`pipeline stages count failed: ${countError.message}`);
-  if ((count ?? 0) > 0) return 0;
+  // Fail closed: a null count read as 0 would re-seed the default stages.
+  if (requireCount("pipeline_stages", { count, error: countError }) > 0) return 0;
 
   const rows = (Object.keys(DEFAULT_PIPELINE_STAGES) as PipelineObjectKey[]).flatMap((objectKey) =>
     DEFAULT_PIPELINE_STAGES[objectKey].map((s) => ({

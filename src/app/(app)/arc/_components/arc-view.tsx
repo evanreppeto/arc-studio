@@ -21,6 +21,8 @@ import {
   Binoculars,
   Blocks,
   Check,
+  Copy,
+  CornerDownLeft,
   ChevronRight,
   ChevronDown,
   Circle,
@@ -271,7 +273,13 @@ function ThreadRow({ thread, active, live, campaignName, showCampaignLabel, camp
   const handleThreadMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      if (campaignPicker) setCampaignPicker(false);
+      // Consume it: the drawer closes on Escape too, and dismissing this menu
+      // must not also dismiss the surface it is sitting on.
+      event.stopPropagation();
+      // Innermost first — backing out of a delete confirmation should cancel
+      // the confirmation, not tear down the whole menu behind it.
+      if (confirmDelete) setConfirmDelete(false);
+      else if (campaignPicker) setCampaignPicker(false);
       else setMenuOpen(false);
       return;
     }
@@ -300,7 +308,8 @@ function ThreadRow({ thread, active, live, campaignName, showCampaignLabel, camp
           onBlur={commitRename}
           onKeyDown={(event) => {
             if (event.key === "Enter") { event.preventDefault(); commitRename(); }
-            if (event.key === "Escape") { setName(thread.title); setRenaming(false); }
+            // Abandoning a rename must not also close the drawer behind it.
+            if (event.key === "Escape") { event.stopPropagation(); setName(thread.title); setRenaming(false); }
           }}
         />
       </div>
@@ -443,6 +452,7 @@ function ThreadDrawer({
   onStartNew,
   onOpenReview,
   onUseSkill,
+  onUseSaved,
   installedSkills,
   installedSkillKeys,
   installingSkillKey,
@@ -458,6 +468,7 @@ function ThreadDrawer({
   emailConnection,
   liveSendEnabled,
   onClose,
+  onDismiss,
 }: {
   live: boolean;
   groups: ArcThreadGroupVM[];
@@ -468,6 +479,8 @@ function ThreadDrawer({
   onStartNew: () => void;
   onOpenReview: () => void;
   onUseSkill: (skill: ArcSkillDefinition) => void;
+  /** Put a saved item's text into the composer for the current turn. */
+  onUseSaved: (text: string) => void;
   installedSkills: ArcSkillDefinition[];
   installedSkillKeys: string[];
   installingSkillKey: string | null;
@@ -482,14 +495,22 @@ function ThreadDrawer({
   connectors: ConnectorView[];
   emailConnection: ConnectionView | null;
   liveSendEnabled: boolean;
+  /** Programmatic close — following a link, opening review. Leaves focus alone,
+   *  because something else is about to take it. */
   onClose: () => void;
+  /** The operator dismissed the drawer (Escape, the ✕, the scrim). Focus goes
+   *  back to the control that opened it. */
+  onDismiss: () => void;
 }) {
   const router = useRouter();
+  const drawerRef = useRef<HTMLElement | null>(null);
   const [view, setView] = useState<"conversations" | "skills" | "connectors" | "saved">("conversations");
   // Saved items are loaded lazily the first time the Saved tab opens.
   const [savedItems, setSavedItems] = useState<SavedArcItemVM[] | null>(null);
   const [savedLoading, setSavedLoading] = useState(false);
   const [savedError, setSavedError] = useState<string | null>(null);
+  /** Which item just went to the clipboard, so the button can confirm it. */
+  const [copiedSavedId, setCopiedSavedId] = useState<string | null>(null);
   // Archived conversations: a lazy-loaded disclosure at the bottom of the list.
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [archivedConvos, setArchivedConvos] = useState<ArchivedArcConversationVM[] | null>(null);
@@ -543,6 +564,21 @@ function ThreadDrawer({
       });
     }
   };
+  /** Copy the reusable artefact: the text for a draft or angle, the URL for media. */
+  const copySaved = async (item: SavedArcItemVM) => {
+    const text = item.kind === "media" ? item.mediaUrl : item.body;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedSavedId(item.id);
+      window.setTimeout(() => setCopiedSavedId((current) => (current === item.id ? null : current)), 1600);
+    } catch {
+      // Clipboard permission can be refused; say so rather than showing a
+      // "Copied" tick for something that never reached the clipboard.
+      setSavedError("Couldn't copy — your browser blocked clipboard access.");
+    }
+  };
+
   const removeSaved = (id: string) => {
     const prev = savedItems;
     setSavedItems((cur) => (cur ? cur.filter((s) => s.id !== id) : cur));
@@ -721,6 +757,89 @@ function ThreadDrawer({
     if (skill.source === "library") return onSetSkillInstalled(skill, false);
   };
 
+  /**
+   * The dialog contract for the drawer. It has always *behaved* as a modal —
+   * the scrim takes pointer events and covers the conversation — while
+   * declaring none of it: no role, no Escape, and Tab walked straight out into
+   * the chat the scrim was blocking from the mouse.
+   *
+   * Escape dismisses the innermost open thing and only closes the drawer when
+   * nothing is open. Surfaces with their own popup state (the thread menu, the
+   * rename field) consume Escape themselves and stop it before it reaches here;
+   * this handles the disclosures and sub-views, which are plain drawer state.
+   */
+  const dismissInnermost = (): boolean => {
+    if (view === "skills" && skillsMode === "library" && githubOpen) { setGithubOpen(false); return true; }
+    if (view === "skills" && skillsMode === "library") { setSkillsMode("installed"); return true; }
+    if (view === "skills" && manageOpen) { setManageOpen(false); return true; }
+    if (view === "conversations" && archivedOpen) { setArchivedOpen(false); return true; }
+    if (view === "connectors" && plannedOpen) { setPlannedOpen(false); return true; }
+    return false;
+  };
+
+  /*
+   * Bound on `document`, not on the aside, and deliberately so. Dismissing an
+   * inner surface usually unmounts whatever had focus — closing the GitHub
+   * disclosure removes the button you pressed Escape on — which drops focus to
+   * <body>. A handler on the aside then never fires again, so Escape appears to
+   * stop working after the first press. A document listener is focus-independent.
+   *
+   * Registered in the CAPTURE phase and gated on the event target, which is the
+   * only arrangement that survives both React quirks here:
+   *
+   *   - `stopPropagation()` on a synthetic event does not reliably stop the
+   *     native event reaching a document-bound listener, so a thread menu could
+   *     not fend the drawer off that way;
+   *   - by the time a *bubble*-phase document listener runs, React has already
+   *     flushed the menu's own close and unmounted it, so asking the DOM
+   *     "is a menu open?" answers no and the drawer closes too.
+   *
+   * Capture runs before React sees the event at all, so the target still tells
+   * the truth: a keystroke aimed inside a nested surface belongs to that
+   * surface's own handler, and this one stays out of the way.
+   */
+  const targetOwnedByNestedSurface = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest(".arc-history-menu") || target.closest(".arc-history-item.is-renaming"));
+  };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const drawer = drawerRef.current;
+      if (!drawer) return;
+      if (targetOwnedByNestedSurface(event.target)) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (!dismissInnermost()) onDismiss();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        drawer.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((node) => node.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+      const inside = active ? drawer.contains(active) : false;
+      // Focus outside the drawer (it fell to <body>, or Tab reached the chat
+      // behind the scrim) is pulled back to the appropriate edge.
+      if (!inside) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  });
+
   const handleRovingListKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
     const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]'))
@@ -837,8 +956,8 @@ function ThreadDrawer({
   };
 
   return (
-    <motion.aside className="arc-history" initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} aria-label="Arc workspace">
-      <div className="arc-history-topline"><span className="arc-history-eyebrow">Your Arc workspace</span><button type="button" className="arc-icon-button" onClick={onClose} aria-label="Close Arc workspace" autoFocus><X size={17} /></button></div>
+    <motion.aside ref={drawerRef} className="arc-history" initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} role="dialog" aria-modal="true" aria-label="Arc workspace">
+      <div className="arc-history-topline"><span className="arc-history-eyebrow">Your Arc workspace</span><button type="button" className="arc-icon-button" onClick={onDismiss} aria-label="Close Arc workspace" autoFocus><X size={17} /></button></div>
       <nav className="arc-drawer-nav" aria-label="Arc workspace sections">
         <button type="button" className={view === "conversations" ? "is-active" : ""} aria-current={view === "conversations" ? "page" : undefined} onClick={() => setView("conversations")}><MessageSquareText size={14} /><span>Conversations</span></button>
         <button type="button" className={view === "skills" ? "is-active" : ""} aria-current={view === "skills" ? "page" : undefined} onClick={() => { setView("skills"); setSkillsMode("installed"); }}><Blocks size={14} /><span>Skills</span></button>
@@ -1057,7 +1176,7 @@ function ThreadDrawer({
       </section> : null}
 
       {view === "saved" ? <section className="arc-drawer-view arc-drawer-saved" aria-labelledby="arc-saved-title">
-        <header className="arc-drawer-view-head"><h2 id="arc-saved-title">Saved</h2><p>Responses and drafts you saved from Arc — kept for reuse.</p></header>
+        <header className="arc-drawer-view-head"><h2 id="arc-saved-title">Saved</h2><p>Responses, drafts and media you saved from Arc. Send one straight back into the conversation.</p></header>
         {savedError ? <p className="arc-saved-error" role="alert">{savedError}</p> : null}
         {savedLoading ? (
           <div className="arc-saved-empty"><LoaderCircle size={16} className="is-spinning" /> Loading your saved items…</div>
@@ -1069,7 +1188,20 @@ function ThreadDrawer({
                   <span className={`arc-saved-kind is-${item.kind}`}>{item.kind === "draft" ? "Draft" : item.kind === "media" ? "Media" : "Angle"}</span>
                   <b className="arc-saved-title">{item.title}</b>
                   {item.preview ? <p className="arc-saved-preview">{item.preview}</p> : null}
-                  {item.conversationHref ? <Link href={item.conversationHref} className="arc-saved-open" onClick={onClose}>Open source chat <ArrowRight size={12} /></Link> : null}
+                  {/* The reuse the copy has always promised. Text goes into the
+                      composer; media has no body to insert, so its reusable
+                      artefact is the link. */}
+                  <div className="arc-saved-actions">
+                    {item.body ? (
+                      <button type="button" className="arc-saved-use" onClick={() => onUseSaved(item.body!)}>
+                        <CornerDownLeft size={12} /> Use in chat
+                      </button>
+                    ) : null}
+                    <button type="button" className="arc-saved-copy" onClick={() => void copySaved(item)}>
+                      {copiedSavedId === item.id ? <><Check size={12} /> Copied</> : <><Copy size={12} /> {item.kind === "media" ? "Copy link" : "Copy"}</>}
+                    </button>
+                    {item.conversationHref ? <Link href={item.conversationHref} className="arc-saved-open" onClick={onClose}>Open source chat <ArrowRight size={12} /></Link> : null}
+                  </div>
                 </div>
                 <button type="button" className="arc-saved-remove" onClick={() => removeSaved(item.id)} aria-label={`Remove saved item: ${item.title}`} title="Remove"><Trash2 size={14} /></button>
               </div>
@@ -1078,7 +1210,7 @@ function ThreadDrawer({
         ) : (
           <div className="arc-saved-empty">
             <Bookmark size={18} />
-            <div><b>Nothing saved yet.</b><span>Use the bookmark on any Arc response to keep it here for reuse.</span></div>
+            <div><b>Nothing saved yet.</b><span>Bookmark any Arc response to keep it here and reuse it in a later conversation.</span></div>
           </div>
         )}
       </section> : null}
@@ -1280,6 +1412,16 @@ export function ArcView({
   const [composerNotice, setComposerNotice] = useState<string | null>(null);
   const [contextInfoOpen, setContextInfoOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const historyButtonRef = useRef<HTMLButtonElement | null>(null);
+  /**
+   * Dismissing the drawer hands focus back to the control that opened it —
+   * otherwise a keyboard user who presses Escape is left with focus on a
+   * detached node and has to Tab in from the top of the document.
+   */
+  const dismissHistory = useCallback(() => {
+    setHistoryOpen(false);
+    historyButtonRef.current?.focus();
+  }, []);
   const [startingNewConversation, setStartingNewConversation] = useState(false);
   const [optimisticTurn, setOptimisticTurn] = useState<(OptimisticArcTurn & { baselineMessageCount: number }) | null>(null);
   const [installedSkillKeys, setInstalledSkillKeys] = useState(initialInstalledSkillKeys);
@@ -2065,6 +2207,29 @@ export function ArcView({
     window.requestAnimationFrame(() => composerInputRef.current?.focus());
   };
 
+  /**
+   * Put a saved item back to work in the current turn.
+   *
+   * Appends rather than replaces: the Saved tab is usually opened *while*
+   * writing something, and silently discarding a half-typed message to paste an
+   * angle over it would be its own small betrayal.
+   */
+  const useSavedItem = (text: string) => {
+    const addition = text.trim();
+    if (!addition) return;
+    const current = draft.trim();
+    updateDraft(current ? `${current}\n\n${addition}` : addition);
+    setHistoryOpen(false);
+    window.requestAnimationFrame(() => {
+      const input = composerInputRef.current;
+      if (!input) return;
+      input.focus();
+      // Caret at the end, so the next keystroke continues the message rather
+      // than landing in the middle of what was just inserted.
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  };
+
   const setLibrarySkillInstalled = (skill: ArcSkillDefinition, installed: boolean) => {
     if (isSavingSkill) return;
     const previous = installedSkillKeys;
@@ -2089,7 +2254,7 @@ export function ArcView({
   return (
     <div className="arc-chat" ref={chatRootRef} data-workspace-open={panelVisible ? "true" : "false"} data-new-conversation={live && !visibleConversationId && visibleMessages.length === 0 && !optimisticTurn ? "true" : "false"}>
       <header className="arc-conversation-header">
-        <button type="button" className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-label="Open conversations"><MessagesSquare size={17} /><span>Conversations</span></button>
+        <button type="button" ref={historyButtonRef} className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-expanded={historyOpen} aria-haspopup="dialog" aria-label="Open conversations"><MessagesSquare size={17} /><span>Conversations</span></button>
         <div className="arc-conversation-title"><h1>{header.title}</h1><p>{header.subtitle}</p></div>
         <div className="arc-conversation-actions">
           {needsReviewCards.length > 0 ? <button type="button" className="arc-header-attention" aria-label={`${needsReviewCards.length} items need review`} onClick={() => openReview(needsReviewCards)}><ClipboardCheck size={15} /><span>{needsReviewCards.length} need review</span></button> : null}
@@ -2254,7 +2419,7 @@ export function ArcView({
       </AnimatePresence>
       <AnimatePresence>
         {panelVisible ? <motion.button type="button" className="arc-workspace-scrim" aria-label="Close conversation workspace" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setReviewCards(null); setWorkPanelVisibility(false); }} /> : null}
-        {historyOpen ? <Fragment key="arc-workspace"><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setHistoryOpen(false)} aria-label="Close Arc workspace" /><ThreadDrawer live={live} groups={threadGroups} activeConversationId={visibleConversationId} selectedDemoId={selectedDemoId} needsReviewCount={needsReviewCards.length} onSelectDemo={selectDemoThread} onStartNew={startNewConversation} onOpenReview={() => { setHistoryOpen(false); openReview(needsReviewCards); }} onUseSkill={applyDrawerSkill} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} campaignItems={mentionGroups.find((group) => group.type === "campaign")?.items ?? []} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} /></Fragment> : null}
+        {historyOpen ? <Fragment key="arc-workspace"><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismissHistory} aria-label="Close Arc workspace" /><ThreadDrawer live={live} groups={threadGroups} activeConversationId={visibleConversationId} selectedDemoId={selectedDemoId} needsReviewCount={needsReviewCards.length} onSelectDemo={selectDemoThread} onStartNew={startNewConversation} onOpenReview={() => { setHistoryOpen(false); openReview(needsReviewCards); }} onUseSkill={applyDrawerSkill} onUseSaved={useSavedItem} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} campaignItems={mentionGroups.find((group) => group.type === "campaign")?.items ?? []} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} onDismiss={dismissHistory} /></Fragment> : null}
         {shareOpen ? <ShareDialog key="share-dialog" conversationId={visibleConversationId} onClose={() => setShareOpen(false)} /> : null}
       </AnimatePresence>
     </div>

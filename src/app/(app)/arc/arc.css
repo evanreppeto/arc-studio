@@ -1989,8 +1989,17 @@ a.arc-work-evidence-item:hover > svg { color: var(--accent); }
 .arc-saved-kind.is-draft { color: var(--accent-contrast); background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-saved-title { display: block; font-size: var(--dz-md); font-weight: 600; color: var(--text); line-height: 1.35; }
 .arc-saved-preview { margin: 4px 0 0; font-size: var(--dz-sm); color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.arc-saved-open { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; font-size: var(--dz-xs); font-weight: 600; color: var(--accent-contrast); text-decoration: none; }
-.arc-saved-open:hover { color: var(--text); }
+/* Reuse actions. "Use in chat" is the primary one — it is the whole reason the
+   Saved tab exists — so it carries the accent; copy and the source link sit
+   beside it as quieter alternatives. */
+.arc-saved-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.arc-history .arc-saved-use,
+.arc-history .arc-saved-copy { min-height: 26px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 8px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast), color var(--arc-fast); }
+.arc-history .arc-saved-use { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
+.arc-history .arc-saved-use:hover { border-color: var(--accent-border-strong); background: color-mix(in srgb, var(--accent-soft) 55%, var(--canvas-deep)); }
+.arc-history .arc-saved-copy:hover { border-color: var(--line-3); background: rgba(255, 255, 255, .04); color: var(--text); }
+.arc-saved-open { display: inline-flex; align-items: center; gap: 4px; font-size: var(--dz-xs); font-weight: 600; color: var(--muted); text-decoration: none; }
+.arc-saved-open:hover { color: var(--text-2); }
 .arc-saved-remove { flex: none; width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast); }
 .arc-saved-item:hover .arc-saved-remove, .arc-saved-remove:focus-visible { opacity: 1; }
 .arc-saved-remove:hover { color: var(--red-text); border-color: var(--red-border); background: var(--red-soft); }
