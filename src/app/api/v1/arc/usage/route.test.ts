@@ -79,6 +79,38 @@ describe("POST /api/v1/arc/usage", () => {
     expect(mocks.recordUsageEvent.mock.calls[0][0].metadata).not.toHaveProperty("usage_detail");
   });
 
+  it("drops an oversized usage_detail entirely rather than truncating it", async () => {
+    // This writes caller-supplied JSON into a JSONB column on every turn, so the
+    // bound is enforced here as well as in the runner. Dropped, not truncated —
+    // half a payload would read as a complete one.
+    await POST(
+      post({
+        model: "claude-opus-4-8",
+        output_tokens: 1,
+        usage_detail: { blob: "x".repeat(20_000) },
+      }),
+    );
+    expect(mocks.recordUsageEvent.mock.calls[0][0].metadata).not.toHaveProperty("usage_detail");
+  });
+
+  it("keeps a realistic payload including the per-TTL cache split", async () => {
+    await POST(
+      post({
+        model: "claude-opus-4-8",
+        output_tokens: 1051,
+        usage_detail: {
+          cache_read_input_tokens: 92_215,
+          cache_creation: { ephemeral_5m_input_tokens: 12_707, ephemeral_1h_input_tokens: 0 },
+          service_tier: "standard",
+          usage_keys: ["cache_creation", "cache_read_input_tokens", "service_tier"],
+        },
+      }),
+    );
+    const detail = mocks.recordUsageEvent.mock.calls[0][0].metadata.usage_detail;
+    expect(detail.cache_creation).toEqual({ ephemeral_5m_input_tokens: 12_707, ephemeral_1h_input_tokens: 0 });
+    expect(detail.service_tier).toBe("standard");
+  });
+
   it("acks with 202 rather than erroring when the ledger skips the write", async () => {
     // A retry-storm from the runner would be worse than a missed row, and the
     // ledger reports its own failures.
