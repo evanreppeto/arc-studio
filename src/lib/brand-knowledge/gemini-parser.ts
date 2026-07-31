@@ -1,5 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 
+import { meterGeminiTextUsage } from "@/lib/ai-usage/gemini-text";
+import { reportDegraded } from "@/lib/observability/report-degraded";
+
 import { mergeBrandPalette, NEUTRAL_DEFAULTS, type BrandColor, type BrandPaletteUpdate, type BusinessProfile, type KnowledgeNodeInput, type ProofPoint } from "@/domain";
 
 import { type BrandKnowledgeAsset } from "./brain-sync";
@@ -17,6 +20,13 @@ type GeminiDeps = {
   apiKey?: string;
   model?: string;
   generateText?: (prompt: string, asset: BrandKnowledgeAsset) => Promise<string>;
+  /**
+   * Org this extraction bills to (BSR-502). Optional in the type because this is
+   * an exported entry point with existing callers, but a real Gemini call made
+   * WITHOUT it is reported rather than silently unmetered — an unattributable
+   * cost is a finding, not a no-op.
+   */
+  orgId?: string;
 };
 
 export type BrandProfileUpdate = {
@@ -355,6 +365,29 @@ async function callGemini(prompt: string, asset: BrandKnowledgeAsset, deps: Gemi
       responseMimeType: "application/json",
     },
   });
+
+  // Brand extraction is org-scoped (it writes Brain nodes, which have an org_id
+  // and no workspace), so the ledger row is too. This call site was one of the
+  // two Gemini text paths the BSR-502 audit found spending money with nowhere to
+  // record it.
+  if (deps.orgId) {
+    await meterGeminiTextUsage(model, response.usageMetadata, {
+      orgId: deps.orgId,
+      workspaceId: null,
+      purpose: "brand.knowledge-extract",
+      keySource: deps.apiKey ? "workspace_vault" : "platform_env",
+    });
+  } else {
+    // The call happened and cost money; we just cannot say whose. Reporting beats
+    // skipping — a silently unattributed cost is exactly how this audit's findings
+    // stayed invisible for weeks.
+    reportDegraded(new Error("Brand-knowledge Gemini call ran without an orgId, so it could not be metered."), {
+      scope: "ai-usage.unattributed",
+      surface: "secondary",
+      detail: { model, purpose: "brand.knowledge-extract" },
+    });
+  }
+
   return response.text ?? "";
 }
 

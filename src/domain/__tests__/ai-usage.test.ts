@@ -4,7 +4,9 @@ import {
   PRICING_VERSION,
   estimateClaudeCostCents,
   estimateEmbeddingCostCents,
+  estimateGeminiTextCostCents,
   estimateMediaCostCents,
+  foldGeminiTextUsage,
   estimateTokensFromChars,
   isPricedModel,
   isPricedUsage,
@@ -210,5 +212,49 @@ describe("embedding pricing (BSR-502 Finding 1)", () => {
     expect(isPricedUsage("arc_claude", "claude-opus-4-8")).toBe(true);
     expect(isPricedUsage("arc_claude", "claude-not-a-real-model-9")).toBe(false);
     expect(isPricedUsage("gemini_image", "")).toBe(true);
+  });
+});
+
+describe("foldGeminiTextUsage (BSR-502)", () => {
+  it("counts tool-use prompt tokens as input and thinking tokens as output", async () => {
+    // The trap this exists to avoid: prompt/candidates look like the obvious
+    // mapping, but Google defines totalTokenCount as the sum of FOUR fields.
+    // toolUsePromptTokenCount is billed as input and excluded from
+    // promptTokenCount; thoughtsTokenCount is billed as output and excluded from
+    // candidatesTokenCount. Reading only the obvious two reproduces Finding 3.
+    const folded = foldGeminiTextUsage({
+      promptTokenCount: 1_000,
+      toolUsePromptTokenCount: 30_000,
+      candidatesTokenCount: 800,
+      thoughtsTokenCount: 2_200,
+      totalTokenCount: 34_000,
+    });
+
+    expect(folded.inputTokens).toBe(31_000);
+    expect(folded.outputTokens).toBe(3_000);
+    // The fold must account for everything Google says it billed.
+    expect(folded.inputTokens + folded.outputTokens).toBe(34_000);
+  });
+
+  it("does not double-count cached content, which promptTokenCount already includes", () => {
+    const folded = foldGeminiTextUsage({ promptTokenCount: 5_000, cachedContentTokenCount: 4_000, candidatesTokenCount: 100 });
+    expect(folded.inputTokens).toBe(5_000);
+    // Kept in the breakdown, because cached tokens bill at a different rate and
+    // pricing them later needs the split.
+    expect(folded.breakdown.cached_content_token_count).toBe(4_000);
+  });
+
+  it("distinguishes a missing usage block from a genuine zero-token call", () => {
+    const folded = foldGeminiTextUsage(null);
+    expect(folded.inputTokens).toBe(0);
+    expect(folded.outputTokens).toBe(0);
+    // Six explicit nulls — so a row where Gemini reported nothing cannot be read
+    // as a call that genuinely used no tokens.
+    expect(Object.values(folded.breakdown).every((v) => v === null)).toBe(true);
+  });
+
+  it("records ZERO for an unpriced Gemini text model — and declares it unpriced", () => {
+    expect(estimateGeminiTextCostCents("gemini-2.5-flash", 31_000, 3_000)).toBe(0);
+    expect(isPricedUsage("gemini_text", "gemini-2.5-flash")).toBe(false);
   });
 });

@@ -8,7 +8,12 @@
 
 export const PRICING_VERSION = "2026-07-31";
 
-export type AiUsageService = "arc_claude" | "gemini_image" | "gemini_video" | "gemini_embedding";
+export type AiUsageService =
+  | "arc_claude"
+  | "gemini_image"
+  | "gemini_video"
+  | "gemini_embedding"
+  | "gemini_text";
 
 /** Services billed per generation, not per token. */
 export type MediaUsageService = "gemini_image" | "gemini_video";
@@ -78,6 +83,93 @@ export function estimateTokensFromChars(chars: number): number {
   return Math.ceil(Math.max(0, chars) / CHARS_PER_TOKEN_ESTIMATE);
 }
 
+/**
+ * Gemini text-generation pricing, cents per 1,000,000 tokens.
+ *
+ * DELIBERATELY EMPTY, for the same reason as EMBEDDING_PRICING: no published
+ * rate has been supplied and inferring one would put an invisible wrong number
+ * where a visible zero is safer. Unlike embeddings, these rows carry MEASURED
+ * token counts, so a backfill here is exact arithmetic the day a rate arrives.
+ */
+const GEMINI_TEXT_PRICING: Record<string, ModelRate> = {};
+
+/** Resolve a Gemini text model's rate: exact id first, then a known-prefix match. */
+export function resolveGeminiTextRate(model: string): ModelRate | null {
+  if (GEMINI_TEXT_PRICING[model]) return GEMINI_TEXT_PRICING[model];
+  for (const [id, rate] of Object.entries(GEMINI_TEXT_PRICING)) {
+    if (model.startsWith(id)) return rate;
+  }
+  return null;
+}
+
+/** Estimated cost (cents) of a Gemini text call. Unpriced model -> 0. */
+export function estimateGeminiTextCostCents(
+  model: string,
+  inputTokens: number | null | undefined,
+  outputTokens: number | null | undefined,
+): number {
+  const rate = resolveGeminiTextRate(model);
+  if (!rate) return 0;
+  const cents =
+    ((inputTokens ?? 0) * rate.inputCentsPerMTok + (outputTokens ?? 0) * rate.outputCentsPerMTok) / 1_000_000;
+  return Math.round(cents);
+}
+
+/** The token fields Gemini returns on `generateContent`. All optional. */
+export type GeminiUsageMetadata = {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
+  toolUsePromptTokenCount?: number;
+  cachedContentTokenCount?: number;
+  totalTokenCount?: number;
+};
+
+export type FoldedGeminiUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  /** The raw fields, preserved so the fold above stays auditable and reversible. */
+  breakdown: Record<string, number | null>;
+};
+
+/**
+ * Collapse Gemini's usage block into the ledger's two token columns.
+ *
+ * The mapping is NOT the obvious one, and the obvious one undercounts:
+ *
+ *  - `thoughtsTokenCount` is the model's reasoning output on 2.5-series models.
+ *    It is billed as output and is NOT included in `candidatesTokenCount`.
+ *  - `toolUsePromptTokenCount` is tool results fed back to the model. It is
+ *    billed as input and is NOT included in `promptTokenCount`. For a GROUNDED
+ *    web search — the whole point of the research call site — this is where the
+ *    bulk of the tokens live.
+ *
+ * Reading only prompt/candidates would therefore reproduce Finding 3 in a new
+ * place: a plausible-looking token count that silently omits most of the spend.
+ * Google's own definition of `totalTokenCount` is the sum of all four, which is
+ * the check this fold is built to satisfy.
+ *
+ * `cachedContentTokenCount` is reported but NOT added: `promptTokenCount`
+ * already includes it. It is kept in the breakdown because cached tokens bill at
+ * a different rate, so pricing them correctly later needs the split.
+ */
+export function foldGeminiTextUsage(usage: GeminiUsageMetadata | null | undefined): FoldedGeminiUsage {
+  const n = (v: number | undefined): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : 0);
+  const raw = (v: number | undefined): number | null => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : null);
+  return {
+    inputTokens: n(usage?.promptTokenCount) + n(usage?.toolUsePromptTokenCount),
+    outputTokens: n(usage?.candidatesTokenCount) + n(usage?.thoughtsTokenCount),
+    breakdown: {
+      prompt_token_count: raw(usage?.promptTokenCount),
+      candidates_token_count: raw(usage?.candidatesTokenCount),
+      thoughts_token_count: raw(usage?.thoughtsTokenCount),
+      tool_use_prompt_token_count: raw(usage?.toolUsePromptTokenCount),
+      cached_content_token_count: raw(usage?.cachedContentTokenCount),
+      total_token_count: raw(usage?.totalTokenCount),
+    },
+  };
+}
+
 /** Estimated cost (cents) of an embedding call. Unpriced model -> 0. */
 export function estimateEmbeddingCostCents(
   model: string,
@@ -110,6 +202,7 @@ export function isPricedModel(model: string): boolean {
 export function isPricedUsage(service: AiUsageService, model: string): boolean {
   if (service === "arc_claude") return isPricedModel(model);
   if (service === "gemini_embedding") return resolveEmbeddingRate(model) !== null;
+  if (service === "gemini_text") return resolveGeminiTextRate(model) !== null;
   return true;
 }
 

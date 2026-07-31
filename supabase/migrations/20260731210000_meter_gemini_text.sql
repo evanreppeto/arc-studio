@@ -1,0 +1,13 @@
+-- BSR-502 / Finding 1, second half: Gemini TEXT generation had no service value.
+--
+-- The embedding migration (20260731200000) closed the embedding half. Two text
+-- call sites were left spending money with nowhere to record it:
+--
+--   src/lib/research/gemini-web-search.ts   — Arc's grounded web research
+--   src/lib/brand-knowledge/gemini-parser.ts — brand asset extraction
+--
+-- Unlike embeddings, `generateContent` returns a real usage block, so these rows
+-- carry MEASURED token counts rather than estimates — which makes a backfill
+-- exact arithmetic once a rate is supplied. No rate is supplied yet, so these
+-- rows record zero and report themselves via `ai-usage.unpriced-model`.
+alter type public.ai_usage_service add value if not exists 'gemini_text';
