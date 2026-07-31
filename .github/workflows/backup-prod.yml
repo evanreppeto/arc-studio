@@ -222,6 +222,102 @@ jobs:
           chmod +x backup/restore.sh
           ls -l backup/
 
+      # Storage bytes. The Postgres dump carries `storage.objects` METADATA —
+      # rows describing files — but not the files. Restoring without this gives
+      # you a database full of rows pointing at objects that do not exist, which
+      # looks like a working restore until someone opens a campaign.
+      #
+      # No credential is needed while every bucket is public: the objects are
+      # already served unauthenticated. A PRIVATE bucket cannot be read this way
+      # and is reported as a gap rather than skipped quietly — see the manifest
+      # check below.
+      - name: Back up storage objects
+        env:
+          PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          # A ceiling so a growing bucket cannot quietly turn a 6 MB nightly
+          # backup into a gigabyte one. Raise it deliberately.
+          MAX_TOTAL_BYTES: "524288000"   # 500 MB
+        run: |
+          set -euo pipefail
+          PG=/usr/lib/postgresql/17/bin
+          . /tmp/pgenv.sh
+
+          if [ -z "${PROJECT_REF:-}" ]; then
+            echo "::error title=SUPABASE_PROJECT_REF is not set::Storage bytes cannot be fetched without the project ref. Set it with: gh variable set SUPABASE_PROJECT_REF --body '<ref>'. It is not a secret — it already ships in the client bundle."
+            exit 1
+          fi
+
+          # JSON, not TSV: object names are arbitrary paths and a tab or newline
+          # in one would silently corrupt a line-based manifest.
+          "$PG/psql" -qAt -o backup/storage-inventory.json <<'SQL'
+          select coalesce(json_agg(json_build_object(
+                   'bucket', o.bucket_id, 'name', o.name,
+                   'size', (o.metadata->>'size')::bigint,
+                   'mime', coalesce(o.metadata->>'mimetype', 'application/octet-stream'),
+                   'public', b.public
+                 ) order by o.bucket_id, o.name), '[]'::json)
+          from storage.objects o join storage.buckets b on b.id = o.bucket_id;
+          SQL
+
+          python3 - <<'FETCH'
+          import hashlib, json, os, pathlib, sys, urllib.parse, urllib.request
+
+          ref = os.environ["PROJECT_REF"]
+          cap = int(os.environ["MAX_TOTAL_BYTES"])
+          items = json.load(open("backup/storage-inventory.json"))
+          root = pathlib.Path("backup/storage")
+
+          declared = sum(int(i["size"] or 0) for i in items)
+          if declared > cap:
+              print(f"::error title=Storage too large::{declared} bytes exceeds the {cap} cap. "
+                    "Raise MAX_TOTAL_BYTES deliberately, or move storage to its own backup.")
+              sys.exit(1)
+
+          private = sorted({i["bucket"] for i in items if not i["public"]})
+          if private:
+              # Loud, because a silent skip here is exactly the failure the
+              # 2026-07-31 restore test found: a green backup missing something.
+              print("::warning title=Private buckets not backed up::"
+                    f"{', '.join(private)} cannot be read without a service-role key. "
+                    "Those objects are recorded in the manifest but their bytes are NOT in this backup.")
+
+          manifest, fetched, total = [], 0, 0
+          for item in items:
+              entry = {k: item[k] for k in ("bucket", "name", "size", "mime", "public")}
+              if not item["public"]:
+                  entry["status"] = "not-backed-up: private bucket"
+                  manifest.append(entry)
+                  continue
+              quoted = urllib.parse.quote(item["name"], safe="/")
+              url = f"https://{ref}.supabase.co/storage/v1/object/public/{item['bucket']}/{quoted}"
+              try:
+                  with urllib.request.urlopen(url, timeout=120) as resp:
+                      blob = resp.read()
+              except Exception as exc:                      # noqa: BLE001
+                  print(f"::error title=Storage object unreadable::{item['bucket']}/{item['name']}: {exc}")
+                  sys.exit(1)
+
+              # The DB says how big it should be. Trust that over the transfer.
+              if item["size"] is not None and len(blob) != int(item["size"]):
+                  print(f"::error title=Storage object truncated::{item['bucket']}/{item['name']} "
+                        f"is {len(blob)} bytes, expected {item['size']}.")
+                  sys.exit(1)
+
+              dest = root / item["bucket"] / item["name"]
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              dest.write_bytes(blob)
+              entry["sha256"] = hashlib.sha256(blob).hexdigest()
+              entry["status"] = "ok"
+              manifest.append(entry)
+              fetched += 1
+              total += len(blob)
+
+          json.dump(manifest, open("backup/storage-manifest.json", "w"), indent=2)
+          os.remove("backup/storage-inventory.json")
+          root.mkdir(parents=True, exist_ok=True)   # exists even when empty
+          print(f"storage: {fetched}/{len(items)} objects, {total} bytes")
+          FETCH
+
       # A backup nobody checked is a hypothesis. This does not prove the dump
       # RESTORES — only a real restore does that, and the runbook covers it —
       # but it does prove the file is not empty, truncated, or schema-only.
@@ -270,6 +366,27 @@ jobs:
           grep -q "^COPY auth.identities" backup/auth-users.sql \
             || echo "::warning title=No identities::auth.identities is absent; restored accounts will exist but be unable to log in."
 
+          # Storage bytes match the rows that describe them. The dump carries
+          # storage.objects metadata, so a mismatch means a restore would hand
+          # back rows pointing at files this backup does not contain.
+          python3 - <<'CHECK'
+          import json, pathlib, sys
+          manifest = json.load(open("backup/storage-manifest.json"))
+          missing = []
+          for entry in manifest:
+              if entry.get("status") != "ok":
+                  continue
+              path = pathlib.Path("backup/storage") / entry["bucket"] / entry["name"]
+              if not path.exists() or path.stat().st_size != int(entry["size"]):
+                  missing.append(f"{entry['bucket']}/{entry['name']}")
+          if missing:
+              print("::error title=Storage manifest disagrees with the files::"
+                    + ", ".join(missing[:5]))
+              sys.exit(1)
+          ok = sum(1 for e in manifest if e.get("status") == "ok")
+          print(f"storage {ok}/{len(manifest)} objects verified against the manifest")
+          CHECK
+
           DATA_BYTES=$(stat -c%s backup/data.sql)
           # The database was 29 MB in July 2026; a data dump far under a
           # megabyte means something went wrong, not that the CRM shrank.
@@ -288,7 +405,9 @@ jobs:
           # restore.sh travels with the bytes it knows how to restore — a
           # recovery procedure kept only in a doc is one you have to go find
           # during the incident.
-          tar -czf "arc-prod-$STAMP.tar.gz" -C backup 00-prereq.sql schema.sql auth-users.sql data.sql restore.sh
+          tar -czf "arc-prod-$STAMP.tar.gz" -C backup \
+            00-prereq.sql schema.sql auth-users.sql data.sql restore.sh \
+            storage-manifest.json storage
           age -r "$RECIPIENT" -o "arc-prod-$STAMP.tar.gz.age" "arc-prod-$STAMP.tar.gz"
 
           # Remove every plaintext copy before anything can upload it. The
