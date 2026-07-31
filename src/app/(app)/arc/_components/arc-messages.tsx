@@ -917,7 +917,15 @@ export function ArcWorkPanel({
                         <ChevronRight size={14} className={open ? "is-open" : ""} />
                       </button>
                       {open ? (
-                        run.rows.length > 0 ? (
+                        <>
+                          {/* A sibling link, not a nested one: the row above is a
+                              <button> and an anchor inside it would be invalid.
+                              run.id IS the arc_messages id, so this routes
+                              directly (BSR-509). */}
+                          <Link className="arc-work-inspect" href={`/arc/runs/${run.id}`}>
+                            Inspect this run — steps, retrieval, cost
+                          </Link>
+                          {run.rows.length > 0 ? (
                           <div className="arc-work-activity">
                             {run.rows.map((row) => (
                               <div key={row.id} className={`is-${row.status}`}>
@@ -931,7 +939,8 @@ export function ArcWorkPanel({
                               </div>
                             ))}
                           </div>
-                        ) : <p className="arc-work-note">This run reported no separate steps.</p>
+                          ) : <p className="arc-work-note">This run reported no separate steps.</p>}
+                        </>
                       ) : null}
                     </div>
                   );
