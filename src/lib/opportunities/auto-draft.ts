@@ -34,7 +34,7 @@ import {
   type AutoDraftCandidate,
   type AutoDraftSkipReason,
 } from "@/domain";
-import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
+import { getCurrentAgentTaskTenantFields, type AgentTaskScope } from "@/lib/agent-tasks/scope";
 import { createCampaignFromOpportunity } from "@/lib/campaigns/create";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -177,7 +177,7 @@ export function formatAutoDraftLog(summary: AutoDraftRunSummary | { ran: false; 
  */
 export async function runScheduledAutoDraft(
   now: Date = new Date(),
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; scope?: AgentTaskScope } = {},
 ): Promise<AutoDraftRunSummary> {
   // Either the caller or the environment can force a dry run; neither can turn
   // one off once requested.
@@ -197,7 +197,7 @@ export async function runScheduledAutoDraft(
   if (process.env.OPPORTUNITY_AUTO_DRAFT_ENABLED !== "1") return { ...empty, skipped: "disabled" };
   if (!isSupabaseAdminConfigured()) return { ...empty, skipped: "not_configured" };
 
-  const tenant = await getCurrentAgentTaskTenantFields();
+  const tenant = await getCurrentAgentTaskTenantFields(options.scope);
   const orgId = tenant.org_id;
   if (!orgId) return { ...empty, skipped: "no_org" };
 
