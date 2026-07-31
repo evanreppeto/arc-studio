@@ -29,8 +29,22 @@ describe("parseRecall", () => {
     expect(parseRecall({})).toEqual([]);
   });
 
-  it("caps to 8 items", () => {
-    const many = Array.from({ length: 20 }, (_, i) => ({ label: `n${i}` }));
-    expect(parseRecall(many)).toHaveLength(8);
+  it("returns every item — no cap (BSR-624)", () => {
+    // It used to stop at 8, a limit sized for the inline chip row. The parser is
+    // shared, so the workspace panel inherited it and reported "8" for a turn
+    // that recalled 15 — a cap presented as a count. If this ever goes back in,
+    // this fails here rather than silently in the UI.
+    const many = Array.from({ length: 40 }, (_, i) => ({ label: `n${i}` }));
+    expect(parseRecall(many)).toHaveLength(40);
+
+    // The shape prod actually stores, at the size prod actually sends.
+    const prodShaped = Array.from({ length: 15 }, (_, i) => ({
+      kind: "learning",
+      label: `fact_${i}`,
+      summary: `Fact number ${i}.`,
+      confidence: 0.5,
+      nodeId: `node-${i}`,
+    }));
+    expect(parseRecall(prodShaped)).toHaveLength(15);
   });
 });
