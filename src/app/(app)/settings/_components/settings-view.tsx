@@ -1423,7 +1423,16 @@ function TeamMembers({ team }: { team: SettingsTeamView }) {
   return (
     <>
       <Panel title={<>Members <span className="ph-d" style={{ marginLeft: 6 }}>{members.length}</span></>} tag={TGOK}>
-        {members.length === 0 ? (
+        {/* "No members yet" and "we could not read your team" are opposite
+            statements, and the second one used to render as the first — which
+            invites an operator to re-invite people who are already there
+            (BSR-578). */}
+        {team.failed ? (
+          <div className="me" style={{ padding: "6px 2px", color: "var(--red-text)" }}>
+            Your team couldn&apos;t be loaded just now, so this list is incomplete rather than empty.
+            Nothing has changed. Reload to try again.
+          </div>
+        ) : members.length === 0 ? (
           <div className="me" style={{ padding: "6px 2px", color: "var(--muted)" }}>No members yet.</div>
         ) : (
           members.map((m) => (
@@ -1736,7 +1745,11 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
         title={<>Your workspaces <span className="ph-d" style={{ marginLeft: 6 }}>{workspaces.length}</span></>}
         foot={view.isDemo ? "Sample workspaces are shown until you connect an account." : "Switching updates the whole app to the selected workspace."}
       >
-        {workspaces.length === 0 ? (
+        {view.failed ? (
+          <div className="me" style={{ padding: "6px 2px", color: "var(--red-text)" }}>
+            Your workspaces couldn&apos;t be listed just now. This isn&apos;t the full set — reload to try again.
+          </div>
+        ) : workspaces.length === 0 ? (
           <div className="me" style={{ padding: "6px 2px", color: "var(--muted)" }}>No workspaces yet.</div>
         ) : (
           workspaces.map((w) => (

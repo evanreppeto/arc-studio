@@ -6,7 +6,7 @@
 // This is illustrative sample content for a demo tenant, not a hardcoded customer.
 
 import type { ArcActionCard, ArcMention, ArcRecall } from "@/domain";
-import type { ArcAttachment, ArcStep, ArcToolCall } from "@/lib/arc-chat/persistence";
+import type { ArcAttachment, ArcMessage, ArcStep, ArcToolCall } from "@/lib/arc-chat/persistence";
 import type { ArcRecentConversationVM, ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
 
 import type { ArcWaiting } from "./arc-view.types";
@@ -139,6 +139,53 @@ export const DEMO_SOURCES: ArcMention[] = [
 export const DEMO_RECALL: ArcRecall[] = [
   { label: "Demo-first beats discount-led", confidence: 0.86, nodeId: "demo-node-inspection" },
   { label: "Active-trial segment books fastest", confidence: 0.72, nodeId: "demo-node-insured" },
+];
+
+/**
+ * The conversation the workspace panel digests in the offline preview.
+ *
+ * The demo path has no persisted messages, so without this the panel's evidence
+ * section would render empty here while being populated in production — the
+ * exact way a preview lies about a new surface. Same shape as a real row, fed
+ * from the same fixtures the rest of the demo conversation uses.
+ */
+export const DEMO_WORKSPACE_MESSAGES: ArcMessage[] = [
+  {
+    id: "demo-workspace-operator",
+    conversationId: "demo-conversation",
+    role: "operator",
+    body: "Build the pricing-intent package for the high-intent accounts",
+    status: "sent",
+    agentTaskId: null,
+    mentions: DEMO_SOURCES,
+    media: [],
+    steps: [],
+    toolCalls: [],
+    feedback: null,
+    actions: [],
+    suggestions: [],
+    attachments: [],
+    contextScopes: ["workspace", "crm", "campaigns"],
+    createdAt: "2026-07-30T14:40:00.000Z",
+  },
+  {
+    id: "demo-workspace-arc",
+    conversationId: "demo-conversation",
+    role: "arc",
+    body: "",
+    status: "complete",
+    agentTaskId: null,
+    mentions: [],
+    media: [],
+    steps: DEMO_STEPS,
+    toolCalls: DEMO_TOOLS,
+    recall: DEMO_RECALL,
+    feedback: null,
+    actions: [],
+    suggestions: [],
+    attachments: [],
+    createdAt: "2026-07-30T14:41:00.000Z",
+  },
 ];
 
 /** Offline preview: mirrors the demo opportunity inbox so the launcher's "waiting

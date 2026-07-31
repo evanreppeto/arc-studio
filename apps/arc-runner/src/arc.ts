@@ -271,6 +271,21 @@ async function runArcQuery(opts: {
   const tools = toolsForMode(opts.mode, opts.client, step, sink, { ...(opts.toolContext ?? {}), skill: opts.skill });
   const arcServer = createSdkMcpServer({ name: "arc", version: "1.0.0", tools });
 
+  // Opened BEFORE the connector fetch, not after it (BSR-566).
+  //
+  // These three reads — connectors, media config, workspace summary — are one
+  // phase from the reader's side: Arc working out what this workspace has. The
+  // step used to open only around the last of them, so the two network calls
+  // below ran with no row in `running`, and the status line fell back to a bare
+  // "Thinking · Ns" for exactly as long as they took. That was the last of the
+  // silent windows BSR-566 was filed about; the rest were closed by BSR-574.
+  //
+  // Deliberately NOT a fourth label. run-phases.ts makes the case: these are our
+  // plumbing, and three rows telling someone we fetched our own config says
+  // nothing about their business. One line that stays honest while the work
+  // moves is the shape being asked for.
+  await step(STEP_WORKSPACE, "running");
+
   // Remote MCP connectors (e.g. Higgsfield) and the operator's media-model
   // defaults both only matter in work modes; fetch them together, best-effort, so
   // neither a connector outage nor a config miss ever breaks a turn.
@@ -281,7 +296,6 @@ async function runArcQuery(opts: {
   ]);
   const { mcpServers: remoteServers, allowedTools: remoteAllowed } = buildRemoteMcp(remote);
 
-  await step(STEP_WORKSPACE, "running");
   const workspaceState = await resolveWorkspaceSummary(opts.client);
   const system = buildSystemPrompt(ARC_SYSTEM_PROMPT, { ...opts.ctx, workspaceState, mediaConfig });
   await step(STEP_WORKSPACE, "done");
@@ -308,6 +322,24 @@ async function runArcQuery(opts: {
    */
   const narrationChunks = new Set<number>();
   let lastTextChunk: number | null = null;
+  /** Text for the block currently streaming — not yet a chunk. */
+  let streamingText = "";
+  /**
+   * The reply as it stands right now, composed the way `assembleReplyBody`
+   * composes the final one: settled chunks minus anything reclassified as
+   * narration, plus whatever is being typed.
+   *
+   * Streaming raw deltas meant a lead-in was typed into the answer and then
+   * disappeared when the run settled and the reply was assembled without it.
+   * Composing instead means it leaves the answer at the moment it is classified
+   * — which is the moment it appears in the trace — so the sentence moves
+   * somewhere visible rather than vanishing.
+   */
+  const composeLiveBody = () =>
+    [...assistantChunks.filter((_, index) => !narrationChunks.has(index)), streamingText]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join("\n\n");
   let resultText = "";
   // Live-streaming buffer, accumulated from token deltas purely for the typing
   // effect. The final body is assembled below, so if partial events are
@@ -366,24 +398,12 @@ async function runArcQuery(opts: {
             ? `content_block_start:${((event as { content_block?: { type?: string } }).content_block)?.type ?? "?"}`
             : event.type,
       );
-      // A new text block is a new assistant message's prose. The live stream
-      // concatenated raw deltas across that boundary with no separator, so the
-      // typing showed "…starting with CRM contacts.Checking CRM contacts now."
-      // while the settled reply — assembled by `assembleReplyBody`, which joins
-      // with a blank line — read correctly. Same separator here, so what is
-      // typed out matches what lands.
-      if (
-        event.type === "content_block_start" &&
-        ((event as { content_block?: { type?: string } }).content_block)?.type === "text"
-      ) {
-        const sofar = partialStream.value();
-        if (sofar && !sofar.endsWith("\n\n")) await partialStream.append(sofar.endsWith("\n") ? "\n" : "\n\n");
-      }
       if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
         await beginWriting();
+        streamingText += event.delta.text;
         // Awaited (not fire-and-forget) so throttled posts stay ordered;
         // postChatChunk swallows its own errors, so this never breaks the run.
-        await partialStream.append(event.delta.text);
+        await partialStream.set(composeLiveBody());
       } else if (event.type === "content_block_delta" && event.delta.type === "thinking_delta") {
         // Extended-thinking tokens — streamed to the "Thinking…" trace. Typed as
         // unknown on some SDK versions, so read the field defensively.
@@ -439,12 +459,17 @@ async function runArcQuery(opts: {
       if (text.trim()) {
         assistantChunks.push(text);
         lastTextChunk = assistantChunks.length - 1;
+        streamingText = "";
       }
       // A tool call means the text before it introduced work about to happen —
       // but only a lead-in is safe to withhold. Arc also reports findings
       // mid-run, between tool calls, and those belong in the reply.
       if (sawTool && lastTextChunk !== null) {
-        if (isLeadIn(assistantChunks[lastTextChunk] ?? "")) narrationChunks.add(lastTextChunk);
+        if (isLeadIn(assistantChunks[lastTextChunk] ?? "")) {
+          narrationChunks.add(lastTextChunk);
+          // Pull it out of the live reply now, as the trace entry for it appears.
+          await partialStream.set(composeLiveBody());
+        }
         lastTextChunk = null;
       }
     } else if (message.type === "result" && message.subtype === "success") {

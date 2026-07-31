@@ -44,7 +44,7 @@ const STATIC_ASSET_RE = /\.(?:js|mjs|css|png|jpe?g|gif|svg|webp|avif|ico|woff2?|
  * name is what previously served a gated page to signed-out visitors — see the
  * matcher comment in `proxy.ts`.
  */
-const PUBLIC_MARKETING_PATHS = ["/pricing"] as const;
+const PUBLIC_MARKETING_PATHS = ["/pricing", "/compare", "/industries"] as const;
 
 function isPublicMarketingPath(pathname: string): boolean {
   return PUBLIC_MARKETING_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

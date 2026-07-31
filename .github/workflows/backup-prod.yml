@@ -1,0 +1,237 @@
+name: Back up prod
+
+# Prod has NO automated backups (BSR-532).
+#
+# The Supabase org is on the `free` plan, and daily backups + point-in-time
+# recovery are paid features. So today a dropped project, a bad migration, or an
+# accidental bulk delete is unrecoverable — on a database holding a real
+# workspace, about to receive real customer contacts in M2.
+#
+# This is a COMPENSATING CONTROL, not a substitute for Pro-tier backups. It gives
+# a ~24h RPO and an off-database copy. It does not give point-in-time recovery,
+# and it cannot recover the fifteen minutes before a mistake. Upgrading the plan
+# is still the right answer; this exists so that "unrecoverable" stops being true
+# while that decision is made.
+#
+# ── Why the dump is encrypted ─────────────────────────────────────────────────
+# THIS REPOSITORY IS PUBLIC. Artifacts on a public repo are downloadable by
+# anyone who can see the workflow run. A plaintext dump here would publish every
+# contact, email address and campaign in the CRM.
+#
+# So the dump is encrypted with `age` to a PUBLIC key held in the repo variable
+# BACKUP_AGE_RECIPIENT. Asymmetric on purpose: CI can encrypt and cannot decrypt,
+# so nothing in this workflow — or in the artifact it produces — can be used to
+# read the backup. Only the holder of the matching private key can.
+#
+# Setup, once (see docs/runbooks/backup-and-restore.md):
+#   age-keygen -o arc-backup.key      # keep this file OFF this repo
+#   gh variable set BACKUP_AGE_RECIPIENT --body "age1..."   # the public half
+#
+# Until that variable exists this workflow FAILS rather than silently producing
+# nothing, or worse, producing a plaintext dump.
+
+on:
+  schedule:
+    # 07:10 UTC daily — after the nightly smoke, before the working day here.
+    - cron: "10 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-prod
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fail loudly if the database URL is missing
+        env:
+          DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error title=PROD_SUPABASE_DB_URL is not set::Prod cannot be backed up. Store the prod Postgres connection string as the PROD_SUPABASE_DB_URL secret (the same one migrate-prod.yml uses)."
+            exit 1
+          fi
+
+      - name: Fail loudly if there is nobody to encrypt to
+        env:
+          RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RECIPIENT:-}" ]; then
+            echo "::error title=BACKUP_AGE_RECIPIENT is not set::This repository is PUBLIC, so an unencrypted dump would publish the whole CRM. Generate a key with 'age-keygen -o arc-backup.key', keep the private file off this repo, and set the public half: gh variable set BACKUP_AGE_RECIPIENT --body 'age1...'. See docs/runbooks/backup-and-restore.md."
+            exit 1
+          fi
+          # A wrong-shaped value here would produce an artifact nobody can read,
+          # which is worse than failing: it looks like a working backup.
+          case "$RECIPIENT" in
+            age1*) : ;;
+            *) echo "::error title=BACKUP_AGE_RECIPIENT looks wrong::Expected an age public key starting 'age1'. A malformed recipient produces an unreadable artifact that still looks like a successful backup."; exit 1 ;;
+          esac
+
+      - name: Install age
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+
+      # Postgres 17 client, matched to the server.
+      #
+      # The first version of this used `supabase db dump`, on the reasoning that
+      # the CLI ships its own client so there could be no version mismatch. That
+      # was wrong: the CLI runs pg_dump inside a container pinned to Postgres 15,
+      # and prod is 17.6, so it aborted with
+      #   `pg_dumpall: aborting because of server version mismatch`.
+      # pg_dump refuses to dump a NEWER server than itself, by design — a dump
+      # taken by an older client could silently miss newer syntax.
+      - name: Install the Postgres 17 client
+        run: |
+          set -euo pipefail
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      # Three parts, because a restore needs all three and a schema-only dump is
+      # the classic "backup" that turns out to hold no data.
+      #
+      # `public` is this application. `auth.users` comes along separately so
+      # people can still sign in to a restored copy — without it the data is
+      # intact and nobody can reach it. Supabase-managed internals are left out
+      # deliberately: a fresh project recreates them, and restoring ours over
+      # them is how a restore fails in a confusing way.
+      - name: Dump schema, data and accounts
+        env:
+          DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+          PGCLIENTENCODING: UTF8
+          PGSSLMODE: require
+        run: |
+          set -euo pipefail
+          mkdir -p backup
+          PG=/usr/lib/postgresql/17/bin
+
+          # Do NOT hand the connection URI to pg_dump.
+          #
+          # The stored password contains an `@`, and libpq split the URI at the
+          # wrong one — it tried to resolve a host of `592800@aws-1-...` and
+          # failed. Percent-encoding the secret would also fix it, but that puts
+          # a parsing trap in a value a human maintains by hand.
+          #
+          # Splitting on the LAST `@` is unambiguous whatever the password
+          # contains, so the components go in as discrete parameters and the
+          # password via ~/.pgpass. Nothing is echoed: the URL is a secret, and
+          # while GitHub masks known secrets in logs, the safe move is to never
+          # print the pieces at all.
+          python3 - <<'PARSE'
+          import os, re, pathlib
+          url = os.environ["DB_URL"]
+          rest = re.sub(r"^[a-zA-Z0-9+]+://", "", url).split("?", 1)[0]
+          userinfo, hostpart = rest.rsplit("@", 1)          # last @ = the real separator
+          user, _, password = userinfo.partition(":")
+          hostport, _, database = hostpart.partition("/")
+          host, _, port = hostport.partition(":")
+          port = port or "5432"
+          database = database or "postgres"
+          pgpass = pathlib.Path.home() / ".pgpass"
+          pgpass.write_text(f"{host}:{port}:{database}:{user}:{password}\n")
+          pgpass.chmod(0o600)
+          # An env file sourced below, NOT $GITHUB_ENV — that only applies to
+          # later steps, and pg_dump runs in this one.
+          with open("/tmp/pgenv.sh", "w") as fh:
+              fh.write(f"export PGHOST={host}\nexport PGPORT={port}\n")
+              fh.write(f"export PGUSER={user}\nexport PGDATABASE={database}\n")
+          PARSE
+
+          . /tmp/pgenv.sh
+
+          "$PG/pg_dump" --schema=public --schema-only --no-owner --no-privileges -f backup/schema.sql
+          "$PG/pg_dump" --schema=public --data-only   --no-owner --no-privileges -f backup/data.sql
+          # Accounts. Failing here must not fail the backup — the CRM data is
+          # the point — but it must be visible rather than quietly absent.
+          if ! "$PG/pg_dump" --table=auth.users --data-only --no-owner --no-privileges -f backup/auth-users.sql; then
+            echo "::warning title=Accounts not dumped::auth.users could not be read; the restore will hold data but no logins. Everything else in this backup is intact."
+            echo "-- auth.users dump failed at $(date -u +%FT%TZ); see the run log" > backup/auth-users.sql
+          fi
+          ls -l backup/
+
+      # A backup nobody checked is a hypothesis. This does not prove the dump
+      # RESTORES — only a real restore does that, and the runbook covers it —
+      # but it does prove the file is not empty, truncated, or schema-only.
+      - name: Sanity-check the dump before trusting it
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Backup failed its own check::$1"; exit 1; }
+
+          for f in schema data; do
+            [ -s "backup/$f.sql" ] || fail "backup/$f.sql is empty."
+          done
+
+          # Tables that must exist in any real dump of this app. If the schema
+          # dump lost them, the restore would come up missing the CRM.
+          for t in organizations contacts leads campaigns pipeline_stages; do
+            grep -q "CREATE TABLE.*\.$t " backup/schema.sql \
+              || fail "schema.sql has no CREATE TABLE for '$t' — the dump is not this application's schema."
+          done
+
+          # Data, not just structure. COPY blocks are how pg_dump emits rows.
+          grep -q "^COPY " backup/data.sql \
+            || fail "data.sql contains no COPY blocks — this is a schema-only dump wearing a data filename."
+
+          DATA_BYTES=$(stat -c%s backup/data.sql)
+          # The database was 29 MB in July 2026; a data dump far under a
+          # megabyte means something went wrong, not that the CRM shrank.
+          [ "$DATA_BYTES" -gt 200000 ] \
+            || fail "data.sql is only ${DATA_BYTES} bytes. Expected megabytes. Treat this run as failed rather than as a small backup."
+
+          echo "schema $(stat -c%s backup/schema.sql)B · data ${DATA_BYTES}B · accounts $(stat -c%s backup/auth-users.sql)B"
+
+      - name: Encrypt
+        env:
+          RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "STAMP=$STAMP" >>"$GITHUB_ENV"
+          tar -czf "arc-prod-$STAMP.tar.gz" -C backup schema.sql data.sql auth-users.sql
+          age -r "$RECIPIENT" -o "arc-prod-$STAMP.tar.gz.age" "arc-prod-$STAMP.tar.gz"
+
+          # Remove every plaintext copy before anything can upload it. The
+          # encrypted file is the only thing that may leave this runner.
+          rm -rf backup "arc-prod-$STAMP.tar.gz"
+          ls -l "arc-prod-$STAMP.tar.gz.age"
+
+          # Cheap proof it is really encrypted: age files begin with this header.
+          head -c 22 "arc-prod-$STAMP.tar.gz.age" | grep -q "age-encryption.org" \
+            || { echo "::error title=Not encrypted::The artifact does not look like an age file. Refusing to upload it."; exit 1; }
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: arc-prod-backup-${{ env.STAMP }}
+          # Encrypted, so the 90-day public-artifact exposure is not a data risk.
+          # 90 is the maximum GitHub allows; see the runbook for why this is a
+          # floor on the retention story rather than the whole of it.
+          retention-days: 90
+          if-no-files-found: error
+          path: "*.tar.gz.age"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Prod backup — \`$STAMP\`"
+            echo ""
+            echo "Encrypted to \`${{ vars.BACKUP_AGE_RECIPIENT }}\`, retained 90 days."
+            echo ""
+            echo "This is a compensating control while the Supabase org is on the free plan (BSR-532)."
+            echo "RPO ~24h. No point-in-time recovery. Restore steps: \`docs/runbooks/backup-and-restore.md\`."
+          } >>"$GITHUB_STEP_SUMMARY"

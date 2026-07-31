@@ -42,7 +42,20 @@ export default async function SettingsPage() {
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   const [user, team, usage, connectorSpend, billing, settings, connectors, workspaces, emailConnection, agentConnection] = await Promise.all([
     getSupabaseAuthenticatedUser().catch(() => null),
-    getSettingsTeamView().catch(() => ({ workspaceId: null, isDemo: false, members: [], invites: [], activity: [] })),
+    // The read handles its own failures now and reports them on `failed`; this
+    // is only for an unexpected throw, and it must not erase that distinction
+    // by handing the view a benign empty team (BSR-578).
+    getSettingsTeamView().catch((error) => {
+      reportDegraded(error, { scope: "settings.getSettingsTeamView", surface: "primary" });
+      return {
+        workspaceId: null,
+        isDemo: false,
+        members: [],
+        invites: [],
+        activity: [],
+        failed: error instanceof Error ? error.message : "Could not read this workspace's team.",
+      };
+    }),
     // PRIMARY: these render SPEND. Failing to null shows no usage and no cost,
     // which is a false statement about money — an operator reads "nothing spent"
     // and either relaxes about a cap they are actually near, or files a bug
@@ -58,7 +71,14 @@ export default async function SettingsPage() {
     getSettingsBillingView().catch(() => null),
     getAppSettings(ctx?.orgId ?? null),
     getSettingsConnectorsView().catch(() => ({ configured: false, connectors: [] })),
-    getSettingsWorkspacesView().catch(() => ({ isDemo: false, workspaces: [] })),
+    getSettingsWorkspacesView().catch((error) => {
+      reportDegraded(error, { scope: "settings.getSettingsWorkspacesView", surface: "primary" });
+      return {
+        isDemo: false,
+        workspaces: [],
+        failed: error instanceof Error ? error.message : "Could not list your workspaces.",
+      };
+    }),
     // PRIMARY: a failed connection READ renders identically to "not connected".
     // The operator reconnects something that was already fine, or concludes
     // sending is off when it isn't. Status that lies is worse than status absent.

@@ -136,6 +136,26 @@ export function BrandView({ view }: { view: BrandProfileView }) {
 
   return (
     <div className="arc-brand" style={{ ["--bactive" as string]: accent }}>
+      {/* A failed read renders NEUTRAL_DEFAULTS, which look like a real brand
+          kit and are not this tenant's. Say so before anything below is read as
+          theirs — and before anyone approves creative drawn from it (BSR-578). */}
+      {view.failed && (
+        <div
+          role="status"
+          style={{
+            margin: "0 0 14px",
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--red-border, rgba(204,102,102,.4))",
+            color: "var(--red-text)",
+            fontSize: 13,
+          }}
+        >
+          Your brand kit couldn&apos;t be loaded, so what&apos;s shown below are placeholder
+          defaults — not your colours, logo or voice. Don&apos;t approve creative from this
+          until it reloads.
+        </div>
+      )}
       {/* HERO */}
       <div className="brandhero">
         <div className="mk2">
