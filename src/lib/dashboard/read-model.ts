@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
@@ -94,5 +95,7 @@ async function countRows(
     throw new Error(`${table} count failed: ${error.message}`);
   }
 
-  return count ?? 0;
+  // A null count with no error means the relation is missing or inaccessible —
+  // NOT zero rows. `count ?? 0` here would report a confident zero (BSR-575).
+  return requireCount(table, { count, error });
 }

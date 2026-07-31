@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { personasForIndustry } from "./industry-templates";
@@ -117,8 +118,9 @@ export async function seedDefaultPersonas(
     .from("personas")
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId);
-  if (countError) throw new Error(`personas count failed: ${countError.message}`);
-  if ((count ?? 0) > 0) return 0;
+  // Fail closed. This guard makes seeding idempotent, so a null count read as
+  // 0 would mean "not seeded yet" and duplicate every default persona (BSR-575).
+  if (requireCount("personas", { count, error: countError }) > 0) return 0;
 
   const rows = personasForIndustry(industry).map((persona) => ({
     org_id: orgId,
