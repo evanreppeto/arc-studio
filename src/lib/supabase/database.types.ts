@@ -6679,18 +6679,21 @@ export type Database = {
       }
       waitlist_signups: {
         Row: {
+          attribution: Json
           created_at: string
           email: string
           id: string
           source: string
         }
         Insert: {
+          attribution?: Json
           created_at?: string
           email: string
           id?: string
           source?: string
         }
         Update: {
+          attribution?: Json
           created_at?: string
           email?: string
           id?: string
@@ -6757,6 +6760,7 @@ export type Database = {
       }
       workspaces: {
         Row: {
+          attribution: Json
           accent_key: string | null
           created_at: string
           created_by: string | null
@@ -6775,6 +6779,7 @@ export type Database = {
           workspace_type: string
         }
         Insert: {
+          attribution?: Json
           accent_key?: string | null
           created_at?: string
           created_by?: string | null
@@ -6793,6 +6798,7 @@ export type Database = {
           workspace_type?: string
         }
         Update: {
+          attribution?: Json
           accent_key?: string | null
           created_at?: string
           created_by?: string | null
