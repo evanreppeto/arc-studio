@@ -81,7 +81,7 @@
   /* mockup var names → app tokens / fonts */
   --canvas: #16161a; --canvas-deep: #101013; --panel: #1c1c21; --inset: #202027; --raised: #26262d; --sidebar: #121316;
   --line: rgba(232, 224, 205, 0.08); --line-2: rgba(232, 224, 205, 0.12); --line-3: rgba(232, 224, 205, 0.20);
-  --text: #f2eee4; --text-2: #b8b4aa; --muted: #777c80;
+  --text: #f2eee4; --text-2: #b8b4aa; --muted: #8a8f93;
   /* --accent* intentionally inherit from html[data-accent] (globals.css) so the
      Appearance setting re-skins the whole shell. Do not re-pin them here. */
   --ok: #7fb89a; --ok-soft: rgba(127, 184, 154, 0.14); --ok-text: #a3d0b8; --ok-border: rgba(127, 184, 154, 0.4);
@@ -233,6 +233,41 @@
   & .topav { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 12px; overflow: hidden; }
   & .topavbtn { flex-shrink: 0; padding: 0; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
   & .topavbtn:hover { border-color: var(--accent-border); background: var(--raised); }
+
+  /* Off-screen until focused, then it lands over the header where it is
+     obviously the thing you just reached. */
+  & .skip-link {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 200;
+    border: 1px solid var(--accent-border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--text);
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transform: translateY(-200%);
+    transition: transform var(--arc-fast, 0.15s) ease;
+  }
+  & .skip-link:focus-visible { transform: translateY(0); }
+  & main:focus { outline: none; }
+
+  /* Every focusable thing inside the shell gets a visible focus ring.
+     This list covered the shell's own chrome and stopped there, so page-level
+     controls — the Analytics view tabs, the range picker, the gold action
+     buttons — had no focus indicator at all. Measured: 10 of 29 controls on
+     /analytics matched no :focus-visible rule.
+
+     `:where()` keeps this at zero specificity, so it is a floor rather than an
+     override: any element with a deliberate focus treatment still wins, and
+     nothing below has to be rewritten. */
+  & :where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 
   & .nav:focus-visible,
   & .rail-recents a:focus-visible,
@@ -1858,4 +1893,32 @@
   .arc-app .journeys .jr-grid { grid-template-columns: 1fr; }
   .arc-app .journeys .jr-rowhead { grid-template-columns: minmax(0, 1fr) auto 92px 62px 16px; }
   .arc-app .journeys .jr-span { display: none; }
+}
+
+/* ── Touch targets ──────────────────────────────────────────────────────────
+   Measured on /home at 375px: the "more" links rendered 17–21px tall and the
+   setup-card dismiss 43×18 — under the 24×24 minimum in WCAG 2.2 (2.5.8), and
+   uncomfortable well before that. The inline buttons sat at 34px, over the AA
+   floor but short of a confident tap.
+
+   Padding rather than height, so nothing shifts on desktop and the text keeps
+   its position within the row. */
+@media (max-width: 900px) {
+  .arc-app .more,
+  .arc-app .queue-more {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+  .arc-app .setup-x {
+    min-height: 32px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .arc-app .btn,
+  .arc-app .btn.ghost {
+    min-height: 40px;
+  }
 }
