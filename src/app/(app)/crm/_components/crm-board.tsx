@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, statusTone } from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
-import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord } from "../actions";
+import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord, searchCrmRecords } from "../actions";
 import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-record-modal";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
 import type { CustomFieldDefinition } from "@/domain";
@@ -381,6 +381,18 @@ export function CrmBoard({
 }) {
   const [activeKey, setActiveKey] = useState(defaultKey);
   const [q, setQ] = useState("");
+  /**
+   * Rows the SERVER matched, for the case the browser cannot answer (BSR-633).
+   *
+   * The board holds a 1,000-row recency window. Past that, a record is not in
+   * the browser at all, so filtering locally returns nothing while the counter —
+   * a real COUNT — says it exists. When the window is incomplete the term goes
+   * to the server instead. Null means "the local set is authoritative".
+   */
+  const [serverRows, setServerRows] = useState<CrmRowVM[] | null>(null);
+  const [serverCapped, setServerCapped] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [personaMenuOpen, setPersonaMenuOpen] = useState(false);
   // Optimistic persona overlay by row id — a bulk assign flips the chips at once,
@@ -425,6 +437,49 @@ export function CrmBoard({
     o.count -
     (rowsByKey[o.key] ?? []).filter((r) => r.statusLabel === ARCHIVED_LABEL).length +
     (localByKey[o.key]?.length ?? 0);
+
+  // True when the browser holds every record of the active object, so a local
+  // filter can answer honestly. False once the 1,000-row window is exceeded.
+  const loadedComplete = (rowsByKey[active.key] ?? []).length >= active.count;
+
+  useEffect(() => {
+    const term = q.trim();
+    if (loadedComplete || term.length < 2) {
+      // Drop back to the local set. Guarded so this is a no-op on the common
+      // render where there was never a server result to clear.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- returning to the local set the moment the term or object stops needing a server search
+      if (serverRows !== null) setServerRows(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a stale error must not outlive the query that caused it
+      if (searchError !== null) setSearchError(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- an in-flight flag must not survive a cancelled search
+      if (searching) setSearching(false);
+      return;
+    }
+    // Debounced: the window being incomplete means every keystroke would
+    // otherwise be a round trip.
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the search IS starting; the spinner must reflect that before the await
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      const res = await searchCrmRecords(active.key, term);
+      if (cancelled) return;
+      setSearching(false);
+      if (!res.ok) {
+        // A failed search is NOT "no matches" — saying so is the difference
+        // between an outage and an empty result.
+        setSearchError(res.error);
+        setServerRows(null);
+        return;
+      }
+      setSearchError(null);
+      setServerRows(res.rows);
+      setServerCapped(res.capped);
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [q, active.key, active.count, loadedComplete, rowsByKey, serverRows, searchError, searching]);
 
   const allActiveRows = useMemo(
     () =>
@@ -539,13 +594,17 @@ export function CrmBoard({
 
   const filteredAll = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    let filtered = allActiveRows.filter((r) => {
+    // When the server answered, IT is the match set — the local rows are only a
+    // window and re-filtering them would drop the very records it went to find.
+    // The other facets still apply, and the text term is already satisfied.
+    const source = serverRows ?? allActiveRows;
+    let filtered = source.filter((r) => {
       // Soft-deleted records stay out of the default list; Status → Archived opts in.
       if (r.statusLabel === ARCHIVED_LABEL && statusF !== ARCHIVED_LABEL) return false;
       // Custom field values are searchable too — a tenant that tracks a matter
       // number expects to find the record by typing it.
       const customHay = r.customFields ? Object.values(r.customFields).join(" ") : "";
-      if (needle && !`${r.name} ${r.detail} ${r.persona} ${r.owner} ${customHay}`.toLowerCase().includes(needle)) return false;
+      if (!serverRows && needle && !`${r.name} ${r.detail} ${r.persona} ${r.owner} ${customHay}`.toLowerCase().includes(needle)) return false;
       if (personaF && r.persona !== personaF) return false;
       if (statusF && r.statusLabel !== statusF) return false;
       if (ownerF && r.owner !== ownerF) return false;
@@ -554,7 +613,7 @@ export function CrmBoard({
     if (sortBy === "name") filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
     else if (sortBy === "score") filtered = [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     return filtered;
-  }, [allActiveRows, q, personaF, statusF, ownerF, sortBy]);
+  }, [allActiveRows, serverRows, q, personaF, statusF, ownerF, sortBy]);
   // Display caps at 100 rows for perf; Export writes the WHOLE filtered set (never
   // a silent 100-row slice).
   const visible = useMemo(() => filteredAll.slice(0, 100), [filteredAll]);
@@ -897,7 +956,10 @@ export function CrmBoard({
             </select>
           </span>
           <span className="pgnum">
-            {visible.length === 0 ? "0" : `1–${visible.length}`} of {countFor(active).toLocaleString()}
+            {visible.length === 0 ? "0" : `1–${visible.length}`} of{" "}
+            {(serverRows ? filteredAll.length : countFor(active)).toLocaleString()}
+            {searching ? " · searching…" : ""}
+            {serverCapped && serverRows ? ` · first ${serverRows.length}, narrow to see more` : ""}
           </span>
           <button className="pgbtn" type="button" aria-label="Previous page">
             <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" /></svg>
