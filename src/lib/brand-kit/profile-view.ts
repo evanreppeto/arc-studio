@@ -10,6 +10,7 @@
 import { NEUTRAL_DEFAULTS, type BusinessProfile, type ProofPoint } from "@/domain";
 import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getAppSettings } from "@/lib/settings/store";
 
 import { getBusinessProfile } from "./persistence";
@@ -20,6 +21,18 @@ export type BrandSourceItem = { id?: string; ext: string; extColor?: string; nam
 
 export type BrandProfileView = {
   isDemo: boolean;
+  /**
+   * Why the brand kit could not be read, or null (BSR-578).
+   *
+   * The worst of this family. The other two show an operator nothing; this one
+   * shows them NEUTRAL_DEFAULTS as if that were their brand — and /studio feeds
+   * the same view into creative, so Arc can draft against a voice, palette and
+   * logo that are not theirs with nothing on screen saying so.
+   *
+   * Distinct from "no profile yet", which is a true statement about a new
+   * workspace and keeps rendering the neutral defaults with `failed: null`.
+   */
+  failed: string | null;
   identity: {
     name: string;
     tagline: string | null;
@@ -74,6 +87,7 @@ export function toBrandProfileView(profile: BusinessProfile, sources: BrandSourc
 
   return {
     isDemo,
+    failed: null,
     identity: {
       name: profile.displayName.trim() || fallbackName,
       tagline: profile.tagline,
@@ -155,7 +169,19 @@ const DEMO_SOURCES: BrandSourceItem[] = [
 
 export async function getBrandProfileView(orgId: string, fallbackName: string): Promise<BrandProfileView> {
   if (isSupabaseAdminConfigured()) {
-    const profile = await getBusinessProfile(orgId).catch(() => null);
+    // `null` from this read meant two different things — "no profile saved yet"
+    // and "the read failed" — and both fell through to the neutral defaults
+    // below. Only the first of those is true (BSR-578).
+    let profile: Awaited<ReturnType<typeof getBusinessProfile>> | null = null;
+    try {
+      profile = await getBusinessProfile(orgId);
+    } catch (error) {
+      reportDegraded(error, { scope: "brand-kit.getBrandProfileView", surface: "primary" });
+      return {
+        ...toBrandProfileView(NEUTRAL_DEFAULTS, [], false, fallbackName),
+        failed: error instanceof Error ? error.message : "Could not read your brand kit.",
+      };
+    }
     if (profile) {
       const [sources, logoUrl] = await Promise.all([loadLiveSources(orgId), resolveLegacyLogo(orgId, profile.logoUrl)]);
       return toBrandProfileView({ ...profile, logoUrl }, sources, false, fallbackName);

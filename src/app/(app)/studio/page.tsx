@@ -65,7 +65,11 @@ export default async function StudioPage() {
   // used to show a hardcoded list under a note claiming it came from the Brand kit.
   const brandPalette = ctx?.orgId
     ? await getBrandProfileView(ctx.orgId, brandName)
-        .then((v) => v.palette.map((c) => c.hex).filter((hex) => /^#[0-9a-f]{6}$/i.test(hex)))
+        // On a failed read the palette is NEUTRAL_DEFAULTS, and Studio presents
+        // these swatches as coming from the Brand kit. Showing someone else's
+        // colours under that label is the false claim this note already warns
+        // about, one layer down (BSR-578). No swatches beats wrong ones.
+        .then((v) => (v.failed ? [] : v.palette.map((c) => c.hex).filter((hex) => /^#[0-9a-f]{6}$/i.test(hex))))
         .catch(() => [])
     : [];
 

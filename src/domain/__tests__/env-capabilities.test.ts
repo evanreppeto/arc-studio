@@ -117,9 +117,9 @@ describe("the catalogue itself", () => {
       "ARC_AGENT_API_TOKEN",
       "GEMINI_API_KEY",
       "CRON_SECRET",
-      // Undocumented in .env.example before this ticket, and load-bearing:
-      // unsubscribe links cannot be signed without it, which is a compliance
-      // failure rather than a missing feature.
+      // Undocumented in .env.example before this ticket. NOT required — it
+      // falls back to the service-role key — but worth naming, because that
+      // fallback couples a public link signature to a database credential.
       "EMAIL_UNSUBSCRIBE_SECRET",
     ]) {
       expect(known.has(name), name).toBe(true);
