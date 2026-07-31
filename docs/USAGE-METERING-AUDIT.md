@@ -80,9 +80,28 @@ org-scoped — `knowledge_nodes` has an `org_id` and no workspace — so there i
 workspace to attribute to, and resolving a default one would fabricate an
 attribution instead of recording its absence. Null here means org-scoped.
 
-**Still not metered:** the two Gemini *text* call sites — `research/gemini-web-search.ts`
-and `brand-knowledge/gemini-parser.ts`. Those are a smaller job than this one was:
-`generateContent` returns a real `usageMetadata` block, so they need no estimation.
+**The two Gemini *text* call sites are metered too** (`gemini_text`, added
+2026-07-31): `research/gemini-web-search.ts` (Arc's grounded web research) and
+`brand-knowledge/gemini-parser.ts` (brand asset extraction). These rows carry
+**measured** token counts — `generateContent` returns a real usage block — so a
+backfill here is exact arithmetic rather than an approximation. Like embeddings,
+they price at zero until a rate is supplied, and report themselves while doing it.
+
+Two things that path had to get right:
+
+- **The obvious token mapping undercounts.** Google defines `totalTokenCount` as
+  the sum of *four* fields. `toolUsePromptTokenCount` is billed as input and is
+  **not** included in `promptTokenCount`; `thoughtsTokenCount` is billed as output
+  and is **not** included in `candidatesTokenCount`. Reading only
+  prompt/candidates would have reproduced Finding 3 in a brand-new place — and on
+  a *grounded search*, tool-use tokens are where the bulk of the spend lives.
+  `foldGeminiTextUsage` sums all four and keeps the raw breakdown in metadata.
+- **Which API key paid is recorded** (`metadata.key_source`). The research route
+  prefers the workspace's own Vault Gemini key and only falls back to the platform
+  `GEMINI_API_KEY`. Those are different payers — a call on a workspace key is
+  billed to that customer by Google directly and is not our cost. Without the flag
+  on the row, no later query could separate our spend from theirs; the information
+  would not exist to recover.
 
 **Not a gap:** `gemini_image` / `gemini_video` have 0 events, but `media_assets`
 is also 0 — media generation is credential-gated and genuinely unused. Correct,
@@ -242,9 +261,11 @@ closed — which is the necessary first step, and is not the same thing.
 
 Enforcement blocks real customer work. Doing it against a number this incomplete
 is not defensible yet. Order: ~~price sonnet-5~~ (done) → ~~meter embeddings~~
-(done — rows exist, rate still needed) → **supply an embedding rate and backfill**
-→ read `metadata.usage_detail` off a live run and price the cache tokens →
-meter the two Gemini text call sites → decide on sub-cent precision → reconcile
-one month against real invoices → then arm.
+(done) → ~~meter Gemini text~~ (done) → **supply Gemini embedding + text rates
+and backfill** (the text rows hold measured tokens, so that backfill is exact) →
+read `metadata.usage_detail` off a live run and price the cache tokens → decide
+on sub-cent precision → reconcile one month against real invoices → then arm.
+
+Every metered path now exists. What is missing is **prices**, not plumbing.
 
 **Last verified:** 2026-07-31.
