@@ -2553,3 +2553,16 @@ a.arc-work-evidence-item:hover > svg { color: var(--accent); }
     transition-duration: .001ms !important;
   }
 }
+
+/* Link from a run row into the run inspector (BSR-509). A sibling of the row
+   button, since an anchor cannot be nested inside it. */
+.arc-work-inspect {
+  display: block;
+  margin: 6px 0 2px 30px;
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.arc-work-inspect:hover {
+  text-decoration: underline;
+}
