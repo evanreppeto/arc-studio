@@ -7,6 +7,7 @@ import {
   isPricedModel,
   type AiUsageService,
 } from "@/domain";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 export type RecordUsageInput = {
@@ -75,12 +76,44 @@ export async function recordUsageEvent(input: RecordUsageInput): Promise<RecordU
       .single();
 
     if (error || !data) {
-      console.warn(`[ai-usage] recordUsageEvent insert failed: ${error?.message ?? "no row returned"}`);
+      // A metering failure is UNBILLED CONSUMPTION, not a logging nuisance: the
+      // spend happened, we just no longer know about it. A console.warn in a
+      // serverless function is effectively invisible, so this reports (BSR-502).
+      reportDegraded(new Error(error?.message ?? "recordUsageEvent returned no row"), {
+        scope: "ai-usage.record",
+        surface: "primary",
+        detail: { orgId: input.orgId, service: input.service, model: input.model },
+      });
       return { recorded: false, reason: "error" };
     }
+
+    // The model has no price entry, so this event was recorded at ZERO cost. The
+    // row already carries `priced_model: false` and has done for every
+    // claude-sonnet-5 turn on prod — 36 of them, ~42k output tokens, all free —
+    // and nothing ever surfaced it. Recording a fact nobody reads is not
+    // detection, so an unpriced model now reports (BSR-502).
+    if (!isPricedModel(input.model)) {
+      reportDegraded(new Error(`AI usage recorded for an unpriced model: ${input.model}`), {
+        scope: "ai-usage.unpriced-model",
+        surface: "primary",
+        detail: {
+          model: input.model,
+          service: input.service,
+          orgId: input.orgId,
+          inputTokens: input.inputTokens ?? null,
+          outputTokens: input.outputTokens ?? null,
+          pricingVersion: PRICING_VERSION,
+        },
+      });
+    }
+
     return { recorded: true, id: (data as { id: string }).id, costCents };
   } catch (err) {
-    console.warn(`[ai-usage] recordUsageEvent threw: ${err instanceof Error ? err.message : String(err)}`);
+    reportDegraded(err, {
+      scope: "ai-usage.record",
+      surface: "primary",
+      detail: { orgId: input.orgId, service: input.service, model: input.model },
+    });
     return { recorded: false, reason: "error" };
   }
 }
