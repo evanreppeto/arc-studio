@@ -125,8 +125,13 @@ const AUDIENCE_ROW = /(audience|persona|segment)/i;
 const ACRONYMS = /\b(crm|sms|url|api|ai|seo|mcp|csv|pdf|id)\b/gi;
 
 function toolLabel(name: string): string {
-  const bare = name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/^mcp__/, "");
-  const spaced = formatToolName(bare || name);
+  const bare = name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/^mcp__/, "") || name;
+  // A name that is already camelCase or PascalCase was written by a human to be
+  // read — `ToolSearch` is the tool's actual name. Sentence-casing it produced
+  // "Toolsearch", which is just a typo. Only snake_case and dot.case names, which
+  // are identifiers rather than names, get reformatted.
+  if (/[a-z][A-Z]/.test(bare)) return bare;
+  const spaced = formatToolName(bare);
   // Sentence case, not Title Case: "Get workspace settings" reads as an action,
   // "Get Workspace Settings" reads as a menu item. Acronyms are restored after,
   // because lowercasing turns CRM into "Crm", which reads as a typo.
