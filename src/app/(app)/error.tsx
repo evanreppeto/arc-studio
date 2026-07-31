@@ -27,7 +27,7 @@ export default function AppError({
   return (
     <section className="state-page">
       <p className="state-eyebrow">Something broke</p>
-      <h1>This screen didn&apos;t load</h1>
+      <h2>This screen didn&apos;t load</h2>
       <p className="state-body">
         The rest of your workspace is unaffected, and nothing was sent or changed. Try again — if it
         keeps happening, the reference below tells support exactly which failure this was.
