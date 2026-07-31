@@ -61,6 +61,10 @@ describe("surfacing what the meter cannot price (BSR-502)", () => {
   // Locks down the two silent paths found auditing prod: 36 claude-sonnet-5
   // events recorded at ZERO cost carrying `priced_model: false` that nothing ever
   // surfaced, and a metering failure that only reached console.warn.
+  // NOTE: this deliberately uses a model that will never be priced. It used to
+  // use claude-sonnet-5 — which was genuinely unpriced when this was written and
+  // is now priced (300/1500), so the test correctly failed the moment the table
+  // changed. A fixture that names a real model rots the day someone fixes it.
   it("reports an unpriced model instead of quietly recording it at zero cost", async () => {
     configureSupabase();
     getAdmin.mockReturnValue(dbInserting({ data: { id: "evt-1" } }) as never);
@@ -70,7 +74,7 @@ describe("surfacing what the meter cannot price (BSR-502)", () => {
       orgId: "org-1",
       workspaceId: "ws-1",
       service: "arc_claude",
-      model: "claude-sonnet-5",
+      model: "claude-not-a-real-model-9",
       inputTokens: 10,
       outputTokens: 1200,
     });

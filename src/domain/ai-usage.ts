@@ -6,7 +6,7 @@
  * correct after a price change. All figures are cents.
  */
 
-export const PRICING_VERSION = "2026-06-22";
+export const PRICING_VERSION = "2026-07-31";
 
 export type AiUsageService = "arc_claude" | "gemini_image" | "gemini_video";
 
@@ -15,6 +15,12 @@ type ModelRate = { inputCentsPerMTok: number; outputCentsPerMTok: number };
 /** Per-model token pricing, in cents per 1,000,000 tokens. */
 const MODEL_PRICING: Record<string, ModelRate> = {
   "claude-opus-4-8": { inputCentsPerMTok: 1500, outputCentsPerMTok: 7500 },
+  // Added 2026-07-31. It had been running in production since 2026-07-10 with no
+  // entry here, so `resolveModelRate` returned null and every turn was recorded
+  // at ZERO cost — 36 events, ~42k output tokens, 52% of the whole ledger. Rate
+  // supplied by the operator rather than inferred; guessing a price in a billing
+  // meter turns a visible zero into an invisible wrong number (BSR-502).
+  "claude-sonnet-5": { inputCentsPerMTok: 300, outputCentsPerMTok: 1500 },
   "claude-haiku-4-5": { inputCentsPerMTok: 100, outputCentsPerMTok: 500 },
 };
 

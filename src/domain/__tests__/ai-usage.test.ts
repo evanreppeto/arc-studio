@@ -153,3 +153,26 @@ describe("isPricedModel / PRICING_VERSION", () => {
     expect(PRICING_VERSION.length).toBeGreaterThan(0);
   });
 });
+
+describe("claude-sonnet-5 pricing (BSR-502)", () => {
+  // It ran in production from 2026-07-10 with no pricing entry, so every turn
+  // was recorded at zero. 36 events, ~42k output tokens, 52% of the ledger.
+  it("is priced, so a sonnet turn no longer costs nothing", () => {
+    expect(isPricedModel("claude-sonnet-5")).toBe(true);
+    expect(estimateClaudeCostCents("claude-sonnet-5", 0, 1_000_000)).toBe(1500);
+    expect(estimateClaudeCostCents("claude-sonnet-5", 1_000_000, 0)).toBe(300);
+  });
+
+  it("reprices the exact volume that was recorded as free", () => {
+    // The real prod totals: 250 input, 42,454 output tokens across 36 events.
+    // At 300/1500 cents per Mtok that is ~64 cents the ledger is missing.
+    const cents = estimateClaudeCostCents("claude-sonnet-5", 250, 42_454);
+    expect(cents).toBe(64);
+  });
+
+  it("still refuses to invent a price for a model it does not know", () => {
+    // The zero must stay VISIBLE for anything unpriced — persistence reports it.
+    expect(isPricedModel("claude-nonexistent-9")).toBe(false);
+    expect(estimateClaudeCostCents("claude-nonexistent-9", 1_000_000, 1_000_000)).toBe(0);
+  });
+});
