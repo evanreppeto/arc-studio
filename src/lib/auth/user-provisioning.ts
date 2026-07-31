@@ -4,6 +4,7 @@ import { getSupabaseAdminClient, isSupabaseAdminConfigured, type TypedSupabaseCl
 
 import { hashInviteCode, normalizeInviteCode } from "./workspace-invites";
 import { createWorkspaceForUser } from "./workspace-onboarding";
+import { readAttributionRecord } from "@/lib/signup-attribution/server";
 
 type PendingWorkspaceInvite = {
   id: string;
@@ -319,6 +320,11 @@ export async function provisionAuthenticatedUser(user: User): Promise<ProvisionU
         industry: getPendingIndustry(user),
         organizationName: getPendingOrganizationName(user),
         workspaceType: getPendingWorkspaceType(user),
+        // The self-serve path: this runs on first sign-in, in a request, so the
+        // attribution cookie set before signup is still readable here (BSR-586).
+        // This is the call site that actually attributes a self-serve workspace —
+        // createWorkspaceForAuthenticatedUser covers the explicit "new workspace" UI.
+        attribution: await readAttributionRecord(),
       });
       if (created.ok) {
         return { ok: true, status: "created_owner", orgId: created.orgId, workspaceId: created.workspaceId };

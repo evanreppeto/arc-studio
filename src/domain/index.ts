@@ -103,5 +103,11 @@ export * from "./support";
 
 export * from "./workspace-identity";
 export * from "./branding-image";
+
+// Inbound "which channel produced this signup" (BSR-586). Distinct from
+// ./attribution above, which resolves which CAMPAIGN an outbound touchpoint
+// belongs to — the two never share a symbol, but the names are close enough
+// to be worth the signpost.
+export * from "./signup-attribution";
 export * from "./email-compliance";
 export * from "./lead-fit";
