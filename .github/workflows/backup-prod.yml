@@ -50,7 +50,7 @@ concurrency:
 jobs:
   dump:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
@@ -119,6 +119,7 @@ jobs:
           DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
           PGCLIENTENCODING: UTF8
           PGSSLMODE: require
+          PGCONNECT_TIMEOUT: "30"
         run: |
           set -euo pipefail
           mkdir -p backup
@@ -158,8 +159,30 @@ jobs:
 
           . /tmp/pgenv.sh
 
-          "$PG/pg_dump" --schema=public --schema-only --no-owner --no-privileges -f backup/schema.sql
-          "$PG/pg_dump" --schema=public --data-only   --no-owner --no-privileges -f backup/data.sql
+          # Retry the connection. A run on 2026-07-31 failed with
+          #   `connection to ... port 5432 failed: Connection timed out`
+          # on a step that had worked forty minutes earlier — a pooler blip, not
+          # a configuration fault. Without this, one transient timeout costs a
+          # whole night's backup, and the next chance is 24 hours later.
+          #
+          # Still fails loudly after three tries: a backup that quietly gives up
+          # is the failure mode this whole workflow exists to avoid.
+          dump_with_retry() {
+            local desc="$1"; shift
+            local attempt=1
+            until "$PG/pg_dump" "$@"; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "::error title=Dump failed::$desc failed after 3 attempts."
+                return 1
+              fi
+              echo "::warning title=Retrying::$desc failed on attempt ${attempt}; retrying in $((attempt * 20))s."
+              sleep $((attempt * 20))
+              attempt=$((attempt + 1))
+            done
+          }
+
+          dump_with_retry "schema" --schema=public --schema-only --no-owner --no-privileges -f backup/schema.sql
+          dump_with_retry "data"   --schema=public --data-only   --no-owner --no-privileges -f backup/data.sql
           # Accounts. Failing here must not fail the backup — the CRM data is
           # the point — but it must be visible rather than quietly absent.
           if ! "$PG/pg_dump" --table=auth.users --data-only --no-owner --no-privileges -f backup/auth-users.sql; then
