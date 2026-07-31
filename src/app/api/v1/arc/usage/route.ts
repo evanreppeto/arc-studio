@@ -30,15 +30,22 @@ export async function POST(request: Request) {
   const asCount = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
 
-  // Usage fields the ledger has no column for — today, the prompt-cache token
-  // counts (BSR-502 Finding 3). Recorded to metadata rather than given columns
-  // because what the SDK reports is still being established; `usage_keys` in the
-  // payload says what actually arrived, so the next reader is not inferring from
-  // an absence. NOT priced: cache reads are cheaper than base input and cache
-  // creation is dearer, and no rate enters the meter on a guess.
+  // Usage fields the ledger has no column for — the prompt-cache token counts and
+  // the per-TTL cache split (BSR-502 Finding 3, confirmed in production: one turn
+  // reported 8 input tokens against ~105,000 real). Recorded to metadata rather
+  // than given columns because what the SDK reports is still moving; `usage_keys`
+  // says what actually arrived, so the next reader is not inferring from an
+  // absence. NOT priced — no rate enters the meter on a guess.
+  //
+  // The runner already shapes this (buildUsageDetail), but this is a bearer API
+  // writing caller-supplied JSON into a JSONB column on every turn, so the size
+  // bound is enforced here too rather than trusted from the other side of the
+  // network. Oversized detail is dropped, not truncated: half a payload would
+  // read as a complete one.
+  const MAX_USAGE_DETAIL_BYTES = 8_192;
   const detail = body.usage_detail;
   const usageDetail =
-    detail && typeof detail === "object" && !Array.isArray(detail)
+    detail && typeof detail === "object" && !Array.isArray(detail) && JSON.stringify(detail).length <= MAX_USAGE_DETAIL_BYTES
       ? { usage_detail: detail as Record<string, unknown> }
       : {};
 

@@ -18,6 +18,7 @@ import { resolveArcSkill, type ArcSkill } from "./skills";
 import { reviewTurnDrafts } from "./critic";
 import { createCumulativeStreamBuffer } from "./live-stream-buffer";
 import { createToolCallLog, type ArcToolCall } from "./tool-calls";
+import { buildUsageDetail, type UsageDetail } from "./usage-detail";
 import type {
   ArcActionCard,
   ArcCampaignTaskPayload,
@@ -53,17 +54,6 @@ export type ArcTurnResult = {
     /** Raw usage fields the ledger does not have columns for (BSR-502 Finding 3). */
     detail: UsageDetail | null;
   };
-};
-
-/**
- * The parts of the SDK's `usage` payload that no column exists for. Recorded to
- * row metadata so the input-token undercount becomes measurable rather than
- * hypothesised. Not priced — see the capture site.
- */
-export type UsageDetail = {
-  cache_read_input_tokens: number | null;
-  cache_creation_input_tokens: number | null;
-  usage_keys: string[];
 };
 
 /**
@@ -519,21 +509,22 @@ async function runArcQuery(opts: {
         const count = (k: string): number | null => (typeof usage[k] === "number" ? (usage[k] as number) : null);
         inputTokens = count("input_tokens") ?? inputTokens;
         outputTokens = count("output_tokens") ?? outputTokens;
-        // BSR-502 Finding 3: 620 input tokens across 69 production turns — an
-        // average of NINE, for an agent that reads CRM records, history and tool
-        // results. The standing hypothesis is that prompt caching moves the bulk
-        // of the input side into cache_* fields that nothing has ever read.
+        // BSR-502 Finding 3, now CONFIRMED in production: one turn reported
+        // input_tokens = 8 against cache_read 92,215 + cache_creation 12,707.
+        // The meter was recording ~8 tokens of a ~105,000-token input side.
         //
-        // Capture them, and capture the RAW KEY SET too. If the hypothesis is
-        // wrong, the key list says what the SDK actually reports and the next
-        // person is not guessing from an absence. Recording is not pricing:
-        // cache reads are cheaper than base input and cache creation is dearer,
-        // and no rate goes into the meter until this data says what is real.
-        usageDetail = {
-          cache_read_input_tokens: count("cache_read_input_tokens"),
-          cache_creation_input_tokens: count("cache_creation_input_tokens"),
-          usage_keys: Object.keys(usage).sort(),
-        };
+        // The first pass captured only the two fields the hypothesis named, plus
+        // the raw key set as a hedge — and the key set is what paid off, showing
+        // `cache_creation` (an object whose per-TTL halves bill at DIFFERENT
+        // multipliers), `service_tier` and `server_tool_use`, none of whose
+        // VALUES had been captured. buildUsageDetail stops enumerating and takes
+        // the whole payload under a structural guard, so a field nobody thought
+        // to ask for is already in the row next time.
+        //
+        // Still not priced. Cache reads are cheaper than base input and cache
+        // creation is dearer, and the multipliers have to be confirmed against
+        // published rates before any of this reaches a bill.
+        usageDetail = buildUsageDetail(usage);
         console.log(`[arc-runner] usage payload: ${JSON.stringify(usage)}`);
       }
     }
