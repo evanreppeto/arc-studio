@@ -14,6 +14,7 @@ vi.mock("./arc", () => ({
     questions: [],
     drafts: [],
     memory: [],
+    toolCalls: [],
     reasoning: null,
     usage: { model: "claude", inputTokens: 10, outputTokens: 5 },
   })),
@@ -24,6 +25,7 @@ vi.mock("./arc", () => ({
     sources: [],
     questions: [],
     memory: [],
+    toolCalls: [],
   })),
   runArcOpportunityScan: vi.fn(async () => ({
     actions: [{ kind: "opportunity", title: "Dormant company", rows: [], flags: [] }],
@@ -62,6 +64,7 @@ describe("handleChatMessage", () => {
         questions: [],
         drafts: [],
         memory: [],
+        toolCalls: [],
         reasoning: null,
         usage: { model: "claude", inputTokens: 10, outputTokens: 5 },
       };
@@ -153,6 +156,69 @@ describe("handleCampaignTask", () => {
     );
   });
 
+  it("writes the turn's tool calls to metadata.toolCalls", async () => {
+    // BSR-618: the app has read this field on three surfaces since the chat
+    // shipped, and no producer ever wrote it — invisible because the only
+    // things that populated it were the app's own demo fixtures. This asserts
+    // the producer, so removing the capture fails here rather than in prod.
+    const fakeClient = client();
+
+    vi.mocked(runArcCampaignTask).mockResolvedValueOnce({
+      body: "I drafted campaign assets.",
+      actions: [],
+      suggestions: [],
+      sources: [],
+      questions: [],
+      drafts: [],
+      memory: [],
+      toolCalls: [
+        { name: "crm_search", status: "complete", input: '{"persona":"high_intent"}', output: "142 rows" },
+        { name: "weather_lookup", status: "error", output: "timeout" },
+      ],
+      usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null },
+    });
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-4",
+      campaignId: "campaign-3",
+      conversationId: "conversation-3",
+      message: "Build this campaign.",
+      operator: "Operator",
+      taskType: "campaign_brief_draft",
+    });
+
+    expect(fakeClient.postChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          toolCalls: [
+            expect.objectContaining({ name: "crm_search", status: "complete" }),
+            expect.objectContaining({ name: "weather_lookup", status: "error" }),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("omits metadata.toolCalls entirely when the turn called nothing", async () => {
+    // An empty array would make every ask-mode reply carry a field that says
+    // nothing, and the app treats presence as meaningful.
+    const fakeClient = client();
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-5",
+      campaignId: "campaign-4",
+      conversationId: "conversation-4",
+      message: "Keep going.",
+      operator: "Operator",
+      taskType: "campaign_directive",
+    });
+
+    const call = fakeClient.postChatReply.mock.calls.at(-1)?.[0] as { metadata?: Record<string, unknown> };
+    expect(call.metadata).not.toHaveProperty("toolCalls");
+  });
+
   it("surfaces recalled memory as metadata.recall when memory items are present", async () => {
     const fakeClient = client();
 
@@ -164,6 +230,7 @@ describe("handleCampaignTask", () => {
       questions: [],
       drafts: [],
       memory: [{ label: "Landlord playbook", summary: null, kind: "note", confidence: 0.8, nodeId: "n1" }],
+      toolCalls: [],
       usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null },
     });
 

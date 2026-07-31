@@ -14,8 +14,11 @@ replacement. Know exactly what it does and does not give you:
 | **RPO** (data you can lose) | **~24 hours** — the gap since the last nightly run |
 | **RTO** (time to recover) | minutes for a 29 MB database, once you have a target to restore into |
 | Point-in-time recovery | **no** — cannot rewind to just before a mistake |
-| Retention | 90 days (GitHub's maximum for artifacts) |
-| Storage location | GitHub Actions artifact, `age`-encrypted |
+| Retention | **365 days** primary, 90 days secondary |
+| Where | `gs://arc-prod-backups-706961882086` (primary) + GitHub artifact (second copy), both `age`-encrypted |
+
+Two destinations on purpose. If the GCP project is the thing that breaks, the
+artifact is still there; if GitHub is, the bucket is.
 
 Upgrading to Pro is still the right answer. This exists so "unrecoverable" stops
 being true while that decision is made.
@@ -63,10 +66,24 @@ decrypt, and a decryption key in CI would undo the whole design.
 
 ### 1. Get a backup
 
+From the bucket (primary — a year of history):
+
+```bash
+gcloud storage ls gs://arc-prod-backups-706961882086/
+gcloud storage cp gs://arc-prod-backups-706961882086/arc-prod-<stamp>.tar.gz.age .
+```
+
+Or from a GitHub artifact (second copy, last 90 days):
+
 ```bash
 gh run list --workflow backup-prod.yml --limit 10
 gh run download <run-id>
 ```
+
+> You can read the bucket; **CI cannot**. The workflow's service account holds
+> `roles/storage.objectCreator` and nothing else, so it can write a new backup
+> but cannot read one back or delete one. A compromised workflow can therefore
+> neither exfiltrate the history nor destroy it.
 
 ### 2. Decrypt and unpack
 
