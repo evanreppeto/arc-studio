@@ -537,7 +537,7 @@ export async function backfillMissingEmbeddings(
         const text = [row.label, row.summary, row.body].filter(Boolean).join("\n").trim();
         if (!text) return "skip";
         let vec: number[] | null = null;
-        try { vec = await embedText(text); } catch { vec = null; }
+        try { vec = await embedText(text, { orgId, purpose: "brain.embed-backfill" }); } catch { vec = null; }
         if (!vec) return "skip"; // embed failed — leave null (keyword recall)
         const { error: upErr } = await (
           client as unknown as {

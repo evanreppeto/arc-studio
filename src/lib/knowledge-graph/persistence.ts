@@ -54,7 +54,7 @@ export async function createNode(input: KnowledgeNodeInput, deps: WriteDeps = {}
   // Embedded ONCE and shared. Dedup and the stored vector need the same
   // embedding of the same text; computing it twice would double the embedding
   // cost and latency of every fact Arc learns.
-  const embedding = await embedNodeTextBestEffort(value);
+  const embedding = await embedNodeTextBestEffort(value, orgId, "brain.node-create");
 
   // Same fact, different words? Fold it into the node that already says it
   // rather than adding a fifth phrasing (BSR-531). Best-effort: any failure
@@ -194,15 +194,19 @@ async function mergeRestatementBestEffort(
 }
 
 /** The node's text as one vector, or null when embeddings are unavailable. */
-async function embedNodeTextBestEffort(value: {
-  label: string;
-  summary?: string | null;
-  body?: string | null;
-}): Promise<number[] | null> {
+async function embedNodeTextBestEffort(
+  value: {
+    label: string;
+    summary?: string | null;
+    body?: string | null;
+  },
+  orgId: string,
+  purpose: string,
+): Promise<number[] | null> {
   try {
     const text = [value.label, value.summary, value.body].filter(Boolean).join("\n").trim();
     if (!text) return null;
-    return (await embedText(text)) ?? null;
+    return (await embedText(text, { orgId, purpose })) ?? null;
   } catch {
     return null; // swallow — best-effort
   }
@@ -341,7 +345,7 @@ export async function updateNode(
   // longer answers, and stop surfacing for the one it now does. The operator
   // would see their fix on screen and Arc would carry on saying the old thing,
   // which is the exact class of silent failure this milestone exists to remove.
-  await storeEmbeddingBestEffort(client, orgId, data.id, await embedNodeTextBestEffort(data));
+  await storeEmbeddingBestEffort(client, orgId, data.id, await embedNodeTextBestEffort(data, orgId, "brain.node-update"));
   return { ok: true, id: data.id };
 }
 
@@ -559,7 +563,7 @@ export async function upsertReferenceEdge(
 /** Embed pre-joined text; never throws (recall degrades to keyword/graph). */
 async function embedReferenceBestEffort(client: TypedSupabaseClient, orgId: string, id: string, text: string): Promise<void> {
   try {
-    const embedding = await embedText(text);
+    const embedding = await embedText(text, { orgId, purpose: "brain.reference-node" });
     if (!embedding) return;
     await client.from("knowledge_nodes").update({ embedding: JSON.stringify(embedding) } as never).eq("id", id).eq("org_id", orgId);
   } catch {

@@ -3,16 +3,24 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import {
   PRICING_VERSION,
   estimateClaudeCostCents,
+  estimateEmbeddingCostCents,
   estimateMediaCostCents,
-  isPricedModel,
+  isPricedUsage,
   type AiUsageService,
+  type MediaUsageService,
 } from "@/domain";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 export type RecordUsageInput = {
   orgId: string;
-  workspaceId: string;
+  /**
+   * Null for org-scoped services. The Brain is org-scoped — `knowledge_nodes`
+   * has an org_id and no workspace_id — so an embedding has no workspace to
+   * attribute to, and resolving a "default" one would fabricate an attribution
+   * rather than record the absence of one. Null means org-scoped, not lost.
+   */
+  workspaceId: string | null;
   service: AiUsageService;
   model: string;
   actorUser?: string | null;
@@ -33,7 +41,12 @@ function costForInput(input: RecordUsageInput): number {
   if (input.service === "arc_claude") {
     return estimateClaudeCostCents(input.model, input.inputTokens, input.outputTokens);
   }
-  return estimateMediaCostCents(input.service, input.units);
+  // Embeddings are billed per input token, not per generation, so they do not go
+  // through the media path — `units` on an embedding row is characters.
+  if (input.service === "gemini_embedding") {
+    return estimateEmbeddingCostCents(input.model, input.inputTokens);
+  }
+  return estimateMediaCostCents(input.service as MediaUsageService, input.units);
 }
 
 /**
@@ -56,7 +69,7 @@ export async function recordUsageEvent(input: RecordUsageInput): Promise<RecordU
       .from("ai_usage_events")
       .insert({
         org_id: input.orgId,
-        workspace_id: input.workspaceId,
+        workspace_id: input.workspaceId ?? null,
         actor_user: input.actorUser ?? null,
         service: input.service,
         model: input.model,
@@ -69,7 +82,7 @@ export async function recordUsageEvent(input: RecordUsageInput): Promise<RecordU
         metadata: {
           ...(input.metadata ?? {}),
           pricing_version: PRICING_VERSION,
-          priced_model: isPricedModel(input.model),
+          priced_model: isPricedUsage(input.service, input.model),
         },
       })
       .select("id")
@@ -92,7 +105,7 @@ export async function recordUsageEvent(input: RecordUsageInput): Promise<RecordU
     // claude-sonnet-5 turn on prod — 36 of them, ~42k output tokens, all free —
     // and nothing ever surfaced it. Recording a fact nobody reads is not
     // detection, so an unpriced model now reports (BSR-502).
-    if (!isPricedModel(input.model)) {
+    if (!isPricedUsage(input.service, input.model)) {
       reportDegraded(new Error(`AI usage recorded for an unpriced model: ${input.model}`), {
         scope: "ai-usage.unpriced-model",
         surface: "primary",
