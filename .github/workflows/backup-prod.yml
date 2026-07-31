@@ -106,14 +106,21 @@ jobs:
           sudo apt-get install -y -qq postgresql-client-17
           pg_dump --version
 
-      # Three parts, because a restore needs all three and a schema-only dump is
+      # Four parts, because a restore needs all four and a schema-only dump is
       # the classic "backup" that turns out to hold no data.
       #
-      # `public` is this application. `auth.users` comes along separately so
-      # people can still sign in to a restored copy — without it the data is
-      # intact and nobody can reach it. Supabase-managed internals are left out
-      # deliberately: a fresh project recreates them, and restoring ours over
-      # them is how a restore fails in a confusing way.
+      # `public` is this application. `app_private` holds the four SECURITY
+      # DEFINER functions every tenant-isolation policy calls, `auth.users` and
+      # `auth.identities` let people sign in to a restored copy, and the prereq
+      # file carries extensions that a `--schema=public` dump silently omits.
+      # Supabase-managed internals are left out deliberately: a fresh project
+      # recreates them, and restoring ours over them fails confusingly.
+      #
+      # Every one of those beyond `public` was added on 2026-07-31 after the
+      # first real restore test (BSR-532). Dumping `public` alone produced a
+      # backup that restored to 19 of 157 policies, 0 campaigns, 0 accounts and
+      # no Brain — green in CI, useless in an incident. See
+      # docs/runbooks/backup-and-restore.md for the measured before/after.
       - name: Dump schema, data and accounts
         env:
           DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
@@ -181,14 +188,38 @@ jobs:
             done
           }
 
-          dump_with_retry "schema" --schema=public --schema-only --no-owner --no-privileges -f backup/schema.sql
+          # Extensions a --schema=public dump does NOT emit. `vector` lives in
+          # public here, so without this the Brain's knowledge_nodes table (and
+          # everything referencing it) fails to create and 490 rows of Arc's
+          # memory are lost. Only public-schema extensions are emitted: the ones
+          # in `extensions`/`vault` are Supabase-managed and already present.
+          "$PG/psql" -qAt -o backup/00-prereq.sql <<'SQL'
+          select 'CREATE EXTENSION IF NOT EXISTS ' || quote_ident(extname)
+                 || ' WITH SCHEMA ' || quote_ident(n.nspname) || ';'
+          from pg_extension e join pg_namespace n on n.oid = e.extnamespace
+          where n.nspname = 'public' and extname <> 'plpgsql'
+          order by extname;
+          SQL
+
+          # app_private alongside public, in ONE dump so pg_dump orders the
+          # isolation functions before the policies that call them. Dumped
+          # separately they would land after, and 138 of 157 CREATE POLICY
+          # statements would fail.
+          dump_with_retry "schema" --schema=public --schema=app_private --schema-only --no-owner --no-privileges -f backup/schema.sql
           dump_with_retry "data"   --schema=public --data-only   --no-owner --no-privileges -f backup/data.sql
-          # Accounts. Failing here must not fail the backup — the CRM data is
-          # the point — but it must be visible rather than quietly absent.
-          if ! "$PG/pg_dump" --table=auth.users --data-only --no-owner --no-privileges -f backup/auth-users.sql; then
-            echo "::warning title=Accounts not dumped::auth.users could not be read; the restore will hold data but no logins. Everything else in this backup is intact."
-            echo "-- auth.users dump failed at $(date -u +%FT%TZ); see the run log" > backup/auth-users.sql
+          # Accounts. `identities` as well as `users`: GoTrue matches a login to
+          # a provider identity, so users-only restores to a database where
+          # every account exists and nobody can sign in.
+          #
+          # Failing here must not fail the backup — the CRM data is the point —
+          # but it must be visible rather than quietly absent.
+          if ! "$PG/pg_dump" --table=auth.users --table=auth.identities --data-only --no-owner --no-privileges -f backup/auth-users.sql; then
+            echo "::warning title=Accounts not dumped::auth.users/identities could not be read; the restore will hold data but no logins. Everything else in this backup is intact."
+            echo "-- auth accounts dump failed at $(date -u +%FT%TZ); see the run log" > backup/auth-users.sql
           fi
+
+          cp .github/workflows/restore.sh backup/restore.sh
+          chmod +x backup/restore.sh
           ls -l backup/
 
       # A backup nobody checked is a hypothesis. This does not prove the dump
@@ -214,13 +245,38 @@ jobs:
           grep -q "^COPY " backup/data.sql \
             || fail "data.sql contains no COPY blocks — this is a schema-only dump wearing a data filename."
 
+          # The four checks below exist because the 2026-07-31 restore test
+          # (BSR-532) found a backup that passed every check above and still
+          # restored to 19 of 157 policies, 0 campaigns and no accounts. Each
+          # one pins a specific way that dump was silently incomplete.
+
+          # Every policy that calls app_private must find it in the same file.
+          POLICIES=$(grep -c "^CREATE POLICY" backup/schema.sql || true)
+          NEED_PRIVATE=$(grep "^CREATE POLICY" backup/schema.sql | grep -c "app_private\." || true)
+          if [ "$NEED_PRIVATE" -gt 0 ]; then
+            grep -q "CREATE SCHEMA app_private" backup/schema.sql \
+              || fail "${NEED_PRIVATE} of ${POLICIES} policies call app_private, but the schema is not in this dump. Restoring it would leave the database deny-all."
+            grep -q "FUNCTION app_private.is_org_member" backup/schema.sql \
+              || fail "app_private.is_org_member is missing — tenant isolation would not restore."
+          fi
+
+          # An extension a --schema=public dump omits takes its dependants down.
+          if grep -q "public\.vector" backup/schema.sql; then
+            grep -q "CREATE EXTENSION IF NOT EXISTS vector" backup/00-prereq.sql \
+              || fail "the schema uses public.vector but 00-prereq.sql does not create it — knowledge_nodes and Arc's memory would not restore."
+          fi
+
+          # Accounts that can actually sign in.
+          grep -q "^COPY auth.identities" backup/auth-users.sql \
+            || echo "::warning title=No identities::auth.identities is absent; restored accounts will exist but be unable to log in."
+
           DATA_BYTES=$(stat -c%s backup/data.sql)
           # The database was 29 MB in July 2026; a data dump far under a
           # megabyte means something went wrong, not that the CRM shrank.
           [ "$DATA_BYTES" -gt 200000 ] \
             || fail "data.sql is only ${DATA_BYTES} bytes. Expected megabytes. Treat this run as failed rather than as a small backup."
 
-          echo "schema $(stat -c%s backup/schema.sql)B · data ${DATA_BYTES}B · accounts $(stat -c%s backup/auth-users.sql)B"
+          echo "schema $(stat -c%s backup/schema.sql)B (${POLICIES} policies) · data ${DATA_BYTES}B · accounts $(stat -c%s backup/auth-users.sql)B"
 
       - name: Encrypt
         env:
@@ -229,7 +285,10 @@ jobs:
           set -euo pipefail
           STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
           echo "STAMP=$STAMP" >>"$GITHUB_ENV"
-          tar -czf "arc-prod-$STAMP.tar.gz" -C backup schema.sql data.sql auth-users.sql
+          # restore.sh travels with the bytes it knows how to restore — a
+          # recovery procedure kept only in a doc is one you have to go find
+          # during the incident.
+          tar -czf "arc-prod-$STAMP.tar.gz" -C backup 00-prereq.sql schema.sql auth-users.sql data.sql restore.sh
           age -r "$RECIPIENT" -o "arc-prod-$STAMP.tar.gz.age" "arc-prod-$STAMP.tar.gz"
 
           # Remove every plaintext copy before anything can upload it. The
