@@ -13,7 +13,7 @@ export default function AppNotFound() {
   return (
     <section className="state-page">
       <p className="state-eyebrow">Not found</p>
-      <h1>That page isn&apos;t here</h1>
+      <h2>That page isn&apos;t here</h2>
       <p className="state-body">
         The record may have been deleted, or the link may be out of date. Nothing has gone wrong with
         your workspace.

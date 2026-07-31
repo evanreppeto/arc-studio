@@ -47,7 +47,7 @@
 
 .arc-settings .panel { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); margin-bottom: 16px; overflow: hidden; }
 .arc-settings .panel-h { display: flex; align-items: center; gap: 9px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
-.arc-settings .panel-h h3 { font-size: 13.5px; font-weight: 600; margin: 0; }
+.arc-settings .panel-h h2 { font-size: 13.5px; font-weight: 600; margin: 0; }
 .arc-settings .panel-h .ph-d { font-size: 11px; color: var(--muted); }
 .arc-settings .panel-b { padding: 2px 16px; }
 .arc-settings .panel-f { padding: 11px 16px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; background: color-mix(in srgb, var(--canvas-deep) 22%, transparent); }

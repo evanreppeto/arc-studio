@@ -612,7 +612,7 @@ export function LibraryView({
     <div className="arc-library">
       <div className="lhead">
         <div>
-          <h1 className="pt">Library</h1>
+          <h2 className="pt">Library</h2>
           <div className="psub">Your media store — real photos, AI creative, logos &amp; docs. Mark what Arc may use.</div>
         </div>
         <div className="acts">

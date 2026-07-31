@@ -173,7 +173,7 @@ export function CampaignsBoard({
     <div className="arc-grid arc-campaigns">
       <div className="chrow">
         <div>
-          <h1 className="ct">Campaigns</h1>
+          <h2 className="ct">Campaigns</h2>
           <div className="csub">
             {allRows.length} {allRows.length === 1 ? "package" : "packages"} · approval-gated · drafted by Arc
           </div>

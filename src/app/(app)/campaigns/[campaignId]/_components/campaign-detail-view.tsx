@@ -533,7 +533,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
         </div>
         <div className="crow">
           <div className="cmain">
-            <h1 className="cname">{campaign.name}</h1>
+            <h2 className="cname">{campaign.name}</h2>
             <div className="csub">{campaign.objective || campaign.audienceSummary}</div>
             <div className="cchips">
               {persona && (

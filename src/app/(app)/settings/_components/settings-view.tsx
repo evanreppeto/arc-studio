@@ -190,7 +190,7 @@ function TestAlertRow() {
   const [pending, startTransition] = useTransition();
   return (
     <div className="panel">
-      <div className="panel-h"><h3>Alert channel</h3></div>
+      <div className="panel-h"><h2>Alert channel</h2></div>
       <div className="panel-b">
         <Row
           label="Send a test alert"
@@ -221,7 +221,7 @@ function TestAlertRow() {
 function Panel({ title, tag, foot, children }: { title: ReactNode; tag?: ReactNode; foot?: ReactNode; children: ReactNode }) {
   return (
     <div className="panel">
-      <div className="panel-h"><h3>{title}</h3>{tag}</div>
+      <div className="panel-h"><h2>{title}</h2>{tag}</div>
       <div className="panel-b">{children}</div>
       {foot && <div className="panel-f"><Ic d={CHECK} />{foot}</div>}
     </div>
@@ -990,7 +990,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
       <>
         <Head t="Waitlist" d="Everyone who asked for early access from the public site. Platform-wide, not workspace-scoped." />
         <div className="panel">
-          <div className="panel-h"><h3>Signups</h3><span className="ph-d" style={{ marginLeft: 6 }}>{waitlist.total.toLocaleString()} total</span></div>
+          <div className="panel-h"><h2>Signups</h2><span className="ph-d" style={{ marginLeft: 6 }}>{waitlist.total.toLocaleString()} total</span></div>
           <div className="panel-b" style={{ paddingTop: 12, paddingBottom: 14 }}>
             <div className="wl-stats">
               <div className="wl-stat"><div className="wl-stat-v">{waitlist.total.toLocaleString()}</div><div className="wl-stat-l">Total signups</div></div>
@@ -1006,7 +1006,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         </div>
         <div className="panel">
           <div className="panel-h">
-            <h3>Recent signups</h3>
+            <h2>Recent signups</h2>
             <span className="ph-d" style={{ marginLeft: 6 }}>
               {waitlist.total > waitlist.recent.length
                 ? `newest ${waitlist.recent.length} of ${waitlist.total.toLocaleString()}`
@@ -1152,7 +1152,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         {subBar}
         {activeSub === "Roster" ? (
           <div className="panel">
-            <div className="panel-h"><h3>Higgsfield roster</h3><span className="ph-d" style={{ marginLeft: 6 }}>44 models</span><span className="tg ok" style={{ marginLeft: "auto" }}>live</span></div>
+            <div className="panel-h"><h2>Higgsfield roster</h2><span className="ph-d" style={{ marginLeft: 6 }}>44 models</span><span className="tg ok" style={{ marginLeft: "auto" }}>live</span></div>
             <div className="panel-b" style={{ paddingBottom: 14 }}>
               <div className="msub">{(["image", "video", "audio"] as const).map((c) => <button key={c} className={mediaCat === c ? "on" : ""} onClick={() => setMediaCat(c)}>{c.charAt(0).toUpperCase() + c.slice(1)} <span className="mct">{MEDIA_MODELS[c].length}</span></button>)}</div>
               <div className="modellist">
@@ -1209,7 +1209,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         ) : (
           <>
             <div className="panel">
-              <div className="panel-h"><h3>This month</h3><span className="tg ok" style={{ marginLeft: "auto" }}>{usageView.isDemo ? "Sample data" : "Live"}</span></div>
+              <div className="panel-h"><h2>This month</h2><span className="tg ok" style={{ marginLeft: "auto" }}>{usageView.isDemo ? "Sample data" : "Live"}</span></div>
               <div className="panel-b" style={{ padding: 16 }}>
                 <div className="ukpis">{[[usageView.tokensLabel, "Tokens"], [usageView.runsLabel, "Agent runs"], [usageView.costLabel, "Est. cost"]].map(([v, l]) => <div className="ukpi" key={l}><div className="uv">{v}</div><div className="ul">{l}</div></div>)}</div>
                 <div className="ubar"><i style={{ width: `${Math.min(usageView.pctOfCap, 100)}%`, ...(usageView.isNearCap ? { background: "var(--warn)" } : {}) }} /></div>

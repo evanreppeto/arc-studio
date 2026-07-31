@@ -81,7 +81,7 @@
 }
 
 .arc-conversation-title { min-width: 0; }
-.arc-conversation-title h1 {
+.arc-conversation-title h2 {
   margin: 0;
   font-family: var(--serif);
   font-size: 18px;
@@ -2450,7 +2450,7 @@ a.arc-work-evidence-item:hover > svg { color: var(--accent); }
   .arc-conversation-actions .arc-header-attention { display: inline-flex; width: 44px; height: 44px; padding: 0; }
   .arc-header-attention span { display: none; }
   .arc-history-button { width: 44px; height: 44px; padding: 0; }
-  .arc-conversation-title h1 { font-size: 16px; }
+  .arc-conversation-title h2 { font-size: 16px; }
   .arc-conversation-title p { display: none; }
   .arc-header-artifact,
   .arc-header-work { width: 44px; height: 44px; padding: 0; }

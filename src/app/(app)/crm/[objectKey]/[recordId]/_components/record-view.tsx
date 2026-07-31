@@ -354,7 +354,7 @@ export function RecordView({
         <div className="idrow">
           <span className="bigav">{initials(record.name)}</span>
           <div className="idmain">
-            <h1 className="rname">{record.name}</h1>
+            <h2 className="rname">{record.name}</h2>
             {record.detail && <div className="rrole">{record.detail}</div>}
             <div className="idchips">
               {dispPersona && (
