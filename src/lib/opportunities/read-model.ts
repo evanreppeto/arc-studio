@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { getCurrentOrgId } from "@/lib/auth/org";
@@ -138,12 +139,13 @@ export async function countPendingOpportunities(client?: SupabaseClient): Promis
     return isDemoDataEnabled() ? buildDemoOpportunities().filter((o) => o.status === "pending").length : 0;
   }
   const { client: db, orgId } = client ? { client, orgId: await getCurrentOrgId() } : await resolveTenantReadHandle();
-  const { count } = await db
+  const { count, error } = await db
     .from("opportunities")
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId)
     .or(openOrWokenFilter(["pending"], new Date().toISOString()));
-  return count ?? 0;
+  // null count = missing/inaccessible relation, not zero rows (BSR-575).
+  return requireCount("opportunities", { count, error });
 }
 
 export type OpportunityForDraft = {

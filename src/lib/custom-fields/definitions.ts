@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -297,5 +298,6 @@ export async function fieldHasValues(
   // Fail closed: if we can't prove the field is empty, treat it as having data
   // so a type change is refused rather than silently recasting stored values.
   if (error) return true;
-  return (count ?? 0) > 0;
+  // Fail closed: a null count read as 0 claims the tenant has no custom fields.
+  return requireCount("custom_field_definitions", { count, error }) > 0;
 }

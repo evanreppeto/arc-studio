@@ -17,6 +17,7 @@ import {
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
+import { requireCount } from "../supabase/count";
 import { resolveTenantReadHandle } from "../supabase/tenant-client";
 
 export type CrmTone = "amber" | "green" | "red" | "blue";
@@ -1480,9 +1481,11 @@ function assertResult(table: string, error: { message?: string } | null) {
 async function countRows(client: SupabaseClient, table: CrmObjectKey, orgId?: string | null) {
   let query = client.from(table).select("id", { count: "exact", head: true });
   if (orgId) query = query.eq("org_id", orgId);
-  const { count, error } = await query;
-  assertResult(table, error);
-  return count ?? 0;
+  const result = await query;
+  // `count ?? 0` here is what made getCrmNavCounts impossible to fail: a HEAD
+  // count against a missing relation returns { count: null, error: null }, so
+  // assertResult saw nothing and a broken read became a confident zero.
+  return requireCount(table, result);
 }
 
 function buildPipelineRows(data: Awaited<ReturnType<typeof getCrmTableBundle>>): CrmPipelineRow[] {
