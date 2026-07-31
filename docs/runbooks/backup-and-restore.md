@@ -89,7 +89,9 @@ gh run download <run-id>
 
 ```bash
 age -d -i arc-backup.key -o arc-prod.tar.gz arc-prod-<stamp>.tar.gz.age
-tar -xzf arc-prod.tar.gz   # 00-prereq  schema  auth-users  data  restore.sh
+tar -xzf arc-prod.tar.gz
+# 00-prereq.sql  schema.sql  auth-users.sql  data.sql
+# storage-manifest.json  storage/<bucket>/…  restore.sh
 ```
 
 ### 3. Restore
@@ -98,8 +100,15 @@ tar -xzf arc-prod.tar.gz   # 00-prereq  schema  auth-users  data  restore.sh
 below. Prefer it over running the files by hand.
 
 ```bash
+export SUPABASE_URL="https://<ref>.supabase.co"
+export SUPABASE_SERVICE_ROLE_KEY="<service role key>"   # storage upload only
 ./restore.sh "postgresql://postgres:PW@db.<ref>.supabase.co:5432/postgres"
 ```
+
+Those two exports are **optional and only for storage**. Without them the
+database restores fully and the script says, loudly, that every stored file is
+still missing — it does not pretend the recovery is complete. Re-running with
+them set uploads the files; the script is re-runnable (`x-upsert`).
 
 > **Restore into a scratch project first, never straight over prod.** Create a
 > new Supabase project, restore there, confirm the data, and only then decide
@@ -115,6 +124,7 @@ it was established by the restore test below rather than by reasoning:
 | `schema.sql` | Carries `public` **and** `app_private` from one dump, so the four SECURITY DEFINER functions exist before the 138 policies that call them. |
 | `auth-users.sql` | **Before the data**, because public tables carry foreign keys to `auth.users`. Holds `identities` too, or accounts exist that cannot log in. |
 | `data.sql` | Loaded with `session_replication_role = replica`. `campaigns → approval_items → campaign_assets → campaigns` is a cycle, so no ordering satisfies it unaided. |
+| `storage/` | The Postgres dump carries `storage.objects` *metadata*; these are the files themselves. Last, because the rows describing them must exist first. |
 
 ### 4. Confirm it is real
 
@@ -143,13 +153,13 @@ the bytes arrived, not that the application can read them.
 
 ## What is NOT covered
 
-**Supabase Storage.** The `campaign-media` bucket (2 objects, ~450 KB as of
-2026-07-30) holds generated creative. `storage.objects` *metadata* is in the
-Postgres dump; **the file bytes are not.** A restore brings back rows pointing at
-objects that do not exist.
-
-Small enough today to accept as a known gap. Worth syncing alongside the dump
-before real customer media accumulates — tracked on BSR-532.
+**Objects in a PRIVATE bucket.** Storage bytes are fetched over each bucket's
+public URL, which needs no credential. Every bucket is public today
+(`campaign-media`, 2 objects, ~450 KB). If one is ever made private, its objects
+are listed in `storage-manifest.json` with
+`status: "not-backed-up: private bucket"` and the run prints a warning — they
+are recorded as a gap, never skipped silently. Backing them up would mean giving
+CI a service-role key, which is a deliberate decision, not a default.
 
 **Anything newer than the last nightly run.** See RPO above.
 
