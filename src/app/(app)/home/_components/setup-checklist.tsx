@@ -34,9 +34,15 @@ const STEP_COPY: Record<ActivationStepKey, { title: string; why: string; cta: st
     cta: "Set up brand",
     href: "/brand",
   },
+  opportunity: {
+    title: "See what Arc found",
+    why: "Arc scans your records and files opportunities with the evidence attached. This is the first sign it is working for you.",
+    cta: "Open the inbox",
+    href: "/opportunities",
+  },
   campaign: {
-    title: "Review your first package",
-    why: "Arc drafts the whole campaign — email, copy, creative — and waits. Nothing reaches a customer until you approve it.",
+    title: "Approve your first campaign",
+    why: "Arc drafts the whole package — email, copy, creative — and waits. Nothing reaches a customer until you approve it, and this step stays open until you have.",
     cta: "See campaigns",
     href: "/campaigns",
   },
@@ -50,7 +56,7 @@ const STEP_COPY: Record<ActivationStepKey, { title: string; why: string; cta: st
     title: "Invite a teammate",
     why: "Approvals are easier when someone else can cover them.",
     cta: "Invite",
-    href: "/settings/team",
+    href: "/settings",
   },
 };
 

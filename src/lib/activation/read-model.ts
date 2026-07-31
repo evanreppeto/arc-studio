@@ -13,7 +13,8 @@ const EMPTY_SIGNALS: ActivationSignals = {
   brandCaptured: false,
   dismissed: false,
   hasMedia: false,
-  hasCampaign: false,
+  hasOpportunity: false,
+  hasApprovedCampaign: false,
   hasTeammate: false,
 };
 
@@ -104,7 +105,7 @@ export async function getActivationState(orgId: string, workspaceId: string | nu
 
   const db = getSupabaseAdminClient() as unknown as SupabaseClient;
 
-  const [onboarding, brandFromProfile, hasContacts, hasCompanies, hasMedia, hasCampaign, hasTeammate] = await Promise.all([
+  const [onboarding, brandFromProfile, hasContacts, hasCompanies, hasMedia, hasOpportunity, hasApprovedCampaign, hasTeammate] = await Promise.all([
     readOnboardingRow(db, orgId),
     readBrandCaptured(db, orgId),
     // Either object counts as "has records" — an owner may start from a company
@@ -113,8 +114,18 @@ export async function getActivationState(orgId: string, workspaceId: string | nu
     countExceeds(db, "contacts", (q) => q.eq("org_id", orgId), 0),
     countExceeds(db, "companies", (q) => q.eq("org_id", orgId), 0),
     countExceeds(db, "media_assets", (q) => q.eq("org_id", orgId), 0),
+    countExceeds(db, "opportunities", (q) => q.eq("org_id", orgId), 0),
+    // APPROVED, not merely present. `approved`, `active` and `paused` all mean a
+    // human said yes at some point; a draft or one sitting in pending_approval
+    // has not reached the milestone this step exists to mark. Counting any
+    // campaign let the checklist claim completion for work nobody had approved.
     workspaceId
-      ? countExceeds(db, "campaigns", (q) => q.eq("workspace_id", workspaceId), 0)
+      ? countExceeds(
+          db,
+          "campaigns",
+          (q) => q.eq("workspace_id", workspaceId).in("status", ["approved", "active", "paused"]),
+          0,
+        )
       : Promise.resolve(false),
     workspaceId
       ? countExceeds(db, "workspace_memberships", (q) => q.eq("workspace_id", workspaceId).eq("status", "active"), 1)
@@ -126,7 +137,8 @@ export async function getActivationState(orgId: string, workspaceId: string | nu
     brandCaptured: brandFromProfile || Boolean(onboarding?.brand_captured_at),
     dismissed: Boolean(onboarding?.dismissed_at),
     hasMedia,
-    hasCampaign,
+    hasOpportunity,
+    hasApprovedCampaign,
     hasTeammate,
   };
 

@@ -21,11 +21,22 @@ export type ActivationSignals = {
   brandCaptured: boolean;
   dismissed: boolean;
   hasMedia: boolean;
-  hasCampaign: boolean;
+  /** Arc has surfaced at least one opportunity — the first sign it is working. */
+  hasOpportunity: boolean;
+  /**
+   * An APPROVED campaign, not merely an existing one.
+   *
+   * This used to be "has any campaign", which meant a draft marked the step
+   * complete. BSR-504's whole acceptance is reaching an *approved* campaign, and
+   * the checklist's own rule is that it cannot show complete while the
+   * underlying step isn't — a draft nobody approved is the exact state the step
+   * is supposed to be pointing at.
+   */
+  hasApprovedCampaign: boolean;
   hasTeammate: boolean;
 };
 
-export type ActivationStepKey = "records" | "brand" | "campaign" | "media" | "team";
+export type ActivationStepKey = "records" | "brand" | "opportunity" | "campaign" | "media" | "team";
 
 export type ActivationStep = {
   key: ActivationStepKey;
@@ -51,7 +62,11 @@ export function buildActivationChecklist(signals: ActivationSignals): Activation
   const steps: ActivationStep[] = [
     { key: "records", done: signals.hasRecords, blocking: true },
     { key: "brand", done: signals.brandCaptured, blocking: false },
-    { key: "campaign", done: signals.hasCampaign, blocking: false },
+    // Opportunity sits before campaign because that is the actual order of
+    // events: Arc finds something, then drafts from it. Showing "approve a
+    // campaign" while the inbox is empty asks for something not yet possible.
+    { key: "opportunity", done: signals.hasOpportunity, blocking: false },
+    { key: "campaign", done: signals.hasApprovedCampaign, blocking: false },
     { key: "media", done: signals.hasMedia, blocking: false },
     { key: "team", done: signals.hasTeammate, blocking: false },
   ];
