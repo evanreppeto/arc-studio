@@ -22,6 +22,13 @@ export type ConnectorView = {
   kind: ConnectorKind;
   label: string;
   description: string;
+  /**
+   * The registry's one-line `capability.summary`. `description` is written for
+   * the Settings page and runs long; in a 386px drawer it clamps mid-word. Any
+   * surface too narrow for the full description should show this instead of
+   * truncating prose the operator can then never read.
+   */
+  capabilitySummary: string;
   authKind: ConnectorAuthKind;
   access: ConnectorAccess;
   costTier: ConnectorCostTier;
@@ -94,6 +101,7 @@ export async function listWorkspaceConnectors(client: SupabaseClient, workspaceI
       kind: entry.kind,
       label: entry.label,
       description: entry.description,
+      capabilitySummary: entry.capability.summary,
       authKind: entry.authKind,
       access: entry.access,
       costTier: entry.costTier,
