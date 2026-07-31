@@ -56,3 +56,45 @@ export function writeWorkPanelPreference(open: boolean): void {
 export function workPanelOpenOnConversationChange(): boolean {
   return readWorkPanelPreference() === true;
 }
+
+/**
+ * Which of the panel's collapsible sections the operator left open.
+ *
+ * The panel replaced its tab rail with sections, so this replaces the stored
+ * tab. Deliverables are never collapsible — they are the reason the panel
+ * exists. Evidence opens by default because it answers "where did that come
+ * from"; run history stays closed because it is reference, not the point.
+ *
+ * `sessionStorage` for the same reason as the open/closed preference above.
+ */
+export type WorkSectionId = "evidence" | "runs";
+
+export const DEFAULT_WORK_SECTIONS: Record<WorkSectionId, boolean> = { evidence: true, runs: false };
+
+const SECTIONS_KEY = "arc.workPanel.sections";
+
+export function readWorkSectionPreference(): Record<WorkSectionId, boolean> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(SECTIONS_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const record = parsed as Partial<Record<WorkSectionId, unknown>>;
+    return {
+      evidence: typeof record.evidence === "boolean" ? record.evidence : DEFAULT_WORK_SECTIONS.evidence,
+      runs: typeof record.runs === "boolean" ? record.runs : DEFAULT_WORK_SECTIONS.runs,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeWorkSectionPreference(sections: Record<WorkSectionId, boolean>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(SECTIONS_KEY, JSON.stringify(sections));
+  } catch {
+    // Ignored on purpose — same reasoning as the open/closed preference.
+  }
+}

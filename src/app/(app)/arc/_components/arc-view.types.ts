@@ -36,9 +36,6 @@ export type DemoTurn = {
 /** Which composer popover is open — null closed. */
 export type ComposerMenu = "tools" | "mode" | "model" | "mentions" | "commands" | null;
 
-/** The three tabs of the conversation work panel. */
-export type WorkPanelTab = "work" | "created" | "audience";
-
 /** Work waiting on the operator, surfaced in the launcher: approval + opportunity
  *  counts, plus the top opportunity nudges to greet them with. */
 export type ArcWaiting = { approvals: number; opportunities: number; items?: ArcWaitingOpp[] };
