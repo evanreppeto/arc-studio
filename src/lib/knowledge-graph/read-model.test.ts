@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/observability/report-degraded", () => ({ reportDegraded: vi.fn() }));
+
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { listNodes, listProposed, brainSummary, getBrainCrmCoverage, sanitizeBrainSearch, nodeMatchesSearch } from "./read-model";
 
+const reported = vi.mocked(reportDegraded);
+
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.clearAllMocks();
 });
 
 const NODES = [
@@ -28,6 +34,32 @@ describe("listNodes", () => {
     const supabase = createSupabaseQueryMock({ knowledge_nodes: { data: null, error: { message: "boom" } } });
     const result = await listNodes({}, supabase as never, "org-1");
     expect(result.status).toBe("unavailable");
+  });
+
+  it("does not fail silently — it reports, naming the org it queried (BSR-547)", async () => {
+    // This path RETURNS `unavailable` rather than throwing, so the page's
+    // `.catch(unavailable(...))` never sees it. Before BSR-547 that meant 20 of
+    // 22 Brain failure returns produced no log, no Sentry event and no org at
+    // all: an empty screen and total silence.
+    const supabase = createSupabaseQueryMock({
+      knowledge_nodes: { data: null, error: { message: "column does not exist", code: "42703" } },
+    });
+    const result = await listNodes({}, supabase as never, "org-1");
+
+    expect(result.status).toBe("unavailable");
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(reported.mock.calls[0]?.[1]).toMatchObject({
+      scope: "knowledge-graph.listNodes",
+      surface: "primary",
+      detail: expect.objectContaining({ orgId: "org-1", code: "42703" }),
+    });
+  });
+
+  it("stays quiet when the read succeeds", async () => {
+    // A report on a healthy read would make the signal worthless.
+    const supabase = createSupabaseQueryMock({ knowledge_nodes: { data: NODES, error: null } });
+    await listNodes({}, supabase as never, "org-1");
+    expect(reported).not.toHaveBeenCalled();
   });
 
   it("can suppress the empty-brain demo fallback", async () => {

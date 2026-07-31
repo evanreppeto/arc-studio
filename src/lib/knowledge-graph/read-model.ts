@@ -1,7 +1,7 @@
 import { requireCount } from "@/lib/supabase/count";
 import { CRM_NODE_KINDS, type CrmIngestTable, type TrustTier } from "@/domain";
-import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getCurrentOrgId } from "@/lib/auth/org";
+import { unavailableRead } from "@/lib/observability/unavailable";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { type TypedSupabaseClient, getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -210,7 +210,7 @@ export async function listNodes(
     }
 
     const { data, error } = await query;
-    if (error) return { status: "unavailable", message: error.message };
+    if (error) return unavailableRead("knowledge-graph.listNodes", resolved.orgId, error, { surface: "primary" });
     const nodes = ((data ?? []) as NodeRow[]).map(mapNode);
     // An empty brain (no nodes seeded yet) shows the demo memory only when demo
     // mode is on (handled via demoFallback above) and only for an unfiltered
@@ -222,8 +222,7 @@ export async function listNodes(
   } catch (error) {
     // Degrade, but not silently — this read IS the screen, so an empty
     // state here is indistinguishable from an outage (BSR-544).
-    reportDegraded(error, { scope: "knowledge-graph.listNodes", surface: "primary" });
-    return { status: "unavailable", message: error instanceof Error ? error.message : "Brain is unavailable." };
+    return unavailableRead("knowledge-graph.listNodes", resolved.orgId, error, { surface: "primary", fallbackMessage: "Brain is unavailable." });
   }
 }
 
@@ -268,12 +267,12 @@ export async function countNodesByTier(
       base().eq("trust_tier", "proposed"),
     ]);
     const firstError = [total, trusted, observed, proposed].find((r) => r.error);
-    if (firstError?.error) return { status: "unavailable", message: firstError.error.message };
+    if (firstError?.error) return unavailableRead("knowledge-graph.countNodesByTier", resolved.orgId, firstError.error, { surface: "primary" });
     // A null count carries NO error — a HEAD count against a missing relation
     // returns { count: null, error: null }, so the check above cannot see it and
     // the tiles would read a confident zero (BSR-575).
     if ([total, trusted, observed, proposed].some((r) => r.count === null)) {
-      return { status: "unavailable", message: "knowledge_nodes count returned no result — the relation is missing or inaccessible." };
+      return unavailableRead("knowledge-graph.countNodesByTier", resolved.orgId, new Error("knowledge_nodes count returned no result — the relation is missing or inaccessible."), { surface: "primary" });
     }
     const counts: BrainTierCounts = {
       total: total.count ?? 0,
@@ -285,7 +284,7 @@ export async function countNodesByTier(
     if (counts.total === 0 && demoFallback) return { status: "live", counts: countTiers(filterDemoNodes({})) };
     return { status: "live", counts };
   } catch (error) {
-    return { status: "unavailable", message: error instanceof Error ? error.message : "Brain is unavailable." };
+    return unavailableRead("knowledge-graph.countNodesByTier", resolved.orgId, error, { surface: "primary", fallbackMessage: "Brain is unavailable." });
   }
 }
 
@@ -308,10 +307,10 @@ export async function listGraphEdges(
       .select(EDGE_COLUMNS)
       .eq("org_id", resolved.orgId)
       .limit(600);
-    if (error) return { status: "unavailable", message: error.message };
+    if (error) return unavailableRead("knowledge-graph.listGraphEdges", resolved.orgId, error, { surface: "primary" });
     return { status: "live", edges: ((data ?? []) as EdgeRow[]).map(mapEdge) };
   } catch (error) {
-    return { status: "unavailable", message: error instanceof Error ? error.message : "Brain edges are unavailable." };
+    return unavailableRead("knowledge-graph.listGraphEdges", resolved.orgId, error, { surface: "primary", fallbackMessage: "Brain edges are unavailable." });
   }
 }
 
@@ -336,7 +335,7 @@ export async function getNode(
       .eq("id", nodeId)
       .eq("org_id", resolved.orgId)
       .maybeSingle();
-    if (node.error) return { status: "unavailable", message: node.error.message };
+    if (node.error) return unavailableRead("knowledge-graph.getNode", resolved.orgId, node.error, { surface: "primary" });
     if (!node.data) return { status: "unavailable", message: "Node not found." };
 
     const edges = await resolved.client
@@ -345,7 +344,7 @@ export async function getNode(
       .eq("org_id", resolved.orgId)
       .or(`from_node_id.eq.${nodeId},to_node_id.eq.${nodeId}`)
       .limit(200);
-    if (edges.error) return { status: "unavailable", message: edges.error.message };
+    if (edges.error) return unavailableRead("knowledge-graph.getNode", resolved.orgId, edges.error, { surface: "primary" });
 
     const edgeRows = (edges.data ?? []) as EdgeRow[];
     const neighborIds = [
@@ -358,13 +357,13 @@ export async function getNode(
         .select(NODE_COLUMNS)
         .eq("org_id", resolved.orgId)
         .in("id", neighborIds);
-      if (neighborRows.error) return { status: "unavailable", message: neighborRows.error.message };
+      if (neighborRows.error) return unavailableRead("knowledge-graph.getNode", resolved.orgId, neighborRows.error, { surface: "primary" });
       neighbors = ((neighborRows.data ?? []) as NodeRow[]).map(mapNode);
     }
 
     return { status: "live", node: mapNode(node.data as NodeRow), edges: edgeRows.map(mapEdge), neighbors };
   } catch (error) {
-    return { status: "unavailable", message: error instanceof Error ? error.message : "Brain is unavailable." };
+    return unavailableRead("knowledge-graph.getNode", resolved.orgId, error, { surface: "primary", fallbackMessage: "Brain is unavailable." });
   }
 }
 
@@ -393,12 +392,12 @@ export async function getBrainCrmCoverage(
         .from(table)
         .select("id", { count: "exact", head: true })
         .eq("org_id", resolved.orgId);
-      if (error) return { status: "unavailable", message: error.message };
+    if (error) return unavailableRead("knowledge-graph.getBrainCrmCoverage", resolved.orgId, error, { surface: "secondary" });
       // A null count carries no error on a HEAD request, and this feeds
       // `behind` — a false zero would report the Brain fully caught up when it
       // is not (BSR-575).
       if (count === null) {
-        return { status: "unavailable", message: `${table} count returned no result — the relation is missing or inaccessible.` };
+        return unavailableRead("knowledge-graph.getBrainCrmCoverage", resolved.orgId, new Error(`${table} count returned no result — the relation is missing or inaccessible.`), { surface: "secondary" });
       }
       crmRecords += count;
     }
@@ -407,14 +406,14 @@ export async function getBrainCrmCoverage(
       .select("id", { count: "exact", head: true })
       .eq("org_id", resolved.orgId)
       .in("kind", CRM_COVERAGE_KINDS);
-    if (brain.error) return { status: "unavailable", message: brain.error.message };
+    if (brain.error) return unavailableRead("knowledge-graph.getBrainCrmCoverage", resolved.orgId, brain.error, { surface: "secondary" });
     if (brain.count === null) {
-      return { status: "unavailable", message: "knowledge_nodes count returned no result — the relation is missing or inaccessible." };
+      return unavailableRead("knowledge-graph.getBrainCrmCoverage", resolved.orgId, new Error("knowledge_nodes count returned no result — the relation is missing or inaccessible."), { surface: "secondary" });
     }
     const brainRecords = brain.count;
     return { status: "live", crmRecords, brainRecords, behind: Math.max(0, crmRecords - brainRecords) };
   } catch (error) {
-    return { status: "unavailable", message: error instanceof Error ? error.message : "Brain coverage unavailable." };
+    return unavailableRead("knowledge-graph.getBrainCrmCoverage", resolved.orgId, error, { surface: "secondary", fallbackMessage: "Brain coverage unavailable." });
   }
 }
 
