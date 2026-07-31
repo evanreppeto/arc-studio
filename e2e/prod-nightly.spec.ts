@@ -1,5 +1,7 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 
+import { GOLDEN_QUESTIONS, gradeGoldenAnswer } from "../src/domain/arc-eval";
+
 /**
  * NIGHTLY PROD SMOKE (BSR-478).
  *
@@ -42,18 +44,10 @@ const PASSWORD = process.env.E2E_PASSWORD || "";
 const ARC_ENABLED = process.env.ARC_SMOKE_ENABLED === "1";
 
 /**
- * Facts seeded into the demo org on 2026-07-06 and frozen since. Arc must
- * surface at least MIN_KNOWN_HITS of these from retrieval — none of them appear
- * in the question, so echoing the prompt cannot satisfy it.
+ * The facts themselves now live in `src/domain/arc-eval.ts` beside the grader,
+ * so adding a question is a data edit with unit tests behind it — including one
+ * that rejects a question containing its own answer (BSR-507).
  */
-const KNOWN_PARTNERS = [
-  "Rapid Response Plumbing",
-  "Lakeside Mechanical",
-  "Halsted Drain & Sewer",
-  "North Shore Pipeworks",
-  "Windy City Plumbing Co",
-];
-const MIN_KNOWN_HITS = 2;
 
 const ARC_REPLY_TIMEOUT_MS = 180_000;
 
@@ -97,42 +91,57 @@ test.describe("nightly prod smoke", () => {
     await expect(body, "step 2: home should show a non-zero count, not an empty state").toContainText(/[1-9]\d*/);
   });
 
-  test("step 3: Arc answers a question whose answer we already know", async ({ page, context }) => {
-    test.skip(
-      !ARC_ENABLED,
-      "set ARC_SMOKE_ENABLED=1 once the runner has a Secret Manager token scoped to the smoke workspace",
-    );
-    await login(context);
-    await page.goto("/arc", { waitUntil: "domcontentloaded" });
+  /**
+   * Step 3 — the golden questions (BSR-507).
+   *
+   * This used to be ONE hardcoded question. It is now the set in
+   * `src/domain/arc-eval.ts`, driven one Playwright test per question so a
+   * failure names the capability that degraded rather than a single red step.
+   * Adding a question is a data edit there; nothing here changes.
+   *
+   * Grading is against GROUND TRUTH — literal facts seeded into this archived
+   * tenant — never a model's judgment of a good answer. A judge model shares the
+   * bug and agrees with it.
+   *
+   * The reply is read from Arc's own message container, not the page body: some
+   * facts are bare numbers ("200", "4.9") and a body-wide match could be
+   * satisfied by a sidebar count that Arc never said.
+   */
+  test.describe("step 3: golden questions", () => {
+    for (const question of GOLDEN_QUESTIONS) {
+      test(`[${question.capability}] ${question.id}`, async ({ page, context }) => {
+        test.skip(
+          !ARC_ENABLED,
+          "set ARC_SMOKE_ENABLED=1 once the runner has a Secret Manager token scoped to the smoke workspace",
+        );
+        test.setTimeout(ARC_REPLY_TIMEOUT_MS + 60_000);
 
-    // Deliberately does NOT name any partner: the answer has to come from Arc's
-    // own retrieval over the seeded CRM. This is the only check that has ever
-    // caught a silent reasoning break — five stacked failures in Arc's prod path
-    // were invisible to tests, logs, health checks and CI, and were found only
-    // by asking a question whose answer we already knew.
-    const composer = page.locator(".arc-composer textarea");
-    await expect(composer, "step 3: the Arc composer should be present").toBeVisible();
-    await composer.fill("List the plumbing partner companies in our CRM by name.");
-    await composer.press("Enter");
+        await login(context);
+        // A fresh conversation per question: shared context would let an earlier
+        // answer supply a later one's facts, which is the same echo problem the
+        // question wording is designed to avoid.
+        await page.goto("/arc?new=1", { waitUntil: "domcontentloaded" });
 
-    // Arc replies asynchronously (enqueue -> runner -> stream), so wait on the
-    // CONTENT rather than on any spinner finishing.
-    const body = page.locator("body");
-    await expect(async () => {
-      const text = await body.innerText();
-      const hits = KNOWN_PARTNERS.filter((name) => text.includes(name));
-      expect(
-        hits.length,
-        `step 3: Arc should name at least ${MIN_KNOWN_HITS} seeded partners from retrieval; saw ${hits.length} (${hits.join(", ") || "none"})`,
-      ).toBeGreaterThanOrEqual(MIN_KNOWN_HITS);
-    }).toPass({ timeout: ARC_REPLY_TIMEOUT_MS, intervals: [2_000] });
+        const composer = page.locator(".arc-composer textarea");
+        await expect(composer, `${question.id}: the Arc composer should be present`).toBeVisible();
+        await composer.fill(question.question);
+        await composer.press("Enter");
 
-    // "Tool call succeeded" is not "the answer is right" — a reply that declines
-    // is a reasoning/retrieval break even though the request technically worked.
-    const finalText = await body.innerText();
-    expect(finalText, "step 3: Arc should not be answering that it lacks access").not.toMatch(
-      /isn't connected to this workspace|no access to|I don't have access/i,
-    );
+        // Arc replies asynchronously (enqueue -> runner -> stream), so poll the
+        // CONTENT rather than waiting on any spinner to finish. A partial stream
+        // simply fails the grade and is retried.
+        const reply = page.locator(".arc-assistant-content").last();
+        await expect(async () => {
+          const answer = await reply.innerText().catch(() => "");
+          const grade = gradeGoldenAnswer(question, answer);
+          expect(
+            grade.passed,
+            `${question.id} (${question.capability}): ${grade.failure ?? "did not pass"}. ` +
+              `Matched [${grade.hits.join(", ") || "nothing"}]. Why this question exists: ${question.why}`,
+          ).toBe(true);
+        }).toPass({ timeout: ARC_REPLY_TIMEOUT_MS, intervals: [2_000] });
+      });
+    }
   });
 
   test("step 4: a campaign revision request persists", async ({ page, context }) => {
