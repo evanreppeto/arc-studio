@@ -10,6 +10,7 @@ import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablem
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { hardenImagePrompt } from "@/lib/media/prompt";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
+import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { storeGeneratedMedia } from "@/lib/media/storage";
 import { getAppSettings } from "@/lib/settings/store";
 import { recordUsageEvent } from "@/lib/ai-usage/persistence";
@@ -54,15 +55,30 @@ export async function POST(request: Request) {
         units: 1,
         metadata: { route: "generate-video", job_id: typeof body.job_id === "string" ? body.job_id : null },
       });
+      const videoPrompt = typeof body.prompt === "string" ? body.prompt : undefined;
+      const videoRisk = videoPrompt ? deriveImageRiskFlags(videoPrompt) : [];
+      // Same Library gap as the image route (BSR-634), same best-effort posture.
+      const assetId = await recordGeneratedMedia({
+        orgId: allowed.scope.orgId,
+        objectPath,
+        publicUrl: url,
+        contentType: result.contentType,
+        kind: "video",
+        byteSize: result.bytes.byteLength,
+        prompt: videoPrompt,
+        model: typeof body.model === "string" ? body.model : "veo",
+        jobId: typeof body.job_id === "string" ? body.job_id : null,
+        riskFlags: videoRisk,
+      });
       const media = {
         kind: "video" as const,
         url,
         source: "ai_generated" as const,
         model: typeof body.model === "string" ? body.model : "veo",
         ...(typeof body.job_id === "string" ? { jobId: body.job_id } : {}),
-        riskFlags: typeof body.prompt === "string" ? deriveImageRiskFlags(body.prompt) : [],
+        riskFlags: videoRisk,
       };
-      return NextResponse.json({ ok: true, status: "done", media, objectPath }, { status: 201 });
+      return NextResponse.json({ ok: true, status: "done", media, objectPath, ...(assetId ? { libraryAssetId: assetId } : {}) }, { status: 201 });
     }
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
     if (!prompt) return fail("rejected", "prompt is required to start a video.", 400);
