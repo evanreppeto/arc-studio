@@ -1,5 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
+import type { GeminiUsageMetadata } from "@/domain";
+
 export type WebSearchCitation = {
   title: string;
   url: string;
@@ -12,6 +14,12 @@ export type GeminiWebSearchResult = {
   text: string;
   citations: WebSearchCitation[];
   searchQueries: string[];
+  /**
+   * Gemini's token accounting for this call, passed up UNFOLDED so the caller —
+   * which is where org/workspace scope and the API-key source live — can meter
+   * it (BSR-502). Null when the response carried no usage block.
+   */
+  usage: GeminiUsageMetadata | null;
 };
 
 /**
@@ -134,6 +142,26 @@ function extractCitations(response: unknown): WebSearchCitation[] {
   return out;
 }
 
+/**
+ * Gemini's token accounting for the call. Read defensively: this response is
+ * parsed structurally throughout (see the `asRecord`/`array` helpers) because a
+ * shape change must degrade, not throw. A missing block yields null, which the
+ * ledger records as six explicit nulls rather than a fake zero-token call.
+ */
+function extractUsage(response: unknown): GeminiUsageMetadata | null {
+  const meta = asRecord(response).usageMetadata;
+  if (!meta || typeof meta !== "object") return null;
+  const m = asRecord(meta);
+  return {
+    promptTokenCount: numberOrUndefined(m.promptTokenCount),
+    candidatesTokenCount: numberOrUndefined(m.candidatesTokenCount),
+    thoughtsTokenCount: numberOrUndefined(m.thoughtsTokenCount),
+    toolUsePromptTokenCount: numberOrUndefined(m.toolUsePromptTokenCount),
+    cachedContentTokenCount: numberOrUndefined(m.cachedContentTokenCount),
+    totalTokenCount: numberOrUndefined(m.totalTokenCount),
+  };
+}
+
 function buildInput(query: string, context?: string): string {
   const parts = [
     "Research this for Arc, a marketing operations agent. Return practical findings and cite sources.",
@@ -176,5 +204,6 @@ export async function searchWebWithGemini(input: SearchWebWithGeminiInput): Prom
     text,
     citations: extractCitations(response),
     searchQueries: extractSearchQueries(response),
+    usage: extractUsage(response),
   };
 }
