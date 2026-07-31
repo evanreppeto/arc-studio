@@ -166,6 +166,93 @@ export async function insertAssetWithUrl(input: InsertAssetInput): Promise<Inser
   return { id, url };
 }
 
+/** Find or create a folder by name for this org. Idempotent, so a generation
+ *  path can call it on every run without accumulating duplicates. */
+export async function ensureNamedFolder(
+  orgId: string,
+  name: string,
+  description: string | null = null,
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<string | null> {
+  const { data } = await client
+    .from("media_folders" as string)
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("name", name)
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+  if (data?.id) return data.id;
+  try {
+    return await createFolder({ orgId, name, description, client });
+  } catch {
+    // A folder is organisation, not correctness — never fail the caller over it.
+    return null;
+  }
+}
+
+export type RecordStoredAssetInput = {
+  orgId: string;
+  folderId?: string | null;
+  fileName: string;
+  /** Path of the object ALREADY in the bucket. */
+  storagePath: string;
+  /** Public URL of that object. */
+  publicUrl: string;
+  contentType: string;
+  kind: string;
+  byteSize: number;
+  width?: number | null;
+  height?: number | null;
+  source?: string;
+  provenance?: Record<string, unknown>;
+  riskFlags?: string[];
+  tags?: string[];
+  uploadedBy: string;
+  availableToArc?: boolean;
+  client?: SupabaseClient;
+};
+
+/**
+ * Record a library row for bytes that are ALREADY stored (BSR-634).
+ *
+ * `insertAssetWithUrl` owns the upload, which is right for an operator dropping a
+ * file on `/library`. Generation is the other way round: the media route stores
+ * the object under `arc-generated/{org}/{workspace}/…` and hands back a URL, and
+ * until now nothing wrote a row for it. The image existed in the bucket, was
+ * attached to a campaign asset, and was invisible to `/library`, to Studio's
+ * background picker, and to every provenance surface that reads the table.
+ *
+ * So this takes the path and URL rather than the bytes, and writes the row those
+ * surfaces need. It does NOT re-upload and it does NOT move the object — the
+ * `arc-generated/` prefix stays exactly where the generator put it.
+ */
+export async function recordStoredAsset(input: RecordStoredAssetInput): Promise<string> {
+  const client = input.client ?? getSupabaseAdminClient();
+  const id = await insertGetId(client, "media_assets", {
+    org_id: input.orgId,
+    folder_id: input.folderId ?? null,
+    file_name: input.fileName,
+    storage_path: input.storagePath,
+    public_url: input.publicUrl,
+    content_type: input.contentType,
+    kind: input.kind,
+    width: input.width ?? null,
+    height: input.height ?? null,
+    byte_size: input.byteSize,
+    source: input.source ?? "ai_generated",
+    provenance: input.provenance ?? {},
+    risk_flags: input.riskFlags ?? [],
+    tags: input.tags ?? [],
+    // Default false, exactly as an operator upload does. A generated image is an
+    // approval-gated draft; letting Arc reuse it before a human has looked would
+    // route unreviewed AI creative straight back into the next campaign.
+    available_to_arc: input.availableToArc ?? false,
+    uploaded_by: input.uploadedBy,
+  });
+  await syncMediaRecordToBrain(id, { client: client as unknown as TypedSupabaseClient, orgId: input.orgId }).catch(() => undefined);
+  return id;
+}
+
 export async function insertAsset(input: InsertAssetInput): Promise<string> {
   const result = await insertAssetWithUrl(input);
   return result.id;
