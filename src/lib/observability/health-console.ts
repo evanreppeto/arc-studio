@@ -204,7 +204,11 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
     const countOf = (table: string) =>
       [
         (r: { count: number | null; error: unknown }): number => {
-          if (r.error) readFailures.add(table);
+          // A null count with no error means the relation is missing or
+          // inaccessible — NOT zero rows (BSR-575). Reporting 0 here would put a
+          // confident number on the one screen whose job is saying whether prod
+          // works.
+          if (r.error || r.count === null) readFailures.add(table);
           return r.count ?? 0;
         },
         (): number => {
