@@ -84,6 +84,12 @@ import {
 } from "@/lib/arc-skills/catalog";
 import type { WorkspaceArcSkill } from "@/lib/arc-skills/custom";
 import {
+  describeSkillRequirements,
+  unmetSkillConnectors,
+  type SkillConnectorStatus,
+  type SkillRequirement,
+} from "@/lib/arc-skills/requirements";
+import {
   readWorkPanelPreference,
   workPanelOpenOnConversationChange,
   writeWorkPanelPreference,
@@ -460,6 +466,19 @@ function ThreadDrawer({
   const [installedSearch, setInstalledSearch] = useState("");
   /** Authoring and installing are the rare case: collapsed by default. */
   const [manageOpen, setManageOpen] = useState(false);
+  /** Connector the operator arrived at from an unmet skill requirement. */
+  const [focusedConnector, setFocusedConnector] = useState<string | null>(null);
+  /** Bring that connector into view — the list is 16 rows and it may be far down.
+   *  A callback ref rather than an effect: it fires exactly when the row mounts,
+   *  which is the render after `showConnector` switched to the Connectors tab.
+   *
+   *  Deliberately not `behavior: "smooth"`. An animation started from a commit
+   *  callback races the list's own layout and reliably stalled part-way, leaving
+   *  the row the operator asked for still off-screen. This is a jump they
+   *  explicitly requested, so it should just be there. */
+  const focusConnectorRef = useCallback((node: HTMLAnchorElement | null) => {
+    node?.scrollIntoView({ block: "center", behavior: "auto" });
+  }, []);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ArcThreadFilter>("all");
   const [threadGrouping, setThreadGrouping] = useState<"recent" | "campaign">("recent");
@@ -574,6 +593,22 @@ function ThreadDrawer({
     const needle = skillSearch.trim().toLocaleLowerCase();
     return !needle || `${skill.name} ${skill.description} ${skill.commands.join(" ")} ${skill.publisher ?? ""}`.toLocaleLowerCase().includes(needle);
   });
+
+  /* A skill's data sources, resolved against this workspace's live connector
+     status, so an unmet one is named before the turn runs instead of the run
+     quietly coming back thinner. `connectors` is already the drawer's own
+     source of truth for the Connectors tab. */
+  const skillConnectors: SkillConnectorStatus[] = connectors.map((connector) => ({
+    key: connector.key,
+    label: connector.label,
+    status: connector.status,
+  }));
+  const requirementsFor = (skill: ArcSkillDefinition) => unmetSkillConnectors(skill, skillConnectors);
+  /** Send the operator to the connector that is missing, without leaving the chat. */
+  const showConnector = (key: string) => {
+    setView("connectors");
+    setFocusedConnector(key);
+  };
 
   /* Every skill this workspace has, in one list, whatever it came from. Before
      this they were three separate lists with three different affordances —
@@ -809,8 +844,9 @@ function ThreadDrawer({
         <div className="arc-skills-list" onKeyDown={handleRovingListKeyDown}>
           {installedEntries.map(({ skill, detail, generated }) => {
             const removable = Boolean(generated) || skill.source === "github" || skill.source === "library";
+            const unmet = requirementsFor(skill);
             return (
-              <div className="arc-skill-item" key={skill.key}>
+              <div className="arc-skill-item" key={skill.key} data-unmet={unmet.length > 0 ? "true" : undefined}>
                 <button type="button" className="arc-skill-row" onClick={() => onUseSkill(skill)}>
                   <span className="arc-skill-icon"><SkillIcon skill={skill} /></span>
                   <span>
@@ -825,6 +861,9 @@ function ThreadDrawer({
                   </span>
                 </button>
                 {removable ? <button type="button" className="arc-skill-remove" aria-label={`Remove ${skill.name}`} disabled={voiceBusy || githubBusy || installingSkillKey === skill.key} onClick={() => removeInstalledSkill(skill, generated)}><X size={13} /></button> : <span />}
+                {/* A source this skill reads is unusable. Say so here rather than
+                    letting the run come back thin with no explanation. */}
+                {unmet.length > 0 ? <SkillRequirementNote requirements={unmet} onShowConnector={showConnector} /> : null}
               </div>
             );
           })}
@@ -862,9 +901,13 @@ function ThreadDrawer({
           {visibleLibrarySkills.map((skill) => {
             const installed = installedSkillKeys.includes(skill.key);
             const saving = installingSkillKey === skill.key;
+            const unmet = requirementsFor(skill);
             return <article className="arc-library-skill" data-installed={installed ? "true" : "false"} key={skill.key}>
               <span className="arc-skill-icon"><SkillIcon skill={skill} /></span>
               <div><span><b>{skill.name}</b></span><small>{skill.description}</small><span className="arc-skill-commands">{skill.commands.map((command) => <em key={command}>{command}</em>)}</span><p>{skill.publisher} · Reviewed by Arc</p></div>
+              {/* What this skill reads, before it is installed — so the gap is a
+                  decision at install time, not a disappointment at run time. */}
+              {unmet.length > 0 ? <SkillRequirementNote requirements={unmet} onShowConnector={showConnector} /> : null}
               <button type="button" disabled={saving} onClick={() => onSetSkillInstalled(skill, !installed)}>{saving ? <LoaderCircle size={13} className="is-spinning" /> : installed ? <Check size={13} /> : <Download size={13} />}{saving ? "Saving" : installed ? "Installed" : "Install"}</button>
             </article>;
           })}
@@ -879,7 +922,7 @@ function ThreadDrawer({
         <div className="arc-connectors-section-head"><span>{connectorItems.length} workspace connectors</span><Link href="/settings?s=connections">Manage all <ArrowRight size={12} /></Link></div>
         <div className="arc-connector-list">
           {connectorItems.map((connector) => (
-            <Link href={`/settings?s=connections&c=${encodeURIComponent(connector.key)}`} className="arc-connector-row" data-status={connector.status} key={connector.key}>
+            <Link href={`/settings?s=connections&c=${encodeURIComponent(connector.key)}`} className="arc-connector-row" data-status={connector.status} data-focused={focusedConnector === connector.key ? "true" : undefined} ref={focusedConnector === connector.key ? focusConnectorRef : undefined} key={connector.key}>
               <span className="arc-connector-logo" style={{ "--connector-color": connector.color } as React.CSSProperties}>{connector.mark}</span>
               <span className="arc-connector-copy"><span><b>{connector.label}</b><em>{connector.statusLabel}</em></span><small>{connector.kindLabel} · {connector.accessLabel}</small><p>{connector.description}</p></span>
               <ChevronRight size={14} />
@@ -925,6 +968,37 @@ function ThreadDrawer({
  * every voice skill so "a human approved these" is never mistaken for
  * "these converted" — the two look identical once rendered.
  */
+/**
+ * "This skill reads something you haven't switched on." Shown on the installed
+ * row, the library card and beside the composer chip — the three places a skill
+ * gets chosen — because the failure it replaces was silent at all three.
+ *
+ * It is a notice, never a gate: the copy always ends with what Arc will still do.
+ */
+function SkillRequirementNote({
+  requirements,
+  onShowConnector,
+  compact = false,
+}: {
+  requirements: SkillRequirement[];
+  onShowConnector?: (key: string) => void;
+  compact?: boolean;
+}) {
+  if (requirements.length === 0) return null;
+  const first = requirements[0]!;
+  return (
+    <p className="arc-skill-requirement" data-compact={compact ? "true" : undefined}>
+      <CircleAlert size={12} />
+      <span>{describeSkillRequirements(requirements)}</span>
+      {onShowConnector ? (
+        <button type="button" onClick={() => onShowConnector(first.key)}>
+          {requirements.length === 1 ? "Open connector" : "Open connectors"}
+        </button>
+      ) : null}
+    </p>
+  );
+}
+
 /**
  * Where a skill came from, said out loud. This used to be a 4.5% background
  * tint keyed off `data-source`, which made a skill Arc ships and an untrusted
@@ -1434,6 +1508,16 @@ export function ArcView({
     return skill.name.toLowerCase().includes(skillQuery)
       || skill.commands.some((candidate) => candidate.toLowerCase().includes(skillQuery));
   });
+  /* The same check the drawer runs, at the last moment it still matters: the
+     skill is chipped and the operator is about to type into it. Without this,
+     picking a skill from the `/` menu — which never passes through the drawer —
+     reaches the runner with no warning at all. */
+  const selectedSkillRequirements = selectedSkill
+    ? unmetSkillConnectors(
+        selectedSkill,
+        connectors.map((connector) => ({ key: connector.key, label: connector.label, status: connector.status })),
+      )
+    : [];
   const currentModel = MODEL_OPTIONS.find((option) => option.id === modelPreference) ?? MODEL_OPTIONS[0];
   const resolvedModelName = route === "fast" ? "Spark" : "Forge";
   const capabilityLabel = mode === "ask" ? "Read only" : "Work";
@@ -1984,6 +2068,11 @@ export function ArcView({
                 {attachments.map((attachment) => <span className={`arc-composer-chip${attachment.contentType.startsWith("image/") ? " has-thumb" : ""}`} key={attachment.objectPath}>{attachment.contentType.startsWith("image/") ? <ChipThumb url={attachment.url} /> : <Paperclip size={12} />}{attachment.name}<button type="button" onClick={() => setAttachments((current) => current.filter((item) => item.objectPath !== attachment.objectPath))} aria-label={`Remove ${attachment.name}`}><X size={11} /></button></span>)}
                 {composerNotice ? <span className="arc-composer-notice">{composerNotice}</span> : null}
               </div>
+            ) : null}
+
+            {/* Named before the turn is sent, never blocking it. */}
+            {selectedSkillRequirements.length > 0 ? (
+              <SkillRequirementNote requirements={selectedSkillRequirements} compact />
             ) : null}
 
             <textarea ref={composerInputRef} aria-label="Message Arc" placeholder={selectedSkill?.key === "skill-authoring" ? "Describe the workflow you want Arc to learn…" : selectedSkill?.key === "skill-installation" ? "Paste a public GitHub repository or SKILL.md URL…" : selectedSkill ? `Add details for ${selectedSkill.name}…` : command ? "Add details for this skill…" : "Message Arc…"} value={draft} rows={2} disabled={isSending || demoPending || isSavingSkill} onChange={(event) => { const value = event.target.value; updateDraft(value); if (value.endsWith("@")) { composerMenuTriggerRef.current = null; setComposerMenu("mentions"); } else if (/^\s*\/[^\s]*$/.test(value)) { composerMenuTriggerRef.current = null; setComposerMenu("commands"); } }} onKeyDown={(event) => {
