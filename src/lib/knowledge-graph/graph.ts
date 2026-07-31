@@ -1,5 +1,5 @@
 import { type TrustTier } from "@/domain";
-import { reportDegraded } from "@/lib/observability/report-degraded";
+import { unavailableRead } from "@/lib/observability/unavailable";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { type TypedSupabaseClient, getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -70,9 +70,13 @@ export async function getBrainGraph(
         : { status: "unavailable", message: "Brain is unavailable." };
     }
   }
+  // Declared outside the try so the catch below can still name the org. If
+  // resolution itself is what threw this stays null, and the report says
+  // "unresolved" — which is the honest answer, not a guess (BSR-547).
+  let resolvedOrg: string | null = orgId ?? null;
   try {
     const supabase = client ?? getSupabaseAdminClient();
-    const resolvedOrg = orgId ?? (await getCurrentOrgId());
+    resolvedOrg = orgId ?? (await getCurrentOrgId());
     const tiers = filters.trustTiers && filters.trustTiers.length ? filters.trustTiers : VISIBLE_TIERS;
 
     let nodeQuery = supabase
@@ -85,7 +89,7 @@ export async function getBrainGraph(
     if (filters.kinds && filters.kinds.length) nodeQuery = nodeQuery.in("kind", filters.kinds);
 
     const nodesRes = await nodeQuery;
-    if (nodesRes.error) return { status: "unavailable", message: nodesRes.error.message };
+    if (nodesRes.error) return unavailableRead("knowledge-graph.getBrainGraph", resolvedOrg, nodesRes.error, { surface: "primary" });
 
     const nodeRows = (nodesRes.data ?? []) as NodeRow[];
     const truncatedNodes = nodeRows.length > NODE_CAP;
@@ -97,7 +101,7 @@ export async function getBrainGraph(
       .select(EDGE_COLUMNS)
       .eq("org_id", resolvedOrg)
       .limit(EDGE_CAP + 1);
-    if (edgesRes.error) return { status: "unavailable", message: edgesRes.error.message };
+    if (edgesRes.error) return unavailableRead("knowledge-graph.getBrainGraph", resolvedOrg, edgesRes.error, { surface: "primary" });
 
     const edgeRows = (edgesRes.data ?? []) as EdgeRow[];
     const truncatedEdges = edgeRows.length > EDGE_CAP;
@@ -116,7 +120,6 @@ export async function getBrainGraph(
   } catch (error) {
     // Degrade, but not silently — this read IS the screen, so an empty
     // state here is indistinguishable from an outage (BSR-544).
-    reportDegraded(error, { scope: "knowledge-graph.getBrainGraph", surface: "primary" });
-    return { status: "unavailable", message: error instanceof Error ? error.message : "Brain graph is unavailable." };
+    return unavailableRead("knowledge-graph.getBrainGraph", resolvedOrg, error, { surface: "primary", fallbackMessage: "Brain graph is unavailable." });
   }
 }
