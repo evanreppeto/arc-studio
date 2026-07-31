@@ -19,7 +19,7 @@ function req(auth?: string) { return new Request("http://localhost/api/cron/oppo
 const env = { CRON_SECRET: process.env.CRON_SECRET, OPPORTUNITY_SCAN_CRON_ENABLED: process.env.OPPORTUNITY_SCAN_CRON_ENABLED };
 beforeEach(() => {
   enqueueMock.mockReset(); recentMock.mockReset(); scanMock.mockReset(); configuredMock.mockReset();
-  enqueueMock.mockResolvedValue({ ok: true }); recentMock.mockResolvedValue(false); scanMock.mockResolvedValue({ workspaces: 1, scanned: 1, failed: 0, added: 0, filtered: 0, results: [] }); configuredMock.mockReturnValue(true);
+  enqueueMock.mockResolvedValue({ ok: true }); recentMock.mockResolvedValue(false); scanMock.mockResolvedValue({ workspaces: 1, scanned: 1, failed: 0, added: 0, filtered: 0, generativeQueued: 0, results: [] }); configuredMock.mockReturnValue(true);
   process.env.CRON_SECRET = "s3cret"; process.env.OPPORTUNITY_SCAN_CRON_ENABLED = "1";
 });
 afterEach(() => { for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
@@ -39,23 +39,27 @@ describe("GET /api/cron/opportunity-scan", () => {
     expect(enqueueMock).not.toHaveBeenCalled();
     expect(scanMock).not.toHaveBeenCalled();
   });
-  it("still runs the deterministic detectors even when the generative scan is skipped-recent", async () => {
-    recentMock.mockResolvedValue(true);
-    expect(await (await GET(req("Bearer s3cret"))).json()).toMatchObject({ deterministic: "ok", skipped: "recent" });
+  it("delegates the whole pass to the fan-out, with every stage enabled", async () => {
+    // Recency and enqueue used to live here, resolving ONE ambient tenant. They
+    // are now per-tenant inside the fan-out, so the route's job is to ask for all
+    // three stages and report what came back. There is no route-level
+    // "skipped: recent" any more — recency is a per-workspace decision, and a
+    // single tenant's recent scan must not suppress everyone else's.
+    const res = await GET(req("Bearer s3cret"));
+    expect(await res.json()).toMatchObject({ ok: true, deterministic: "ok" });
     expect(scanMock).toHaveBeenCalledTimes(1);
+    expect(scanMock).toHaveBeenCalledWith(
+      expect.objectContaining({ autoDraft: true, generative: true }),
+    );
+    // The route must not reach past the fan-out to the single-tenant helpers.
     expect(enqueueMock).not.toHaveBeenCalled();
+    expect(recentMock).not.toHaveBeenCalled();
   });
-  it("runs deterministic detectors + enqueues the generative scan when not recent", async () => {
+
+  it("reports deterministic:error when the whole pass throws", async () => {
+    scanMock.mockRejectedValue(new Error("fan-out boom"));
     const res = await GET(req("Bearer s3cret"));
-    expect(await res.json()).toMatchObject({ ok: true, deterministic: "ok", queued: true });
-    expect(scanMock).toHaveBeenCalledTimes(1);
-    expect(enqueueMock).toHaveBeenCalledWith({ operator: "Scheduled scan" });
-  });
-  it("reports deterministic:error but still enqueues when a detector pass throws", async () => {
-    scanMock.mockRejectedValue(new Error("detector boom"));
-    const res = await GET(req("Bearer s3cret"));
-    expect(await res.json()).toMatchObject({ ok: true, deterministic: "error", queued: true });
-    expect(enqueueMock).toHaveBeenCalledWith({ operator: "Scheduled scan" });
+    expect(await res.json()).toMatchObject({ ok: false, deterministic: "error" });
   });
 });
 
@@ -65,7 +69,7 @@ describe("multi-tenant fan-out (BSR-626)", () => {
     // the pass reported success with zero opportunities — indistinguishable from
     // a quiet night. A failed tenant must be visible in the cron result.
     scanMock.mockResolvedValue({
-      workspaces: 3, scanned: 2, failed: 1, added: 5, filtered: 0, results: [],
+      workspaces: 3, scanned: 2, failed: 1, added: 5, filtered: 0, generativeQueued: 0, results: [],
     });
     const body = await (await GET(req("Bearer s3cret"))).json();
     expect(body.deterministic).toBe("error");
@@ -74,7 +78,7 @@ describe("multi-tenant fan-out (BSR-626)", () => {
 
   it("carries the per-tenant counts into the response so a quiet pass is legible", async () => {
     scanMock.mockResolvedValue({
-      workspaces: 2, scanned: 2, failed: 0, added: 7, filtered: 2, results: [],
+      workspaces: 2, scanned: 2, failed: 0, added: 7, filtered: 2, generativeQueued: 0, results: [],
     });
     const body = await (await GET(req("Bearer s3cret"))).json();
     expect(body.deterministic).toBe("ok");

@@ -1,6 +1,10 @@
+import { type AgentTaskScope } from "@/lib/agent-tasks/scope";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
+import { runScheduledAutoDraft, type AutoDraftRunSummary } from "./auto-draft";
+import { enqueueOpportunityScanTask } from "./enqueue";
+import { hasRecentOpportunityScan } from "./recent-scan";
 import { runDeterministicOpportunityScan, type OpportunityScanSummary } from "./scan";
 
 /**
@@ -28,8 +32,24 @@ export type WorkspaceScanResult = {
   workspaceId: string;
   workspaceName: string;
   summary: OpportunityScanSummary | null;
-  /** Present when this workspace's scan threw; the others still ran. */
+  /** Auto-draft outcome for this tenant, when that stage ran. */
+  autoDraft: AutoDraftRunSummary | null;
+  /** Whether the generative Arc scan was enqueued for this tenant. */
+  generativeQueued: boolean;
+  /** Present when this workspace's pass threw; the others still ran. */
   error: string | null;
+};
+
+/**
+ * Stages to run per tenant. The deterministic detectors always run; the other two
+ * are opt-in so the operator "Scan" button can reuse the fan-out without also
+ * drafting or queueing agent work.
+ */
+export type FanOutStages = {
+  autoDraft?: boolean;
+  generative?: boolean;
+  /** Hours within which an existing generative scan counts as recent. */
+  recentHours?: number;
 };
 
 export type FanOutSummary = {
@@ -38,6 +58,8 @@ export type FanOutSummary = {
   failed: number;
   added: number;
   filtered: number;
+  /** Tenants for which the generative Arc scan was queued this pass. */
+  generativeQueued: number;
   results: WorkspaceScanResult[];
 };
 
@@ -77,13 +99,16 @@ async function listActiveWorkspaces(): Promise<WorkspaceRow[]> {
  * the loop continues. A tenant whose config is broken must not silently take
  * detection away from every healthy tenant, which is the failure this replaces.
  */
-export async function runOpportunityScanAcrossWorkspaces(): Promise<FanOutSummary> {
+export async function runOpportunityScanAcrossWorkspaces(
+  stages: FanOutStages = {},
+): Promise<FanOutSummary> {
   const empty: FanOutSummary = {
     workspaces: 0,
     scanned: 0,
     failed: 0,
     added: 0,
     filtered: 0,
+    generativeQueued: 0,
     results: [],
   };
   if (!isSupabaseAdminConfigured()) return empty;
@@ -102,20 +127,50 @@ export async function runOpportunityScanAcrossWorkspaces(): Promise<FanOutSummar
   let added = 0;
   let filtered = 0;
   let failed = 0;
+  let generativeQueued = 0;
 
   for (const workspace of workspaces) {
+    const scope = { orgId: workspace.org_id, workspaceId: workspace.id };
     try {
-      const summary = await runDeterministicOpportunityScan({
-        orgId: workspace.org_id,
-        workspaceId: workspace.id,
-      });
+      const summary = await runDeterministicOpportunityScan(scope);
       added += summary.added;
       filtered += summary.filtered;
+
+      // Draft from the backlog this and earlier passes built. Its own env flag
+      // still gates it; the scope just makes it reach the right tenant.
+      let autoDraft: AutoDraftRunSummary | null = null;
+      if (stages.autoDraft) {
+        autoDraft = await runScheduledAutoDraft(new Date(), { scope: agentScope(scope) });
+      }
+
+      // Queue the generative scan unless this tenant already had one recently.
+      // Dedup is per-tenant, which is the whole point — one workspace's recent
+      // scan must not suppress another's.
+      let queued = false;
+      if (stages.generative) {
+        const recent = await hasRecentOpportunityScan(
+          stages.recentHours ?? 20,
+          undefined,
+          agentScope(scope),
+        );
+        if (!recent) {
+          const result = await enqueueOpportunityScanTask({
+            operator: "Scheduled scan",
+            scope: agentScope(scope),
+          });
+          queued = result.ok;
+          if (!result.ok && result.error) throw new Error(result.error);
+        }
+      }
+      if (queued) generativeQueued += 1;
+
       results.push({
         orgId: workspace.org_id,
         workspaceId: workspace.id,
         workspaceName: workspace.name,
         summary,
+        autoDraft,
+        generativeQueued: queued,
         error: null,
       });
     } catch (error) {
@@ -131,6 +186,8 @@ export async function runOpportunityScanAcrossWorkspaces(): Promise<FanOutSummar
         workspaceId: workspace.id,
         workspaceName: workspace.name,
         summary: null,
+        autoDraft: null,
+        generativeQueued: false,
         error: message,
       });
     }
@@ -142,6 +199,12 @@ export async function runOpportunityScanAcrossWorkspaces(): Promise<FanOutSummar
     failed,
     added,
     filtered,
+    generativeQueued,
     results,
   };
+}
+
+/** The agent-task shape of a scan scope; workspaceId is non-null by construction here. */
+function agentScope(scope: { orgId: string; workspaceId: string }): AgentTaskScope {
+  return { orgId: scope.orgId, workspaceId: scope.workspaceId };
 }
