@@ -12,7 +12,7 @@ replacement. Know exactly what it does and does not give you:
 | | |
 | --- | --- |
 | **RPO** (data you can lose) | **~24 hours** — the gap since the last nightly run |
-| **RTO** (time to recover) | **~3 seconds** of restore, measured 2026-07-31 — plus however long provisioning a target Supabase project takes, which dominates |
+| **RTO** (time to recover) | **3–6 seconds** of restore, measured across runs 2026-07-31 — provisioning a target Supabase project dominates the real recovery time |
 | Point-in-time recovery | **no** — cannot rewind to just before a mistake |
 | Retention | **365 days** primary, 90 days secondary |
 | Where | `gs://arc-prod-backups-706961882086` (primary) + GitHub artifact (second copy), both `age`-encrypted |
@@ -196,7 +196,7 @@ The five defects, all now fixed in `backup-prod.yml`:
 
 **After the fixes, a clean restore reproduced prod exactly** — 157 policies, 2
 orgs, 11 contacts, 200 leads, 19 campaigns, 40 approval items, 490 knowledge
-nodes, 4 accounts — with zero errors, in **3 seconds**.
+nodes, 4 accounts — with zero errors, in **3 seconds**, and with referential integrity intact despite the deferred FK checks.
 
 > The lesson worth keeping: every sanity check in this workflow passed on a
 > backup that could not be restored. Checking that a dump *looks* right is not

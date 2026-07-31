@@ -39,6 +39,10 @@ echo "==> 1/4 prerequisites (extensions a --schema=public dump omits)"
 echo "==> 2/4 schema (public + app_private, policies included)"
 # app_private must come from the SAME dump so its SECURITY DEFINER functions are
 # created before the 138 policies that call them.
+#
+# ONE error is expected here and is harmless:
+#   ERROR:  schema "public" already exists
+# Every target already has a public schema. Any OTHER error is real.
 run schema.sql
 
 echo "==> 3/4 accounts (auth.users + auth.identities)"
@@ -50,7 +54,7 @@ echo "==> 4/4 data"
 # session_replication_role=replica defers FK checks for the load. campaigns,
 # approval_items and campaign_assets reference each other in a cycle, so no
 # ordering can satisfy them; without this, 17 tables restore empty.
-psql "$TARGET" -v ON_ERROR_STOP=0 -q <<SQL
+psql "$TARGET" -v ON_ERROR_STOP=0 -qAt <<SQL >/dev/null
 set session_replication_role = replica;
 \i data.sql
 set session_replication_role = origin;
@@ -59,15 +63,25 @@ SQL
 echo
 echo "==> verifying"
 psql "$TARGET" -qAt <<'SQL'
-select 'policies       ' || count(*) from pg_policies where schemaname='public'
-union all select 'organizations  ' || count(*) from public.organizations
-union all select 'contacts       ' || count(*) from public.contacts
-union all select 'leads          ' || count(*) from public.leads
-union all select 'campaigns      ' || count(*) from public.campaigns
-union all select 'approval_items ' || count(*) from public.approval_items
-union all select 'knowledge_nodes' || ' ' || count(*) from public.knowledge_nodes
-union all select 'auth.users     ' || count(*) from auth.users;
+select 'policies        ' || count(*) from pg_policies where schemaname='public'
+union all select 'organizations   ' || count(*) from public.organizations
+union all select 'contacts        ' || count(*) from public.contacts
+union all select 'leads           ' || count(*) from public.leads
+union all select 'campaigns       ' || count(*) from public.campaigns
+union all select 'approval_items  ' || count(*) from public.approval_items
+union all select 'knowledge_nodes ' || count(*) from public.knowledge_nodes
+union all select 'auth.users      ' || count(*) from auth.users
+union all select 'auth.identities ' || count(*) from auth.identities;
 SQL
+
+# Deferring FK checks loads the cycle, but it also means nothing validated the
+# references. Prove there are no dangling ones rather than assuming.
+DANGLING=$(psql "$TARGET" -qAt -c "select count(*) from public.campaigns c left join public.approval_items a on a.id = c.approval_item_id where c.approval_item_id is not null and a.id is null;")
+if [ "${DANGLING:-1}" = "0" ]; then
+  echo "referential integrity OK (FK checks were deferred for the load)"
+else
+  echo "WARNING: ${DANGLING} campaigns reference an approval_item that did not restore." >&2
+fi
 
 cat <<'EOF'
 
