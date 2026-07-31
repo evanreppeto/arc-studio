@@ -356,6 +356,11 @@ export function cleanApprovableDrafts(cards: ArcActionCard[]): { campaignId: str
 /** A memory line Arc recalled from the brain, surfaced as a chat evidence chip. */
 export type ArcRecall = {
   label: string;
+  /** The fact in Arc's own words. `label` is the brain's node KEY —
+   *  `crm_contacts_empty` — which is an identifier, not something to show a
+   *  human. The runner has always written this sentence alongside it and the
+   *  parser used to drop it, so every recall surface rendered the key. */
+  summary?: string;
   confidence?: number;
   kind?: string;
   nodeId?: string;
@@ -377,6 +382,7 @@ export function parseRecall(value: unknown): ArcRecall[] {
         : undefined;
     out.push({
       label,
+      ...(str((item as { summary?: unknown }).summary) ? { summary: str((item as { summary?: unknown }).summary) } : {}),
       ...(confidence !== undefined ? { confidence } : {}),
       ...(str((item as { kind?: unknown }).kind) ? { kind: str((item as { kind?: unknown }).kind) } : {}),
       ...(str((item as { nodeId?: unknown }).nodeId) ? { nodeId: str((item as { nodeId?: unknown }).nodeId) } : {}),
