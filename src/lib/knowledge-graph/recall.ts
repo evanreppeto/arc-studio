@@ -21,7 +21,7 @@ async function semanticCandidates(
   client: TypedSupabaseClient,
 ): Promise<RecallCandidate[]> {
   if (!message.trim()) return [];
-  const embedding = await embedText(message);
+  const embedding = await embedText(message, { orgId, purpose: "brain.recall" });
   if (!embedding) return [];
   const { data, error } = await (client as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }> }).rpc("match_knowledge_nodes", {
     query_embedding: JSON.stringify(embedding),

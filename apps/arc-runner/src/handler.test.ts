@@ -16,7 +16,7 @@ vi.mock("./arc", () => ({
     memory: [],
     toolCalls: [],
     reasoning: null,
-    usage: { model: "claude", inputTokens: 10, outputTokens: 5 },
+    usage: { model: "claude", inputTokens: 10, outputTokens: 5, detail: null },
   })),
   runArcCampaignTask: vi.fn(async () => ({
     body: "I drafted the first campaign assets.",
@@ -33,7 +33,7 @@ vi.mock("./arc", () => ({
     sources: [],
     questions: [],
     memory: [],
-    usage: { model: "claude", inputTokens: 10, outputTokens: 20 },
+    usage: { model: "claude", inputTokens: 10, outputTokens: 20, detail: null },
   })),
 }));
 
@@ -66,7 +66,7 @@ describe("handleChatMessage", () => {
         memory: [],
         toolCalls: [],
         reasoning: null,
-        usage: { model: "claude", inputTokens: 10, outputTokens: 5 },
+        usage: { model: "claude", inputTokens: 10, outputTokens: 5, detail: null },
       };
     });
 
@@ -175,7 +175,7 @@ describe("handleCampaignTask", () => {
         { name: "crm_search", status: "complete", input: '{"persona":"high_intent"}', output: "142 rows" },
         { name: "weather_lookup", status: "error", output: "timeout" },
       ],
-      usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null },
+      usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, detail: null },
     });
 
     await handleCampaignTask(fakeClient, {} as Config, {
@@ -231,7 +231,7 @@ describe("handleCampaignTask", () => {
       drafts: [],
       memory: [{ label: "Landlord playbook", summary: null, kind: "note", confidence: 0.8, nodeId: "n1" }],
       toolCalls: [],
-      usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null },
+      usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, detail: null },
     });
 
     await handleCampaignTask(fakeClient, {} as Config, {
