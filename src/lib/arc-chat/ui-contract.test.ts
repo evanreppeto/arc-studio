@@ -28,7 +28,12 @@ describe("Arc UI accessibility contract", () => {
 
   it("keeps phone drawer actions visible and touch-sized", () => {
     expect(CSS_SOURCE).toContain(".arc-history-menu-btn { width: 44px; height: 44px; margin-right: 0; opacity: 1; }");
-    expect(CSS_SOURCE).toContain(".arc-drawer-nav button { font-size: 10.5px; }");
+    // The drawer runs on one type scale (`--dz-*` on `.arc-history`); on phones
+    // the nav steps up one rung from the base `--dz-xs` for touch. Asserting the
+    // token rather than a literal keeps this from breaking every time the scale
+    // is retuned — the contract is "bigger than the desktop size", not "10.5px".
+    expect(CSS_SOURCE).toContain(".arc-drawer-nav button { font-size: var(--dz-sm); }");
+    expect(CSS_SOURCE).toContain(".arc-drawer-nav button { flex: 1 1 auto;");
   });
 
   it("keeps mobile safety visible while shrinking the context ring inside its tap target", () => {
