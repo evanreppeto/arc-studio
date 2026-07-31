@@ -1805,8 +1805,15 @@
 .arc-work-section-head.is-toggle > svg.is-open { transform: rotate(180deg); }
 .arc-work-section-head.is-toggle:hover .arc-work-section-meta { color: var(--text-2); }
 .arc-work-note { margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.55; }
-.arc-work-evidence { display: flex; flex-direction: column; gap: 14px; }
-.arc-work-evidence h4 { margin: 0 0 4px; color: var(--muted); font-size: 9.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }
+.arc-work-evidence { display: flex; flex-direction: column; gap: 17px; }
+.arc-work-evidence h4 { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; color: var(--text-2); font-size: 10px; font-weight: 620; letter-spacing: .06em; text-transform: uppercase; }
+.arc-work-evidence h4 > i { min-width: 16px; height: 16px; display: inline-grid; place-items: center; border-radius: 999px; background: var(--inset); color: var(--muted); font-family: var(--mono); font-size: 8.5px; font-style: normal; font-weight: 500; letter-spacing: 0; }
+.arc-work-evidence-icon { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--accent-border); border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+/* A memory is a sentence Arc wrote. It gets room to be read: its own quiet
+   surface, full wrapping, and no hairline chopping it into a table row. */
+.arc-work-fact { position: relative; margin: 0 0 5px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 60%, transparent); color: var(--text-2); padding: 9px 10px; font-size: 11.5px; line-height: 1.55; }
+.arc-work-fact:last-child { margin-bottom: 0; }
+.arc-work-fact em { display: block; margin-top: 4px; color: var(--muted); font-family: var(--mono); font-size: 9px; font-style: normal; }
 .arc-work-evidence-item { display: flex; align-items: baseline; gap: 9px; min-height: 30px; padding: 6px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
 .arc-work-evidence > div > .arc-work-evidence-item:last-child { border-bottom: 0; }
 .arc-work-evidence-item b { min-width: 0; flex: 1; color: var(--text-2); font-size: 11px; font-weight: 550; line-height: 1.4; }

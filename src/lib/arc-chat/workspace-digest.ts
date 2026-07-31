@@ -117,19 +117,40 @@ function pushUnique(items: ArcWorkspaceEvidenceItem[], seen: Set<string>, item: 
   items.push(item);
 }
 
-const SCOPE_LABELS: Record<string, string> = {
-  workspace: "Workspace knowledge",
-  brand: "Brand kit",
-  crm: "CRM records",
-  campaigns: "Campaign history",
-};
-
 const AUDIENCE_ROW = /(audience|persona|segment)/i;
+
+/** Strip the MCP transport prefix a tool name carries on the wire.
+ *  `mcp__arc__get_workspace_settings` is plumbing spelled out loud; the operator
+ *  wants to know Arc read the workspace settings. */
+const ACRONYMS = /\b(crm|sms|url|api|ai|seo|mcp|csv|pdf|id)\b/gi;
+
+function toolLabel(name: string): string {
+  const bare = name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/^mcp__/, "");
+  const spaced = formatToolName(bare || name);
+  // Sentence case, not Title Case: "Get workspace settings" reads as an action,
+  // "Get Workspace Settings" reads as a menu item. Acronyms are restored after,
+  // because lowercasing turns CRM into "Crm", which reads as a typo.
+  const sentence = spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+  return sentence.replace(ACRONYMS, (match) => match.toUpperCase());
+}
+
+/** Two memories are the same memory if they say the same thing. Prod's brain
+ *  holds five separate nodes all stating the CRM is empty (BSR-531 is the fix
+ *  at the source); until then the panel must not print the same sentence five
+ *  times. Compared on words, so punctuation and dates do not defeat it. */
+function factKey(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
 
 /**
  * What Arc worked from, grouped by where it came from. Ordered by how much an
  * operator can act on it: the records and memory behind a claim first, the
  * mechanics of the run last.
+ *
+ * Deliberately NOT here: the turn's context scopes. They were shown as "Context
+ * you selected" and were nothing of the kind — the app sends all four on every
+ * turn, so the group listed the same four defaults forever and implied the
+ * operator had made a choice. A row that is always identical is not evidence.
  */
 export function buildArcWorkspaceEvidence(
   messages: ArcMessage[],
@@ -150,17 +171,35 @@ export function buildArcWorkspaceEvidence(
   }
   add("records", "Records referenced", records);
 
+  // Lead with the fact in Arc's own words. `label` is the brain's node key —
+  // `crm_contacts_empty` — which identifies a row and tells a human nothing.
   const memory: ArcWorkspaceEvidenceItem[] = [];
   const memorySeen = new Set<string>();
+  const confidences = new Set<number>();
   for (const message of messages) {
     for (const item of message.recall ?? []) {
-      pushUnique(memory, memorySeen, {
-        label: item.label,
-        detail: typeof item.confidence === "number" ? `${Math.round(item.confidence * 100)}% match` : item.kind,
+      if (typeof item.confidence === "number") confidences.add(item.confidence);
+    }
+  }
+  // A figure that is identical on every item measures nothing — prod returns
+  // 0.5 across the board — and rendering it as "50% match" dresses a constant
+  // up as precision. Show it only when it actually separates one from another.
+  const confidenceVaries = confidences.size > 1;
+  for (const message of messages) {
+    for (const item of message.recall ?? []) {
+      const fact = item.summary?.trim() || item.label;
+      const key = factKey(fact);
+      if (memorySeen.has(key)) continue;
+      memorySeen.add(key);
+      memory.push({
+        label: fact,
+        ...(confidenceVaries && typeof item.confidence === "number"
+          ? { detail: `${Math.round(item.confidence * 100)}% match` }
+          : {}),
       });
     }
   }
-  add("memory", "Recalled from the Brain", memory);
+  add("memory", "What Arc remembered", memory);
 
   const audience: ArcWorkspaceEvidenceItem[] = [];
   const audienceSeen = new Set<string>();
@@ -172,25 +211,16 @@ export function buildArcWorkspaceEvidence(
   }
   add("audience", "Audience and personas", audience);
 
-  const scopes: ArcWorkspaceEvidenceItem[] = [];
-  const scopeSeen = new Set<string>();
-  for (const message of messages) {
-    for (const scope of message.contextScopes ?? []) {
-      pushUnique(scopes, scopeSeen, { label: SCOPE_LABELS[scope] ?? formatToolName(scope) });
-    }
-  }
-  add("scopes", "Context you selected", scopes);
-
   const toolCounts = new Map<string, number>();
   for (const message of messages) {
     for (const tool of message.toolCalls ?? []) {
-      const label = formatToolName(tool.name);
+      const label = toolLabel(tool.name);
       toolCounts.set(label, (toolCounts.get(label) ?? 0) + 1);
     }
   }
-  add("tools", "Tools Arc ran", [...toolCounts.entries()].map(([label, count]) => ({
+  add("tools", "What Arc checked", [...toolCounts.entries()].map(([label, count]) => ({
     label,
-    detail: count === 1 ? "1 call" : `${count} calls`,
+    ...(count > 1 ? { detail: `${count} times` } : {}),
   })));
 
   return groups;
