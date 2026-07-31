@@ -13,6 +13,7 @@
     "smoke:http": "node scripts/smoke-http.mjs",
     "health:supabase": "node scripts/check-supabase-health.mjs",
     "health:constraints": "node scripts/check-agent-task-constraints.mjs",
+    "health:billing": "node scripts/check-billing-enforcement-safety.mjs",
     "db:verify-chain": "node scripts/verify-migration-chain.mjs",
     "db:check-drift": "node scripts/check-migration-drift.mjs",
     "verify": "node scripts/verify-product.mjs",
