@@ -1,6 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { CONNECTOR_REGISTRY, parseConnectorCredential } from "@/domain";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { readConnectorCredential } from "./credentials";
 import { ensureFreshAccessToken } from "./oauth-refresh";
@@ -32,13 +33,35 @@ export async function resolveRemoteConnectorsForRunner(
     if (!entry.mcpUrl || !entry.authHeader || !enabledKeys.has(entry.key)) continue;
     const ref = await resolveConnectorCredentialRef(client, workspaceId, entry.key);
     const raw = await readConnectorCredential(client, ref);
-    if (!raw) continue;
+    if (!raw) {
+      // The connector is enabled AND reports `credentialPresent`, so a missing
+      // bundle here is an inconsistency, not a configuration choice. Dropping it
+      // silently made Arc look like it chose not to use the tool.
+      reportDegraded(new Error(`${entry.key}: credential is referenced but could not be read`), {
+        scope: "connectors.resolveRemoteConnectorsForRunner",
+        surface: "primary",
+        detail: { connector: entry.key, workspaceId, reason: "credential_unreadable" },
+      });
+      continue;
+    }
 
     const cred = parseConnectorCredential(raw);
     let token: string;
     if (cred.kind === "oauth_refresh") {
       const fresh = await ensureFreshAccessToken(client, ref, cred);
-      if (!fresh.ok) continue; // needs reconnect — drop connector, runner degrades
+      if (!fresh.ok) {
+        // Still degrade rather than throw — one dead connector must not take the
+        // whole run down. But say so: a revoked or rotated refresh token
+        // otherwise removes a capability the operator explicitly enabled, with
+        // no log, no Sentry, and nothing on any screen. Arc simply stops having
+        // the tool and reports nothing (BSR-479).
+        reportDegraded(new Error(`${entry.key}: ${fresh.error}`), {
+          scope: "connectors.resolveRemoteConnectorsForRunner",
+          surface: "primary",
+          detail: { connector: entry.key, workspaceId, reason: fresh.reason },
+        });
+        continue;
+      }
       token = fresh.accessToken;
     } else {
       token = cred.token;
