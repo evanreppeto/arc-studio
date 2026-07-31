@@ -10,6 +10,7 @@ import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablem
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { hardenImagePrompt } from "@/lib/media/prompt";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
+import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { storeGeneratedImage } from "@/lib/media/storage";
 import { getAppSettings } from "@/lib/settings/store";
 import { recordUsageEvent } from "@/lib/ai-usage/persistence";
@@ -80,6 +81,23 @@ export async function POST(request: Request) {
       units: 1,
       metadata: { route: "generate-image", aspect_ratio: aspectRatio, job_id: gen.jobId },
     });
+    const riskFlags = deriveImageRiskFlags(prompt);
+    // Put it in the Library (BSR-634). Best-effort: the generation already
+    // happened and was already metered, so a failed row must not turn it into an
+    // error — the caller still gets the media it paid for.
+    const assetId = await recordGeneratedMedia({
+      orgId: allowed.scope.orgId,
+      objectPath,
+      publicUrl: url,
+      contentType: gen.contentType,
+      kind: "image",
+      byteSize: gen.bytes.byteLength,
+      prompt,
+      model: gen.model,
+      jobId: gen.jobId,
+      format: aspectRatio,
+      riskFlags,
+    });
     const media = {
       kind: "image" as const,
       url,
@@ -87,9 +105,9 @@ export async function POST(request: Request) {
       format: aspectRatio,
       model: gen.model,
       jobId: gen.jobId,
-      riskFlags: deriveImageRiskFlags(prompt),
+      riskFlags,
     };
-    return NextResponse.json({ ok: true, status: "created", media, objectPath }, { status: 201 });
+    return NextResponse.json({ ok: true, status: "created", media, objectPath, ...(assetId ? { libraryAssetId: assetId } : {}) }, { status: 201 });
   } catch (error) {
     return fail("failed", error instanceof Error ? error.message : "Image generation failed.", 502);
   }
