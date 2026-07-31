@@ -38,6 +38,10 @@ on:
 
 permissions:
   contents: read
+  # Workload Identity Federation: GitHub mints a short-lived OIDC token that
+  # Google exchanges for a scoped credential. No service-account key exists to
+  # leak, rotate, or forget about.
+  id-token: write
 
 concurrency:
   group: backup-prod
@@ -214,13 +218,43 @@ jobs:
           head -c 22 "arc-prod-$STAMP.tar.gz.age" | grep -q "age-encryption.org" \
             || { echo "::error title=Not encrypted::The artifact does not look like an age file. Refusing to upload it."; exit 1; }
 
-      - name: Upload
+      # PRIMARY destination. Private bucket, 365-day lifecycle, in the same GCP
+      # project as the runner.
+      #
+      # The service account holds `roles/storage.objectCreator` and nothing else:
+      # this job can WRITE a new backup but cannot read one back or delete one.
+      # So a compromised workflow can neither exfiltrate history nor destroy it —
+      # and combined with the age encryption above, it cannot read even the file
+      # it just wrote.
+      - name: Authenticate to Google Cloud
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_BACKUP_SERVICE_ACCOUNT }}
+
+      - name: Upload to GCS
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Copy the backup to the bucket
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        run: |
+          set -euo pipefail
+          gcloud storage cp "arc-prod-$STAMP.tar.gz.age" \
+            "gs://${{ vars.GCP_BACKUP_BUCKET }}/arc-prod-$STAMP.tar.gz.age"
+          # objectCreator cannot list or read, so there is no point trying to
+          # verify by reading it back — `cp` failing is the signal, and it would
+          # have exited non-zero above.
+          echo "Uploaded to gs://${{ vars.GCP_BACKUP_BUCKET }}/arc-prod-$STAMP.tar.gz.age"
+
+      # SECOND copy, deliberately kept. Two independent destinations is the point
+      # of a backup; if the GCP project is the thing that breaks, an artifact in
+      # GitHub is still there. It is encrypted, so a public repo is not a leak.
+      - name: Upload artifact (second copy)
         uses: actions/upload-artifact@v4
         with:
           name: arc-prod-backup-${{ env.STAMP }}
-          # Encrypted, so the 90-day public-artifact exposure is not a data risk.
-          # 90 is the maximum GitHub allows; see the runbook for why this is a
-          # floor on the retention story rather than the whole of it.
           retention-days: 90
           if-no-files-found: error
           path: "*.tar.gz.age"
@@ -230,7 +264,10 @@ jobs:
           {
             echo "### Prod backup — \`$STAMP\`"
             echo ""
-            echo "Encrypted to \`${{ vars.BACKUP_AGE_RECIPIENT }}\`, retained 90 days."
+            echo "Encrypted to \`${{ vars.BACKUP_AGE_RECIPIENT }}\`."
+            echo ""
+            echo "- \`gs://${{ vars.GCP_BACKUP_BUCKET }}\` — primary, 365-day lifecycle"
+            echo "- GitHub artifact — second copy, 90 days"
             echo ""
             echo "This is a compensating control while the Supabase org is on the free plan (BSR-532)."
             echo "RPO ~24h. No point-in-time recovery. Restore steps: \`docs/runbooks/backup-and-restore.md\`."
