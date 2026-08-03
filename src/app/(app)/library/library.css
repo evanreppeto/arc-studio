@@ -286,3 +286,13 @@
 .arc-library .pickhd { font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 5px; }
 .arc-library .pickopt { padding: 7px 9px; border-radius: 7px; font-size: 12.5px; color: var(--text-2); cursor: pointer; transition: .12s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-library .pickopt:hover { background: var(--inset); color: var(--text); }
+
+/* Touch targets — see the note in arc-app.css. These per-asset quick actions
+   are the densest cluster in the app (three 27px squares stacked in the corner
+   of every tile, ~160 on a full page), so they are the worst offenders on a
+   phone. Coarse pointers only; the desktop hover overlay is unchanged. */
+@media (pointer: coarse) {
+  .arc-library .ov .qa { gap: 8px; bottom: 10px; right: 10px; }
+  .arc-library .ov .qa button { width: 44px; height: 44px; border-radius: 11px; }
+  .arc-library .ov .qa svg { width: 18px; height: 18px; }
+}

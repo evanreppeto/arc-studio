@@ -479,6 +479,69 @@ describe("getCampaignWorkspaceList rollup", () => {
       }),
     ]);
   });
+
+  // The board renders these two as the row's cover image and its asset count.
+  // They were computed here for a long time before anything consumed them.
+  it("exposes a cover thumbnail and media count for the board row", async () => {
+    const supabase = createSupabaseQueryMock({
+      campaigns: { data: [ROLLUP_CAMPAIGN], error: null },
+      campaign_assets: {
+        data: [
+          {
+            ...rollupAsset("asset-video", "video"),
+            audit_payload: {
+              media_assets: [
+                { url: "https://cdn.example/clip.mp4", type: "video", thumbnail_url: "https://cdn.example/poster.jpg" },
+              ],
+            },
+          },
+          {
+            ...rollupAsset("asset-image", "social_ad"),
+            audit_payload: { media_assets: [{ url: "https://cdn.example/hero.png", type: "image" }] },
+          },
+        ],
+        error: null,
+      },
+      approval_items: { data: [], error: null },
+    });
+
+    const list = await getCampaignWorkspaceList(supabase, "Arc", "org-1");
+
+    expect(list.status).toBe("live");
+    if (list.status !== "live") return;
+
+    // A real image outranks a video poster even when the video comes first.
+    expect(list.campaigns[0].thumbnailUrl).toBe("https://cdn.example/hero.png");
+    expect(list.campaigns[0].mediaCount).toBe(2);
+  });
+
+  it("never covers a row with a URL scavenged out of prose", async () => {
+    const supabase = createSupabaseQueryMock({
+      campaigns: { data: [ROLLUP_CAMPAIGN], error: null },
+      campaign_assets: {
+        data: [
+          {
+            ...rollupAsset("asset-email", "email"),
+            // A bare image URL sitting in the draft copy is `referenced`, not
+            // creative. Promoting one to the campaign's cover is precisely the
+            // fabricated-image failure the origin split exists to prevent.
+            draft_body: "See the example at https://untrusted.example/scraped.png for reference.",
+            audit_payload: {},
+          },
+        ],
+        error: null,
+      },
+      approval_items: { data: [], error: null },
+    });
+
+    const list = await getCampaignWorkspaceList(supabase, "Arc", "org-1");
+
+    expect(list.status).toBe("live");
+    if (list.status !== "live") return;
+
+    expect(list.campaigns[0].thumbnailUrl).toBeNull();
+    expect(list.campaigns[0].mediaCount).toBe(0);
+  });
 });
 
 describe("listCampaignNames", () => {
