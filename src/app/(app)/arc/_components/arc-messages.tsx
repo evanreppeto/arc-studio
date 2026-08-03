@@ -45,6 +45,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import {
+  arcToolLabel,
   summarizeSteps,
   WORK_STATE_LABEL,
   type ArcActionCard,
@@ -246,7 +247,10 @@ export function RunTrace({
     }),
     ...toolCalls.map((tool, index) => ({
       id: `tool-${index}`,
-      label: tool.name,
+      // The raw name here rendered `mcp__arc__weather_lookup` straight into the
+      // trace — the protocol prefix is how Arc reaches the tool, not what it did.
+      // Found by the dev identifier check, not by reading the screen (BSR-709).
+      label: arcToolLabel(tool.name),
       detail: tool.input ?? `Running ${formatToolName(tool.name).toLowerCase()}`,
       result: tool.output,
       isTool: true,
