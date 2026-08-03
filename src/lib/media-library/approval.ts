@@ -7,6 +7,7 @@ import {
   type AssetDecision,
 } from "@/domain";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 // Asset approval through `approval_items` — the same table, vocabulary and audit
 // trail campaigns use (BSR-538). There is deliberately no second, softer path to
@@ -122,6 +123,10 @@ export async function decideAssetApproval(
       .from("approval_items")
       .insert({
         org_id: orgId,
+        // A media-asset approval has no campaign to derive from, so this falls
+        // back to the org's sole workspace — the same answer the Wave 1 backfill
+        // would give it.
+        ...(await workspaceIdFields(client, orgId)),
         media_asset_id: assetId,
         item_type: MEDIA_ASSET_ITEM_TYPE,
         status: decision,
@@ -150,6 +155,7 @@ export async function decideAssetApproval(
   // for every decision, never overwritten.
   const { error: decisionError } = await client.from("approval_decisions").insert({
     org_id: orgId,
+    ...(await workspaceIdFields(client, orgId, { approvalItemId })),
     approval_item_id: approvalItemId,
     decision,
     decided_by: operator,

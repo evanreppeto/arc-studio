@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdminClient } from "../supabase/server";
 import { type AgentTaskTenantFields } from "../agent-tasks/scope";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 export type ApprovalDecision = "approved" | "declined" | "archived";
 
@@ -58,7 +59,7 @@ export async function decideApprovalItem(
   }
 
   const { error: decisionError } = await client.from("approval_decisions").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     approval_item_id: item.id,
     decision,
     decided_by: operator,
@@ -93,7 +94,7 @@ export async function decideApprovalItem(
     assertOk("campaigns update", campaignError);
 
     const { error: eventError } = await client.from("campaign_events").insert({
-      ...orgTenantFields(tenant),
+      ...workspaceScopeFields(tenant),
       campaign_id: item.campaign_id,
       campaign_asset_id: item.campaign_asset_id,
       approval_item_id: item.id,
@@ -156,7 +157,7 @@ export async function decideAsset(
   assertOk("campaign_assets decide", assetError);
 
   const { error: eventError } = await client.from("campaign_events").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId || null,
     campaign_asset_id: assetId,
     event_type: decision === "archived" ? "archived" : "approval_decided",
@@ -203,7 +204,7 @@ export async function reopenAsset(
 
   if (approval) {
     const { error: decisionError } = await client.from("approval_decisions").insert({
-      ...orgTenantFields(tenant),
+      ...workspaceScopeFields(tenant),
       approval_item_id: approval.id,
       decision: "reverted",
       decided_by: operator,
@@ -234,7 +235,7 @@ export async function reopenAsset(
   assertOk("campaign_assets update (reopen)", assetError);
 
   const { error: eventError } = await client.from("campaign_events").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId || null,
     campaign_asset_id: assetId,
     approval_item_id: approval?.id ?? null,
@@ -299,7 +300,7 @@ export async function undoDecision(
   }
 
   const { error: decisionError } = await client.from("approval_decisions").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     approval_item_id: approvalItemId,
     decision: "reverted",
     decided_by: operator,
@@ -334,7 +335,7 @@ export async function undoDecision(
     assertOk("campaigns update (revert)", campaignError);
 
     const { error: eventError } = await client.from("campaign_events").insert({
-      ...orgTenantFields(tenant),
+      ...workspaceScopeFields(tenant),
       campaign_id: item.campaign_id,
       campaign_asset_id: item.campaign_asset_id,
       approval_item_id: approvalItemId,
@@ -360,6 +361,3 @@ function applyOrgScope<Query>(query: Query, tenant?: AgentTaskTenantFields): Que
   return (query as { eq(column: string, value: string): Query }).eq("org_id", tenant.org_id);
 }
 
-function orgTenantFields(tenant?: AgentTaskTenantFields): Record<string, string> {
-  return tenant ? { org_id: tenant.org_id } : {};
-}

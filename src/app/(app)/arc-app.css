@@ -2228,6 +2228,8 @@
 @media (pointer: coarse) {
   .arc-app .iconf,
   .arc-app .pager .pgbtn,
+  .arc-app .arc-library .selwrap .sb,
+  .arc-app .arc-studio .iconbtn,
   .arc-app .arc-brain .ft .farch {
     width: 44px;
     height: 44px;
@@ -2238,6 +2240,8 @@
 
   .arc-app .iconf svg,
   .arc-app .pager .pgbtn svg,
+  .arc-app .arc-library .selwrap .sb svg,
+  .arc-app .arc-studio .iconbtn svg,
   .arc-app .arc-brain .ft .farch svg {
     width: 18px;
     height: 18px;

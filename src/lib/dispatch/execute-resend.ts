@@ -18,6 +18,7 @@ import { readConnectorCredential } from "@/lib/connectors/credentials";
 
 import { getUnsubscribeSecret, isContactSuppressed, loadWorkspaceEmailIdentity } from "./email-identity";
 import { isLiveSendEnabled } from "./live-send";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 // The ONLY place the app performs a real send. It operates on an already-queued
 // (or operator-forced "send now" scheduled) approval-linked `campaign_dispatches`
@@ -70,6 +71,7 @@ async function logCampaignEvent(
   if (!campaignId) return;
   const { error } = await client.from("campaign_events").insert({
     org_id: orgId,
+    ...(await workspaceIdFields(client, orgId, { campaignId })),
     campaign_id: campaignId,
     event_type: eventType,
     actor,

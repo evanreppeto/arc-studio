@@ -4,6 +4,7 @@ import { type AgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 import { enqueueDispatchesForAssets } from "@/lib/dispatch/persistence";
 
 import { getSupabaseAdminClient } from "../supabase/server";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 export type LaunchCampaignInput = {
   campaignId: string;
@@ -125,7 +126,7 @@ export async function launchCampaign(
 
   // Record the handoff signal Arc/Arc consumes to do the actual sends.
   const { error: eventError } = await client.from("campaign_events").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     event_type: "campaign_launched",
     actor: operator,
@@ -203,7 +204,7 @@ export async function deployAsset(
   await enqueueDispatchesForAssets({ campaignId, assetIds: [assetId], operator, scheduledFor, tenant }, client);
 
   const { error: eventError } = await client.from("campaign_events").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId || null,
     campaign_asset_id: assetId,
     event_type: "asset_deployed",
@@ -237,6 +238,3 @@ function applyOrgScope<Query>(query: Query, tenant?: AgentTaskTenantFields): Que
   return (query as { eq(column: string, value: string): Query }).eq("org_id", tenant.org_id);
 }
 
-function orgTenantFields(tenant?: AgentTaskTenantFields): Record<string, string> {
-  return tenant ? { org_id: tenant.org_id } : {};
-}
