@@ -1020,6 +1020,11 @@
 
 /* action row: cancel alongside the primary action */
 .arc-app .arc-outbox .card .cactions { display: flex; gap: 8px; margin-top: 10px; }
+/* Taking a queued send out is destructive on the one screen that reaches real
+   people, so it asks first rather than firing on a single ambiguous click. */
+.arc-app .arc-outbox .card .ccancelconfirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; font-size: 11px; color: var(--text-2); }
+.arc-app .arc-outbox .card .ccancelconfirm > span:first-child { flex: 1 1 100%; }
+.arc-app .arc-outbox .card .ccancel.is-confirm { border-color: var(--priority); color: var(--priority); }
 .arc-app .arc-outbox .card .cactions .caction { margin-top: 0; flex: 1; }
 .arc-app .arc-outbox .card button.ccancel { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; transition: .14s; }
 .arc-app .arc-outbox .card button.ccancel:hover { color: var(--text-2); border-color: var(--line-3); }
