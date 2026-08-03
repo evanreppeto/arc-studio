@@ -1,6 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type AgentTaskTenantFields, getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
+import { notifyArcCampaignTask } from "@/lib/arc-chat/notify";
 import { getSupabaseAdminClient } from "../supabase/server";
 
 export type RevisionRequestInput = {
@@ -14,6 +15,13 @@ export type RevisionRequestInput = {
 export type RevisionRequestResult = {
   approvalItemId: string | null;
   agentTaskId: string | null;
+  /**
+   * Whether the runner actually acknowledged the wake. `false` means the
+   * revision is recorded but Arc has NOT started on it — nothing polls
+   * `agent_tasks`, so an un-woken task is never picked up. The caller is
+   * expected to surface this rather than reporting an unqualified success.
+   */
+  dispatched: boolean;
 };
 
 /**
@@ -107,7 +115,35 @@ export async function requestAssetRevision(
     operator,
   });
 
-  return { approvalItemId, agentTaskId };
+  // 7. Wake the runner.
+  //
+  // Load-bearing, and it used to be missing. Nothing polls `agent_tasks` —
+  // there is no inbox poller in the runner and no cron that drains queued
+  // rows — so the wake POST is the ONLY thing that starts a task. Without
+  // this call the rows above were all written correctly and the revision
+  // simply never ran: the asset was never regenerated and the task sat
+  // `queued` forever. The unit tests asserted the insert and stopped there,
+  // which is exactly why it stayed green (BSR-695).
+  const dispatched = agentTaskId
+    ? await notifyArcCampaignTask({
+        agentTaskId,
+        campaignId,
+        assetId,
+        conversationId: null,
+        message: instruction,
+        operator,
+        taskType: "campaign_asset_revision",
+      })
+    : false;
+
+  if (agentTaskId && !dispatched) {
+    console.warn(
+      `[campaigns] revision task ${agentTaskId} was queued but the runner did not acknowledge the wake. ` +
+        "Nothing polls agent_tasks, so this revision will not run until it is re-dispatched.",
+    );
+  }
+
+  return { approvalItemId, agentTaskId, dispatched };
 }
 
 async function queueArcRevision(

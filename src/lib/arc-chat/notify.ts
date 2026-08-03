@@ -108,6 +108,12 @@ export async function notifyOpportunityScan(payload: ArcOpportunityScanWake): Pr
 export type ArcCampaignTaskWake = {
   agentTaskId: string;
   campaignId: string;
+  /**
+   * The specific asset being revised. Only set for `campaign_asset_revision` —
+   * without it Arc knows the campaign but not which of its assets the operator
+   * asked to change, and a campaign with more than one asset makes that a guess.
+   */
+  assetId?: string | null;
   conversationId: string | null;
   message: string;
   operator: string;
