@@ -71,6 +71,7 @@ describe("getWorkspaceSummary", () => {
       personas: 2,
       records: { contacts: 243, companies: 12, leads: 0, campaigns: 3 },
       dismissalPatterns: [],
+      recentCorrections: [],
     });
   });
 
@@ -101,6 +102,7 @@ describe("getWorkspaceSummary", () => {
       // Unconfigured means unknown, not empty.
       records: { contacts: null, companies: null, leads: null, campaigns: null },
       dismissalPatterns: [],
+      recentCorrections: [],
     });
     expect(getBusinessProfile).not.toHaveBeenCalled();
   });

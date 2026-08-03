@@ -128,3 +128,56 @@ describe("dismissal patterns in the WORKSPACE STATE block", () => {
     expect(out).toContain("243 contacts");
   });
 });
+
+/**
+ * BSR-685. The operator types what was wrong every time a draft goes back;
+ * that text was stored, rendered into the activity timeline, and never used
+ * again, so Arc could repeat a corrected mistake indefinitely.
+ */
+describe("operator corrections in the WORKSPACE STATE block", () => {
+  const render = (recentCorrections: string[] | null | undefined) =>
+    buildSystemPrompt("BASE", { ...base, workspaceState: { ...summary, recentCorrections } });
+
+  it("puts the operator's own words in front of the model", () => {
+    const out = render([
+      'On a creative: "Our logo needs to be on the truck"',
+      'On an email: "always use 773-900-8407 as our 24/7 line"',
+    ]);
+    expect(out).toContain("Recent corrections from this operator");
+    expect(out).toContain("Our logo needs to be on the truck");
+    expect(out).toContain("773-900-8407");
+  });
+
+  it("says to apply them, and that they are not permission to send", () => {
+    // Approval-gating is the product's core invariant; a block of operator
+    // instructions must not read as a standing go-ahead.
+    const out = render(['On a creative: "Our logo needs to be on the truck"']);
+    expect(out).toContain("before it reaches them again");
+    expect(out).toContain("not permission to send");
+  });
+
+  it("scopes them to this workspace rather than stating them as general rules", () => {
+    const out = render(['On a creative: "Our logo needs to be on the truck"']);
+    expect(out).toContain("THIS workspace");
+  });
+
+  it("renders no block at all when there is nothing to say", () => {
+    for (const empty of [[], null, undefined]) {
+      expect(render(empty)).not.toContain("Recent corrections");
+    }
+  });
+
+  it("coexists with the dismissal block without either swallowing the other", () => {
+    const out = buildSystemPrompt("BASE", {
+      ...base,
+      workspaceState: {
+        ...summary,
+        dismissalPatterns: ['11× "Not relevant to us" on crm_inactivity — the targeting was wrong'],
+        recentCorrections: ['On a creative: "Our logo needs to be on the truck"'],
+      },
+    });
+    expect(out).toContain("repeatedly dismissed");
+    expect(out).toContain("Recent corrections");
+    expect(out).toContain("243 contacts");
+  });
+});

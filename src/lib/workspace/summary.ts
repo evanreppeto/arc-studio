@@ -4,10 +4,10 @@ import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabas
 import { getBusinessProfile, listPersonaDefinitions } from "@/lib/brand-kit/persistence";
 import { getBusinessContext } from "@/lib/brand-kit/read-model";
 import { listWorkspaceConnectors } from "@/lib/connectors/read-model";
-import { countActiveApprovals } from "@/lib/approvals/read-model";
+import { countActiveApprovals, getRecentCorrections } from "@/lib/approvals/read-model";
 import { listAvailableArcMedia } from "@/lib/media-library/arc-handoff";
 import { getDismissalPatterns } from "@/lib/opportunities/read-model";
-import { summarizeDismissals } from "@/domain";
+import { summarizeCorrections, summarizeDismissals } from "@/domain";
 
 export type WorkspaceSummary = {
   brandKit: "active" | "draft" | "none";
@@ -54,6 +54,17 @@ export type WorkspaceSummary = {
    * exist.
    */
   dismissalPatterns: string[];
+  /**
+   * What the operator recently sent back, in their own words (BSR-685).
+   *
+   * Sibling of `dismissalPatterns` above and carried for the same reason, but
+   * NOT aggregated: a dismissal is one value from a fixed vocabulary and needs
+   * repetition to mean anything, while a correction is free text and specific
+   * enough to act on the first time. One of the live tenant's three literally
+   * says "in the future, always use this" — waiting for a third occurrence
+   * would have thrown it away.
+   */
+  recentCorrections: string[];
 };
 
 export type WorkspaceSettingsDetail = WorkspaceSummary & {
@@ -76,6 +87,7 @@ const NEUTRAL_WORKSPACE_SUMMARY: WorkspaceSummary = {
   // Unconfigured Supabase means the counts are unknown, not zero.
   records: { contacts: null, companies: null, leads: null, campaigns: null },
   dismissalPatterns: [],
+  recentCorrections: [],
 };
 
 /**
@@ -116,7 +128,7 @@ export async function getWorkspaceSummary(
 ): Promise<WorkspaceSummary> {
   if (!isSupabaseAdminConfigured()) return { ...NEUTRAL_WORKSPACE_SUMMARY };
   const db = client ?? getSupabaseAdminClient();
-  const [profile, connectors, approvals, personas, media, contacts, companies, leads, campaigns, dismissals] = await Promise.all([
+  const [profile, connectors, approvals, personas, media, contacts, companies, leads, campaigns, dismissals, corrections] = await Promise.all([
     safe(() => getBusinessProfile(orgId), null),
     safe(() => listWorkspaceConnectors(db, workspaceId), []),
     safe(() => countActiveApprovals(orgId, db), 0),
@@ -129,6 +141,7 @@ export async function getWorkspaceSummary(
     countRows(db, "leads", "org_id", orgId),
     countRows(db, "campaigns", "workspace_id", workspaceId),
     safe(() => getDismissalPatterns(orgId, db), [] as Awaited<ReturnType<typeof getDismissalPatterns>>),
+    safe(() => getRecentCorrections(orgId, db), [] as Awaited<ReturnType<typeof getRecentCorrections>>),
   ]);
 
   return {
@@ -142,6 +155,7 @@ export async function getWorkspaceSummary(
     personas: personas.length,
     records: { contacts, companies, leads, campaigns },
     dismissalPatterns: summarizeDismissals(dismissals),
+    recentCorrections: summarizeCorrections(corrections),
   };
 }
 
