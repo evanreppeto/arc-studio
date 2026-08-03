@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
 
   try {
-    const detail = await getCampaignWorkspaceDetail(id, undefined, "Arc", allowed.scope.orgId);
+    const detail = await getCampaignWorkspaceDetail(id, undefined, "Arc", allowed.scope.orgId, allowed.scope.workspaceId);
     if (detail.status === "not_found") {
       return fail("not_found", "No campaign with that id.", 404);
     }

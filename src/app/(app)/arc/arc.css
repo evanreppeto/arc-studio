@@ -141,6 +141,20 @@
   padding-top: 0;
   padding-bottom: 14px;
 }
+/* The launcher fills the space between the header and the composer so its
+   greeting lands in the middle of the empty chat, not jammed under the header
+   with a dead zone above the message box.
+   It asks for `min-height: 100%` itself, but a percentage min-height only
+   resolves against a parent with a *definite* height — and this column has
+   `min-height`, not `height`. So the launcher silently collapsed to its content
+   and sat at the top. Making the column a flex container while it holds the
+   launcher lets `flex: 1` do what the percentage couldn't. Scoped with `:has()`
+   so a column of real messages keeps its plain block flow (and its margins). */
+.arc-conversation-column:has(> .arc-launcher) {
+  display: flex;
+  flex-direction: column;
+}
+.arc-conversation-column > .arc-launcher { flex: 1 1 auto; }
 .arc-history-load-error {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
@@ -1247,7 +1261,6 @@
   .arc-launcher-grid { gap: 7px; margin-top: 11px; }
   .arc-launcher-grid button { min-height: 58px; padding: 7px 9px; }
   .arc-launcher-icon { width: 22px; height: 22px; }
-  .arc-chat[data-new-conversation="true"] .arc-composer { padding-top: 9px; }
 }
 
 /* ── Composer ───────────────────────────────────────────────────────────── */
@@ -1324,12 +1337,10 @@
   font-size: 14px;
   line-height: 1.5;
 }
-.arc-chat[data-new-conversation="true"] .arc-composer textarea {
-  min-height: 38px;
-  padding-bottom: 7px;
-  transition: min-height var(--arc-base) var(--arc-curve);
-}
-.arc-chat[data-new-conversation="true"] .arc-composer textarea:not(:placeholder-shown) { min-height: 55px; }
+/* The composer keeps ONE height in every state. It used to start 17px shorter
+   on a new conversation and animate up to full size the moment you typed or
+   sent, which read as the message box drifting out from under the cursor. The
+   box only grows now when your own text wraps past one line. */
 .arc-composer textarea::placeholder { color: var(--muted); }
 .arc-composer textarea:disabled { cursor: wait; }
 .arc-composer textarea:focus-visible { outline: 0; }
@@ -2485,8 +2496,6 @@ a.arc-work-evidence-item:hover > svg { color: var(--accent); }
   .arc-composer-dock { padding: 5px 10px max(7px, env(safe-area-inset-bottom)); }
   .arc-composer { border-radius: 17px; padding: 7px 9px 6px; }
   .arc-composer textarea { min-height: 32px; max-height: 132px; padding: 1px 3px 6px; font-size: 13.5px; }
-  .arc-chat[data-new-conversation="true"] .arc-composer textarea,
-  .arc-chat[data-new-conversation="true"] .arc-composer textarea:not(:placeholder-shown) { min-height: 32px; }
   .arc-composer-toolbar { gap: 6px; }
   .arc-composer-tools,
   .arc-composer-send { gap: 2px; }

@@ -87,6 +87,7 @@ describe("createOperatorCampaign", () => {
       ],
       client: supabase,
       uploader,
+      tenant: { org_id: "org-1", workspace_id: "workspace-1" },
     });
 
     expect(uploader).toHaveBeenCalledTimes(2);
@@ -104,9 +105,55 @@ describe("createOperatorCampaign", () => {
       campaign_events: { data: null, error: null },
     });
     const uploader = vi.fn();
-    const out = await createOperatorCampaign({ draft, operator: "evan@test", photos: [], client: supabase, uploader });
+    const out = await createOperatorCampaign({
+      draft,
+      operator: "evan@test",
+      photos: [],
+      client: supabase,
+      uploader,
+      tenant: { org_id: "org-1", workspace_id: "workspace-1" },
+    });
     expect(out.campaignId).toBe("camp-2");
     expect(uploader).not.toHaveBeenCalled();
     expect(insertsFor(supabase, "campaign_assets")).toHaveLength(0);
+  });
+
+  // BSR-639. campaigns.workspace_id used to be nullable and the write path
+  // dropped it (orgTenantFields returns org_id only), so every campaign created
+  // through this path landed unowned by any workspace and was then listed in all
+  // of them. The column is NOT NULL now; these two tests are what keep it stamped.
+  it("stamps the workspace on the campaign row, not just the org", async () => {
+    const supabase = createSupabaseQueryMock({
+      campaigns: { data: { id: "camp-3" }, error: null },
+      campaign_events: { data: null, error: null },
+    });
+
+    await createOperatorCampaign({
+      draft,
+      operator: "evan@test",
+      photos: [],
+      client: supabase,
+      uploader: vi.fn(),
+      tenant: { org_id: "org-1", workspace_id: "workspace-1" },
+    });
+
+    expect(insertsFor(supabase, "campaigns")[0]).toMatchObject({
+      org_id: "org-1",
+      workspace_id: "workspace-1",
+    });
+  });
+
+  it("refuses to create a campaign with no resolved workspace", async () => {
+    const supabase = createSupabaseQueryMock({
+      campaigns: { data: { id: "camp-4" }, error: null },
+      campaign_events: { data: null, error: null },
+    });
+
+    await expect(
+      createOperatorCampaign({ draft, operator: "evan@test", photos: [], client: supabase, uploader: vi.fn() }),
+    ).rejects.toThrow(/without a resolved org and workspace/);
+
+    // And it fails before writing, rather than leaving a half-created campaign.
+    expect(insertsFor(supabase, "campaigns")).toHaveLength(0);
   });
 });

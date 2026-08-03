@@ -10,7 +10,7 @@ import {
   type OfficialPersonaMapping,
   OFFICIAL_PERSONA_MAPPINGS,
 } from "@/domain";
-import { findExistingLeadByExternalId } from "@/lib/lead-ingestion/idempotency";
+import { findExistingLeadByExternalId, type ExistingLeadRefs } from "@/lib/lead-ingestion/idempotency";
 import { persistLeadIngestion, type LeadProvenance } from "@/lib/lead-ingestion/persistence";
 
 import { type EnrichmentProvider } from "../enrichment/provider";
@@ -25,6 +25,23 @@ export type ImportPersistDeps = {
   persist?: typeof persistLeadIngestion;
   findExisting?: typeof findExistingLeadByExternalId;
 };
+
+/**
+ * Called once per successfully persisted record so the caller can write batch
+ * provenance (BSR-640). Injected rather than imported so the engine stays
+ * network-free in unit tests, and OPTIONAL so an import without a run still works.
+ *
+ * Best-effort by contract: the engine swallows anything this throws. Failing a
+ * customer's data import because a bookkeeping row would not write is the wrong
+ * trade every time.
+ */
+export type ImportProvenanceRecorder = (record: {
+  externalId: string;
+  leadId: string;
+  action: "created" | "updated";
+  /** Pre-existing row refs when this was an update, so a reversal can restore. */
+  existing: ExistingLeadRefs | null;
+}) => Promise<void>;
 
 // ---------------------------------------------------------------------------
 // The provider-agnostic CRM import engine (BSR-368). It pages a `CrmImportSource`,
@@ -80,6 +97,8 @@ export type ImportContactsInput = {
   maxPages?: number;
   /** Injectable persistence seams (tests); default to the real functions. */
   deps?: ImportPersistDeps;
+  /** Optional per-record provenance sink (BSR-640). Absent = import without a run. */
+  recordProvenance?: ImportProvenanceRecorder;
 };
 
 function emptyResult(): ImportRunResult {
@@ -143,6 +162,21 @@ async function importOneContact(
   });
   if (persisted.leadCreated) result.imported += 1;
   else result.updated += 1;
+
+  // Provenance is bookkeeping AROUND the import, not part of it. A failure here
+  // must not turn a persisted record into a counted failure, so it is caught and
+  // dropped rather than allowed to reach the per-record catch in the page loop —
+  // which would report a row that actually landed as failed.
+  if (input.recordProvenance && persisted.leadId) {
+    await input
+      .recordProvenance({
+        externalId,
+        leadId: persisted.leadId,
+        action: persisted.leadCreated ? "created" : "updated",
+        existing,
+      })
+      .catch(() => undefined);
+  }
 }
 
 /**

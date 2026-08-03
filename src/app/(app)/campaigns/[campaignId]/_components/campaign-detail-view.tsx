@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import {
   humanizePersonaLabel as humanizePersona,
@@ -21,6 +21,7 @@ import { diffLines } from "@/lib/campaigns/revision-diff";
 import { LOCKED_CLAIMS, MEASUREMENT_PLAN } from "@/lib/performance/measurement-copy";
 import { buildPerformanceLearning, type CampaignPerformancePanel, type PerformanceTrendPoint } from "@/lib/performance/campaign-panel";
 
+import { Modal } from "../../../_components/modal";
 import { ShareDialog } from "../../../_components/share-dialog";
 import { ExternalSendModal } from "./external-send-modal";
 import { attachCampaignMediaAction, decideCampaignAsset, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision } from "../actions";
@@ -104,26 +105,327 @@ function lifecycleTone(lifecycle: string): Tone {
   return "gray";
 }
 
-function MediaTile({ media }: { media: CampaignMediaAsset }) {
-  const bg = media.thumbnailUrl || (media.type === "image" ? media.url : null);
-  // First lineage row ("Made in Higgsfield · soul-x") captions the tile; the
-  // full lineage + prompt ride the native tooltip — a 4:3 tile has no room for
-  // a paragraph, but the reviewer hovering an AI tile should get the whole story.
+/** Step the lightbox, wrapping at both ends. Exported for test: the demo
+ *  fixtures only ever attach one media per deliverable, so the preview cannot
+ *  exercise the wrap. */
+export function stepMediaIndex(current: number, delta: number, length: number): number {
+  if (length <= 0) return 0;
+  return (((current + delta) % length) + length) % length;
+}
+
+const MEDIA_ORIGIN_LABEL: Record<CampaignMediaAsset["origin"], string> = {
+  generated: "AI generated",
+  attached: "Attached media",
+  referenced: "Referenced elsewhere",
+};
+
+/**
+ * How this asset's own review reads. "Not reviewed" is the common case and the
+ * important one: asset-level approval writes to `approval_items`, and there are
+ * no such rows in prod — the path exists and has never run. An asset nobody has
+ * looked at must not read like one that passed.
+ */
+const MEDIA_REVIEW_LABEL: Record<CampaignMediaAsset["review"]["state"], string> = {
+  unreviewed: "Not reviewed",
+  pending: "Awaiting review",
+  approved: "Approved",
+  declined: "Declined",
+  needs_revision: "Revision requested",
+  archived: "Archived",
+};
+
+function mediaReviewTone(state: CampaignMediaAsset["review"]["state"]): Tone {
+  if (state === "approved") return "ok";
+  if (state === "declined") return "red";
+  if (state === "needs_revision" || state === "pending") return "amber";
+  return "gray";
+}
+
+function describeMediaReview(review: CampaignMediaAsset["review"]): string {
+  const label = MEDIA_REVIEW_LABEL[review.state];
+  if (review.state === "unreviewed") return `${label} — no decision has been recorded against this asset`;
+  const who = review.reviewer ? ` by ${review.reviewer}` : "";
+  const when = review.reviewedAt ? ` on ${fmtDate(review.reviewedAt)}` : "";
+  return `${label}${who}${when}`;
+}
+
+/**
+ * The declared ratio as a CSS `aspect-ratio`. The read-model has already
+ * rejected anything that isn't `w:h` within sane bounds; this is the render
+ * half of that. Falls back to the old fixed 4:3 when the producer declared
+ * nothing — an undeclared ratio must not silently become a square.
+ */
+function tileAspect(format: string | null): string {
+  const parts = format?.split(":");
+  return parts?.length === 2 ? `${parts[0]} / ${parts[1]}` : "4 / 3";
+}
+
+function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () => void }) {
+  const thumb = media.thumbnailUrl || (media.type === "image" ? media.url : null);
+  const [failed, setFailed] = useState(false);
+  // First lineage row ("Made in Higgsfield · soul-x") captions the tile. The
+  // full lineage + prompt live in the lightbox, not a native tooltip — a
+  // tooltip is invisible to touch and to the keyboard, and the OS truncates a
+  // long prompt anyway.
   const lineageLine = media.lineage[0]?.[1] ?? null;
-  const tooltip = [...media.lineage.map(([, text]) => text), media.prompt ? `Prompt: ${media.prompt}` : null]
+  const flagged = media.riskFlags.length > 0;
+  // A declined asset still sitting on a deliverable is worth seeing without
+  // opening it — same visual weight as a risk flag, for the same reason.
+  const declined = media.review.state === "declined";
+  const label = [
+    `Open ${media.title} at full size`,
+    flagged ? `${media.riskFlags.length} risk flag${media.riskFlags.length === 1 ? "" : "s"}` : null,
+    declined ? "declined" : null,
+  ]
     .filter(Boolean)
-    .join("\n");
+    .join(" — ");
   return (
-    <div className="mediatile" title={tooltip || undefined} style={bg ? { backgroundImage: `url(${bg})` } : undefined}>
-      <div className="mtscrim" />
+    <button
+      type="button"
+      className={`mediatile${flagged || declined ? " flagged" : ""}`}
+      onClick={onOpen}
+      aria-label={label}
+      // The tile letterboxes to the creative's own shape. It used to crop
+      // everything to 4:3, so a 9:16 vertical and a 1:1 square were
+      // indistinguishable from each other and from what would actually ship.
+      style={{ aspectRatio: tileAspect(media.format) }}
+    >
+      {thumb && !failed ? (
+        // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+        <img className="mtimg" src={thumb} alt={media.title} loading="lazy" onError={() => setFailed(true)} />
+      ) : null}
+      <span className="mtscrim" />
       <span className={`mtbadge ${media.origin === "generated" ? "ai" : "real"}`}>
         {media.origin === "generated" ? "AI" : media.type}
       </span>
+      {/* A flag recorded against THIS image was invisible here until now — the
+          reviewer saw only the deliverable-level guardrail note, if any. */}
+      {flagged && (
+        <span className="mtrisk" aria-hidden>
+          {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
+        </span>
+      )}
       <span className="mttitle">
         {media.title}
         {lineageLine ? <em className="mtlineage">{lineageLine}</em> : null}
       </span>
+      <span className="mtzoom" aria-hidden>
+        {svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M11 8v6M8 11h6"/>')}
+      </span>
+    </button>
+  );
+}
+
+/** The media itself, full size. Owns its own load-failure state so the parent
+ *  can reset it with a key rather than an effect. */
+function LightboxStage({ media }: { media: CampaignMediaAsset }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <p className="lbfail">
+        This file didn&apos;t load. It may have moved, or the link may have expired — open the original to check.
+      </p>
+    );
+  }
+  if (media.type === "image") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+      <img className="lbimg" src={media.url} alt={media.title} onError={() => setFailed(true)} />
+    );
+  }
+  if (media.type === "video") {
+    return (
+      <video className="lbimg" src={media.url} poster={media.thumbnailUrl ?? undefined} controls onError={() => setFailed(true)} />
+    );
+  }
+  // Embeds, files and links are somebody else's page. Show what we already
+  // have and hand over the link, rather than iframing a URL that arrived from
+  // a tool result into an authenticated shell.
+  return (
+    <div className="lbnoprev">
+      {media.thumbnailUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+        <img className="lbimg" src={media.thumbnailUrl} alt={media.title} onError={() => setFailed(true)} />
+      ) : null}
+      <p className="lbfail">No inline preview for this {media.type}. Open the original to view it.</p>
     </div>
+  );
+}
+
+/**
+ * The creative, at a size you can actually judge.
+ *
+ * The tile is a 96px thumbnail, and Approve is one button below it — reviewing
+ * a campaign image meant squinting at a cropped 4:3 crop of it. This is the
+ * full-size view: uncropped (the tile crops, this letterboxes), with the
+ * provenance the tile has no room for as readable text rather than a hover
+ * tooltip. Built on the app's one Modal so Escape, scroll-lock, and focus
+ * behave the same as every other dialog here.
+ */
+function MediaLightbox({
+  items,
+  index,
+  onClose,
+  onStep,
+}: {
+  items: CampaignMediaAsset[];
+  index: number;
+  onClose: () => void;
+  onStep: (delta: number) => void;
+}) {
+  const media = items[index];
+  const many = items.length > 1;
+
+  useEffect(() => {
+    if (!many) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        onStep(1);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        onStep(-1);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [many, onStep]);
+
+  if (!media) return null;
+
+  // Lineage tuples are [icon key, text] — the key drives the dot, exactly as
+  // the Library card renders it. It is not a label; don't print it as one.
+  const rows: Array<[string, string]> = [
+    ["Source", MEDIA_ORIGIN_LABEL[media.origin]],
+    ["Type", media.mimeType || media.type],
+    // "Declared" is doing real work: nothing measures the stored file, so this
+    // is the producer's claim about the creative, not a verified dimension.
+    ["Format", media.format ? `${media.format} (declared)` : "Not declared"],
+    ["Review", describeMediaReview(media.review)],
+    ["Found in", media.source],
+  ];
+  if (media.review.notes) rows.push(["Decision notes", media.review.notes]);
+  if (media.description) rows.push(["Description", media.description]);
+  if (media.virality) {
+    // The score never travels without its disclaimer — a bare "82" reads as a
+    // measurement, and neither of these is one.
+    rows.push(
+      media.virality.kind === "predicted"
+        ? [
+            "Viral potential",
+            `${media.virality.viralPotential}/100 — hook ${media.virality.hookScore}, sustain ${media.virality.sustain}`,
+          ]
+        : [
+            "Creative quality",
+            media.virality.factors.length
+              ? `${media.virality.qualityScore}/100 — ${media.virality.factors.join(", ")}`
+              : `${media.virality.qualityScore}/100`,
+          ],
+      ["Note", media.virality.disclaimer],
+    );
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={media.title}
+      description={`${MEDIA_ORIGIN_LABEL[media.origin]} · ${MEDIA_REVIEW_LABEL[media.review.state]}`}
+      width={920}
+      footer={
+        <>
+          {many && (
+            <div className="lbstepper">
+              <button type="button" className="cbtn ghost" onClick={() => onStep(-1)} aria-label="Previous media">
+                {svg('<path d="M15 5l-7 7 7 7"/>')}
+              </button>
+              <span className="lbcount">
+                {index + 1} of {items.length}
+              </span>
+              <button type="button" className="cbtn ghost" onClick={() => onStep(1)} aria-label="Next media">
+                {svg('<path d="M9 5l7 7-7 7"/>')}
+              </button>
+            </div>
+          )}
+          <a className="cbtn ghost" href={media.url} target="_blank" rel="noreferrer noopener">
+            Open original
+          </a>
+          <button type="button" className="cbtn gold" onClick={onClose}>
+            Done
+          </button>
+        </>
+      }
+    >
+      {/* The asset's own review state, at the top of the dialog. Rendered even
+          when nothing has reviewed it — especially then. */}
+      <div className="lbstatus">
+        <span className={`pill ${mediaReviewTone(media.review.state)}`}>
+          <span className="pd" />
+          {MEDIA_REVIEW_LABEL[media.review.state]}
+        </span>
+        {media.review.reviewer && (
+          <span className="lbwho">
+            {media.review.reviewer}
+            {media.review.reviewedAt ? ` · ${fmtDate(media.review.reviewedAt)}` : ""}
+          </span>
+        )}
+        {media.review.state === "unreviewed" && (
+          <span className="lbwho">Approving the deliverable does not record a decision on this asset.</span>
+        )}
+      </div>
+
+      {/* Above the image, not in the metadata list below it. A flag recorded
+          against this asset is the reason a reviewer might decline it, and it
+          has to be in front of them before they scroll. */}
+      {media.riskFlags.length > 0 && (
+        <div className="lbrisk">
+          <b>
+            {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
+            {media.riskFlags.length === 1 ? "Risk flag on this asset" : `${media.riskFlags.length} risk flags on this asset`}
+          </b>
+          <ul>
+            {media.riskFlags.map((flag) => (
+              <li key={flag}>{flag}</li>
+            ))}
+          </ul>
+          <p>Recorded when the asset was produced. Nothing has cleared it — that is your call.</p>
+        </div>
+      )}
+
+      {/* Keyed on the asset so stepping to the next one re-arms the load —
+          a broken file must not leave its error over the working one. */}
+      <div className="lbstage">
+        <LightboxStage key={media.id} media={media} />
+      </div>
+      <dl className="lbmeta">
+        {rows.map(([label, value], i) => (
+          <div className="lbrow" key={`${label}-${i}`}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {media.lineage.length > 0 && (
+        <div className="lbsec">
+          <b>Provenance lineage</b>
+          <div className="lblineage">
+            {media.lineage.map(([kind, text], i) => (
+              <div className="lbstep" key={`${text}-${i}`}>
+                <span className={`lbdot pv-${kind}`} />
+                <span>{text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {media.prompt && (
+        <div className="lbsec lbprompt">
+          <b>Generation prompt</b>
+          <p>{media.prompt}</p>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -392,11 +694,20 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   const [editBody, setEditBody] = useState("");
   // Media attach: which asset's picker is open.
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  // Full-size media preview: the tiles of one deliverable, and which is open.
+  const [lightbox, setLightbox] = useState<{ items: CampaignMediaAsset[]; index: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [confirmLaunch, setConfirmLaunch] = useState(false);
   const [launchErr, setLaunchErr] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const stepLightbox = useCallback((delta: number) => {
+    setLightbox((current) =>
+      current ? { ...current, index: stepMediaIndex(current.index, delta, current.items.length) } : current,
+    );
+  }, []);
+  const closeLightbox = useCallback(() => setLightbox(null), []);
 
   const persona = humanizePersona(campaign.persona);
   const renderableMediaList = media.filter((m) => m.origin !== "referenced");
@@ -496,6 +807,15 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       origin: "attached",
       lineage: [],
       prompt: null,
+      // The optimistic tile knows neither — the read path fills them in on the
+      // next refresh. Guessing here would put an invented ratio on the tile.
+      format: null,
+      riskFlags: [],
+      libraryAssetId: item.id,
+      storagePath: null,
+      // The attach just happened; whatever review the asset carries arrives
+      // with the next read. Claiming one here would be inventing it.
+      review: { state: "unreviewed", reviewer: null, reviewedAt: null, notes: null },
       title: item.fileName,
       url: item.url,
       thumbnailUrl: item.url,
@@ -641,8 +961,12 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                         {asset.preview && <div className="dbody">{asset.preview}</div>}
                         {assetMedia.length > 0 && (
                           <div className="mediagrid">
-                            {assetMedia.map((m) => (
-                              <MediaTile key={m.id} media={m} />
+                            {assetMedia.map((m, mediaIndex) => (
+                              <MediaTile
+                                key={m.id}
+                                media={m}
+                                onOpen={() => setLightbox({ items: assetMedia, index: mediaIndex })}
+                              />
                             ))}
                           </div>
                         )}
@@ -1066,8 +1390,14 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
             <div className="snsec">
               <h3 className="snh">Creative</h3>
               <div className="mediagrid">
-                {renderableMediaList.slice(0, 4).map((m) => (
-                  <MediaTile key={m.id} media={m} />
+                {renderableMediaList.slice(0, 4).map((m, mediaIndex) => (
+                  // Opens against the whole list, not the visible four — the
+                  // arrows should reach the creative the strip had to cut.
+                  <MediaTile
+                    key={m.id}
+                    media={m}
+                    onOpen={() => setLightbox({ items: renderableMediaList, index: mediaIndex })}
+                  />
                 ))}
               </div>
             </div>
@@ -1096,6 +1426,10 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
           </div>
         </aside>
       </div>
+
+      {lightbox ? (
+        <MediaLightbox items={lightbox.items} index={lightbox.index} onClose={closeLightbox} onStep={stepLightbox} />
+      ) : null}
 
       {externalSendFor ? (
         <ExternalSendModal

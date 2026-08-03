@@ -82,7 +82,7 @@ export default async function HomePage() {
   // you" queue, the metrics, and the campaign rows all read from the same summary
   // so they can't disagree with each other.
   const [summary, overview, activation] = await Promise.all([
-    getWorkspaceSummary(ctx.orgId),
+    getWorkspaceSummary(ctx.orgId, "Arc", ctx.workspaceId),
     getAnalyticsOverview(ctx.orgId),
     // First-run guidance. Hidden once the workspace has records and the owner
     // has either finished or dismissed it, so an established workspace never

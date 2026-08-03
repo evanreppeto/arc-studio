@@ -112,6 +112,11 @@ function toRow(item: CampaignWorkspaceListItem): CampaignRow {
     updatedRel: relativeTime(item.updatedAtIso) || item.updatedAt,
     updatedAbs: formatAbs(item.updatedAtIso),
     href: item.href,
+    // The read-model has computed these all along; the board simply never
+    // asked for them, so a package with three approved images rendered
+    // identically to an empty one.
+    thumbnailUrl: item.thumbnailUrl,
+    mediaCount: item.mediaCount,
   };
 }
 
@@ -122,7 +127,7 @@ export default async function CampaignsPage() {
     // which discarded the error entirely — and since the read-model already
     // catches internally and returns its own message, the only thing this
     // wrapper ever did was throw information away.
-    getCampaignWorkspaceList(undefined, "Arc", ctx.orgId).catch((error: unknown) => ({
+    getCampaignWorkspaceList(undefined, "Arc", ctx.orgId, ctx.workspaceId).catch((error: unknown) => ({
       status: "unavailable" as const,
       message: error instanceof Error ? error.message : "Campaign workspace is unavailable.",
     })),

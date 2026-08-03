@@ -25,8 +25,8 @@ const DEMO_ATTACHABLE_MEDIA: AttachableMediaItem[] = [
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ campaignId: string }> }) {
   const { campaignId } = await params;
-  const orgId = (await getCurrentWorkspaceContext()).orgId;
-  const detail = await getCampaignWorkspaceDetail(decodeURIComponent(campaignId), undefined, "Arc", orgId);
+  const { orgId, workspaceId } = await getCurrentWorkspaceContext();
+  const detail = await getCampaignWorkspaceDetail(decodeURIComponent(campaignId), undefined, "Arc", orgId, workspaceId);
 
   if (detail.status === "not_found") notFound();
   if (detail.status !== "live") {

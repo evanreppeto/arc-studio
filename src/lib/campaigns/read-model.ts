@@ -57,7 +57,47 @@ export type CampaignMediaAsset = {
   lineage: Array<[string, string]>;
   /** Generation prompt when the source tool declared one. */
   prompt: string | null;
+  /** Declared aspect ratio as the producer recorded it ("4:3", "9:16"). This is
+   *  the entry's own claim, not a measurement — `media_assets.width/height` are
+   *  unpopulated (BSR-652), so there is nothing to verify it against. Null when
+   *  the producer declared none. */
+  format: string | null;
+  /** Risk flags recorded against THIS asset ("privacy/redaction", embedded
+   *  text, claim risk). Distinct from the deliverable's guardrail notes: these
+   *  name the specific image. Empty when none were recorded — which is not the
+   *  same as reviewed-and-clean. */
+  riskFlags: string[];
+  /** The `media_assets` row this creative came from, when the producer recorded
+   *  the link. Null for entries written before the id was threaded through, and
+   *  for anything that never went through the Library. */
+  libraryAssetId: string | null;
+  /** Storage path of the object. The only join key that exists on entries with
+   *  no `libraryAssetId`, which today is most of them. */
+  storagePath: string | null;
+  /** This asset's own review decision. */
+  review: CampaignMediaReview;
 };
+
+/**
+ * Review state for one media asset.
+ *
+ * `unreviewed` is the honest default and by far the common case: asset review
+ * writes to `approval_items` with a `media_asset_id`, and there are zero such
+ * rows in prod — the path is built and has never run. An asset with no approval
+ * row has NOT been reviewed and cleared; it has not been looked at. Those two
+ * must never render the same.
+ */
+export type CampaignMediaReviewState = "unreviewed" | "pending" | "approved" | "declined" | "needs_revision" | "archived";
+
+export type CampaignMediaReview = {
+  state: CampaignMediaReviewState;
+  /** Who decided. Null while unreviewed, and null on a row that recorded no reviewer. */
+  reviewer: string | null;
+  reviewedAt: string | null;
+  notes: string | null;
+};
+
+const UNREVIEWED: CampaignMediaReview = { state: "unreviewed", reviewer: null, reviewedAt: null, notes: null };
 
 /**
  * Media that is allowed to render as campaign creative. `referenced` media —
@@ -65,6 +105,20 @@ export type CampaignMediaAsset = {
  */
 export function renderableMedia(media: CampaignMediaAsset[]): CampaignMediaAsset[] {
   return media.filter((asset) => asset.origin !== "referenced");
+}
+
+/**
+ * Map an `approval_items.status` onto the review state the campaign surface
+ * shows. Anything unrecognized becomes `pending` rather than a decision — an
+ * unknown status is not evidence that someone approved something.
+ */
+export function mediaReviewStateFromStatus(status: string | null | undefined): CampaignMediaReviewState {
+  const s = (status ?? "").toLowerCase();
+  if (/approved/.test(s)) return "approved";
+  if (/declined|rejected/.test(s)) return "declined";
+  if (/revision/.test(s)) return "needs_revision";
+  if (/archiv/.test(s)) return "archived";
+  return "pending";
 }
 
 export type CampaignWorkspaceListItem = {
@@ -532,7 +586,7 @@ export type CampaignNameRef = { id: string; name: string; href: string };
  * approval / output aggregation — so callers that only need names (Arc composer,
  * mention search) don't pay for the full workspace build on every render.
  */
-export async function listCampaignNames(orgId?: string, client?: SupabaseClient): Promise<CampaignNameRef[]> {
+export async function listCampaignNames(orgId?: string, client?: SupabaseClient, workspaceId?: string | null): Promise<CampaignNameRef[]> {
   if (!client && !isSupabaseAdminConfigured()) {
     if (!isDemoDataEnabled()) return [];
     const demo = buildDemoCampaignWorkspaceList();
@@ -540,7 +594,7 @@ export async function listCampaignNames(orgId?: string, client?: SupabaseClient)
   }
   try {
     const supabase = client ?? getSupabaseAdminClient();
-    const { data, error } = await applyOrgScope(supabase.from("campaigns").select("id,name"), orgId)
+    const { data, error } = await applyCampaignScope(supabase.from("campaigns").select("id,name"), orgId, workspaceId)
       .order("updated_at", { ascending: false })
       .limit(100);
     assertSupabaseResult("campaigns", error);
@@ -588,7 +642,7 @@ export async function getArcAssetStatuses(
   }
 }
 
-export async function getCampaignWorkspaceList(client?: SupabaseClient, agentName = "Arc", orgId?: string): Promise<CampaignWorkspaceList> {
+export async function getCampaignWorkspaceList(client?: SupabaseClient, agentName = "Arc", orgId?: string, workspaceId?: string | null): Promise<CampaignWorkspaceList> {
   if (!client && !isSupabaseAdminConfigured()) {
     // Local preview has no database. When the demo flag is on, render a realistic
     // read-only campaign library. When off, return an empty live list so real
@@ -601,9 +655,10 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
   try {
     const supabase = client ?? getSupabaseAdminClient();
     const resolvedOrgId = orgId;
-    const { data, error } = await applyOrgScope(
+    const { data, error } = await applyCampaignScope(
       supabase.from("campaigns").select(CAMPAIGN_SELECT),
       resolvedOrgId,
+      workspaceId,
     ).order("updated_at", { ascending: false }).limit(100);
     assertSupabaseResult("campaigns", error);
 
@@ -706,7 +761,7 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
 // identical to a populated DB view. No piece here is sendable.
 // ---------------------------------------------------------------------------
 
-type DemoMedia = { id: string; type: CampaignMediaAsset["type"]; title: string; seed: string; lineage?: Array<[string, string]>; prompt?: string };
+type DemoMedia = { id: string; type: CampaignMediaAsset["type"]; title: string; seed: string; lineage?: Array<[string, string]>; prompt?: string; format?: string; riskFlags?: string[] };
 
 type DemoPiece = {
   id: string;
@@ -781,6 +836,14 @@ function demoMedia(media: DemoMedia): CampaignMediaAsset {
     thumbnailUrl: `https://picsum.photos/seed/${media.seed}/240/160`,
     mimeType: media.type === "video" ? "video/mp4" : "image/jpeg",
     description: media.title,
+    // Demo media declares a ratio because real prod entries do; without one the
+    // offline preview could not exercise the tile's aspect handling at all.
+    format: media.format ?? "4:3",
+    riskFlags: media.riskFlags ?? [],
+    libraryAssetId: null,
+    storagePath: null,
+    // Demo data has no approval rows behind it, which is also true of prod.
+    review: UNREVIEWED,
     lineage: media.lineage ?? [],
     prompt: media.prompt ?? null,
     source: "Approved media",
@@ -1813,6 +1876,7 @@ export async function getCampaignWorkspaceDetail(
   client?: SupabaseClient,
   agentName = "Arc",
   orgId?: string,
+  workspaceId?: string | null,
 ): Promise<CampaignWorkspaceDetail> {
   if (!client && !isSupabaseAdminConfigured()) {
     // Local preview has no database. Build the same rich review workspace from
@@ -1826,9 +1890,10 @@ export async function getCampaignWorkspaceDetail(
   try {
     const supabase = client ?? getSupabaseAdminClient();
     const resolvedOrgId = orgId;
-    const { data, error } = await applyOrgScope(
+    const { data, error } = await applyCampaignScope(
       supabase.from("campaigns").select(CAMPAIGN_SELECT).eq("id", campaignId),
       resolvedOrgId,
+      workspaceId,
     ).maybeSingle();
     assertSupabaseResult("campaigns", error);
 
@@ -1889,19 +1954,28 @@ export async function getCampaignWorkspaceDetail(
       selectIn<LeadRow>(supabase, "leads", "id,source,status,loss_summary,lead_score,metadata", "id", relatedIds.leadIds, undefined, resolvedOrgId),
     ]);
 
-    const assetsView = addPreviewCampaignPieces(
+    const assetsBeforeReview = addPreviewCampaignPieces(
       campaignId,
       buildWorkspaceAssets(assets, approvals, outputs, agentName, recommendations, findings),
       campaign.updated_at,
     );
-    const media = renderableMedia(
+    const mediaBeforeReview = renderableMedia(
       uniqueMedia([
         ...collectMediaFromCampaign(campaign),
-        ...assetsView.flatMap((asset) => asset.media),
+        ...assetsBeforeReview.flatMap((asset) => asset.media),
         ...approvals.flatMap((approval) => collectMediaFromApproval(approval)),
         ...outputs.flatMap((output) => collectMediaFromOutput(output, agentName)),
       ]),
     );
+    // One lookup for the whole page, applied to both the per-deliverable tiles
+    // and the campaign-wide creative list, so the same asset cannot report two
+    // different review states in two places on one screen.
+    const mediaReviews = await resolveMediaReviews(supabase, mediaBeforeReview, resolvedOrgId);
+    const assetsView = assetsBeforeReview.map((asset) => ({
+      ...asset,
+      media: asset.media.map((item) => withMediaReview(item, mediaReviews)),
+    }));
+    const media = mediaBeforeReview.map((item) => withMediaReview(item, mediaReviews));
     const sources = buildSources({ campaign, assets, approvals, companies, contacts, leads, outputs }, agentName);
     const reasoning = buildReasoning(campaign, assets, agentName);
     const rollup = deriveCampaignRollup(collectPieceStatuses(assets, approvals));
@@ -2192,6 +2266,8 @@ export async function getCampaignsForRecord(
   recordId: string,
   client?: SupabaseClient,
   agentName = "Arc",
+  orgId?: string,
+  workspaceId?: string | null,
 ): Promise<LinkedCampaign[]> {
   if (!client && !isSupabaseAdminConfigured()) return [];
 
@@ -2199,9 +2275,12 @@ export async function getCampaignsForRecord(
     const supabase = client ?? getSupabaseAdminClient();
     const column = columnFor(kind);
 
+    // These were previously unscoped, leaning on the record id having been
+    // resolved in-tenant. That is inherited isolation, not enforced isolation —
+    // scope them explicitly now that campaigns carry a workspace.
     const [{ data: directRows, error: directError }, { data: approvalRows, error: approvalError }] = await Promise.all([
-      supabase.from("campaigns").select("id").eq(column, recordId),
-      supabase.from("approval_items").select("campaign_id").eq(column, recordId),
+      applyCampaignScope(supabase.from("campaigns").select("id").eq(column, recordId), orgId, workspaceId),
+      applyOrgScope(supabase.from("approval_items").select("campaign_id").eq(column, recordId), orgId),
     ]);
     assertSupabaseResult("campaigns", directError);
     assertSupabaseResult("approval_items", approvalError);
@@ -2212,7 +2291,11 @@ export async function getCampaignsForRecord(
     );
     if (ids.length === 0) return [];
 
-    const { data, error } = await supabase.from("campaigns").select(CAMPAIGN_SELECT).in("id", ids).order("updated_at", { ascending: false });
+    const { data, error } = await applyCampaignScope(
+      supabase.from("campaigns").select(CAMPAIGN_SELECT).in("id", ids),
+      orgId,
+      workspaceId,
+    ).order("updated_at", { ascending: false });
     assertSupabaseResult("campaigns", error);
     const campaigns = (data ?? []) as CampaignRow[];
     const campaignIds = campaigns.map((campaign) => campaign.id);
@@ -2439,6 +2522,11 @@ function buildPreviewCampaignPieces(updatedAt: string): CampaignWorkspaceAsset[]
           thumbnailUrl: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80",
           mimeType: "image/jpeg",
           description: "Demo preview image for a launch social creative.",
+          format: "16:9",
+          riskFlags: [],
+          libraryAssetId: null,
+          storagePath: null,
+          review: UNREVIEWED,
           lineage: [
             ["ai", "Made in Higgsfield · seedream"],
             ["ai", "Source job · hf_20260722_0917"],
@@ -2910,9 +2998,117 @@ export async function selectIn<T>(
   return (data ?? []) as T[];
 }
 
+type MediaAssetIdRow = { id: string; storage_path: string | null };
+type MediaApprovalRow = {
+  media_asset_id: string | null;
+  status: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  decision_notes: string | null;
+  created_at: string | null;
+};
+
+/** Key a media asset for review lookup. The id is exact; the storage path is
+ *  the fallback that works on entries written before the id was threaded
+ *  through — which today is all of them in prod. */
+function mediaReviewKey(media: Pick<CampaignMediaAsset, "libraryAssetId" | "storagePath">): string | null {
+  if (media.libraryAssetId) return `id:${media.libraryAssetId}`;
+  if (media.storagePath) return `path:${media.storagePath}`;
+  return null;
+}
+
+/**
+ * Resolve each asset's own review decision from `approval_items`.
+ *
+ * Campaign media is a JSON blob, not a row, so it has no database identity of
+ * its own — the link runs entry → `media_assets` (by id when recorded, else by
+ * storage path) → `approval_items.media_asset_id`. An asset we cannot join, or
+ * one with no approval row, stays `unreviewed`: this function never invents a
+ * decision, and a failed lookup must not read as a clean review.
+ */
+async function resolveMediaReviews(
+  client: SupabaseClient,
+  media: CampaignMediaAsset[],
+  orgId?: string,
+): Promise<Map<string, CampaignMediaReview>> {
+  const reviews = new Map<string, CampaignMediaReview>();
+  const ids = media.map((m) => m.libraryAssetId).filter((v): v is string => Boolean(v));
+  const paths = media.map((m) => (m.libraryAssetId ? null : m.storagePath)).filter((v): v is string => Boolean(v));
+  if (ids.length === 0 && paths.length === 0) return reviews;
+
+  const [byId, byPath] = await Promise.all([
+    selectIn<MediaAssetIdRow>(client, "media_assets", "id,storage_path", "id", ids, undefined, orgId).catch(() => []),
+    selectIn<MediaAssetIdRow>(client, "media_assets", "id,storage_path", "storage_path", paths, undefined, orgId).catch(() => []),
+  ]);
+
+  // asset id -> the media keys that resolve to it (a path and an id can both
+  // point at the same row).
+  const keysByAssetId = new Map<string, string[]>();
+  const remember = (assetId: string, key: string) => {
+    const existing = keysByAssetId.get(assetId);
+    if (existing) existing.push(key);
+    else keysByAssetId.set(assetId, [key]);
+  };
+  for (const row of byId) remember(row.id, `id:${row.id}`);
+  for (const row of byPath) if (row.storage_path) remember(row.id, `path:${row.storage_path}`);
+  if (keysByAssetId.size === 0) return reviews;
+
+  const approvals = await selectIn<MediaApprovalRow>(
+    client,
+    "approval_items",
+    "media_asset_id,status,reviewed_by,reviewed_at,decision_notes,created_at",
+    "media_asset_id",
+    [...keysByAssetId.keys()],
+    "created_at",
+    orgId,
+  ).catch(() => []);
+
+  // Ordered newest-first by selectIn, so the first row per asset is current.
+  for (const row of approvals) {
+    if (!row.media_asset_id) continue;
+    const keys = keysByAssetId.get(row.media_asset_id);
+    if (!keys || reviews.has(keys[0])) continue;
+    const review: CampaignMediaReview = {
+      state: mediaReviewStateFromStatus(row.status),
+      reviewer: getString(row.reviewed_by),
+      reviewedAt: getString(row.reviewed_at),
+      notes: getString(row.decision_notes),
+    };
+    for (const key of keys) reviews.set(key, review);
+  }
+
+  return reviews;
+}
+
+function withMediaReview(media: CampaignMediaAsset, reviews: Map<string, CampaignMediaReview>): CampaignMediaAsset {
+  const key = mediaReviewKey(media);
+  const review = key ? reviews.get(key) : undefined;
+  return review ? { ...media, review } : media;
+}
+
 function applyOrgScope<Query>(query: Query, orgId?: string): Query {
   if (!orgId) return query;
   return (query as { eq(column: string, value: string): Query }).eq("org_id", orgId);
+}
+
+/**
+ * Scope a query on `campaigns` itself. Campaigns are workspace-owned (BSR-637)
+ * and `workspace_id` is NOT NULL as of BSR-639, so a campaign belongs to exactly
+ * one workspace and must not be listed in its siblings.
+ *
+ * `applyOrgScope` above still serves the campaign-*adjacent* tables — assets,
+ * approvals, events, outputs — which have no workspace column yet and gain one
+ * in a later slice of the boundary migration.
+ *
+ * A missing `workspaceId` degrades to org-only scoping rather than returning
+ * nothing, matching `applyOrgScope`. That path is real: the offline demo, open /
+ * operator auth mode, and service-role callers whose bearer token predates
+ * workspace scoping all legitimately arrive without one.
+ */
+function applyCampaignScope<Query>(query: Query, orgId?: string, workspaceId?: string | null): Query {
+  const scoped = applyOrgScope(query, orgId);
+  if (!workspaceId) return scoped;
+  return (scoped as { eq(column: string, value: string): Query }).eq("workspace_id", workspaceId);
 }
 
 function collectRelatedIds(campaign: CampaignRow, approvals: ApprovalItemRow[]) {
@@ -3178,11 +3374,38 @@ function mapMediaAsset(value: unknown, source: string, origin: CampaignMediaOrig
     virality,
     lineage: external.rows,
     prompt: external.prompt,
+    format: normalizeAspectRatio(getString(value.format) ?? getString(value.aspect_ratio) ?? getString(value.aspectRatio)),
+    riskFlags: asStringArray(value.risk_flags ?? value.riskFlags),
+    libraryAssetId: getString(value.library_asset_id) ?? getString(value.libraryAssetId),
+    storagePath: getString(value.path) ?? getString(value.storage_path) ?? getString(value.storagePath),
   });
+}
+
+/**
+ * Accept a declared aspect ratio only in the `w:h` shape the producers actually
+ * write ("4:3", "9:16"), with both sides positive and sane. Everything here
+ * arrives from a tool payload, and this string ends up in a CSS `aspect-ratio`
+ * — an unvalidated value would be free rein over the tile's geometry.
+ */
+function normalizeAspectRatio(value: string | null): string | null {
+  if (!value) return null;
+  const match = /^\s*(\d{1,4})\s*[:x/]\s*(\d{1,4})\s*$/i.exec(value);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!width || !height) return null;
+  // A ratio beyond 10:1 either way is a bad payload, not a real creative.
+  if (width / height > 10 || height / width > 10) return null;
+  return `${width}:${height}`;
 }
 
 /** Test-only alias so unit tests can reach the otherwise module-private mapper. */
 export const mapMediaAssetForTest = mapMediaAsset;
+
+/** Test-only alias. The full detail read cannot exercise this deterministically
+ *  — the query mock hands responses out per table in call order, and
+ *  `approval_items` is read several times before the media lookup. */
+export const resolveMediaReviewsForTest = resolveMediaReviews;
 
 function createMediaAsset(input: {
   url: string;
@@ -3196,6 +3419,10 @@ function createMediaAsset(input: {
   virality?: ViralityScore | null;
   lineage?: Array<[string, string]>;
   prompt?: string | null;
+  format?: string | null;
+  riskFlags?: string[];
+  libraryAssetId?: string | null;
+  storagePath?: string | null;
 }): CampaignMediaAsset {
   const type = classifyMediaAsset(input.url, input.mimeType, input.hintedType);
   return {
@@ -3211,6 +3438,13 @@ function createMediaAsset(input: {
     virality: input.virality ?? null,
     lineage: input.lineage ?? [],
     prompt: input.prompt ?? null,
+    format: input.format ?? null,
+    riskFlags: input.riskFlags ?? [],
+    libraryAssetId: input.libraryAssetId ?? null,
+    storagePath: input.storagePath ?? null,
+    // Filled in by resolveMediaReviews when a review exists. Everything starts
+    // unreviewed because that is what an absent approval row means.
+    review: UNREVIEWED,
   };
 }
 
