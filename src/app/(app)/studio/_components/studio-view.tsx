@@ -418,6 +418,10 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [gen, startGen] = useTransition();
   const [genErr, setGenErr] = useState<string | null>(null);
   const [draftBusy, setDraftBusy] = useState<string | null>(null);
+  /** A revision that saved but that Arc never picked up. Warn, not error: the
+   *  request is recorded and nothing was lost — it just isn't running, and
+   *  nothing re-surfaces it on its own. */
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
 
   // Why generation is unavailable (honest gating), or null when it's ready.
   const genGate = !mediaEnabled
@@ -502,8 +506,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     setDraftBusy(d.assetId);
     const res = await requestArcDraftRevisionAction({ campaignId: d.campaignId, assetId: d.assetId, instruction });
     setDraftBusy(null);
-    if (res.ok) setDrafts((prev) => prev.map((x) => (x.assetId === d.assetId ? { ...x, status: "revision_requested" } : x)));
-    else setGenErr(res.error);
+    if (!res.ok) return setGenErr(res.error);
+    setDrafts((prev) => prev.map((x) => (x.assetId === d.assetId ? { ...x, status: "revision_requested" } : x)));
+    // The status flip above says "revision requested", which is true — but it
+    // says nothing about whether Arc took the job. On a dropped wake the request
+    // is recorded and never runs, and nothing re-surfaces it, so silence here
+    // reads as "under way" when it isn't (BSR-695). Retry lives on the campaign
+    // (retryCampaignRevision re-wakes the existing task); asking again from here
+    // would queue a second one.
+    setDraftNotice(
+      res.persisted && res.dispatched === false
+        ? "Saved, but Arc hasn't picked it up — open the campaign to send it again."
+        : null,
+    );
   };
 
   const pickTool = (t: (typeof TOOLS)[keyof typeof TOOLS][number]) => {
@@ -819,6 +834,11 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="psec">
                   <h3 className="ph2">Generate</h3>
                   {genErr ? <div role="alert" style={{ margin: "0 2px 8px", fontSize: 11, color: "#cc6666", lineHeight: 1.4 }}>{genErr}</div> : null}
+                  {draftNotice ? (
+                    <div role="status" style={{ margin: "0 2px 8px", fontSize: 11, color: "var(--warn-text)", lineHeight: 1.4 }}>
+                      {draftNotice}
+                    </div>
+                  ) : null}
                   <div className="exrow gold" onClick={() => runGenerate([FORMATS[fmt].r])} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>{gen ? "Generating…" : `Generate creative · ${FORMATS[fmt].r}`}</div>
                   <div className="exrow" onClick={() => runGenerate(FORMATS.map((f) => f.r))} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.6" /></svg>Resize for all platforms <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)" }}>1:1 4:5 9:16 16:9</span></div>
                 </div>
