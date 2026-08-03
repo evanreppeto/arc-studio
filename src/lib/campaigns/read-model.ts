@@ -532,7 +532,7 @@ export type CampaignNameRef = { id: string; name: string; href: string };
  * approval / output aggregation — so callers that only need names (Arc composer,
  * mention search) don't pay for the full workspace build on every render.
  */
-export async function listCampaignNames(orgId?: string, client?: SupabaseClient): Promise<CampaignNameRef[]> {
+export async function listCampaignNames(orgId?: string, client?: SupabaseClient, workspaceId?: string | null): Promise<CampaignNameRef[]> {
   if (!client && !isSupabaseAdminConfigured()) {
     if (!isDemoDataEnabled()) return [];
     const demo = buildDemoCampaignWorkspaceList();
@@ -540,7 +540,7 @@ export async function listCampaignNames(orgId?: string, client?: SupabaseClient)
   }
   try {
     const supabase = client ?? getSupabaseAdminClient();
-    const { data, error } = await applyOrgScope(supabase.from("campaigns").select("id,name"), orgId)
+    const { data, error } = await applyCampaignScope(supabase.from("campaigns").select("id,name"), orgId, workspaceId)
       .order("updated_at", { ascending: false })
       .limit(100);
     assertSupabaseResult("campaigns", error);
@@ -588,7 +588,7 @@ export async function getArcAssetStatuses(
   }
 }
 
-export async function getCampaignWorkspaceList(client?: SupabaseClient, agentName = "Arc", orgId?: string): Promise<CampaignWorkspaceList> {
+export async function getCampaignWorkspaceList(client?: SupabaseClient, agentName = "Arc", orgId?: string, workspaceId?: string | null): Promise<CampaignWorkspaceList> {
   if (!client && !isSupabaseAdminConfigured()) {
     // Local preview has no database. When the demo flag is on, render a realistic
     // read-only campaign library. When off, return an empty live list so real
@@ -601,9 +601,10 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
   try {
     const supabase = client ?? getSupabaseAdminClient();
     const resolvedOrgId = orgId;
-    const { data, error } = await applyOrgScope(
+    const { data, error } = await applyCampaignScope(
       supabase.from("campaigns").select(CAMPAIGN_SELECT),
       resolvedOrgId,
+      workspaceId,
     ).order("updated_at", { ascending: false }).limit(100);
     assertSupabaseResult("campaigns", error);
 
@@ -1813,6 +1814,7 @@ export async function getCampaignWorkspaceDetail(
   client?: SupabaseClient,
   agentName = "Arc",
   orgId?: string,
+  workspaceId?: string | null,
 ): Promise<CampaignWorkspaceDetail> {
   if (!client && !isSupabaseAdminConfigured()) {
     // Local preview has no database. Build the same rich review workspace from
@@ -1826,9 +1828,10 @@ export async function getCampaignWorkspaceDetail(
   try {
     const supabase = client ?? getSupabaseAdminClient();
     const resolvedOrgId = orgId;
-    const { data, error } = await applyOrgScope(
+    const { data, error } = await applyCampaignScope(
       supabase.from("campaigns").select(CAMPAIGN_SELECT).eq("id", campaignId),
       resolvedOrgId,
+      workspaceId,
     ).maybeSingle();
     assertSupabaseResult("campaigns", error);
 
@@ -2192,6 +2195,8 @@ export async function getCampaignsForRecord(
   recordId: string,
   client?: SupabaseClient,
   agentName = "Arc",
+  orgId?: string,
+  workspaceId?: string | null,
 ): Promise<LinkedCampaign[]> {
   if (!client && !isSupabaseAdminConfigured()) return [];
 
@@ -2199,9 +2204,12 @@ export async function getCampaignsForRecord(
     const supabase = client ?? getSupabaseAdminClient();
     const column = columnFor(kind);
 
+    // These were previously unscoped, leaning on the record id having been
+    // resolved in-tenant. That is inherited isolation, not enforced isolation —
+    // scope them explicitly now that campaigns carry a workspace.
     const [{ data: directRows, error: directError }, { data: approvalRows, error: approvalError }] = await Promise.all([
-      supabase.from("campaigns").select("id").eq(column, recordId),
-      supabase.from("approval_items").select("campaign_id").eq(column, recordId),
+      applyCampaignScope(supabase.from("campaigns").select("id").eq(column, recordId), orgId, workspaceId),
+      applyOrgScope(supabase.from("approval_items").select("campaign_id").eq(column, recordId), orgId),
     ]);
     assertSupabaseResult("campaigns", directError);
     assertSupabaseResult("approval_items", approvalError);
@@ -2212,7 +2220,11 @@ export async function getCampaignsForRecord(
     );
     if (ids.length === 0) return [];
 
-    const { data, error } = await supabase.from("campaigns").select(CAMPAIGN_SELECT).in("id", ids).order("updated_at", { ascending: false });
+    const { data, error } = await applyCampaignScope(
+      supabase.from("campaigns").select(CAMPAIGN_SELECT).in("id", ids),
+      orgId,
+      workspaceId,
+    ).order("updated_at", { ascending: false });
     assertSupabaseResult("campaigns", error);
     const campaigns = (data ?? []) as CampaignRow[];
     const campaignIds = campaigns.map((campaign) => campaign.id);
@@ -2913,6 +2925,26 @@ export async function selectIn<T>(
 function applyOrgScope<Query>(query: Query, orgId?: string): Query {
   if (!orgId) return query;
   return (query as { eq(column: string, value: string): Query }).eq("org_id", orgId);
+}
+
+/**
+ * Scope a query on `campaigns` itself. Campaigns are workspace-owned (BSR-637)
+ * and `workspace_id` is NOT NULL as of BSR-639, so a campaign belongs to exactly
+ * one workspace and must not be listed in its siblings.
+ *
+ * `applyOrgScope` above still serves the campaign-*adjacent* tables — assets,
+ * approvals, events, outputs — which have no workspace column yet and gain one
+ * in a later slice of the boundary migration.
+ *
+ * A missing `workspaceId` degrades to org-only scoping rather than returning
+ * nothing, matching `applyOrgScope`. That path is real: the offline demo, open /
+ * operator auth mode, and service-role callers whose bearer token predates
+ * workspace scoping all legitimately arrive without one.
+ */
+function applyCampaignScope<Query>(query: Query, orgId?: string, workspaceId?: string | null): Query {
+  const scoped = applyOrgScope(query, orgId);
+  if (!workspaceId) return scoped;
+  return (scoped as { eq(column: string, value: string): Query }).eq("workspace_id", workspaceId);
 }
 
 function collectRelatedIds(campaign: CampaignRow, approvals: ApprovalItemRow[]) {

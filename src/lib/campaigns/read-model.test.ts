@@ -818,3 +818,55 @@ describe("getCampaignWorkspaceDetail claims-review state", () => {
     expect(asset.claimsReviewed).toBe(false);
   });
 });
+
+// BSR-639. Campaigns are workspace-owned (BSR-637), so a campaign must not be
+// listed outside the workspace that owns it. Before this, `campaigns.workspace_id`
+// existed, was nullable, and no read filtered on it — a campaign created in one
+// workspace appeared in every workspace of the org.
+describe("campaign reads are workspace-scoped", () => {
+  function eqCalls(supabase: { calls: Array<[string, ...unknown[]]> }) {
+    return supabase.calls.filter(([method]) => method === "eq").map(([, column, value]) => [column, value]);
+  }
+
+  it("filters listCampaignNames on the workspace as well as the org", async () => {
+    const supabase = createSupabaseQueryMock({ campaigns: { data: [], error: null } });
+
+    await listCampaignNames("org-1", supabase, "workspace-1");
+
+    expect(eqCalls(supabase)).toEqual(
+      expect.arrayContaining([
+        ["org_id", "org-1"],
+        ["workspace_id", "workspace-1"],
+      ]),
+    );
+  });
+
+  it("filters the campaign list on the workspace as well as the org", async () => {
+    const supabase = createSupabaseQueryMock({
+      campaigns: { data: [], error: null },
+      campaign_assets: { data: [], error: null },
+      approval_items: { data: [], error: null },
+    });
+
+    await getCampaignWorkspaceList(supabase, "Arc", "org-1", "workspace-1");
+
+    expect(eqCalls(supabase)).toEqual(
+      expect.arrayContaining([
+        ["org_id", "org-1"],
+        ["workspace_id", "workspace-1"],
+      ]),
+    );
+  });
+
+  it("degrades to org-only scoping when no workspace is resolved, rather than returning nothing", async () => {
+    // Real paths arrive without a workspace: the offline demo, open/operator auth
+    // mode, and bearer tokens issued before workspace scoping. Those must keep
+    // working — silently returning an empty list would read as data loss.
+    const supabase = createSupabaseQueryMock({ campaigns: { data: [], error: null } });
+
+    await listCampaignNames("org-1", supabase);
+
+    expect(eqCalls(supabase)).toContainEqual(["org_id", "org-1"]);
+    expect(eqCalls(supabase).some(([column]) => column === "workspace_id")).toBe(false);
+  });
+});

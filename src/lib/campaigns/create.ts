@@ -129,7 +129,7 @@ export async function createOperatorCampaign({
   const now = new Date().toISOString();
 
   const campaignId = await insertOne(client, "campaigns", {
-    ...orgTenantFields(tenant),
+    ...campaignTenantFields(tenant),
     name: draft.name,
     persona: draft.persona,
     campaign_theme: draft.campaignTheme,
@@ -250,7 +250,7 @@ export async function createCampaignFromOpportunity(
   const legacyRestorationFocus = normalizeRestorationFocus(input.restorationFocus);
 
   const campaignId = await insertOne(client, "campaigns", {
-    ...orgTenantFields(input.tenant),
+    ...campaignTenantFields(input.tenant),
     name: input.name,
     persona: input.persona,
     campaign_theme: campaignTheme,
@@ -320,7 +320,7 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
   // enum type, so a free-text theme must never be written into it.
   const legacyRestorationFocus = normalizeRestorationFocus(input.restorationFocus);
   const campaignId = await insertOne(client, "campaigns", {
-    ...orgTenantFields(input.tenant),
+    ...campaignTenantFields(input.tenant),
     name: input.name,
     persona: input.persona,
     campaign_theme: campaignTheme,
@@ -589,4 +589,22 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
 
 function orgTenantFields(tenant?: AgentTaskTenantFields): Record<string, string> {
   return tenant ? { org_id: tenant.org_id } : {};
+}
+
+/**
+ * Tenant fields for the `campaigns` table specifically. Campaigns are
+ * workspace-owned (BSR-637) and `workspace_id` is NOT NULL as of BSR-639, unlike
+ * the org-only tables `orgTenantFields` above still serves — those gain their
+ * workspace column in a later slice, and stamping one they don't have would
+ * break the insert.
+ *
+ * Throws rather than writing a partial tenant: a campaign whose workspace we
+ * can't name is the bug this ticket removes, and a named error here beats a
+ * not-null constraint violation surfacing from Postgres three frames away.
+ */
+function campaignTenantFields(tenant?: AgentTaskTenantFields): { org_id: string; workspace_id: string } {
+  if (!tenant?.org_id || !tenant?.workspace_id) {
+    throw new Error("Cannot create a campaign without a resolved org and workspace.");
+  }
+  return { org_id: tenant.org_id, workspace_id: tenant.workspace_id };
 }

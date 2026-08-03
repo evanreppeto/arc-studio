@@ -47,7 +47,7 @@ export default async function ArcPage({
     // Cheap here: getWorkspaceSummary is request-cached and the nav rail already
     // computes it, so this is a cache hit. Best-effort — no summary just hides the
     // launcher's "waiting on you" strip.
-    ctx?.orgId ? getWorkspaceSummary(ctx.orgId).catch(() => null) : Promise.resolve(null),
+    ctx?.orgId ? getWorkspaceSummary(ctx.orgId, "Arc", ctx.workspaceId).catch(() => null) : Promise.resolve(null),
     getSettingsConnectorsView().catch(() => ({ configured: false, connectors: [] })),
     getEmailConnection().catch(() => null),
     getInstalledArcSkillKeys(ctx?.orgId).catch(() => []),
