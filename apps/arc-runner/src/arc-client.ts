@@ -176,7 +176,33 @@ export function createArcClient(config: Config, identity?: WakeTenantIdentity) {
     }
   }
 
-  return { apiGet, apiPost, apiPut, postChatReply, postStep, postChatChunk, postChatThinking, postUsage };
+  /**
+   * Claim a queued task (queued -> running) before working it.
+   *
+   * Returns false when the app answers 409 — another worker already owns this
+   * task — so the caller can drop the duplicate instead of running the same
+   * instruction twice. Every other failure throws, because "we could not claim"
+   * for any other reason must not be mistaken for "someone else has it".
+   *
+   * Claiming is what makes a `queued` row mean "never started". Without it, a
+   * task that is mid-run and a task whose wake was dropped are indistinguishable
+   * in the database, and nothing downstream can safely re-dispatch either one.
+   */
+  async function claimTask(agentTaskId: string): Promise<boolean> {
+    const res = await fetch(`${config.appApiBaseUrl}/api/v1/arc/tasks/${agentTaskId}/claim`, {
+      method: "POST",
+      headers,
+      body: "{}",
+    });
+    if (res.status === 409) return false;
+    if (!res.ok) {
+      const json = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(`POST /api/v1/arc/tasks/${agentTaskId}/claim -> ${res.status} ${json?.message ?? ""}`.trim());
+    }
+    return true;
+  }
+
+  return { apiGet, apiPost, apiPut, claimTask, postChatReply, postStep, postChatChunk, postChatThinking, postUsage };
 }
 
 export type ArcClient = ReturnType<typeof createArcClient>;
