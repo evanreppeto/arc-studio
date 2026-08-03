@@ -11,7 +11,7 @@
 .arc-studio .cxt .ci svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-studio .cxt .cl { font-size: 9px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; line-height: 1; }
 .arc-studio .cxt .cn { font-size: 12.5px; font-weight: 600; line-height: 1.25; margin-top: 2px; white-space: nowrap; }
-.arc-studio .cxt .cmeta { font-family: var(--mono); font-size: 9.5px; color: var(--accent); margin-top: 1px; }
+.arc-studio .cxt .cmeta { font-size: 10.5px; line-height: 1.4; color: var(--accent); margin-top: 2px; }
 .arc-studio .cxt .cv { color: var(--muted); font-size: 11px; margin-left: 3px; }
 .arc-studio .proj { font-size: 12px; color: var(--text-2); font-weight: 500; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .arc-studio .proj .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
@@ -69,7 +69,7 @@
 
 /* stage */
 .arc-studio .stage { min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--canvas); }
-.arc-studio .toolbar { display: flex; align-items: center; gap: 5px; padding: 9px 14px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+.arc-studio .toolbar { display: flex; align-items: center; flex-wrap: wrap; row-gap: 7px; gap: 5px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
 .arc-studio .tgrp { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .arc-studio .tglabel { font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; padding: 0 5px 0 2px; flex-shrink: 0; }
 .arc-studio .tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 54px; height: 46px; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; color: var(--text-2); cursor: pointer; transition: 0.13s; flex-shrink: 0; position: relative; }
@@ -162,7 +162,7 @@
 .arc-studio .brief { border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, var(--accent-soft), transparent 70%); padding: 13px; margin-bottom: 20px; }
 .arc-studio .brief .bh { display: flex; align-items: center; gap: 8px; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: var(--accent-contrast); text-transform: uppercase; }
 .arc-studio .brief .bn { font-family: var(--serif); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 7px 0 3px; }
-.arc-studio .brief .bmeta { font-family: var(--mono); font-size: 9.5px; color: var(--accent); }
+.arc-studio .brief .bmeta { font-size: 10.5px; line-height: 1.45; color: var(--accent); }
 .arc-studio .brief .brow { margin-top: 10px; font-size: 11px; color: var(--text-2); line-height: 1.5; }
 .arc-studio .brief .brow b { color: var(--text); font-weight: 600; }
 .arc-studio .bchips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
