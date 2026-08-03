@@ -981,7 +981,7 @@ function ThreadDrawer({
           <button type="button" className={threadGrouping === "campaign" ? "is-active" : ""} aria-pressed={threadGrouping === "campaign"} onClick={() => setThreadGrouping("campaign")}><Megaphone size={12} /> Campaigns</button>
         </div>
         {needsReviewCount > 0 || runningCount > 0 ? <div className="arc-history-attention">
-          {needsReviewCount > 0 ? <button type="button" onClick={onOpenReview}><span><ClipboardCheck size={15} /><b>{needsReviewCount} need review</b></span><ArrowRight size={14} /></button> : null}
+          {needsReviewCount > 0 ? <button type="button" onClick={onOpenReview}><span><ClipboardCheck size={15} /><b>{needsReviewCount} need you</b></span><ArrowRight size={14} /></button> : null}
           {runningCount > 0 ? <span><LoaderCircle size={14} className="is-spinning" />{runningCount} active {runningCount === 1 ? "run" : "runs"}</span> : null}
         </div> : null}
         <div className="arc-history-list" onKeyDown={handleRovingListKeyDown}>
@@ -2259,7 +2259,7 @@ export function ArcView({
         <button type="button" ref={historyButtonRef} className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-expanded={historyOpen} aria-haspopup="dialog" aria-label="Open conversations"><MessagesSquare size={17} /><span>Conversations</span></button>
         <div className="arc-conversation-title"><h2>{header.title}</h2><p>{header.subtitle}</p></div>
         <div className="arc-conversation-actions">
-          {needsReviewCards.length > 0 ? <button type="button" className="arc-header-attention" aria-label={`${needsReviewCards.length} items need review`} onClick={() => openReview(needsReviewCards)}><ClipboardCheck size={15} /><span>{needsReviewCards.length} need review</span></button> : null}
+          {needsReviewCards.length > 0 ? <button type="button" className="arc-header-attention" aria-label={`${needsReviewCards.length} items need you`} onClick={() => openReview(needsReviewCards)}><ClipboardCheck size={15} /><span>{needsReviewCards.length} need you</span></button> : null}
           <button type="button" onClick={() => setShareOpen(true)} disabled={!visibleConversationId} title={!visibleConversationId ? "Start a real conversation before sharing" : "Share conversation"}><Share2 size={15} /> Share</button>
           <button type="button" className="arc-header-work" aria-expanded={panelVisible} aria-label={panelVisible ? "Close conversation workspace" : "Open conversation workspace"} onClick={() => setWorkPanelVisibility(!panelVisible)}>{panelVisible ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}<span>Workspace</span></button>
         </div>
