@@ -1,3 +1,4 @@
+import { toWorkState, WORK_STATE_LABEL } from "@/domain";
 import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
@@ -240,7 +241,7 @@ function buildDemoApprovalCards(filter: ApprovalQueueFilter = {}): ApprovalCard[
         title: deliverable.title,
         previewText: campaign.previewText ?? deliverable.title,
         status: "pending_approval",
-        statusLabel: "Pending approval",
+        statusLabel: WORK_STATE_LABEL.needs_you,
         riskLevel: "low",
         persona: campaign.persona,
         channel: campaign.previewLabel ?? deliverable.kind,
@@ -946,12 +947,12 @@ function buildEvidence(leadMetadata: JsonObject, sourceData: JsonObject, structu
   return [...evidence];
 }
 
+/** The stored status in the product's one vocabulary — see the twin in
+ *  `campaigns/read-model.ts`. Approval items and campaign assets describe the
+ *  same decision, so they must not describe it in different words. */
 function statusLabel(status: string) {
-  if (status === "pending_owner_approval") return "Pending owner approval";
-  if (status === "pending_approval") return "Pending approval";
-  if (status === "needs_compliance") return "Needs compliance";
-  if (status === "revision_requested") return "Revision requested";
-  return humanize(status);
+  if (status === "needs_compliance") return "Blocked by a rule";
+  return WORK_STATE_LABEL[toWorkState(status)];
 }
 
 function humanize(value: string) {
