@@ -7,6 +7,7 @@ import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { canonicalIndustryKey } from "@/lib/product-language";
 
 import { classify } from "./classify";
+import { extraEvidenceRows } from "./evidence";
 import { OpportunityInbox, type OpportunityVM } from "./_components/opportunity-inbox";
 
 export const metadata = { title: "Opportunities — Arc Studio" };
@@ -143,6 +144,10 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
   if (Array.isArray(ev.evidence_urls) && ev.evidence_urls.length) {
     evidence.push({ label: "Sources", value: `${ev.evidence_urls.length} reference link${ev.evidence_urls.length === 1 ? "" : "s"}` });
   }
+  // The rows above cover the deterministic detectors, whose keys are fixed. Arc's
+  // generative scan names its own key per finding, so anything unclaimed gets a
+  // generic row — otherwise the evidence that justifies the card dies in the jsonb.
+  evidence.push(...extraEvidenceRows(ev));
 
   const impact: OpportunityVM["impact"] = [
     { label: "Urgency", value: urgencyLabel },
