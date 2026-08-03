@@ -7,6 +7,7 @@ import { type ArcBusinessContext, deriveCampaignTheme, normalizeRestorationFocus
 import { getBusinessContext } from "../brand-kit/read-model";
 import { getCurrentOrgId } from "../auth/org";
 import { getCurrentAgentTaskTenantFields, type AgentTaskTenantFields } from "../agent-tasks/scope";
+import { orgScopeFields, workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 export type ArcRunResult = {
   runId: string;
@@ -95,7 +96,7 @@ export async function runArcPartnerCampaign(
     },
   }, tenant));
 
-  const campaignId = await insertOne(client, "campaigns", withOrg({
+  const campaignId = await insertOne(client, "campaigns", withWorkspace({
     name: `${draft.campaignName} ${runId}`,
     persona: request.persona,
     // `campaigns_campaign_theme_length` rejects an empty string, so fall back to
@@ -159,7 +160,7 @@ export async function runArcPartnerCampaign(
     },
   }, tenant));
 
-  const campaignAssetId = await insertOne(client, "campaign_assets", withOrg({
+  const campaignAssetId = await insertOne(client, "campaign_assets", withWorkspace({
     campaign_id: campaignId,
     asset_type: request.channel === "call_script" ? "script" : request.channel,
     channel: request.channel,
@@ -190,7 +191,7 @@ export async function runArcPartnerCampaign(
     tenant,
   });
 
-  const approvalItemId = await insertOne(client, "approval_items", withOrg({
+  const approvalItemId = await insertOne(client, "approval_items", withWorkspace({
     campaign_id: campaignId,
     campaign_asset_id: campaignAssetId,
     company_id: companyId,
@@ -254,7 +255,7 @@ export async function runArcPartnerCampaign(
     },
   }, taskTenant));
 
-  const agentOutputId = await insertOne(client, "agent_outputs", withOrg({
+  const agentOutputId = await insertOne(client, "agent_outputs", withWorkspace({
     task_id: agentTaskId,
     approval_item_id: approvalItemId,
     campaign_asset_id: campaignAssetId,
@@ -298,7 +299,7 @@ export async function runArcPartnerCampaign(
     },
   }, taskTenant));
 
-  await insertOne(client, "campaign_events", withOrg({
+  await insertOne(client, "campaign_events", withWorkspace({
     campaign_id: campaignId,
     campaign_asset_id: campaignAssetId,
     approval_item_id: approvalItemId,
@@ -420,7 +421,7 @@ async function insertCreativeAssets(
   for (const [index, creative] of input.creativeAssets.entries()) {
     const title = creative.title ?? defaultCreativeTitle(creative.type);
 
-    await insertOne(client, "campaign_assets", withOrg({
+    await insertOne(client, "campaign_assets", withWorkspace({
       campaign_id: input.campaignId,
       asset_type: CREATIVE_ASSET_TYPE[creative.type],
       channel: creative.type,
@@ -478,6 +479,24 @@ async function updateById(
   }
 }
 
-function withOrg(values: Record<string, unknown>, tenant?: Pick<AgentTaskTenantFields, "org_id">) {
-  return tenant ? { ...values, org_id: tenant.org_id } : values;
+/**
+ * Org-only tenancy, for the tables that genuinely have no workspace column:
+ * companies / contacts / leads (org-owned by the BSR-637 boundary), plus
+ * persona_snapshots, agent_task_inputs and agent_run_logs until Waves 2-3 give
+ * them one. Delegates to the shared helper rather than being a ninth private copy.
+ */
+function withOrg(values: Record<string, unknown>, tenant?: AgentTaskTenantFields) {
+  return { ...values, ...orgScopeFields(tenant) };
+}
+
+/**
+ * Workspace tenancy, for the tables that carry a workspace_id (BSR-710).
+ *
+ * `campaigns.workspace_id` has been NOT NULL since BSR-639 — writing through
+ * withOrg here did not merely miss a column, it made this orchestrator unable to
+ * create a campaign at all. That is why this throws on a missing tenant: a named
+ * error beats a not-null violation surfacing from Postgres.
+ */
+function withWorkspace(values: Record<string, unknown>, tenant?: AgentTaskTenantFields) {
+  return { ...values, ...workspaceScopeFields(tenant) };
 }
