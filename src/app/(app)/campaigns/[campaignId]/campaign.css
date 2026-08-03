@@ -85,7 +85,7 @@
 .arc-campaign .dfind q { color: var(--text); font-style: italic; }
 
 .arc-campaign .dctrls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.arc-campaign .cbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; transition: 0.15s var(--ease); }
+.arc-campaign .cbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; text-decoration: none; transition: 0.15s var(--ease); }
 .arc-campaign .cbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-campaign .cbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
 .arc-campaign .cbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
@@ -116,7 +116,14 @@
 
 /* Media tiles */
 .arc-campaign .mediagrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 12px; }
-.arc-campaign .mediatile { position: relative; aspect-ratio: 4 / 3; border-radius: 9px; border: 1px solid var(--line-2); background-color: var(--inset); background-size: cover; background-position: center; overflow: hidden; }
+.arc-campaign .mediatile { position: relative; display: block; width: 100%; padding: 0; text-align: left; aspect-ratio: 4 / 3; border-radius: 9px; border: 1px solid var(--line-2); background-color: var(--inset); overflow: hidden; cursor: pointer; transition: border-color 0.14s var(--ease); }
+.arc-campaign .mediatile:hover { border-color: var(--accent-border); }
+.arc-campaign .mediatile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arc-campaign .mediatile .mtimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Zoom affordance: the tile used to look like a picture, not a control. */
+.arc-campaign .mediatile .mtzoom { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: rgba(20, 20, 24, 0.66); opacity: 0; transition: opacity 0.14s var(--ease); }
+.arc-campaign .mediatile:hover .mtzoom, .arc-campaign .mediatile:focus-visible .mtzoom { opacity: 1; }
+.arc-campaign .mediatile .mtzoom svg { width: 12px; height: 12px; stroke: #ecebe6; fill: none; stroke-width: 1.9; }
 .arc-campaign .mediatile .mtscrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 10, 12, 0.05), rgba(10, 10, 12, 0.62)); }
 .arc-campaign .mediatile .mtbadge { position: absolute; top: 6px; left: 6px; font-family: var(--mono); font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 4px; padding: 2px 5px; }
 .arc-campaign .mediatile .mtbadge.ai { color: #201808; background: var(--accent); }
@@ -333,6 +340,33 @@
 .extsend .exdone { color: var(--ok-text); }
 .extsend .exmarkrow { display: flex; gap: 8px; margin-top: 8px; }
 .extsend .exinput { flex: 1; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text); font-size: 12px; padding: 8px 10px; }
+
+/* Full-size media preview (the tile lightbox). Rides the shared .modal-* card,
+   so only the stage and the provenance list are defined here. */
+.arc-campaign .lbstage { display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--line-2); background: var(--canvas-deep, #101013); padding: 10px; margin-bottom: 14px; }
+/* contain, never cover — the 4:3 tile crops, the full-size view must not. */
+.arc-campaign .lbimg { display: block; max-width: 100%; max-height: min(58vh, 620px); object-fit: contain; border-radius: 6px; }
+.arc-campaign .lbnoprev { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.arc-campaign .lbfail { margin: 0; padding: 24px 12px; font-size: 12px; line-height: 1.55; color: var(--muted); text-align: center; max-width: 46ch; }
+.arc-campaign .lbmeta { margin: 0; display: flex; flex-direction: column; }
+.arc-campaign .lbrow { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line-2); }
+.arc-campaign .lbrow:first-child { border-top: 0; }
+.arc-campaign .lbrow dt { flex-shrink: 0; width: 108px; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+.arc-campaign .lbrow dd { margin: 0; min-width: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); overflow-wrap: anywhere; }
+.arc-campaign .lbsec { margin-top: 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px 12px; }
+.arc-campaign .lbsec b { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.arc-campaign .lbprompt p { margin: 0; font-family: var(--mono); font-size: 11px; line-height: 1.55; color: var(--text-2); overflow-wrap: anywhere; }
+/* Same lineage read as the Library card: the tuple's first value is a dot
+   colour, not a label. */
+.arc-campaign .lblineage { display: flex; flex-direction: column; gap: 7px; }
+.arc-campaign .lbstep { display: flex; gap: 9px; font-size: 12px; line-height: 1.45; color: var(--text-2); }
+.arc-campaign .lbdot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; background: var(--muted); }
+.arc-campaign .lbdot.pv-real { background: var(--ok); }
+.arc-campaign .lbdot.pv-ai { background: var(--accent); }
+.arc-campaign .lbdot.pv-comp { background: var(--vio, #9678c8); }
+.arc-campaign .lbdot.pv-upload { background: var(--blue); }
+.arc-campaign .lbstepper { display: flex; align-items: center; gap: 8px; margin-right: auto; }
+.arc-campaign .lbcount { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 
 /* This sheet was the one route stylesheet with motion and no reduced-motion
    escape. Everything here is a short colour transition except `.perflearn-cta`,
