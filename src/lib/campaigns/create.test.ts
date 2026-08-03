@@ -151,7 +151,9 @@ describe("createOperatorCampaign", () => {
 
     await expect(
       createOperatorCampaign({ draft, operator: "evan@test", photos: [], client: supabase, uploader: vi.fn() }),
-    ).rejects.toThrow(/without a resolved org and workspace/);
+    // Message now comes from the shared workspaceScopeFields helper (BSR-710),
+    // which replaced seven local copies of the org-only tenant builder.
+    ).rejects.toThrow(/workspace-owned and needs a resolved org and workspace/);
 
     // And it fails before writing, rather than leaving a half-created campaign.
     expect(insertsFor(supabase, "campaigns")).toHaveLength(0);

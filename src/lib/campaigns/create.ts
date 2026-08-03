@@ -8,6 +8,7 @@ import { syncCampaignRecordToBrain } from "../brain-ingestion/sync";
 import { deferAfterResponse } from "../defer";
 import { checkArcGeneratedCopy } from "../arc/guardrails";
 import { getBusinessProfile } from "../brand-kit/persistence";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 /** Mirror a freshly created/updated campaign into the Brain. Best-effort and
  *  awaited (serverless can kill post-response work) — a sync hiccup must never
@@ -58,7 +59,7 @@ export async function insertPhotoAsset({ client, campaignId, operator, photo, in
   const url = await uploader(path, photo.bytes, photo.contentType);
 
   const assetId = await insertOne(client, "campaign_assets", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     asset_type: "social_ad",
     channel,
@@ -72,7 +73,7 @@ export async function insertPhotoAsset({ client, campaignId, operator, photo, in
   });
 
   const approvalItemId = await insertOne(client, "approval_items", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     campaign_asset_id: assetId,
     item_type: "campaign_asset",
@@ -86,7 +87,7 @@ export async function insertPhotoAsset({ client, campaignId, operator, photo, in
   });
 
   await insertNoReturn(client, "approval_decisions", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     approval_item_id: approvalItemId,
     decision: "approved",
     decided_by: operator,
@@ -129,7 +130,7 @@ export async function createOperatorCampaign({
   const now = new Date().toISOString();
 
   const campaignId = await insertOne(client, "campaigns", {
-    ...campaignTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     name: draft.name,
     persona: draft.persona,
     campaign_theme: draft.campaignTheme,
@@ -154,7 +155,7 @@ export async function createOperatorCampaign({
   }
 
   await insertNoReturn(client, "campaign_events", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     event_type: "created",
     actor: operator,
@@ -250,7 +251,7 @@ export async function createCampaignFromOpportunity(
   const legacyRestorationFocus = normalizeRestorationFocus(input.restorationFocus);
 
   const campaignId = await insertOne(client, "campaigns", {
-    ...campaignTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     name: input.name,
     persona: input.persona,
     campaign_theme: campaignTheme,
@@ -278,7 +279,7 @@ export async function createCampaignFromOpportunity(
   });
 
   await insertNoReturn(client, "campaign_events", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: campaignId,
     event_type: "created",
     actor: input.operator,
@@ -320,7 +321,7 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
   // enum type, so a free-text theme must never be written into it.
   const legacyRestorationFocus = normalizeRestorationFocus(input.restorationFocus);
   const campaignId = await insertOne(client, "campaigns", {
-    ...campaignTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     name: input.name,
     persona: input.persona,
     campaign_theme: campaignTheme,
@@ -331,7 +332,7 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
     source_system: "arc_saved",
   });
   await insertNoReturn(client, "campaign_events", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: campaignId,
     event_type: "created",
     actor: input.operator,
@@ -543,7 +544,7 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
       }
     : null;
   const assetId = await insertOne(client, "campaign_assets", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: input.campaignId,
     asset_type: input.assetType,
     // Derived, never omitted: the dispatch enqueue keys off `channel`, so an
@@ -565,7 +566,7 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
     },
   });
   await insertNoReturn(client, "approval_items", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: input.campaignId,
     campaign_asset_id: assetId,
     item_type: "campaign_asset",
@@ -577,7 +578,7 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
     ...(screen.complianceNotes ? { compliance_notes: screen.complianceNotes } : {}),
   });
   await insertNoReturn(client, "campaign_events", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: input.campaignId,
     campaign_asset_id: assetId,
     event_type: "asset_generated",
@@ -587,24 +588,4 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
   return { assetId };
 }
 
-function orgTenantFields(tenant?: AgentTaskTenantFields): Record<string, string> {
-  return tenant ? { org_id: tenant.org_id } : {};
-}
 
-/**
- * Tenant fields for the `campaigns` table specifically. Campaigns are
- * workspace-owned (BSR-637) and `workspace_id` is NOT NULL as of BSR-639, unlike
- * the org-only tables `orgTenantFields` above still serves — those gain their
- * workspace column in a later slice, and stamping one they don't have would
- * break the insert.
- *
- * Throws rather than writing a partial tenant: a campaign whose workspace we
- * can't name is the bug this ticket removes, and a named error here beats a
- * not-null constraint violation surfacing from Postgres three frames away.
- */
-function campaignTenantFields(tenant?: AgentTaskTenantFields): { org_id: string; workspace_id: string } {
-  if (!tenant?.org_id || !tenant?.workspace_id) {
-    throw new Error("Cannot create a campaign without a resolved org and workspace.");
-  }
-  return { org_id: tenant.org_id, workspace_id: tenant.workspace_id };
-}

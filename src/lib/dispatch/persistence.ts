@@ -4,6 +4,7 @@ import { resolveCampaignAudience, type AudienceChannel, type AudienceContact } f
 import { type AgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 
 import { DISPATCH_STATUS_ORDER, type DispatchStatus } from "./status";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 const EVENT_FOR_STATUS: Partial<Record<DispatchStatus, string>> = {
   queued: "dispatch_queued",
@@ -191,7 +192,7 @@ type InsertArgs = {
 
 async function insertDispatchRow(client: SupabaseClient, args: InsertArgs): Promise<void> {
   const { error } = await client.from("campaign_dispatches").insert({
-    ...orgTenantFields(args.tenant),
+    ...workspaceScopeFields(args.tenant),
     campaign_id: args.campaignId,
     campaign_asset_id: args.asset.id,
     channel: args.asset.channel,
@@ -213,7 +214,7 @@ async function logAssetEnqueueEvent(
   const { tenant, campaignId, asset, scheduled, scheduledFor, operator, detailExtra } = args;
   const baseDetail = scheduled ? `Scheduled "${asset.title}" for ${scheduledFor}.` : `Queued "${asset.title}" for dispatch.`;
   const { error } = await client.from("campaign_events").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     campaign_asset_id: asset.id,
     event_type: scheduled ? "dispatch_scheduled" : "dispatch_queued",
@@ -290,7 +291,7 @@ export async function transitionDispatch(input: TransitionInput, client: Supabas
   const eventType = EVENT_FOR_STATUS[to];
   if (eventType) {
     const { error: eventError } = await client.from("campaign_events").insert({
-      ...orgTenantFields(tenant),
+      ...workspaceScopeFields(tenant),
       campaign_id: existing.campaign_id,
       event_type: eventType,
       actor: operator,
@@ -306,6 +307,3 @@ function applyOrgScope<Query>(query: Query, tenant?: AgentTaskTenantFields): Que
   return (query as { eq(column: string, value: string): Query }).eq("org_id", tenant.org_id);
 }
 
-function orgTenantFields(tenant?: AgentTaskTenantFields): Record<string, string> {
-  return tenant ? { org_id: tenant.org_id } : {};
-}
