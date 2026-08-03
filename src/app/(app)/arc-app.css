@@ -108,7 +108,12 @@
   background: var(--canvas); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 
-  & .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100vh; overflow: hidden; }
+  /* 100dvh, not 100vh: on a mobile browser 100vh is the viewport with the
+     address bar *retracted*, so the box is taller than what you can see. Paired
+     with `overflow: hidden` that clips the bottom strip with no way to reach it
+     — the same failure the <main> passthrough rule above fixes, phone-only. The
+     100vh line stays as the fallback for anything without dvh support. */
+  & .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
 
   /* Embedded in the mockup gallery's crossfade iframe: the host already renders
      the sidebar, so drop ours (otherwise the two rails stack — the double
@@ -1266,8 +1271,15 @@
 .arc-app .arc-brain .ft tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 /* per-fact archive control — revealed on row hover, sits in a trailing cell */
 .arc-app .arc-brain .ft td.factact { width: 34px; text-align: right; padding-left: 0; }
-.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity 0.14s, color 0.14s, border-color 0.14s; }
-.arc-app .arc-brain .ft tbody tr:hover .farch { opacity: 1; }
+.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: opacity 0.14s, color 0.14s, border-color 0.14s; }
+/* Reveal-on-hover, but only where hovering exists. A touch screen never hovers,
+   so hiding it there left an invisible control that still accepted taps — worse
+   than a visible one. Guarding the *hide* (rather than overriding it back to 1
+   later) keeps the desktop behaviour identical and needs no source-order luck. */
+@media (hover: hover) {
+  .arc-app .arc-brain .ft .farch { opacity: 0; }
+  .arc-app .arc-brain .ft tbody tr:hover .farch { opacity: 1; }
+}
 .arc-app .arc-brain .ft .farch:hover { color: var(--text); border-color: var(--line-2); background: var(--inset); }
 .arc-app .arc-brain .ft .farch:focus-visible { opacity: 1; }
 .arc-app .arc-brain .ft .farch:disabled { opacity: 0.4; cursor: default; }
@@ -2039,4 +2051,37 @@
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11.5px;
+}
+
+/* ---------------------------------------------------------------------------
+   Touch targets.
+
+   The icon buttons are sized for a mouse — 26–32px squares. On a phone that is
+   a miss-tap, and they are dense enough that the wrong one is easy to hit. This
+   raises them to the 44px WCAG 2.5.5 target size for COARSE POINTERS ONLY, so
+   the desktop density the layouts are built around is untouched. The wide-but-
+   short controls (tabs, chips, ~30-40px tall but 60px+ wide) are left alone:
+   they clear the 24px WCAG 2.5.8 floor and inflating them would wreck the
+   layouts they sit in.
+
+   Brain's archive button needed one more fix — it was invisible on touch, not
+   just small — but that lives with its own rule above, under `(hover: hover)`.
+   ------------------------------------------------------------------------ */
+@media (pointer: coarse) {
+  .arc-app .iconf,
+  .arc-app .pager .pgbtn,
+  .arc-app .arc-brain .ft .farch {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
+    border-radius: 10px;
+  }
+
+  .arc-app .iconf svg,
+  .arc-app .pager .pgbtn svg,
+  .arc-app .arc-brain .ft .farch svg {
+    width: 18px;
+    height: 18px;
+  }
 }
