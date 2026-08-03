@@ -580,7 +580,13 @@ export async function setArcMessageFeedbackAction(input: {
 }
 
 export type ArcDraftDecisionResult =
-  | { ok: true; persisted: boolean; status?: string }
+  | {
+      ok: true;
+      persisted: boolean;
+      status?: string;
+      /** Revision requests only — false when Arc has not actually started (see BSR-695). */
+      dispatched?: boolean;
+    }
   | { ok: false; error: string };
 
 const DRAFT_DECISIONS: ReadonlySet<string> = new Set(["approved", "declined"]);
@@ -697,9 +703,14 @@ export async function requestArcDraftRevisionAction(input: {
 
   try {
     const operator = await getOperatorActor();
-    await requestAssetRevision({ campaignId: input.campaignId, assetId: input.assetId, instruction: cleaned, operator });
+    const { dispatched } = await requestAssetRevision({
+      campaignId: input.campaignId,
+      assetId: input.assetId,
+      instruction: cleaned,
+      operator,
+    });
     revalidatePath("/arc");
-    return { ok: true, persisted: true, status: "revision_requested" };
+    return { ok: true, persisted: true, status: "revision_requested", dispatched };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Couldn't request that revision." };
   }

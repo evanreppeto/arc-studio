@@ -75,6 +75,8 @@ export type ArcCampaignTaskPayload = ArcSkillSelection & WakeTenantIdentity & {
   type: "arc_campaign_task";
   agentTaskId: string;
   campaignId: string;
+  /** Set only for `campaign_asset_revision` — the asset the operator asked to change. */
+  assetId?: string | null;
   conversationId: string | null;
   message: string;
   operator: string;
