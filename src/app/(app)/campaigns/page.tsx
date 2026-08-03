@@ -101,6 +101,11 @@ function toRow(item: CampaignWorkspaceListItem): CampaignRow {
     updatedRel: relativeTime(item.updatedAtIso) || item.updatedAt,
     updatedAbs: formatAbs(item.updatedAtIso),
     href: item.href,
+    // The read-model has computed these all along; the board simply never
+    // asked for them, so a package with three approved images rendered
+    // identically to an empty one.
+    thumbnailUrl: item.thumbnailUrl,
+    mediaCount: item.mediaCount,
   };
 }
 

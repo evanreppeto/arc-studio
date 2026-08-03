@@ -26,6 +26,11 @@ export type CampaignRow = {
   updatedRel: string;
   updatedAbs: string;
   href: string;
+  /** Cover image for the row — first attached image, else a video poster.
+   *  Null when the package has no visual creative. */
+  thumbnailUrl: string | null;
+  /** How many media assets the package carries, thumbnail included. */
+  mediaCount: number;
 };
 
 const CampIcon = (
@@ -91,7 +96,36 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
     updatedRel: "now",
     updatedAbs: "",
     href: `/campaigns/${id}`,
+    // A package created seconds ago carries no creative yet, same reasoning as
+    // pendingCount above.
+    thumbnailUrl: null,
+    mediaCount: 0,
   };
+}
+
+/**
+ * The row's cover: the package's own creative when it has some, the generic
+ * campaign glyph when it doesn't. A campaign carrying three approved images
+ * used to be indistinguishable from an empty one on this board.
+ */
+function CampaignAvatar({ thumbnailUrl, mediaCount }: { thumbnailUrl: string | null; mediaCount: number }) {
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(thumbnailUrl) && !failed;
+  return (
+    <span className={`pav${showImage ? " hasthumb" : ""}`}>
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+        <img className="pavimg" src={thumbnailUrl as string} alt="" loading="lazy" onError={() => setFailed(true)} />
+      ) : (
+        CampIcon
+      )}
+      {mediaCount > 1 && (
+        <span className="pavn" title={`${mediaCount} creative assets`}>
+          {mediaCount}
+        </span>
+      )}
+    </span>
+  );
 }
 
 export function CampaignsBoard({
@@ -308,13 +342,13 @@ export function CampaignsBoard({
                 >
                   <td>
                     {r.id.startsWith("local-") ? <div className="pcell">
-                      <span className="pav">{CampIcon}</span>
+                      <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
                       <div style={{ minWidth: 0 }}>
                         <div className="pnm">{r.name}</div>
                         <div className="psub">{r.brief}</div>
                       </div>
                     </div> : <Link className="pcell campaign-link" href={r.href} aria-label={`Open ${r.name}`}>
-                      <span className="pav">{CampIcon}</span>
+                      <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
                       <div style={{ minWidth: 0 }}>
                         <div className="pnm">{r.name}</div>
                         <div className="psub">{r.brief}</div>
