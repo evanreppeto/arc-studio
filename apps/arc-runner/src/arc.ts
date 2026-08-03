@@ -795,6 +795,15 @@ export async function runArcCampaignTask(
     `Campaign task: ${payload.taskType}.`,
     `Work only on campaign_id "${payload.campaignId}". When creating campaign drafts, attach them to that campaign_id.`,
     "Create approval-gated draft assets only. Do not send, publish, launch, approve, unlock dispatch, or spend.",
+    // A revision names one asset. Without this the operator's instruction
+    // arrives scoped only to the campaign, and Arc has to guess which asset
+    // "add the logo" referred to as soon as the campaign holds more than one.
+    ...(payload.taskType === "campaign_asset_revision" && payload.assetId
+      ? [
+          "",
+          `This is a REVISION of the existing asset "${payload.assetId}". The operator's instruction below describes what to change about that asset specifically — read it first, keep everything they did not ask you to change, and produce the revised version as a new approval-gated draft on the same campaign. Do not start an unrelated concept from scratch.`,
+        ]
+      : []),
     "",
     payload.message,
   ].join("\n");
