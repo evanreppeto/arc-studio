@@ -59,6 +59,17 @@ select t.org_a, t.user_a, 'owner', 'active' from _t t
 union all
 select t.org_b, t.user_b, 'owner', 'active' from _t t;
 
+-- Workspace membership is now load-bearing, not decoration (BSR-639): campaigns
+-- are workspace-owned, so their policies key on is_workspace_member(workspace_id)
+-- rather than is_org_member(org_id). Org membership alone grants nothing here,
+-- which assertion 4 below pins down. The app always writes both rows together
+-- (user provisioning + workspace onboarding), and prod agrees — workspace member
+-- count equals org member count in every org.
+insert into public.workspace_memberships (org_id, workspace_id, user_id, role, status)
+select t.org_a, t.ws_a, t.user_a, 'owner', 'active' from _t t
+union all
+select t.org_b, t.ws_b, t.user_b, 'owner', 'active' from _t t;
+
 -- One row of tenant data on each side, in a table with real member policies.
 -- `persona` is NOT NULL and carries a check forbidding 'unassigned_persona'.
 insert into public.campaigns (id, org_id, workspace_id, name, persona)
@@ -134,6 +145,42 @@ begin
     raise exception 'A user who belongs to no org saw % campaigns', visible;
   end if;
   raise notice 'ok: a non-member sees nothing';
+end $$;
+
+-- ── Assertion 3b: org membership alone does not open a workspace ────────────
+-- The workspace axis, which nothing tested before BSR-639. Campaigns are
+-- workspace-owned, so a second user who belongs to tenant A's ORG but to none of
+-- its workspaces must see zero campaigns. Without this, the campaigns policy
+-- could silently regress to is_org_member() and assertions 1–3 would all still
+-- pass — the exact failure mode BSR-637 was written to close.
+
+do $$
+declare
+  org_only_user uuid := gen_random_uuid();
+  a_org uuid;
+  visible int;
+begin
+  select org_a into a_org from _t;
+
+  insert into auth.users (id, instance_id, aud, role, email, encrypted_password,
+                          email_confirmed_at, created_at, updated_at)
+  values (org_only_user, '00000000-0000-0000-0000-000000000000'::uuid, 'authenticated',
+          'authenticated', 'tenant-a-org-only@rls.test', '', now(), now(), now());
+
+  insert into public.organization_memberships (org_id, user_id, role, status)
+  values (a_org, org_only_user, 'member', 'active');
+
+  perform set_config('request.jwt.claim.sub', org_only_user::text, true);
+  set local role authenticated;
+  select count(*) into visible from public.campaigns;
+  reset role;
+
+  if visible <> 0 then
+    raise exception
+      'Org membership alone exposed % campaign(s) — the campaigns policy is keying on the org, not the workspace',
+      visible;
+  end if;
+  raise notice 'ok: org membership alone does not open a workspace';
 end $$;
 
 -- ── Assertion 4: writes are denied across the tenant boundary ───────────────
