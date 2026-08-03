@@ -1,4 +1,4 @@
-import { GoogleGenAI, PersonGeneration } from "@google/genai";
+import { GenerateVideosOperation, GoogleGenAI, PersonGeneration } from "@google/genai";
 import { randomUUID } from "node:crypto";
 
 import type { GeneratedMedia, ImageGenInput, MediaProvider, VideoGenInput, VideoStart, VideoPoll } from "./types";
@@ -19,19 +19,27 @@ const SUPPORTED_VIDEO_ASPECT = new Set(["16:9", "9:16"]);
 /**
  * Person generation policy for Veo.
  *
- * This used to be hardcoded to ALLOW_ADULT, which made EVERY video call fail
- * with a 400 — Veo 3.1 gates person generation behind a per-project allowlist
- * for projects created after 2026-07-22, and ours is not on it:
+ * This was hardcoded to ALLOW_ADULT, which made EVERY video call fail with a
+ * 400: "allow_adult for personGeneration is currently not supported."
  *
- *   "allow_adult for personGeneration is currently not supported."
+ * Probed against live veo-3.1-fast on 2026-08-03, ALL THREE values were tried
+ * and only one is accepted:
  *
- * Omitting the field does NOT help: the API default is itself allow_adult, so
- * it fails identically. DONT_ALLOW is the only value an un-allowlisted project
- * can use, so that is the default here — a video without people beats a video
- * that never renders. Once the project is allowlisted, set
- * GEMINI_VIDEO_PERSON_GENERATION=ALLOW_ADULT to lift it with no code change.
+ *   ALLOW_ADULT -> 400 rejected
+ *   DONT_ALLOW  -> 400 rejected ("dont_allow ... is currently not supported")
+ *   ALLOW_ALL   -> accepted, operation starts
+ *
+ * So this is not the documented allowlist story (which says allow_adult is the
+ * default and the restricted one) — on this model the enum is effectively
+ * single-valued. Hence ALLOW_ALL as the default: it is the only value that
+ * renders at all. NOTE the consequence — we cannot currently restrict person
+ * generation at the API level, so the human approval gate is the only control
+ * over who appears in a generated video.
+ *
+ * Override with GEMINI_VIDEO_PERSON_GENERATION if a future model revision
+ * accepts the stricter values, with no code change.
  */
-const DEFAULT_PERSON_GENERATION = "DONT_ALLOW";
+const DEFAULT_PERSON_GENERATION = "ALLOW_ALL";
 const PERSON_GENERATION_VALUES = new Set(Object.values(PersonGeneration) as string[]);
 
 /** Normalize a person-generation policy to a value the SDK enum accepts. */
@@ -126,9 +134,15 @@ export function createGeminiMediaProvider(
       return { operationName, model, jobId: randomUUID() };
     },
     async pollVideo(operationName: string): Promise<VideoPoll> {
-      const operation = await ai.operations.getVideosOperation({
-        operation: { name: operationName } as Awaited<ReturnType<typeof ai.models.generateVideos>>,
-      });
+      // The SDK calls `operation._fromAPIResponse(...)` on whatever it is handed,
+      // so it needs a REAL GenerateVideosOperation, not an object literal wearing
+      // its type. The old `as` cast satisfied the compiler and then threw
+      // "t._fromAPIResponse is not a function" on every single poll — start and
+      // poll are separate stateless HTTP requests here, so we cannot keep the
+      // instance the way the SDK's own example does; we rebuild it by name.
+      const handle = new GenerateVideosOperation();
+      handle.name = operationName;
+      const operation = await ai.operations.getVideosOperation({ operation: handle });
       if (!operation.done) return { status: "running" };
       const video = operation.response?.generatedVideos?.[0]?.video;
       if (!video) throw new Error("Veo finished but returned no video (it may have been safety-filtered)");
