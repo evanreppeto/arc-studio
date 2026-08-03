@@ -57,6 +57,16 @@ export type CampaignMediaAsset = {
   lineage: Array<[string, string]>;
   /** Generation prompt when the source tool declared one. */
   prompt: string | null;
+  /** Declared aspect ratio as the producer recorded it ("4:3", "9:16"). This is
+   *  the entry's own claim, not a measurement — `media_assets.width/height` are
+   *  unpopulated (BSR-652), so there is nothing to verify it against. Null when
+   *  the producer declared none. */
+  format: string | null;
+  /** Risk flags recorded against THIS asset ("privacy/redaction", embedded
+   *  text, claim risk). Distinct from the deliverable's guardrail notes: these
+   *  name the specific image. Empty when none were recorded — which is not the
+   *  same as reviewed-and-clean. */
+  riskFlags: string[];
 };
 
 /**
@@ -707,7 +717,7 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
 // identical to a populated DB view. No piece here is sendable.
 // ---------------------------------------------------------------------------
 
-type DemoMedia = { id: string; type: CampaignMediaAsset["type"]; title: string; seed: string; lineage?: Array<[string, string]>; prompt?: string };
+type DemoMedia = { id: string; type: CampaignMediaAsset["type"]; title: string; seed: string; lineage?: Array<[string, string]>; prompt?: string; format?: string; riskFlags?: string[] };
 
 type DemoPiece = {
   id: string;
@@ -782,6 +792,10 @@ function demoMedia(media: DemoMedia): CampaignMediaAsset {
     thumbnailUrl: `https://picsum.photos/seed/${media.seed}/240/160`,
     mimeType: media.type === "video" ? "video/mp4" : "image/jpeg",
     description: media.title,
+    // Demo media declares a ratio because real prod entries do; without one the
+    // offline preview could not exercise the tile's aspect handling at all.
+    format: media.format ?? "4:3",
+    riskFlags: media.riskFlags ?? [],
     lineage: media.lineage ?? [],
     prompt: media.prompt ?? null,
     source: "Approved media",
@@ -2451,6 +2465,8 @@ function buildPreviewCampaignPieces(updatedAt: string): CampaignWorkspaceAsset[]
           thumbnailUrl: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80",
           mimeType: "image/jpeg",
           description: "Demo preview image for a launch social creative.",
+          format: "16:9",
+          riskFlags: [],
           lineage: [
             ["ai", "Made in Higgsfield · seedream"],
             ["ai", "Source job · hf_20260722_0917"],
@@ -3210,7 +3226,27 @@ function mapMediaAsset(value: unknown, source: string, origin: CampaignMediaOrig
     virality,
     lineage: external.rows,
     prompt: external.prompt,
+    format: normalizeAspectRatio(getString(value.format) ?? getString(value.aspect_ratio) ?? getString(value.aspectRatio)),
+    riskFlags: asStringArray(value.risk_flags ?? value.riskFlags),
   });
+}
+
+/**
+ * Accept a declared aspect ratio only in the `w:h` shape the producers actually
+ * write ("4:3", "9:16"), with both sides positive and sane. Everything here
+ * arrives from a tool payload, and this string ends up in a CSS `aspect-ratio`
+ * — an unvalidated value would be free rein over the tile's geometry.
+ */
+function normalizeAspectRatio(value: string | null): string | null {
+  if (!value) return null;
+  const match = /^\s*(\d{1,4})\s*[:x/]\s*(\d{1,4})\s*$/i.exec(value);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!width || !height) return null;
+  // A ratio beyond 10:1 either way is a bad payload, not a real creative.
+  if (width / height > 10 || height / width > 10) return null;
+  return `${width}:${height}`;
 }
 
 /** Test-only alias so unit tests can reach the otherwise module-private mapper. */
@@ -3228,6 +3264,8 @@ function createMediaAsset(input: {
   virality?: ViralityScore | null;
   lineage?: Array<[string, string]>;
   prompt?: string | null;
+  format?: string | null;
+  riskFlags?: string[];
 }): CampaignMediaAsset {
   const type = classifyMediaAsset(input.url, input.mimeType, input.hintedType);
   return {
@@ -3243,6 +3281,8 @@ function createMediaAsset(input: {
     virality: input.virality ?? null,
     lineage: input.lineage ?? [],
     prompt: input.prompt ?? null,
+    format: input.format ?? null,
+    riskFlags: input.riskFlags ?? [],
   };
 }
 
