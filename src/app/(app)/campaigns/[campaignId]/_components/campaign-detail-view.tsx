@@ -11,6 +11,7 @@ import {
   type CampaignWorkspaceAssetCategory,
   type LiveCampaignWorkspace,
 } from "@/lib/campaigns/read-model";
+import { buildCampaignExport, buildDeliverableExport, exportSlug, isExportable } from "@/lib/campaigns/deliverable-export";
 import { diffLines } from "@/lib/campaigns/revision-diff";
 import { LOCKED_CLAIMS, MEASUREMENT_PLAN } from "@/lib/performance/measurement-copy";
 import { buildPerformanceLearning, type CampaignPerformancePanel, type PerformanceTrendPoint } from "@/lib/performance/campaign-panel";
@@ -40,6 +41,20 @@ function fmtDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/**
+ * Hand the operator a file. Everything exported here is already approved and
+ * already in the browser's hands — this is a save, not a fetch, so it needs no
+ * server round-trip and reveals nothing the page wasn't showing.
+ */
+function downloadMarkdown(filename: string, content: string): void {
+  const url = URL.createObjectURL(new Blob([content], { type: "text/markdown;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 type Tone = "ok" | "amber" | "red" | "gray" | "blue";
@@ -784,6 +799,22 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                                 Send it yourself
                               </button>
                             )}
+                            {isExportable(asset) && (
+                              <button
+                                type="button"
+                                className="cbtn ghost"
+                                onClick={() =>
+                                  downloadMarkdown(
+                                    `${exportSlug(asset.title)}.md`,
+                                    buildDeliverableExport(asset, { campaignName: campaign.name, now: new Date().toLocaleDateString("en-US") }),
+                                  )
+                                }
+                                title="Download this approved deliverable — copy and attached media — to keep or send from your own tool"
+                              >
+                                {svg('<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>')}
+                                Download
+                              </button>
+                            )}
                             {/^(approved|archived)/i.test(asset.status) && (
                               <button type="button" className="cbtn ghost dreopen" onClick={() => reopen(asset)} disabled={pending} title="Send this deliverable back to review">
                                 {svg('<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 00-14-3M4 14a8 8 0 0014 3"/>')}
@@ -965,6 +996,27 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                   ? "Every gating piece is approved. Launch is a separate, explicit step."
                   : "Approve the remaining deliverables to make this campaign launch-ready."}
               </div>
+            </div>
+
+            <div className="lctrl">
+              <button
+                className="cbtn ghost"
+                disabled={launchState.approvedCount === 0}
+                title={
+                  launchState.approvedCount === 0
+                    ? "Approve a deliverable first — the export gate is the same as the send gate"
+                    : "Download every approved deliverable as one file, to keep or send from your own tool"
+                }
+                onClick={() =>
+                  downloadMarkdown(
+                    `${exportSlug(campaign.name)}.md`,
+                    buildCampaignExport(campaign, assets, new Date().toLocaleDateString("en-US")).content,
+                  )
+                }
+              >
+                {svg('<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>')}
+                Download campaign
+              </button>
             </div>
 
             {campaign.launchLocked && (
