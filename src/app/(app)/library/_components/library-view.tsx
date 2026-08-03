@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 
 import { formatByteSize } from "@/domain";
 
-import { createLibraryFolder, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, renameLibraryAsset, renameLibraryFolder, setLibraryAssetArcAvailability, setLibraryAssetTags, uploadLibraryAsset } from "../actions";
+import { createLibraryFolder, decideLibraryAsset, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, renameLibraryAsset, renameLibraryFolder, setLibraryAssetArcAvailability, setLibraryAssetTags, uploadLibraryAsset } from "../actions";
 import { addLibraryAssetsToCampaign } from "../actions";
 import { ImportUrlModal } from "./import-url-modal";
 import { NewFolderModal } from "./new-folder-modal";
@@ -32,6 +32,12 @@ export type Asset = {
   added: string;
   recent: number;
   risk?: string;
+  /**
+   * The asset's recorded approval state, when it has one. Approving a flagged
+   * asset acknowledges the flag rather than clearing it, so `risk` alone cannot
+   * say whether anyone has reviewed it.
+   */
+  approvalStatus?: string;
   /** Generation prompt from stored provenance — shown on the detail card. */
   prompt?: string;
   img?: string;
@@ -204,6 +210,14 @@ export function LibraryView({
   const [deletedIds, setDeletedIds] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Risk-flag review, per asset id. `ackOpen` is the inline acknowledgement form
+  // (the risk box's own confirm step, mirroring `confirmDelete` below it);
+  // `approvedIds` reflects a decision locally so the box updates without a reload.
+  const [ackOpen, setAckOpen] = useState(false);
+  const [ackText, setAckText] = useState("");
+  const [approving, setApproving] = useState(false);
+  const [approvedIds, setApprovedIds] = useState<Set<number>>(new Set());
+  const [downloading, setDownloading] = useState(false);
   // In-session name/tag edits, overlaid on the immutable base assets.
   const [edits, setEdits] = useState<Record<number, { nm?: string; tags?: string[] }>>({});
   const [renaming, setRenaming] = useState(false);
@@ -430,7 +444,9 @@ export function LibraryView({
   const sortLabel = sortBy === "recent" ? "Recent" : sortBy === "name" ? "Name" : "Most used";
   const cycleSort = () => setSortBy((s) => (s === "recent" ? "name" : s === "name" ? "used" : "recent"));
 
-  const openDetail = (a: Asset) => { setConfirmDelete(false); setRenaming(false); setTagEditing(false); setDetail(a); };
+  // Every transient bit of the inspector resets here, so opening asset B never
+  // shows a confirm step — or a half-typed risk acknowledgement — left over from A.
+  const openDetail = (a: Asset) => { setConfirmDelete(false); setRenaming(false); setTagEditing(false); setAckOpen(false); setAckText(""); setDetail(a); };
 
   // Apply a name/tag edit to the overlay (for the grid) and the open inspector.
   const applyEdit = (id: number, patch: { nm?: string; tags?: string[] }) => {
@@ -508,6 +524,120 @@ export function LibraryView({
   };
 
   const toggleArc = (a: Asset) => applyArc([a], !isArc(a));
+
+  /**
+   * Download the actual file (BSR-687 — this was a <span> with no handler).
+   *
+   * Fetched to a blob rather than given to `<a download href={a.img}>`, because
+   * the URL is a Supabase storage public URL on another origin and browsers
+   * ignore the `download` attribute cross-origin: the tag would navigate to the
+   * image instead of saving it, which looks like a broken button. If the fetch
+   * is refused (CORS, an expired object) we open it in a new tab rather than
+   * failing silently — the operator still gets to the file.
+   */
+  const downloadAsset = async (a: Asset): Promise<boolean> => {
+    if (!a.img) return false;
+    try {
+      const res = await fetch(a.img);
+      if (!res.ok) throw new Error(`${res.status}`);
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const el = document.createElement("a");
+      el.href = href;
+      // Keep the operator's name for the asset, but never drop the extension —
+      // a file called "Warranty card" with no suffix opens in nothing.
+      const ext = new URL(a.img).pathname.split(".").pop();
+      el.download = ext && !a.nm.toLowerCase().endsWith(`.${ext.toLowerCase()}`) ? `${a.nm}.${ext}` : a.nm;
+      document.body.appendChild(el);
+      el.click();
+      el.remove();
+      URL.revokeObjectURL(href);
+      return true;
+    } catch {
+      window.open(a.img, "_blank", "noopener,noreferrer");
+      return false;
+    }
+  };
+
+  /** One asset, from the inspector. */
+  const handleDownload = async (a: Asset) => {
+    if (downloading) return;
+    setDownloading(true);
+    setNotice(null);
+    await downloadAsset(a);
+    setDownloading(false);
+  };
+
+  /**
+   * The selection bar's Download. Sequential on purpose: firing N concurrent
+   * saves trips browsers' multiple-download blocking, and the failure mode there
+   * is silent. Assets with no stored file (session rows, or an upload still
+   * processing) are skipped and reported rather than counted as downloaded.
+   */
+  const handleDownloadSelection = async () => {
+    if (downloading) return;
+    const chosen = list.filter((a) => sel.has(a.id));
+    const withFile = chosen.filter((a) => a.img);
+    const skipped = chosen.length - withFile.length;
+    if (withFile.length === 0) {
+      setNotice(
+        chosen.length === 0
+          ? "Nothing selected."
+          : `Nothing to download — ${chosen.length === 1 ? "that asset has" : "those assets have"} no stored file yet.`,
+      );
+      return;
+    }
+    setDownloading(true);
+    setNotice(null);
+    let failed = 0;
+    for (const a of withFile) {
+      // eslint-disable-next-line no-await-in-loop -- sequential is the point; see above
+      if (!(await downloadAsset(a))) failed += 1;
+    }
+    setDownloading(false);
+    const parts: string[] = [];
+    if (failed) parts.push(`${failed} opened in a new tab instead`);
+    if (skipped) parts.push(`${skipped} had no stored file`);
+    if (parts.length) setNotice(`Downloaded ${withFile.length - failed} of ${chosen.length} — ${parts.join("; ")}.`);
+  };
+
+  const isApproved = (a: Asset) => approvedIds.has(a.id) || a.approvalStatus === "approved";
+
+  /**
+   * Approve a flagged asset (BSR-687 — also a <span> with no handler, and the
+   * only control offered for clearing a flag, so an operator could believe they
+   * had resolved something that recorded nothing).
+   *
+   * Routed through the existing `decideLibraryAsset` → `decideAssetApproval`
+   * path, which is the same `approval_items` table and vocabulary campaigns use.
+   * That path REQUIRES a written acknowledgement to approve a flagged asset —
+   * deliberately, so a flag has to be weighed rather than clicked past — which
+   * is why this is a two-step control and not a one-tap button. The gate lives
+   * in the domain and reads flags from the row, so the form cannot talk its way
+   * around it; we surface the server's own message when it refuses.
+   */
+  const handleApproveRisk = async (a: Asset) => {
+    if (approving) return;
+    const ack = ackText.trim();
+    if (!a.rid) {
+      setNotice("This asset isn't saved to the workspace yet, so a decision can't be recorded against it.");
+      return;
+    }
+    setApproving(true);
+    setNotice(null);
+    const res = await decideLibraryAsset({ assetId: a.rid, decision: "approved", acknowledgement: ack }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    setApproving(false);
+    if (!res.ok) {
+      setNotice(res.error);
+      return;
+    }
+    setApprovedIds((prev) => new Set(prev).add(a.id));
+    setAckOpen(false);
+    setAckText("");
+  };
 
   const CHECK = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M5 12l4 4 10-10" /></svg>;
 
@@ -702,7 +832,9 @@ export function LibraryView({
               )}
             </span>
             <span className="sa"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>Move to folder</span>
-            <span className="sa"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>Download</span>
+            <button type="button" className="sa" onClick={handleDownloadSelection} disabled={downloading}>
+              <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>{downloading ? "Downloading…" : "Download"}
+            </button>
             <span className="clr" onClick={() => setSel(new Set())}>Clear</span>
           </div>
 
@@ -834,7 +966,37 @@ export function LibraryView({
                   <div className="riskbox">
                     <div className="rt"><Ico d='<path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z"/>' />Risk flag</div>
                     <div className="rd">{detail.risk}</div>
-                    <div className="rfix"><span className="gbtn" style={{ height: 30, fontSize: "11.5px" }}>Resolve &amp; approve</span></div>
+                    {/* The flag stays on the record after approval — approving
+                        acknowledges it, it does not erase it — so the resolved
+                        state says "reviewed", not "no longer flagged". */}
+                    {isApproved(detail) ? (
+                      <div className="rdone">Reviewed and approved, with this flag on the record.</div>
+                    ) : ackOpen ? (
+                      <div className="rack">
+                        <label className="rackl" htmlFor="risk-ack">How was this addressed?</label>
+                        <textarea
+                          id="risk-ack"
+                          className="racki"
+                          rows={2}
+                          autoFocus
+                          value={ackText}
+                          onChange={(e) => setAckText(e.target.value)}
+                          placeholder="e.g. the claim is backed by the 2026 warranty terms"
+                        />
+                        <div className="rackb">
+                          <button type="button" className="gbtn" onClick={() => { setAckOpen(false); setAckText(""); }} disabled={approving}>Cancel</button>
+                          <button type="button" className="gbtn gold" onClick={() => void handleApproveRisk(detail)} disabled={approving || ackText.trim().length < 3}>
+                            {approving ? "Recording…" : "Approve"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rfix">
+                        <button type="button" className="gbtn" style={{ height: 30, fontSize: "11.5px" }} onClick={() => setAckOpen(true)}>
+                          Resolve &amp; approve
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="isec">Provenance lineage</div>
@@ -860,7 +1022,15 @@ export function LibraryView({
                   <a className="gbtn gold full" href={STUDIO}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>Generate a variation</a>
                   <a className="gbtn" href={STUDIO}><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M4 14l5-4 4 3 3-2 4 3" /></svg>Edit in Studio</a>
                   <a className="gbtn" href={NEW_CAMPAIGN}><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add to campaign</a>
-                  <span className="gbtn full"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>Download</span>
+                  <button
+                    type="button"
+                    className="gbtn full"
+                    onClick={() => void handleDownload(detail)}
+                    disabled={!detail.img || downloading}
+                    title={detail.img ? undefined : "No stored file for this asset yet"}
+                  >
+                    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>{downloading ? "Downloading…" : "Download"}
+                  </button>
                   {confirmDelete ? (
                     <div className="idelconfirm">
                       <span className="idelwarn">
