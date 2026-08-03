@@ -6,6 +6,14 @@ name: Prod nightly smoke
 # that gap is where this project's expensive bugs live. This exercises the paths
 # that have broken SILENTLY — where every surface still looked fine.
 #
+# WHAT AN ASSERTION MUST NAME (BSR-708): the observable EFFECT, not the request.
+# Every UI step here once asserted only that a write landed, and step 4 passed
+# for six consecutive nights while every revision it filed sat unexecuted — the
+# row was written, nothing consumed it, and "recorded" looked exactly like
+# "ran". A check that asserts "we wrote the request" cannot detect a missing
+# consumer. The "No agent work is stranded" step below exists to close that
+# specific hole; apply the same rule to anything added here.
+#
 # WHICH TENANT: the smoke credentials belong to the ARCHIVED seeded demo org
 # (`big-shoulders-restoration`, org 63b72a45…) — test-only accounts, seeded
 # data, no real users. Prod's other org, `big-shoulders-restoration-2`, is the
@@ -54,6 +62,75 @@ jobs:
           # No literal fallback — this signs in to production. Unset ⇒ skip.
           E2E_PASSWORD: ${{ secrets.PROD_E2E_PASSWORD }}
           ARC_SMOKE_ENABLED: ${{ vars.ARC_SMOKE_ENABLED }}
+
+      # BSR-708. The UI steps above prove a request was RECORDED. They cannot
+      # prove anything CONSUMED it, and that distinction is not academic: step 4
+      # requested a revision every night from 2026-07-28 to 2026-08-03, stranded
+      # a task every time, and passed every time. `agent_tasks` is a durable
+      # record, not a queue — the wake POST is the only thing that starts a task
+      # (nothing polls it; `arc-chat/inbox.ts` reclaims `arc_chat_message` only),
+      # so a dropped or missing wake leaves a perfect row that never runs.
+      #
+      # This is read-only and deliberately NOT limited to the smoke org or to
+      # revisions: stranded work in the LIVE tenant is the more urgent signal,
+      # and every task type has the same failure mode.
+      - name: No agent work is stranded
+        if: ${{ always() }}
+        env:
+          DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+          PGSSLMODE: require
+          PGCONNECT_TIMEOUT: "30"
+          # Longer than a nightly run, so this job's own fresh task is never the
+          # thing it fails on — anything older has genuinely been abandoned.
+          STRANDED_AFTER: "30 minutes"
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::warning title=Stranded-task check SKIPPED::PROD_SUPABASE_DB_URL is not set, so nothing verified that queued agent work is actually running. This is the check that would have caught BSR-695."
+            exit 0
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+
+          # Same parsing as backup-prod.yml: the stored password contains an `@`,
+          # so libpq splits a URI at the wrong one. Split on the LAST `@` and pass
+          # the pieces discretely. Nothing is echoed — the URL is a secret.
+          python3 - <<'PARSE'
+          import os, re, pathlib
+          url = os.environ["DB_URL"]
+          rest = re.sub(r"^[a-zA-Z0-9+]+://", "", url).split("?", 1)[0]
+          userinfo, hostpart = rest.rsplit("@", 1)
+          user, _, password = userinfo.partition(":")
+          hostport, _, database = hostpart.partition("/")
+          host, _, port = hostport.partition(":")
+          pathlib.Path(pathlib.Path.home() / ".pgpass").write_text(
+              f"{host}:{port or '5432'}:{database or 'postgres'}:{user}:{password}\n")
+          (pathlib.Path.home() / ".pgpass").chmod(0o600)
+          pathlib.Path("pg.env").write_text(
+              f"PGHOST={host}\nPGPORT={port or '5432'}\nPGDATABASE={database or 'postgres'}\nPGUSER={user}\n")
+          PARSE
+          set -a; . ./pg.env; set +a
+
+          STRANDED=$(psql -tAX -c "
+            select coalesce(string_agg(
+              format('%s x%s in %s (oldest %s old)', task_type, n, org, age), E'\n'), '')
+            from (
+              select t.task_type, o.slug as org, count(*) as n,
+                     date_trunc('minute', now() - min(t.created_at))::text as age
+              from agent_tasks t join organizations o on o.id = t.org_id
+              where t.status = 'queued'
+                and t.created_at < now() - interval '${STRANDED_AFTER}'
+              group by 1, 2
+            ) s;")
+
+          if [ -n "$STRANDED" ]; then
+            echo "### Stranded agent work" >>"$GITHUB_STEP_SUMMARY"
+            echo '```' >>"$GITHUB_STEP_SUMMARY"
+            echo "$STRANDED" >>"$GITHUB_STEP_SUMMARY"
+            echo '```' >>"$GITHUB_STEP_SUMMARY"
+            echo "::error title=Agent tasks are queued and nothing is running them::These rows were written correctly and never consumed — the symptom of a missing or dropped wake, not of a slow runner. Whatever queued them must call the wake itself; nothing polls agent_tasks. See BSR-695 and docs. Rows:%0A$(echo "$STRANDED" | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
+          echo "No agent task has been queued longer than ${STRANDED_AFTER}." >>"$GITHUB_STEP_SUMMARY"
 
       # A skipped test is a hollow pass — it looks identical to success on the
       # checks UI. Surface the counts so "green" can be read honestly.
