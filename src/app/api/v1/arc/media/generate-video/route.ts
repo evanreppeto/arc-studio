@@ -91,12 +91,20 @@ export async function POST(request: Request) {
     const aspectRatio =
       typeof body.aspect_ratio === "string" && body.aspect_ratio.trim() ? body.aspect_ratio.trim() : "16:9";
     const durationSeconds = typeof body.duration_seconds === "number" ? body.duration_seconds : undefined;
+    // Person-generation policy is normally the deployment default (DONT_ALLOW —
+    // Veo 3.1 allowlists anything more permissive). Accepting an override here
+    // means a project that HAS been allowlisted can ask for people without a
+    // redeploy; an unknown value falls back to the default rather than erroring.
+    const personGeneration =
+      typeof body.person_generation === "string" && body.person_generation.trim()
+        ? body.person_generation.trim()
+        : undefined;
     // Spend-cap the START only (a poll of an in-flight job finishes work whose
     // cost is already incurred). Video ≈ 10 image-units in the rate table.
     const metered = await meterConnectorCall(
       undefined,
       { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: MEDIA_UNITS.video, costTier: access.costTier, context: { route: "generate-video" } },
-      () => provider.startVideo({ prompt: hardenImagePrompt(prompt), aspectRatio, durationSeconds }),
+      () => provider.startVideo({ prompt: hardenImagePrompt(prompt), aspectRatio, durationSeconds, personGeneration }),
     );
     if (!metered.ok) return fail("plan_limit", metered.refusal.message, 402);
     const start = metered.result;
