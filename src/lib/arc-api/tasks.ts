@@ -226,6 +226,41 @@ async function updateAndNormalize(
   return rowToNormalized(data as TaskRow);
 }
 
+/**
+ * `updateAndNormalize` with a compare-and-set on `status`: the write only lands
+ * if the row is STILL in `guardStatus`. Returns null when the guard misses,
+ * which the caller reads as "someone else got there first" — not as an error.
+ */
+async function updateIfStatus(
+  taskId: string,
+  guardStatus: string,
+  patch: Record<string, unknown>,
+  client: SupabaseClient,
+  scope?: AgentTaskScope,
+): Promise<NormalizedTask | null> {
+  const { data, error } = await applyAgentTaskScope(
+    client.from("agent_tasks").update(patch).eq("id", taskId).eq("status", guardStatus),
+    scope,
+  )
+    .select(TASK_SELECT)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`agent_tasks update failed: ${error.message}`);
+  }
+  return data ? rowToNormalized(data as TaskRow) : null;
+}
+
+/**
+ * Claim a queued task for processing: queued -> running.
+ *
+ * The status guard makes this a compare-and-set, so two workers racing for the
+ * same task — a wake push and an operator's Retry, say — can never both win.
+ * It used to read the row, check `status === "queued"`, then update
+ * unconditionally; between those two statements both callers saw `queued` and
+ * both proceeded, which is a duplicate Arc run (and duplicate spend) on the
+ * same instruction. The retry path in `revision-recovery.ts` depends on this
+ * being atomic, since that is the whole basis for re-dispatching safely.
+ */
 export async function claimAgentTask(
   taskId: string,
   client: SupabaseClient = getSupabaseAdminClient(),
@@ -236,12 +271,16 @@ export async function claimAgentTask(
   if (row.status !== "queued") {
     return { ok: false, reason: "conflict", currentStatus: row.status ?? "unknown" };
   }
-  const task = await updateAndNormalize(
+  const task = await updateIfStatus(
     taskId,
+    "queued",
     { status: "running", started_at: new Date().toISOString() },
     client,
     scope,
   );
+  // The guard missed: the row moved out of `queued` between the read above and
+  // this write. Another worker owns it now.
+  if (!task) return { ok: false, reason: "conflict", currentStatus: "running" };
   return { ok: true, task };
 }
 
