@@ -459,8 +459,8 @@ export async function assignArcConversationCampaignAction(input: {
   try {
     await assertConversationAccess(input.conversationId, "collaborate");
     if (campaignId) {
-      const orgId = await getCurrentOrgId();
-      const campaign = (await listCampaignNames(orgId)).find((candidate) => candidate.id === campaignId);
+      const { orgId, workspaceId } = await getCurrentWorkspaceContext();
+      const campaign = (await listCampaignNames(orgId, undefined, workspaceId)).find((candidate) => candidate.id === campaignId);
       if (!campaign) return { ok: false, error: "That campaign is not available in this workspace." };
     }
     await assignConversationToCampaign(input.conversationId, campaignId);

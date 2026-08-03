@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   const limit = Number.isInteger(limitParam) && limitParam > 0 ? limitParam : undefined;
 
   try {
-    const list = await getCampaignWorkspaceList(undefined, "Arc", allowed.scope.orgId);
+    const list = await getCampaignWorkspaceList(undefined, "Arc", allowed.scope.orgId, allowed.scope.workspaceId);
     if (list.status !== "live") {
       return fail("failed", list.message ?? "Campaigns are unavailable.", 502);
     }

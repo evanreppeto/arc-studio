@@ -3,7 +3,7 @@ import { OFFICIAL_PERSONA_MAPPINGS, personaInspectHref } from "@/domain";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
 import { getCrmMentionSamples, type CrmObjectKey } from "@/lib/crm/read-model";
 import { listPersonas } from "@/lib/personas/console";
-import { getCurrentOrgId } from "@/lib/auth/org";
+import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { listVaultNotes } from "@/lib/vault/persistence";
 
@@ -57,14 +57,16 @@ export async function getMentionables(): Promise<MentionGroup[]> {
   const client = getSupabaseAdminClient();
   // Scope reads to the active workspace. getCrmMentionSamples self-scopes; the
   // campaign list needs the org id passed in (the admin client bypasses RLS).
-  const orgId = await getCurrentOrgId().catch(() => undefined);
+  const tenant = await getCurrentWorkspaceContext().catch(() => null);
+  const orgId = tenant?.orgId;
+  const workspaceId = tenant?.workspaceId;
 
   // Campaign names, CRM samples, and vault notes are independent — fetch them
   // concurrently. getCrmMentionSamples does a single table-bundle fetch instead
   // of one per CRM object. Each source self-recovers to empty so one slow/failing
   // read doesn't sink the rest.
   const [campaignRefs, crmSamples, vaultNotes, orgPersonas] = await Promise.all([
-    listCampaignNames(orgId).catch(() => []),
+    listCampaignNames(orgId, undefined, workspaceId).catch(() => []),
     getCrmMentionSamples().catch(() => ({}) as Awaited<ReturnType<typeof getCrmMentionSamples>>),
     orgId ? listVaultNotes(client, orgId).catch(() => []) : Promise.resolve([]),
     listPersonas().catch(() => []),

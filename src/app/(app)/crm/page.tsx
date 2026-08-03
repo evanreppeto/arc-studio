@@ -1,7 +1,7 @@
 import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
 import { humanizePersonaLabel, orderedStages, PIPELINE_OBJECT_KEYS, type PipelineObjectKey } from "@/domain";
 import { getAnalyticsOverview } from "@/lib/analytics/overview";
-import { getCurrentOrgId } from "@/lib/auth/org";
+import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getCrmMentionSamples, getCrmNavCounts, type CrmObjectKey, type CrmObjectRow } from "@/lib/crm/read-model";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
@@ -26,7 +26,9 @@ export const metadata = { title: "CRM — Arc Studio" };
 const OBJECT_KEYS: CrmObjectKey[] = ["companies", "contacts", "properties", "leads", "jobs", "outcomes"];
 
 export default async function CrmPage() {
-  const orgId = await getCurrentOrgId().catch(() => "");
+  const tenant = await getCurrentWorkspaceContext().catch(() => null);
+  const orgId = tenant?.orgId ?? "";
+  const workspaceId = tenant?.workspaceId ?? null;
   const [samples, navCounts, overview, personaOptions, appSettings, businessProfile, campaigns] = await Promise.all([
     getCrmMentionSamples().catch(() => ({}) as Partial<Record<CrmObjectKey, CrmObjectRow[]>>),
     getCrmNavCounts().catch(unavailable("crm.navCounts", orgId)),
@@ -52,7 +54,7 @@ export default async function CrmPage() {
           return null;
         })
       : Promise.resolve(null),
-    listCampaignNames(orgId || undefined).catch(() => []),
+    listCampaignNames(orgId || undefined, undefined, workspaceId).catch(() => []),
   ]);
 
   // The org's own stage names, for the add/edit pickers. getPipelineStages
