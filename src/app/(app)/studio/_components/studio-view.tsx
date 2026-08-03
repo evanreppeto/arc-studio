@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, useMemo, useRef, useState, useTransition } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
+
+import { type CreativeLayoutOverride } from "@/domain";
 
 import { decideArcDraftAction, requestArcDraftRevisionAction, sendArcMessageAction } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
 import { generateStudioAsset } from "../actions";
-import { StudioCanvas, type CanvasBrand } from "./studio-canvas";
+import { StudioCanvas, type CanvasBrand, type CanvasLayer } from "./studio-canvas";
 
 const HOUSE = '<svg viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4654"/><stop offset="1" stop-color="#27303a"/></linearGradient></defs><rect width="600" height="300" fill="url(#sky)"/><path d="M0 210 L150 120 L300 200 L450 110 L600 190 V300 H0 Z" fill="#2b343d"/><path d="M120 230 L300 130 L480 230 Z" fill="#4a5663"/><path d="M120 230 L300 130 L300 250 L120 250 Z" fill="#3d4854"/><rect x="180" y="230" width="240" height="70" fill="#323b45"/><rect x="210" y="248" width="34" height="34" fill="#566270"/><rect x="356" y="248" width="34" height="34" fill="#566270"/></svg>';
 const SC: Record<string, string> = {
@@ -195,6 +197,26 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // a hidden layer isn't rendered on the canvas, and a hidden text layer is left
   // out of the composited generate so the output matches the preview.
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  // Canvas editing (BSR-680): which layer is selected, and the operator's nudge.
+  // Constrained on purpose — the copy block moves and the headline scales; the
+  // template keeps everything else, which is what keeps creative on brand.
+  const [selectedLayer, setSelectedLayer] = useState<CanvasLayer | null>(null);
+  const [layoutOverride, setLayoutOverride] = useState<CreativeLayoutOverride>({});
+  const nudged = Boolean(layoutOverride.copyDx || layoutOverride.copyDy || (layoutOverride.headlineScale ?? 1) !== 1);
+
+  // Escape drops the selection — but only when focus is not inside a field, or
+  // it would fight the modals and the in-place text editor, which use Escape to
+  // cancel their own edit.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      setSelectedLayer(null);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
   const shown = (layer: string) => !hidden.has(layer);
   const toggleLayer = (layer: string) =>
     setHidden((prev) => {
@@ -342,6 +364,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           // a template from a hash of the background URL and always used the brand
           // kit's accent, whatever the swatches showed.
           template: TEMPLATES[tmpl]?.id,
+          // What the operator moved on the canvas has to reach the render, or
+          // the drag was theatre (BSR-680).
+          layoutOverride,
           accent,
           campaignId,
         });
@@ -489,6 +514,21 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             {FORMATS.map((f, i) => (
               <span key={f.r} className={`fchip${fmt === i ? " on" : ""}`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></span>
             ))}
+            {/* Only offered once something has been moved — an always-present
+                "Reset layout" on an untouched canvas is noise. */}
+            {nudged && (
+              <span
+                className="szbtn"
+                role="button"
+                tabIndex={0}
+                onClick={() => setLayoutOverride({})}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLayoutOverride({}); } }}
+                title="Put the copy back where the template puts it"
+              >
+                <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" /></svg>
+                Reset layout
+              </span>
+            )}
             <span className="fspacer" />
             <span className={`szbtn${safe ? " on" : ""}`} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Safe zones</span>
             <span className="zoom">Fit · 100%</span>
@@ -505,6 +545,15 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   brand={canvasBrand}
                   copy={{ kicker, headline, cta }}
                   shown={shown}
+                  override={layoutOverride}
+                  onOverrideChange={setLayoutOverride}
+                  selected={selectedLayer}
+                  onSelect={setSelectedLayer}
+                  onCopyChange={(field, value) => {
+                    if (field === "kicker") setKicker(value);
+                    else if (field === "headline") setHeadline(value);
+                    else setCta(value);
+                  }}
                   background={
                     !bg ? (
                       <div className="cbg-empty">No approved media yet — pick a source, upload, or generate to set a background.</div>
@@ -589,9 +638,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
 
                 <div className="psec">
                   <h3 className="ph2">Layers</h3>
-                  <div className="layer sel" style={shown("Background") ? undefined : { opacity: 0.5 }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">Background</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
+                  <div className={`layer${selectedLayer === "Background" ? " sel" : ""}`} role="button" tabIndex={0} onClick={() => setSelectedLayer("Background")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer("Background"); } }} style={shown("Background") ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">Background</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
                   {[["Kicker", kicker], ["Headline", headline], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
-                    <div className="layer" key={lt} style={shown(lt) ? undefined : { opacity: 0.5 }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
+                    <div className={`layer${selectedLayer === lt ? " sel" : ""}`} key={lt} role="button" tabIndex={0} onClick={() => setSelectedLayer(lt as CanvasLayer)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer(lt as CanvasLayer); } }} style={shown(lt) ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
                   ))}
                 </div>
 

@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COPY_NUDGE_LIMIT,
   CREATIVE_DESIGN_WIDTH,
   CREATIVE_LAYOUTS,
   CREATIVE_TEMPLATE_IDS,
+  HEADLINE_SCALE_RANGE,
+  clampLayoutOverride,
   creativeScale,
+  withLayoutOverride,
 } from "../index";
 
 describe("creative layout spec", () => {
@@ -42,7 +46,7 @@ describe("creative layout spec", () => {
       cta: { style: "outline", borderWidth: 3 },
     });
     expect(CREATIVE_LAYOUTS.minimal).toMatchObject({
-      panel: { widthRatio: 0.5, pad: 64 },
+      panel: { widthRatio: 0.5, padLeft: 64, padBottom: 64 },
       headline: { size: 64 },
       divider: { width: 64, height: 4 },
       cta: { style: "filled" },
@@ -62,5 +66,59 @@ describe("creative layout spec", () => {
       if (layout.cta.style === "filled") expect(layout.cta.background, id).toBeDefined();
       else expect(layout.cta.borderWidth, id).toBeDefined();
     }
+  });
+});
+
+describe("layout overrides (constrained canvas editing)", () => {
+  it("clamps a nudge to the allowed range", () => {
+    expect(clampLayoutOverride({ copyDx: 9999, copyDy: -9999 })).toMatchObject({
+      copyDx: COPY_NUDGE_LIMIT,
+      copyDy: -COPY_NUDGE_LIMIT,
+    });
+    expect(clampLayoutOverride({ headlineScale: 12 }).headlineScale).toBe(HEADLINE_SCALE_RANGE.max);
+    expect(clampLayoutOverride({ headlineScale: 0 }).headlineScale).toBe(HEADLINE_SCALE_RANGE.min);
+  });
+
+  // A client can send anything; the renderer clamps the same values the canvas did.
+  it("refuses NaN and undefined rather than propagating them into CSS", () => {
+    expect(clampLayoutOverride({ copyDx: Number.NaN }).copyDx).toBe(0);
+    expect(clampLayoutOverride(undefined)).toEqual({ copyDx: 0, copyDy: 0, headlineScale: 1 });
+  });
+
+  it("returns the layout untouched when nothing was moved", () => {
+    expect(withLayoutOverride(CREATIVE_LAYOUTS.bold, {})).toBe(CREATIVE_LAYOUTS.bold);
+    expect(withLayoutOverride(CREATIVE_LAYOUTS.bold, { copyDx: 0, headlineScale: 1 })).toBe(CREATIVE_LAYOUTS.bold);
+  });
+
+  // Down is down in every template, whichever edge it anchors to — that is the
+  // whole reason the override is applied centrally instead of per renderer.
+  it("moves the copy down for a positive dy on a bottom-anchored template", () => {
+    const moved = withLayoutOverride(CREATIVE_LAYOUTS.bold, { copyDy: 40 });
+    expect(moved.copyInset.bottom).toBe(CREATIVE_LAYOUTS.bold.copyInset.bottom! - 40);
+  });
+
+  it("moves the copy down for a positive dy on a top-anchored template", () => {
+    const moved = withLayoutOverride(CREATIVE_LAYOUTS.editorial, { copyDy: 40 });
+    expect(moved.topBand!.padTop).toBe(CREATIVE_LAYOUTS.editorial.topBand!.padTop + 40);
+  });
+
+  it("moves the copy down inside the side panel too", () => {
+    const moved = withLayoutOverride(CREATIVE_LAYOUTS.minimal, { copyDy: 40, copyDx: 10 });
+    expect(moved.panel!.padBottom).toBe(CREATIVE_LAYOUTS.minimal.panel!.padBottom - 40);
+    expect(moved.panel!.padLeft).toBe(CREATIVE_LAYOUTS.minimal.panel!.padLeft + 10);
+  });
+
+  it("scales the headline and leaves every other size alone", () => {
+    const scaled = withLayoutOverride(CREATIVE_LAYOUTS.bold, { headlineScale: 1.5 });
+    expect(scaled.headline.size).toBe(CREATIVE_LAYOUTS.bold.headline.size * 1.5);
+    expect(scaled.kicker.size).toBe(CREATIVE_LAYOUTS.bold.kicker.size);
+    expect(scaled.cta.size).toBe(CREATIVE_LAYOUTS.bold.cta.size);
+  });
+
+  it("never mutates the shared spec", () => {
+    const before = JSON.stringify(CREATIVE_LAYOUTS);
+    withLayoutOverride(CREATIVE_LAYOUTS.minimal, { copyDx: 99, copyDy: 99, headlineScale: 1.4 });
+    withLayoutOverride(CREATIVE_LAYOUTS.editorial, { copyDx: -99, copyDy: -99 });
+    expect(JSON.stringify(CREATIVE_LAYOUTS)).toBe(before);
   });
 });

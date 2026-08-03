@@ -49,6 +49,7 @@ beforeEach(() => {
     mediaAvailable: 7,
     pendingApprovals: 3,
     personas: 5,
+    records: { contacts: 243, companies: 12, leads: 0, campaigns: 3 },
   });
   detailMock.mockResolvedValue({
     brandKit: "active",
@@ -56,6 +57,7 @@ beforeEach(() => {
     mediaAvailable: 7,
     pendingApprovals: 3,
     personas: 5,
+    records: { contacts: 243, companies: 12, leads: 0, campaigns: 3 },
     connectorList: [],
     personaList: [],
     compliance: { disallowedClaims: ["guarantee"], complianceNotes: "" },

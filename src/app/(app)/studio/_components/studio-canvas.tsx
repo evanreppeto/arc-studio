@@ -1,11 +1,14 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useCallback, useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import {
   CREATIVE_DESIGN_WIDTH,
   CREATIVE_LAYOUTS,
+  clampLayoutOverride,
+  withLayoutOverride,
   type BrandColorRef,
+  type CreativeLayoutOverride,
   type CreativeLayoutSpec,
   type CreativeTemplateId,
 } from "@/domain";
@@ -53,6 +56,11 @@ const PLACEHOLDER: CanvasCopy = {
   cta: "",
 };
 
+/** Layers the operator can select on the artboard. Selecting any part of the
+ *  copy selects the block, because the block is what moves — the template owns
+ *  the arrangement inside it. */
+export type CanvasLayer = "Background" | "Logo" | "Kicker" | "Headline" | "CTA button";
+
 type CanvasProps = {
   template: CreativeTemplateId;
   brand: CanvasBrand;
@@ -61,6 +69,13 @@ type CanvasProps = {
   shown: (layer: string) => boolean;
   /** The background media element, or null when the workspace has none yet. */
   background: ReactNode;
+  /** The operator's nudge. Applied here exactly as the renderer applies it. */
+  override?: CreativeLayoutOverride;
+  onOverrideChange?: (next: CreativeLayoutOverride) => void;
+  selected?: CanvasLayer | null;
+  onSelect?: (layer: CanvasLayer | null) => void;
+  /** Commit an in-place text edit. */
+  onCopyChange?: (field: "kicker" | "headline" | "cta", value: string) => void;
 };
 
 function color(brand: CanvasBrand, ref: BrandColorRef): string {
@@ -138,18 +153,113 @@ function Logo({ brand, L }: { brand: CanvasBrand; L: CreativeLayoutSpec }) {
   );
 }
 
-function CopyStack({ brand, L, copy, shown }: { brand: CanvasBrand; L: CreativeLayoutSpec; copy: CanvasCopy; shown: (l: string) => boolean }) {
-  const kicker = copy.kicker || PLACEHOLDER.kicker;
-  const headline = copy.headline || PLACEHOLDER.headline;
+
+/** An editable text layer on the artboard: click selects, double-click types.
+ *  contentEditable keeps the text in place rather than swapping in an input, so
+ *  the line breaks and clamping you see while editing are the ones that ship. */
+function EditableText({
+  value,
+  placeholder,
+  style,
+  layer,
+  selected,
+  onSelect,
+  onCommit,
+}: {
+  value: string;
+  placeholder: string;
+  style: CSSProperties;
+  layer: CanvasLayer;
+  selected: boolean;
+  onSelect?: (l: CanvasLayer | null) => void;
+  onCommit?: (v: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Only push the prop back into the DOM when it actually differs, or every
+  // keystroke would fight the caret.
+  useEffect(() => {
+    const node = ref.current;
+    if (node && document.activeElement !== node && node.textContent !== value) node.textContent = value;
+  }, [value]);
+
+  return (
+    <div
+      ref={ref}
+      className={`clayer${selected ? " sel" : ""}`}
+      style={{ ...style, opacity: value ? 1 : 0.45 }}
+      role="button"
+      tabIndex={0}
+      aria-label={`${layer} — click to select, double-click to edit`}
+      suppressContentEditableWarning
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onSelect?.(layer);
+      }}
+      onDoubleClick={(e) => {
+        const node = e.currentTarget;
+        node.contentEditable = "plaintext-only";
+        node.focus();
+      }}
+      onBlur={(e) => {
+        const node = e.currentTarget;
+        if (node.contentEditable === "false") return;
+        node.contentEditable = "false";
+        onCommit?.((node.textContent ?? "").trim());
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && e.currentTarget.contentEditable !== "false") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+        if (e.key === "Escape") e.currentTarget.blur();
+      }}
+    >
+      {value || placeholder}
+    </div>
+  );
+}
+
+function CopyStack({
+  brand,
+  L,
+  copy,
+  shown,
+  selected,
+  onSelect,
+  onCopyChange,
+}: {
+  brand: CanvasBrand;
+  L: CreativeLayoutSpec;
+  copy: CanvasCopy;
+  shown: (l: string) => boolean;
+  selected?: CanvasLayer | null;
+  onSelect?: (l: CanvasLayer | null) => void;
+  onCopyChange?: (field: "kicker" | "headline" | "cta", value: string) => void;
+}) {
   return (
     <>
       {shown("Kicker") && (
-        <div style={{ ...textStyle(brand, L.kicker), opacity: copy.kicker ? 1 : 0.45 }}>{kicker}</div>
+        <EditableText
+          value={copy.kicker}
+          placeholder={PLACEHOLDER.kicker}
+          style={textStyle(brand, L.kicker)}
+          layer="Kicker"
+          selected={selected === "Kicker"}
+          onSelect={onSelect}
+          onCommit={(v) => onCopyChange?.("kicker", v)}
+        />
       )}
       {shown("Headline") && (
-        <div style={{ ...headlineStyle(brand, L), opacity: copy.headline ? 1 : 0.45, fontFamily: "var(--serif)", fontWeight: 600 }}>
-          {headline}
-        </div>
+        <EditableText
+          value={copy.headline}
+          placeholder={PLACEHOLDER.headline}
+          style={{ ...headlineStyle(brand, L), fontFamily: "var(--serif)", fontWeight: 600 }}
+          layer="Headline"
+          selected={selected === "Headline"}
+          onSelect={onSelect}
+          onCommit={(v) => onCopyChange?.("headline", v)}
+        />
       )}
       {L.divider && (
         <div
@@ -162,17 +272,113 @@ function CopyStack({ brand, L, copy, shown }: { brand: CanvasBrand; L: CreativeL
           }}
         />
       )}
-      {shown("CTA button") && copy.cta && <div style={ctaStyle(brand, L)}>{copy.cta}</div>}
+      {shown("CTA button") && copy.cta && (
+        <EditableText
+          value={copy.cta}
+          placeholder=""
+          style={ctaStyle(brand, L)}
+          layer="CTA button"
+          selected={selected === "CTA button"}
+          onSelect={onSelect}
+          onCommit={(v) => onCopyChange?.("cta", v)}
+        />
+      )}
     </>
   );
 }
 
-export function StudioCanvas({ template, brand, copy, shown, background }: CanvasProps) {
-  const L = CREATIVE_LAYOUTS[template];
+/** Is this layer part of the copy block — i.e. does selecting it arm the drag? */
+function isCopyLayer(layer: CanvasLayer | null | undefined): boolean {
+  return layer === "Kicker" || layer === "Headline" || layer === "CTA button";
+}
+
+export function StudioCanvas({
+  template,
+  brand,
+  copy,
+  shown,
+  background,
+  override,
+  onOverrideChange,
+  selected,
+  onSelect,
+  onCopyChange,
+}: CanvasProps) {
+  // The nudge is folded in here exactly as renderCreative folds it in, so the
+  // artboard and the export stay one layout (BSR-679/BSR-680).
+  const L = withLayoutOverride(CREATIVE_LAYOUTS[template], override);
+  const armed = isCopyLayer(selected);
+
+  /** Drag the copy block. Pixels are converted to design units against the
+   *  artboard's own width, which is the same 1080-reference the spec uses, so a
+   *  drag means the same thing at any zoom. The domain clamps the result. */
+  const startDrag = useCallback(
+    (event: ReactPointerEvent<HTMLElement>, mode: "move" | "scale") => {
+      if (!onOverrideChange) return;
+      const artboard = (event.currentTarget as HTMLElement).closest(".canvas") as HTMLElement | null;
+      const width = artboard?.clientWidth ?? 0;
+      if (!width) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const perPx = CREATIVE_DESIGN_WIDTH / width;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const from = clampLayoutOverride(override);
+      const target = event.currentTarget as HTMLElement;
+      target.setPointerCapture(event.pointerId);
+
+      const onMove = (move: PointerEvent) => {
+        const dx = (move.clientX - startX) * perPx;
+        const dy = (move.clientY - startY) * perPx;
+        onOverrideChange(
+          mode === "move"
+            ? { ...from, copyDx: from.copyDx + dx, copyDy: from.copyDy + dy }
+            : // Scale from horizontal travel: a quarter of the reference width
+              // spans the whole allowed range, so the handle feels proportional.
+              { ...from, headlineScale: from.headlineScale + dx / 540 },
+        );
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [onOverrideChange, override],
+  );
+
+  const copyStack = (
+    <CopyStack brand={brand} L={L} copy={copy} shown={shown} selected={selected} onSelect={onSelect} onCopyChange={onCopyChange} />
+  );
+
+  /** Chrome shown around the copy block while a copy layer is selected: the
+   *  outline that says what moves, and the handle that scales the headline. */
+  const blockChrome = armed ? (
+    <>
+      <span className="cblock-ring" aria-hidden />
+      <span
+        className="cblock-handle"
+        role="slider"
+        tabIndex={0}
+        aria-label="Resize headline"
+        aria-valuenow={Math.round((clampLayoutOverride(override).headlineScale ?? 1) * 100)}
+        aria-valuemin={60}
+        aria-valuemax={160}
+        onPointerDown={(e) => startDrag(e, "scale")}
+      />
+    </>
+  ) : null;
+
+  const dragProps = armed
+    ? { onPointerDown: (e: ReactPointerEvent<HTMLElement>) => startDrag(e, "move"), style: { cursor: "move" as const } }
+    : {};
 
   return (
     <>
-      <div className="cbg">{background}</div>
+      <div className="cbg" onPointerDown={() => onSelect?.(null)}>
+        {background}
+      </div>
 
       {/* Editorial's accent rail */}
       {L.rail && (
@@ -182,6 +388,8 @@ export function StudioCanvas({ template, brand, copy, shown, background }: Canva
       {/* Editorial's top band: kicker + headline sit inside it */}
       {L.topBand && (
         <div
+          className={`cblock${armed ? " armed" : ""}`}
+          {...dragProps}
           style={{
             position: "absolute",
             top: 0,
@@ -194,16 +402,32 @@ export function StudioCanvas({ template, brand, copy, shown, background }: Canva
             paddingLeft: du(L.topBand.padLeft),
             paddingRight: du(L.topBand.padRight),
             background: `linear-gradient(180deg, ${color(brand, L.surface)} ${L.topBand.solidStop}%, rgba(15,17,21,0) 100%)`,
+            ...(dragProps.style ?? {}),
           }}
         >
           {shown("Kicker") && (
-            <div style={{ ...textStyle(brand, L.kicker), opacity: copy.kicker ? 1 : 0.45 }}>{copy.kicker || PLACEHOLDER.kicker}</div>
+            <EditableText
+              value={copy.kicker}
+              placeholder={PLACEHOLDER.kicker}
+              style={textStyle(brand, L.kicker)}
+              layer="Kicker"
+              selected={selected === "Kicker"}
+              onSelect={onSelect}
+              onCommit={(v) => onCopyChange?.("kicker", v)}
+            />
           )}
           {shown("Headline") && (
-            <div style={{ ...headlineStyle(brand, L), opacity: copy.headline ? 1 : 0.45, fontFamily: "var(--serif)", fontWeight: 600 }}>
-              {copy.headline || PLACEHOLDER.headline}
-            </div>
+            <EditableText
+              value={copy.headline}
+              placeholder={PLACEHOLDER.headline}
+              style={{ ...headlineStyle(brand, L), fontFamily: "var(--serif)", fontWeight: 600 }}
+              layer="Headline"
+              selected={selected === "Headline"}
+              onSelect={onSelect}
+              onCommit={(v) => onCopyChange?.("headline", v)}
+            />
           )}
+          {blockChrome}
         </div>
       )}
 
@@ -216,6 +440,7 @@ export function StudioCanvas({ template, brand, copy, shown, background }: Canva
             right: 0,
             bottom: 0,
             height: `${L.scrim.heightRatio * 100}%`,
+            pointerEvents: "none",
             background: L.scrim.midStop
               ? `linear-gradient(0deg, ${color(brand, L.surface)} ${L.scrim.solidStop}%, rgba(15,17,21,0.55) ${L.scrim.midStop}%, rgba(15,17,21,0) 100%)`
               : `linear-gradient(0deg, ${color(brand, L.surface)} ${L.scrim.solidStop}%, rgba(15,17,21,0) 100%)`,
@@ -235,20 +460,43 @@ export function StudioCanvas({ template, brand, copy, shown, background }: Canva
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
-            padding: du(L.panel.pad),
+            paddingTop: du(L.panel.padTop),
+            paddingRight: du(L.panel.padRight),
+            paddingBottom: du(L.panel.padBottom),
+            paddingLeft: du(L.panel.padLeft),
             background: color(brand, L.panel.background),
           }}
         >
-          {shown("Logo") ? <Logo brand={brand} L={L} /> : <span />}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <CopyStack brand={brand} L={L} copy={copy} shown={shown} />
+          {shown("Logo") ? (
+            <div
+              className={`clayer${selected === "Logo" ? " sel" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label="Logo"
+              onPointerDown={(e) => { e.stopPropagation(); onSelect?.("Logo"); }}
+            >
+              <Logo brand={brand} L={L} />
+            </div>
+          ) : (
+            <span />
+          )}
+          <div className={`cblock${armed ? " armed" : ""}`} {...dragProps} style={{ display: "flex", flexDirection: "column", position: "relative", ...(dragProps.style ?? {}) }}>
+            {copyStack}
+            {blockChrome}
           </div>
         </div>
       )}
 
       {/* Bold's positioned logo */}
       {L.logoPosition && shown("Logo") && (
-        <div style={{ position: "absolute", top: du(L.logoPosition.top), left: du(L.logoPosition.left), display: "flex" }}>
+        <div
+          className={`clayer${selected === "Logo" ? " sel" : ""}`}
+          role="button"
+          tabIndex={0}
+          aria-label="Logo"
+          onPointerDown={(e) => { e.stopPropagation(); onSelect?.("Logo"); }}
+          style={{ position: "absolute", top: du(L.logoPosition.top), left: du(L.logoPosition.left), display: "flex" }}
+        >
           <Logo brand={brand} L={L} />
         </div>
       )}
@@ -256,6 +504,8 @@ export function StudioCanvas({ template, brand, copy, shown, background }: Canva
       {/* Bold's bottom copy block */}
       {!L.panel && !L.topBand && (
         <div
+          className={`cblock${armed ? " armed" : ""}`}
+          {...dragProps}
           style={{
             position: "absolute",
             left: du(L.copyInset.left),
@@ -264,9 +514,11 @@ export function StudioCanvas({ template, brand, copy, shown, background }: Canva
             display: "flex",
             flexDirection: "column",
             alignItems: "flex-start",
+            ...(dragProps.style ?? {}),
           }}
         >
-          <CopyStack brand={brand} L={L} copy={copy} shown={shown} />
+          {copyStack}
+          {blockChrome}
         </div>
       )}
 
@@ -283,8 +535,32 @@ export function StudioCanvas({ template, brand, copy, shown, background }: Canva
             justifyContent: "space-between",
           }}
         >
-          {shown("Logo") ? <Logo brand={brand} L={L} /> : <span />}
-          {shown("CTA button") && copy.cta ? <div style={ctaStyle(brand, L)}>{copy.cta}</div> : <span />}
+          {shown("Logo") ? (
+            <div
+              className={`clayer${selected === "Logo" ? " sel" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label="Logo"
+              onPointerDown={(e) => { e.stopPropagation(); onSelect?.("Logo"); }}
+            >
+              <Logo brand={brand} L={L} />
+            </div>
+          ) : (
+            <span />
+          )}
+          {shown("CTA button") && copy.cta ? (
+            <EditableText
+              value={copy.cta}
+              placeholder=""
+              style={ctaStyle(brand, L)}
+              layer="CTA button"
+              selected={selected === "CTA button"}
+              onSelect={onSelect}
+              onCommit={(v) => onCopyChange?.("cta", v)}
+            />
+          ) : (
+            <span />
+          )}
         </div>
       )}
     </>

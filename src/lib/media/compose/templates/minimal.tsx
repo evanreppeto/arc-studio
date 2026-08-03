@@ -1,4 +1,4 @@
-import { CREATIVE_LAYOUTS, creativeScale } from "@/domain";
+import { creativeScale } from "@/domain";
 
 import type { CreativeTemplate } from "../types";
 import { brandColor } from "./tokens";
@@ -6,9 +6,9 @@ import { brandColor } from "./tokens";
 /** Minimal: solid brand-primary side panel with the headline; photo fills the rest.
  *
  *  Geometry and type scale come from CREATIVE_LAYOUTS.minimal (BSR-679). */
-export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, backgroundDataUrl, logoDataUrl }) => {
+export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl }) => {
   const u = creativeScale(dims.width);
-  const L = CREATIVE_LAYOUTS.minimal;
+  const L = layout;
   const c = (ref: Parameters<typeof brandColor>[1]) => brandColor(brand, ref);
   const panelW = dims.width * L.panel!.widthRatio;
 
@@ -40,10 +40,10 @@ export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, backgroun
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          paddingTop: L.panel!.pad * u,
-          paddingBottom: L.panel!.pad * u,
-          paddingLeft: L.panel!.pad * u,
-          paddingRight: L.panel!.pad * u,
+          paddingTop: L.panel!.padTop * u,
+          paddingBottom: L.panel!.padBottom * u,
+          paddingLeft: L.panel!.padLeft * u,
+          paddingRight: L.panel!.padRight * u,
           backgroundColor: c(L.panel!.background),
         }}
       >
