@@ -208,7 +208,7 @@ function packageMenuItems({
 }): MessageMenuItem[] {
   const remaining = cards.filter((card) => card.approval && statusOf(card) !== "approved" && statusOf(card) !== "rejected");
   return [
-    { kind: "item", label: "Review package", icon: <PanelRightOpen size={14} />, onSelect: onOpen },
+    { kind: "item", label: "Review assets", icon: <PanelRightOpen size={14} />, onSelect: onOpen },
     { kind: "separator" },
     {
       kind: "item",

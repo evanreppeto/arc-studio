@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { WORK_STATE_LABEL } from "@/domain";
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
 import { getAgentOperationsDashboard, getAgentTaskDetail } from "./read-model";
@@ -156,7 +157,9 @@ describe("getAgentOperationsDashboard", () => {
     expect(dashboard.status).toBe("live");
     if (dashboard.status !== "live") return;
 
-    expect(dashboard.metrics).toContainEqual({ label: "Awaiting approval", value: 1, delta: "Human gate" });
+    // One name per state: this metric is the same "on your desk" the rest of the
+    // app calls "Needs you" (BSR-656).
+    expect(dashboard.metrics).toContainEqual({ label: WORK_STATE_LABEL.needs_you, value: 1, delta: "Human gate" });
     expect(dashboard.agents[0]).toMatchObject({
       key: "arc-demo",
       name: "Arc Demo Orchestrator",
