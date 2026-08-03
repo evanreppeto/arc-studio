@@ -122,11 +122,24 @@ worse than off: mail leaves and nothing comes back, which looks like success.
 Also register the webhook endpoint in the **Resend dashboard**
 (Webhooks → Add endpoint → `delivered`, `opened`, `clicked`, `bounced`,
 `complained`) pointing at `/api/webhooks/resend`. Setting the secret without
-registering the endpoint means no events ever arrive.
+registering the endpoint means no events ever arrive. Subscribing the endpoint
+to `delivered` alone is the same failure wearing a working delivered event.
+
+Then enable **open tracking** on the sending domain (Domains → the domain →
+Open tracking; click tracking sits beside it). It is off by default and it is a
+property of the **domain at send time**, not of the send — so no code change
+compensates for it, and an email that left while it was off carries no pixel and
+can never report an open, however many times it is opened afterwards.
 
 **Verify, in order:**
 
-1. Send one campaign to **yourself** before any real recipient.
+1. Send one campaign to **yourself** before any real recipient. It has to be a
+   real campaign dispatch, not a transactional mail and not a send from Resend's
+   own dashboard: the receiver binds an event to a row by looking up
+   `campaign_dispatches.provider_message_id`, and **acknowledges anything it
+   cannot match** (`src/lib/dispatch/resend-webhook.ts:93`). Test with anything
+   else and the open arrives, is answered `200`, and lands nowhere — which reads
+   exactly like a broken webhook.
 2. Confirm it arrives, and that the unsubscribe link in the footer both renders
    and works. An unsigned or broken unsubscribe is a compliance failure.
 3. Open it, and confirm a `delivered` and an `opened` touchpoint appear on the
@@ -134,6 +147,13 @@ registering the endpoint means no events ever arrive.
    the send succeeding tells you nothing about the return path.
 4. Send a request to the webhook with a **bad signature** and confirm it is
    rejected. Do not assume the signature check runs; make it reject.
+
+**If `delivered` lands but `opened` never does**, three causes are
+indistinguishable in the database — nobody opened it, the endpoint subscribes to
+`delivered` only, or open tracking was off at send time. Separate them without
+the dashboard: open the delivered email, view its raw source, and look for the
+Resend tracking pixel (`<img>` on a `resend.com` URL). No pixel means open
+tracking was off when it left, and that is the whole answer.
 
 > `RESEND_*` belongs on Vercel and locally **only**. The runner sends no email.
 
