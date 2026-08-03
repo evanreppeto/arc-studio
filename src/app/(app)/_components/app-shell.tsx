@@ -12,6 +12,7 @@ import { AccountMenu } from "./account-menu";
 import { BillingNoticeBar } from "./billing-notice";
 import { ComingSoonToasts } from "./coming-soon";
 import { CommandPalette, type CommandItem } from "./command-palette";
+import { IdentifierLeakCheck } from "./identifier-leak-check";
 import { NavProgress } from "./nav-progress";
 import { RoutePrewarm } from "./route-prewarm";
 import { WorkspaceSwitcher, type WorkspaceOption } from "./workspace-switcher";
@@ -491,6 +492,9 @@ export function AppShell({
           </header>
           <CommandPalette items={commandItems} />
           <BillingNoticeBar banner={billingNotice} />
+          {/* Dev/preview only — no-op in production. Warns when a stored value
+              reaches the screen as text (BSR-709). */}
+          <IdentifierLeakCheck />
           {/* The app had no <main> on any route, so assistive tech had no way to
               skip the rail and the header on every single page. This is the one
               main landmark; Arc's own scroll region is a <div> beneath it. */}

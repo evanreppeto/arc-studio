@@ -45,6 +45,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import {
+  arcToolLabel,
   summarizeSteps,
   WORK_STATE_LABEL,
   type ArcActionCard,
@@ -246,7 +247,10 @@ export function RunTrace({
     }),
     ...toolCalls.map((tool, index) => ({
       id: `tool-${index}`,
-      label: tool.name,
+      // The raw name here rendered `mcp__arc__weather_lookup` straight into the
+      // trace — the protocol prefix is how Arc reaches the tool, not what it did.
+      // Found by the dev identifier check, not by reading the screen (BSR-709).
+      label: arcToolLabel(tool.name),
       detail: tool.input ?? `Running ${formatToolName(tool.name).toLowerCase()}`,
       result: tool.output,
       isTool: true,
@@ -1004,7 +1008,16 @@ export function useDraftDecision({
       onResolved(approval.assetId, "revision");
       setReviseOpen(false);
       setReviseText("");
-      setNotice(result.persisted ? "Revision requested — Arc is updating it" : "Preview — revision not saved");
+      if (!result.persisted) return setNotice("Preview — revision not saved");
+      // "Arc is updating it" is only true if the runner actually took the wake.
+      // On `dispatched: false` the request is saved but nothing is running, and
+      // nothing will re-surface it — so point at the campaign, where the retry
+      // lives, rather than reporting an update that is not happening.
+      setNotice(
+        result.dispatched === false
+          ? "Saved, but Arc hasn't picked it up — open the campaign to send it again"
+          : "Revision requested — Arc is updating it",
+      );
     });
   };
 
