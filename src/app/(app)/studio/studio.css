@@ -320,3 +320,14 @@
 @media (prefers-reduced-motion: reduce) {
   .arc-studio .canvas .clayer { transition: none; }
 }
+
+/* --- Arc copilot thread, in the panel (BSR-681) ---------------------------
+   The panel used to be a permanent empty state that explained the reply would
+   appear somewhere else. It appears here now. */
+.arc-studio .arcthread { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.arc-studio .arcmsg { font-size: 12.5px; line-height: 1.55; border-radius: 10px; padding: 9px 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.arc-studio .arcmsg.me { align-self: flex-end; max-width: 88%; background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--text); }
+.arc-studio .arcmsg.arc { background: var(--inset); border: 1px solid var(--line-2); color: var(--text-2); }
+.arc-studio .arcdots { color: var(--muted); font-style: italic; }
+.arc-studio .arcopen { align-self: flex-start; margin-top: 2px; font-size: 11.5px; color: var(--muted); text-decoration: none; }
+.arc-studio .arcopen:hover { color: var(--accent-contrast); }
