@@ -1,4 +1,4 @@
-import { buildCampaignSeedFromOpportunity, humanizePersonaLabel } from "@/domain";
+import { buildCampaignSeedFromOpportunity, humanizePersonaLabel, definitionText,} from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { crmRecordHref, listOpenOpportunities, type OpportunityRecord } from "@/lib/opportunities/read-model";
@@ -91,7 +91,7 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
   const confidence = Math.round(rec.confidence);
   // Abbreviated for the row: the title already spells it out, and the list is
   // scanned, not read.
-  const staleLabel = typeof ev.daysCold === "number" ? `quiet ${ev.daysCold}d` : null;
+  const staleLabel = typeof ev.daysCold === "number" ? `last contacted ${ev.daysCold}d ago` : null;
 
   // A next-iteration opportunity points back at the campaign it learned from;
   // CRM subjects resolve to their record route.
@@ -138,7 +138,13 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
   if (ev.topAsset) evidence.push({ label: "Best asset", value: ev.topAsset });
   // Cold-lead / lifecycle signals.
   if (typeof ev.leadScore === "number") evidence.push({ label: "Lead score", value: `${Math.round(ev.leadScore)} / 100` });
-  if (typeof ev.daysCold === "number") evidence.push({ label: "Inactivity", value: `${ev.daysCold} days since last touch` });
+  if (typeof ev.daysCold === "number") {
+    evidence.push({
+      label: "Last contacted",
+      value: ev.daysCold === 1 ? "1 day ago" : `${ev.daysCold} days ago`,
+      hint: definitionText("last_contacted"),
+    });
+  }
   if (ev.lastActivityAt) evidence.push({ label: "Last activity", value: formatDate(ev.lastActivityAt) });
   if (persona) evidence.push({ label: "Persona match", value: persona });
   if (Array.isArray(ev.evidence_urls) && ev.evidence_urls.length) {
@@ -149,15 +155,6 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
   // generic row — otherwise the evidence that justifies the card dies in the jsonb.
   evidence.push(...extraEvidenceRows(ev));
 
-  const impact: OpportunityVM["impact"] = [
-    { label: "Urgency", value: urgencyLabel },
-    { label: "Confidence", value: `${confidence}%` },
-  ];
-  if (ev.severity) impact.push({ label: "Severity", value: humanize(ev.severity) });
-  if (ev.activityLevel) impact.push({ label: "Activity", value: humanize(ev.activityLevel) });
-  if (typeof ev.bookedJobs === "number" && ev.bookedJobs > 0) impact.push({ label: "Booked", value: `${ev.bookedJobs}` });
-  if (typeof ev.leadScore === "number") impact.push({ label: "Lead score", value: `${Math.round(ev.leadScore)}` });
-  if (typeof ev.daysCold === "number") impact.push({ label: "Days cold", value: `${ev.daysCold}` });
 
   // Deterministic seed for the "Create campaign" confirm modal (persona enum,
   // inferred focus, name). Computed server-side so the modal can pre-fill it.
@@ -190,7 +187,6 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
     audienceNote: persona ? "Primary persona Arc matched to this signal" : `Source: ${sourceLabel}`,
     campaignTypes: campaignTypes(rec.urgency),
     evidence,
-    impact,
     routing: buildRouting(rec.status),
     status: rec.status,
     statusLabel: statusLabel(rec.status),
