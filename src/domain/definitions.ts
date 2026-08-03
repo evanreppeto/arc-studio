@@ -54,11 +54,6 @@ export const DEFINITIONS = {
     meaning: "Arc has noticed this but has not been cleared to use it.",
     basedOn: "It stays out of everything Arc writes until you approve it.",
   },
-  signal_strength: {
-    term: "Signal strength",
-    meaning: "How loudly the evidence is pointing at this person right now.",
-    basedOn: "Combines how urgent it looks, how well they fit, and how long it has been since anyone spoke to them.",
-  },
   last_contacted: {
     term: "Last contacted",
     meaning: "How long since anyone at your business was in touch with them.",
