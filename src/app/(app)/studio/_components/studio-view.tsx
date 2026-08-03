@@ -655,7 +655,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     <span className="pxchip">{FORMATS[fmt].dim}</span>
                   </div>
                   <div className="scapt">
-                    Performance scoring isn&rsquo;t available — Arc has no virality model wired up. These are the
+                    Arc can&rsquo;t predict how this will perform yet. These are the
                     dimensions this creative will render at.
                   </div>
                 </div>

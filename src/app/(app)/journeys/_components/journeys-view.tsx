@@ -259,7 +259,7 @@ export function JourneysView({
         <div>
           <h2>
             Customer Journeys
-            {isDemo ? <span className="jr-tag demo">demo data</span> : <span className="jr-tag wired">wired · live</span>}
+            {isDemo ? <span className="jr-tag demo">demo data</span> : null}
           </h2>
           <p className="jr-lede">Every contact&rsquo;s path from first touch to conversion — one stitched timeline.</p>
         </div>
