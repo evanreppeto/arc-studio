@@ -141,8 +141,8 @@ function RunDetail({ run }: { run: ArcRunInspection }) {
           // began recording them on 2026-07-31, so absence here is usually a
           // gap in the record rather than a fact about the run.
           <p className="runmuted">
-            None recorded. The runner only began writing tool calls on 2026-07-31, so older runs have none even when
-            they called tools.
+            None recorded. Arc only started saving its tool calls on 2026-07-31, so older runs have none even when
+            they used tools.
           </p>
         ) : (
           <ul className="runtools">
