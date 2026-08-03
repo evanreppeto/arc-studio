@@ -536,8 +536,8 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         </div>
         <span className="proj"><span className="dot" />Untitled creative · autosaved</span>
         <div className="right">
-          <button className="iconbtn" title="Undo" data-soon="Undo is coming soon"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 010 10h-3" /></svg></button>
-          <button className="iconbtn" title="Redo" data-soon="Redo is coming soon"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 000 10h3" /></svg></button>
+          <button type="button" className="iconbtn" aria-label="Undo" title="Undo" data-soon="Undo is coming soon"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 010 10h-3" /></svg></button>
+          <button type="button" className="iconbtn" aria-label="Redo" title="Redo" data-soon="Redo is coming soon"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 000 10h3" /></svg></button>
           <span className="cdivr" />
           <a className="gbtn" href="/library"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>Save to Library</a>
           <Link className="gbtn gold" href="/campaigns"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add to campaign</Link>
@@ -907,6 +907,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     />
                     <button
                       className="csend"
+                      aria-label="Send to Arc"
                       onClick={askArc}
                       disabled={!live || sending || !msg.trim()}
                       title={live ? "Send to Arc" : "Arc chat needs a connected backend"}

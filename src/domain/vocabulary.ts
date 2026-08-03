@@ -135,6 +135,14 @@ export const ASSET_NOUN = { one: "asset", many: "assets" } as const;
 /** The campaign itself. Retires "package" as a user-facing noun. */
 export const CAMPAIGN_NOUN = { one: "campaign", many: "campaigns" } as const;
 
+/**
+ * Elapsed days. Added because several surfaces interpolated the count straight
+ * into a hard-coded "days" and rendered "1 days" — including the opportunity
+ * title and summary, which are PERSISTED, so the disagreement is stored on the
+ * row and read back by Arc rather than being a render-time slip (BSR-690).
+ */
+export const DAY_NOUN = { one: "day", many: "days" } as const;
+
 export type CountableNoun = { one: string; many: string };
 
 /** `countOf(1, ASSET_NOUN)` → "1 asset"; `countOf(4, ASSET_NOUN)` → "4 assets". */

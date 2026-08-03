@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { redactDeep, redactSecrets } from "@/domain";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 /**
  * Lets Arc produce a REVIEW-READY draft that enters the human approval queue.
@@ -54,7 +55,7 @@ export async function createApprovalDraft(
   const { data: approval, error: approvalError } = await client
     .from("approval_items")
     .insert({
-      ...orgTenantFields(scope),
+      ...workspaceScopeFields(scope),
       item_type: input.itemType,
       // Hardcoded safe state — Arc cannot create an approved/unlocked item.
       status: "pending_approval",
@@ -83,7 +84,7 @@ export async function createApprovalDraft(
     const { data: output, error: outputError } = await client
       .from("agent_outputs")
       .insert({
-        ...orgTenantFields(scope),
+        ...workspaceScopeFields(scope),
         task_id: input.taskId,
         approval_item_id: approvalItemId,
         output_type: input.itemType,
@@ -106,6 +107,3 @@ export async function createApprovalDraft(
   return { ok: true, approvalItemId, agentOutputId };
 }
 
-function orgTenantFields(scope?: ArcTenantScope): Record<string, string> {
-  return scope ? { org_id: scope.orgId } : {};
-}

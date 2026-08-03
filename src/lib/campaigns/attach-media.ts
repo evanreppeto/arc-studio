@@ -3,6 +3,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdminClient } from "../supabase/server";
 import { type AgentTaskTenantFields } from "../agent-tasks/scope";
 import { insertNoReturn } from "./create";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 export type AttachMediaToCampaignAssetInput = {
   assetId: string;
@@ -74,7 +75,7 @@ export async function attachMediaToCampaignAsset(
   if (error) throw new Error(`campaign_assets update failed: ${error.message}`);
 
   await insertNoReturn(client, "campaign_events", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: asset.campaign_id,
     campaign_asset_id: asset.id,
     event_type: "asset_generated",
@@ -186,9 +187,6 @@ function applyOrgScope<Query>(query: Query, tenant?: AgentTaskTenantFields): Que
   return (query as { eq(column: string, value: string): Query }).eq("org_id", tenant.org_id);
 }
 
-function orgTenantFields(tenant?: AgentTaskTenantFields): Record<string, string> {
-  return tenant ? { org_id: tenant.org_id } : {};
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
