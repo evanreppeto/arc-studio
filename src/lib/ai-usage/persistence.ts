@@ -2,9 +2,11 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import {
   PRICING_VERSION,
-  estimateClaudeCostCents,
-  estimateEmbeddingCostCents,
-  estimateMediaCostCents,
+  centsFromMicrocents,
+  estimateClaudeCostMicrocents,
+  estimateEmbeddingCostMicrocents,
+  estimateGeminiTextCostMicrocents,
+  estimateMediaCostMicrocents,
   isPricedUsage,
   type AiUsageService,
   type MediaUsageService,
@@ -36,17 +38,32 @@ export type RecordUsageResult =
   | { recorded: true; id: string; costCents: number }
   | { recorded: false; reason: "not_configured" | "error" };
 
-/** Compute the estimated cost (cents) for a usage event from the pricing module. */
-function costForInput(input: RecordUsageInput): number {
-  if (input.service === "arc_claude") {
-    return estimateClaudeCostCents(input.model, input.inputTokens, input.outputTokens);
+/**
+ * Estimated cost in MICROCENTS for a usage event (BSR-502 Finding 5). Microcents
+ * because rounding to whole cents per event floors every sub-half-cent call to
+ * zero, and that floor only ever rounds down, so it cannot average out.
+ *
+ * Every token-priced service is routed EXPLICITLY. The media branch used to be
+ * the fallthrough for "everything else", which silently swallowed `gemini_text`
+ * when that service was added: `MEDIA_PRICING["gemini_text"]` is undefined, and
+ * `undefined * units` is NaN — a cost that is neither a number nor an honest
+ * zero, headed for an integer column. Naming each service means the next one
+ * added fails typecheck here instead of computing NaN in production.
+ */
+function costMicrocentsForInput(input: RecordUsageInput): number {
+  switch (input.service) {
+    case "arc_claude":
+      return estimateClaudeCostMicrocents(input.model, input.inputTokens, input.outputTokens);
+    // Embeddings are billed per input token, not per generation, so they do not
+    // go through the media path — `units` on an embedding row is characters.
+    case "gemini_embedding":
+      return estimateEmbeddingCostMicrocents(input.model, input.inputTokens);
+    case "gemini_text":
+      return estimateGeminiTextCostMicrocents(input.model, input.inputTokens, input.outputTokens);
+    case "gemini_image":
+    case "gemini_video":
+      return estimateMediaCostMicrocents(input.service satisfies MediaUsageService, input.units);
   }
-  // Embeddings are billed per input token, not per generation, so they do not go
-  // through the media path — `units` on an embedding row is characters.
-  if (input.service === "gemini_embedding") {
-    return estimateEmbeddingCostCents(input.model, input.inputTokens);
-  }
-  return estimateMediaCostCents(input.service as MediaUsageService, input.units);
 }
 
 /**
@@ -59,7 +76,12 @@ export async function recordUsageEvent(input: RecordUsageInput): Promise<RecordU
     return { recorded: false, reason: "not_configured" };
   }
 
-  const costCents = costForInput(input);
+  const costMicrocents = costMicrocentsForInput(input);
+  // `cost_estimate_cents` keeps its existing meaning (whole cents, rounded) so
+  // every current reader is unaffected; `cost_microcents` is the precise value
+  // that aggregation should sum. Derived from the same number, so they can never
+  // disagree by more than the rounding itself.
+  const costCents = centsFromMicrocents(costMicrocents);
   // `ai_usage_events` isn't in the generated Database types yet, so use the
   // established untyped-client cast (see src/lib/personas/persistence.ts).
   const db = getSupabaseAdminClient() as unknown as SupabaseClient;
@@ -77,6 +99,7 @@ export async function recordUsageEvent(input: RecordUsageInput): Promise<RecordU
         output_tokens: input.outputTokens ?? null,
         units: input.units ?? null,
         cost_estimate_cents: costCents,
+        cost_microcents: costMicrocents,
         task_id: input.taskId ?? null,
         campaign_id: input.campaignId ?? null,
         metadata: {

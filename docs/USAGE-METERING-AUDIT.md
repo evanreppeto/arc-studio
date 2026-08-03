@@ -4,9 +4,10 @@
 `ai_usage_events` row ever written: 69 events, 2026-07-10 → 2026-07-31.
 
 **Verdict: the meter undercounts, and cannot currently be reconciled.** Five
-distinct gaps, four of them quantified from live data. Findings 1–4 have been
-addressed to different depths — read each one's status rather than assuming the
-audit is closed. None of them overcharge a
+distinct gaps, four of them quantified from live data. All five have since been
+addressed **structurally**; what remains is prices and reconciliation. Read each
+finding's status rather than assuming the audit is closed — "metered" and
+"correctly priced" are not the same claim. None of them overcharge a
 customer — every failure mode found runs in the direction of billing too little,
 which is the safer direction but still means the caps in `src/domain/plans.ts` are
 being enforced against a number that is not the real spend.
@@ -217,9 +218,42 @@ error scales with the number of small calls, and short calls are exactly what a
 chat-heavy product makes most of. A thousand tenants making brief turns would
 accumulate a permanent, invisible discount.
 
-**Fix:** store sub-cent precision — micro-cents in the ledger, rounded only at
-display and at the cap comparison — rather than rounding at write time. Not done
-here; it is a column change.
+**Fixed 2026-07-31.** Cost is computed and stored in **microcents** (1 cent =
+1,000) in a new `cost_microcents` column, and rounded to cents exactly once —
+after summing — at display and at the cap comparison. `cost_estimate_cents` keeps
+its existing meaning so every current reader is unaffected; it is now derived from
+the same number rather than being the number.
+
+The aggregating readers were switched to sum microcents: the **cap check**
+(`entitlements.ts`, the billing-critical one), the usage summary and daily
+buckets (`summarizeUsage`, `bucketCostByDay`), the previous-period total, and
+per-conversation cost (`run-inspector.ts`). A conversation is many small turns,
+which is exactly where the floor did the most damage.
+
+`cost_microcents` is **nullable and deliberately not backfilled.** Writing
+`cost_estimate_cents * 1000` across history would look tidy and would be a lie —
+it stamps a precise-looking number onto rows whose precision was destroyed at
+write time, and freezes the 13 floored rows at zero while making them *appear*
+exact. NULL honestly means "written before precision was recorded", and readers
+coalesce to `cents * 1000`, which is the same arithmetic without the false claim.
+
+Rows whose tokens and model rate permit an **exact** recomputation can be
+repaired separately, as a deliberate data operation with an audit trail — the way
+the sonnet-5 reprice was done — not silently inside a schema migration.
+
+> ⚠️ **A bug was found while doing this, and it had shipped.** `costForInput`
+> routed `arc_claude` and `gemini_embedding` explicitly and sent *everything else*
+> to the media path. When `gemini_text` was added, `MEDIA_PRICING["gemini_text"]`
+> was `undefined` and `undefined * units` is **NaN** — so every Gemini text row
+> would have written NaN into an integer cost column. It never fired only because
+> no `gemini_text` row had been written yet.
+>
+> The test suite was green throughout: the pricing function was unit-tested, and
+> the metering helper was tested with `recordUsageEvent` mocked. **Neither crossed
+> the integration point where the bug lived.** The cost dispatch is now an
+> exhaustive `switch` over the service union, so the next service added fails
+> typecheck instead of computing NaN in production, and the regression guard
+> drives every service through `recordUsageEvent` for real.
 
 ---
 
@@ -281,10 +315,14 @@ one turn measured end-to-end was out by roughly **5.7×**.
 
 Order: ~~price sonnet-5~~ (done) → ~~meter embeddings~~ (done) → ~~meter Gemini
 text~~ (done) → ~~confirm the cache-token hypothesis~~ (**confirmed**) →
-**confirm Anthropic's cache multipliers and price cache tokens** (the largest
-single correction) → **supply Gemini embedding + text rates and backfill** (the
-text rows hold measured tokens, so that backfill is exact) → decide on sub-cent
-precision → reconcile one month against real invoices → then arm.
+~~sub-cent precision~~ (done) → **confirm Anthropic's cache multipliers and price
+cache tokens** (the largest single correction) → **supply Gemini embedding + text
+rates and backfill** (the text rows hold measured tokens, so that backfill is
+exact) → optionally recompute historical `cost_microcents` where tokens allow it
+→ reconcile one month against real invoices → then arm.
+
+Everything remaining needs a **number from outside this repository** — a
+published rate or a provider invoice. There is no more plumbing to build.
 
 Every metered path now exists. What is missing is **prices**, not plumbing.
 
