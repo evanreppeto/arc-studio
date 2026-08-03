@@ -70,6 +70,9 @@ export type CreativeLayoutSpec = {
   logoPosition?: { top: number; left: number };
   kicker: TextScale;
   headline: TextScale & { clampLines: number };
+  /** The optional supporting line. Present on every template because the copy
+   *  is optional, not the slot. */
+  subhead: TextScale & { clampLines: number };
   cta: CtaScale;
   /** Bottom gradient for legibility: height as a fraction of the canvas height. */
   scrim?: { heightRatio: number; solidStop: number; midStop?: number };
@@ -103,6 +106,7 @@ export const CREATIVE_LAYOUTS: Record<CreativeTemplateId, CreativeLayoutSpec> = 
     },
     kicker: { size: 26, tracking: 2, uppercase: true, marginBottom: 18, color: "accent" },
     headline: { size: 78, lineHeight: 1.05, tracking: -1, marginBottom: 32, clampLines: 3, color: "light" },
+    subhead: { size: 34, lineHeight: 1.35, marginBottom: 32, clampLines: 2, color: "light" },
     cta: { size: 30, padX: 34, padY: 20, radius: 16, style: "filled", background: "accent", color: "light" },
     scrim: { heightRatio: 0.62, solidStop: 6, midStop: 48 },
   },
@@ -112,6 +116,7 @@ export const CREATIVE_LAYOUTS: Record<CreativeTemplateId, CreativeLayoutSpec> = 
     logo: { width: 260, height: 56, fallbackSize: 34 },
     kicker: { size: 24, tracking: 3, uppercase: true, marginBottom: 16, color: "accent" },
     headline: { size: 70, lineHeight: 1.06, tracking: -1, clampLines: 3, color: "light" },
+    subhead: { size: 30, lineHeight: 1.4, marginBottom: 0, clampLines: 2, color: "light" },
     cta: { size: 28, padX: 28, padY: 16, radius: 12, style: "outline", color: "light", borderWidth: 3, borderColor: "light" },
     scrim: { heightRatio: 0.34, solidStop: 8 },
     topBand: { padTop: 56, padBottom: 64, padLeft: 64, padRight: 56, solidStop: 30 },
@@ -123,6 +128,7 @@ export const CREATIVE_LAYOUTS: Record<CreativeTemplateId, CreativeLayoutSpec> = 
     logo: { width: 300, height: 64, fallbackSize: 38 },
     kicker: { size: 24, tracking: 3, uppercase: true, marginBottom: 18, color: "accent" },
     headline: { size: 64, lineHeight: 1.1, clampLines: 3, color: "light" },
+    subhead: { size: 28, lineHeight: 1.4, marginBottom: 0, clampLines: 2, color: "light" },
     cta: { size: 28, padX: 30, padY: 18, radius: 10, style: "filled", background: "accent", color: "primary" },
     panel: { widthRatio: 0.5, padTop: 64, padRight: 64, padBottom: 64, padLeft: 64, background: "primary" },
     divider: { width: 64, height: 4, marginTop: 28, marginBottom: 28, color: "accent" },
@@ -199,6 +205,9 @@ export function withLayoutOverride(
   const next: CreativeLayoutSpec = {
     ...layout,
     headline: { ...layout.headline, size: layout.headline.size * headlineScale },
+    // The subhead rides the headline's scale, or scaling the headline alone
+    // would break the type relationship the template was designed around.
+    subhead: { ...layout.subhead, size: layout.subhead.size * headlineScale },
   };
 
   if (layout.topBand) {

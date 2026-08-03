@@ -13,6 +13,10 @@ export type CreativeDimensions = { width: number; height: number };
 export type CreativeCopy = {
   headline: string;
   kicker?: string;
+  /** Optional supporting line under the headline — an offer or qualifier
+   *  ("Free assessment · same-week scheduling"). Renders only when set, like
+   *  the kicker, so a creative that doesn't want one is unchanged (BSR-691). */
+  subhead?: string;
   ctaLabel?: string;
 };
 
