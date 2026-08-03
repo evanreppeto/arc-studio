@@ -803,8 +803,8 @@ export function LibraryView({
             <span className="gspacer" />
             <span className="sortbtn" onClick={cycleSort}><svg viewBox="0 0 24 24"><path d="M7 4v16M7 20l-3-3M7 4l3 3M17 20V4M17 4l3 3M17 20l-3-3" /></svg>{sortLabel}</span>
             <span className="selwrap">
-              <span className={`sb${viewMode === "grid" ? " on" : ""}`} title="Grid" onClick={() => setViewMode("grid")}><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></span>
-              <span className={`sb${viewMode === "list" ? " on" : ""}`} title="List" onClick={() => setViewMode("list")}><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg></span>
+              <button type="button" className={`sb${viewMode === "grid" ? " on" : ""}`} aria-label="Grid view" aria-pressed={viewMode === "grid"} title="Grid" onClick={() => setViewMode("grid")}><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></button>
+              <button type="button" className={`sb${viewMode === "list" ? " on" : ""}`} aria-label="List view" aria-pressed={viewMode === "list"} title="List" onClick={() => setViewMode("list")}><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg></button>
             </span>
           </div>
 

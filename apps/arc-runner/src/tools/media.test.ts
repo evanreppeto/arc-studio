@@ -140,6 +140,41 @@ function setupVideo(posts: Array<() => Promise<unknown>>) {
   return { cards, apiPost, call, genVideo };
 }
 
+// BSR-706. Branding is the most common revision ask on an image asset and the
+// one image generation can never satisfy: hardenImagePrompt strips text/logos
+// from every prompt unconditionally, so "add our logo" regenerates a picture
+// that still has no logo. compose_creative is the only path that puts the real
+// Brand Kit logo on an image — but Arc only reaches for it if the descriptions
+// say so. These assert the signposts, because without them the tools quietly
+// point Arc at the tool that cannot do the job.
+describe("branding revisions route to compositing, not regeneration", () => {
+  const descriptions = () => {
+    const client = { apiPost: vi.fn() } as unknown as ArcClient;
+    const step = vi.fn(async () => {});
+    const tools = mediaTools(client, step, () => {}, {});
+    return Object.fromEntries(tools.map((t) => [t.name, t.description ?? ""]));
+  };
+
+  it("sends generate_image callers to compose_creative for logos and on-image words", () => {
+    const generateImage = descriptions().generate_image;
+    expect(generateImage).toMatch(/compose_creative/);
+    // naming the replacement is the point — "added later in design" told Arc the
+    // request was someone else's job without saying whose
+    expect(generateImage).toMatch(/logo/i);
+  });
+
+  it("tells compose_creative it is the answer to a branding revision", () => {
+    expect(descriptions().compose_creative).toMatch(/revision/i);
+    expect(descriptions().compose_creative).toMatch(/background_url/);
+  });
+
+  it("states the lockup limit rather than letting the operator discover it", () => {
+    // "put our logo on the truck" yields a branded creative, NOT a branded
+    // truck — the logo is positioned by the layout, not painted into the scene.
+    expect(descriptions().compose_creative).toMatch(/not painted onto an object|NOT painted onto an object/i);
+  });
+});
+
 describe("compose_creative", () => {
   it("exposes compose_creative", () => {
     const client = { apiPost: vi.fn() } as unknown as ArcClient;
