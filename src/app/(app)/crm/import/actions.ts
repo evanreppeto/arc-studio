@@ -2,7 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 
-import { inferCustomField, type CsvColumnOverrides, type ImportEntityKind, type InferredField } from "@/domain";
+import {
+  detectPreset,
+  inferCustomField,
+  parseCsv,
+  presetOverrides,
+  type CsvColumnOverrides,
+  type ImportEntityKind,
+  type ImportPresetKey,
+  type InferredField,
+} from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { runCsvImport } from "@/lib/connectors/import";
@@ -45,9 +54,28 @@ async function tenant() {
  * Resolve the file and report what an import WOULD do. Writes nothing, opens no
  * import run, and spends nothing on enrichment.
  */
+/**
+ * Fold a source preset into the operator's own corrections (BSR-646).
+ *
+ * The operator's overrides win: a preset is a starting point, and once someone
+ * has corrected a column by hand, re-applying the preset over the top would undo
+ * their fix on the next keystroke.
+ */
+function withPreset(
+  csvText: string,
+  preset: ImportPresetKey | undefined,
+  overrides: CsvColumnOverrides | undefined,
+): CsvColumnOverrides {
+  if (!preset || preset === "generic") return overrides ?? {};
+  const [headerRow] = parseCsv(csvText);
+  if (!headerRow) return overrides ?? {};
+  return { ...presetOverrides(preset, headerRow), ...(overrides ?? {}) };
+}
+
 export async function previewCsvImportAction(input: {
   csvText: string;
   columnOverrides?: CsvColumnOverrides;
+  preset?: ImportPresetKey;
 }): Promise<PreviewResult> {
   await requireOperator();
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect this workspace to a database before importing." };
@@ -60,7 +88,7 @@ export async function previewCsvImportAction(input: {
     const outcome = await runCsvImport({
       ...scope,
       csvText: input.csvText,
-      columnOverrides: input.columnOverrides,
+      columnOverrides: withPreset(input.csvText, input.preset, input.columnOverrides),
       allowedPersonaKeys: await getOrgPersonaKeys(scope.orgId),
       dryRun: true,
     });
@@ -80,6 +108,7 @@ export async function previewCsvImportAction(input: {
         suggestedFields: outcome.parse.unmappedColumns.map((header) =>
           inferCustomField(header, outcome.parse.unmappedValues[header] ?? []),
         ),
+        detectedPreset: detectPreset(outcome.parse.headers),
       },
     };
   } catch (error) {
@@ -119,6 +148,7 @@ export async function commitCsvImportAction(input: {
   columnOverrides?: CsvColumnOverrides;
   /** Unmapped columns the operator chose to keep (BSR-645). */
   customFields?: AcceptedCustomField[];
+  preset?: ImportPresetKey;
 }): Promise<CommitResult> {
   await requireOperator();
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect this workspace to a database before importing." };
@@ -140,7 +170,7 @@ export async function commitCsvImportAction(input: {
     const outcome = await runCsvImport({
       ...scope,
       csvText: input.csvText,
-      columnOverrides: input.columnOverrides,
+      columnOverrides: withPreset(input.csvText, input.preset, input.columnOverrides),
       customFields: usable,
       allowedPersonaKeys: await getOrgPersonaKeys(scope.orgId),
     });
@@ -216,6 +246,7 @@ export async function importEntityAction(input: {
         // land on different tables with different definitions. Empty rather than
         // absent, so the shape stays honest.
         suggestedFields: [] as InferredField[],
+        detectedPreset: null,
         sample: r.errors.slice(0, 25).map((e) => ({
           externalId: e.externalId,
           action: "skip" as const,
