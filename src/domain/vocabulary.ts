@@ -150,3 +150,123 @@ export function countOf(count: number, noun: CountableNoun): string {
 export function needsYouPhrase(count: number): string {
   return count === 1 ? "1 thing needs you" : `${count} things need you`;
 }
+
+// ---------------------------------------------------------------------------
+// Arc run diagnostics
+//
+// The run-detail page (/arc/runs/[id]) is reachable by any signed-in customer
+// from their own chat, and it rendered stored identifiers verbatim: a status of
+// `complete`, a kicker reading `ask / standard`, recall kinds like `crm_lead`
+// and `proof_point`, and tool names still carrying their protocol prefix
+// (`mcp__arc__search_contacts`). A diagnostic page has to show what Arc did —
+// that is the whole point — but "what Arc did" is the fact, not our spelling of
+// it.
+// ---------------------------------------------------------------------------
+
+/** Short forms that should not be sentence-cased into "Crm" / "Sms". */
+const ACRONYMS = new Set(["crm", "sms", "ai", "api", "url", "id", "cta", "seo", "roi", "mcp"]);
+
+/**
+ * Last-resort humanizer for a stored identifier: strip any `mcp__server__`
+ * prefix, split snake_case and camelCase into words, sentence-case the result.
+ *
+ * Every map below falls back to this rather than rendering the raw value,
+ * because these fields are open strings in practice — `route` is typed
+ * `"fast" | "standard"` and the demo fixture already carries `"chat"`, and the
+ * runner adds Brain node kinds without asking the app. An exhaustive lookup
+ * would quietly print nothing, or the raw key, on the first new value.
+ */
+export function humanizeIdentifier(raw: string): string {
+  const words = raw
+    .replace(/^mcp__[^_]+__/, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[\s_\-.]+/)
+    .filter(Boolean);
+  if (words.length === 0) return raw;
+  return words
+    .map((word, index) => {
+      const lower = word.toLowerCase();
+      if (ACRONYMS.has(lower)) return lower.toUpperCase();
+      return index === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+    })
+    .join(" ");
+}
+
+function labelled(map: Record<string, string>, value: string | null | undefined): string | null {
+  if (!value) return null;
+  return map[value] ?? humanizeIdentifier(value);
+}
+
+/** How the run finished. Prod only ever stores `complete` / `failed` here —
+ *  `sent` belongs to the operator's own message — but all four are mapped. */
+const RUN_STATUS_LABEL: Record<string, string> = {
+  complete: "Finished",
+  failed: "Failed",
+  pending: "Still running",
+  sent: "Sent",
+};
+
+/** What Arc was asked to do, not the enum we route on. */
+const RUN_MODE_LABEL: Record<string, string> = {
+  ask: "Answering a question",
+  act: "Doing work",
+  draft: "Drafting",
+};
+
+/** Which model tier served the run. Relevant to a customer as speed vs depth. */
+const RUN_ROUTE_LABEL: Record<string, string> = {
+  fast: "Fast model",
+  standard: "Standard model",
+};
+
+/**
+ * What a recalled memory *is*. Every value here was censused from prod, most
+ * frequent first: learning, crm_lead, campaign_ref, persona, signal, crm_job,
+ * proof_point, crm_contact, messaging_angle, crm_outcome, crm_company, arc.
+ */
+const RECALL_KIND_LABEL: Record<string, string> = {
+  learning: "Something Arc learned",
+  signal: "A signal Arc noticed",
+  persona: "Persona",
+  campaign_ref: "Campaign reference",
+  proof_point: "Proof point",
+  messaging_angle: "Messaging angle",
+  crm_lead: "Lead",
+  crm_contact: "Contact",
+  crm_company: "Company",
+  crm_job: "Job",
+  crm_outcome: "Outcome",
+  arc: "Arc's own note",
+};
+
+export function runStatusLabel(status: string | null | undefined): string {
+  return labelled(RUN_STATUS_LABEL, status) ?? "Unknown";
+}
+
+export function runModeLabel(mode: string | null | undefined): string | null {
+  return labelled(RUN_MODE_LABEL, mode);
+}
+
+export function runRouteLabel(route: string | null | undefined): string | null {
+  return labelled(RUN_ROUTE_LABEL, route);
+}
+
+export function recallKindLabel(kind: string | null | undefined): string {
+  return labelled(RECALL_KIND_LABEL, kind) ?? "Memory";
+}
+
+/** `mcp__arc__search_contacts` → "Search contacts"; `ToolSearch` → "Tool search". */
+export function arcToolLabel(name: string): string {
+  return humanizeIdentifier(name);
+}
+
+/** Tool outcome, in the same words as the run's own status. */
+const TOOL_STATUS_LABEL: Record<string, string> = {
+  complete: "Done",
+  error: "Failed",
+  running: "Running",
+};
+
+export function toolStatusLabel(status: string | null | undefined): string {
+  return labelled(TOOL_STATUS_LABEL, status) ?? "Unknown";
+}

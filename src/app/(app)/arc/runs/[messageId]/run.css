@@ -248,6 +248,22 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+/* A narration row: Arc's own prose between two actions. No number and no bold
+   label — the runner's `label` on these is a placeholder, and promoting it made
+   the word "Arc" the heading and the prose a footnote (BSR-693). Matches the
+   chat's `.is-narration` treatment so the same content reads the same way in
+   both places. The number column is kept as an empty cell rather than collapsed,
+   so narration and actions stay on one timeline. */
+.arc-run .runsteps li.is-narration .runstep-n.is-blank {
+  border: 0;
+}
+.arc-run .runsteps li.is-narration p {
+  margin: 0;
+  max-width: 74ch;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
 
 .arc-run .runtools {
   list-style: none;
