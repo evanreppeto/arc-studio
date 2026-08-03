@@ -116,8 +116,14 @@
 
 /* Media tiles */
 .arc-campaign .mediagrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 12px; }
+/* Tiles keep a common width and take their height from the creative's declared
+   ratio (set inline per tile), so a 9:16 reads as a 9:16 on the board. */
+.arc-campaign .mediagrid { align-items: start; }
 .arc-campaign .mediatile { position: relative; display: block; width: 100%; padding: 0; text-align: left; aspect-ratio: 4 / 3; border-radius: 9px; border: 1px solid var(--line-2); background-color: var(--inset); overflow: hidden; cursor: pointer; transition: border-color 0.14s var(--ease); }
 .arc-campaign .mediatile:hover { border-color: var(--accent-border); }
+.arc-campaign .mediatile.flagged { border-color: var(--red-border); }
+.arc-campaign .mediatile .mtrisk { position: absolute; top: 6px; right: 30px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: var(--red-soft); border: 1px solid var(--red-border); }
+.arc-campaign .mediatile .mtrisk svg { width: 12px; height: 12px; stroke: var(--red-text); fill: none; stroke-width: 1.9; }
 .arc-campaign .mediatile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-campaign .mediatile .mtimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 /* Zoom affordance: the tile used to look like a picture, not a control. */
@@ -343,6 +349,15 @@
 
 /* Full-size media preview (the tile lightbox). Rides the shared .modal-* card,
    so only the stage and the provenance list are defined here. */
+/* Risk flags sit above the image — the reviewer must meet them before they
+   scroll, not after. */
+.arc-campaign .lbrisk { border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px 13px; margin-bottom: 12px; }
+.arc-campaign .lbrisk b { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--red-text); }
+.arc-campaign .lbrisk b svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+.arc-campaign .lbrisk ul { margin: 7px 0 0; padding-left: 21px; }
+.arc-campaign .lbrisk li { font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.arc-campaign .lbrisk p { margin: 7px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+
 .arc-campaign .lbstage { display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--line-2); background: var(--canvas-deep, #101013); padding: 10px; margin-bottom: 14px; }
 /* contain, never cover — the 4:3 tile crops, the full-size view must not. */
 .arc-campaign .lbimg { display: block; max-width: 100%; max-height: min(58vh, 620px); object-fit: contain; border-radius: 6px; }

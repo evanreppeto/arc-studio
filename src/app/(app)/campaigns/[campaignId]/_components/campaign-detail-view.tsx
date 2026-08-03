@@ -113,6 +113,17 @@ const MEDIA_ORIGIN_LABEL: Record<CampaignMediaAsset["origin"], string> = {
   referenced: "Referenced elsewhere",
 };
 
+/**
+ * The declared ratio as a CSS `aspect-ratio`. The read-model has already
+ * rejected anything that isn't `w:h` within sane bounds; this is the render
+ * half of that. Falls back to the old fixed 4:3 when the producer declared
+ * nothing — an undeclared ratio must not silently become a square.
+ */
+function tileAspect(format: string | null): string {
+  const parts = format?.split(":");
+  return parts?.length === 2 ? `${parts[0]} / ${parts[1]}` : "4 / 3";
+}
+
 function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () => void }) {
   const thumb = media.thumbnailUrl || (media.type === "image" ? media.url : null);
   const [failed, setFailed] = useState(false);
@@ -121,8 +132,19 @@ function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () =>
   // tooltip is invisible to touch and to the keyboard, and the OS truncates a
   // long prompt anyway.
   const lineageLine = media.lineage[0]?.[1] ?? null;
+  const flagged = media.riskFlags.length > 0;
+  const label = `Open ${media.title} at full size${flagged ? ` — ${media.riskFlags.length} risk flag${media.riskFlags.length === 1 ? "" : "s"}` : ""}`;
   return (
-    <button type="button" className="mediatile" onClick={onOpen} aria-label={`Open ${media.title} at full size`}>
+    <button
+      type="button"
+      className={`mediatile${flagged ? " flagged" : ""}`}
+      onClick={onOpen}
+      aria-label={label}
+      // The tile letterboxes to the creative's own shape. It used to crop
+      // everything to 4:3, so a 9:16 vertical and a 1:1 square were
+      // indistinguishable from each other and from what would actually ship.
+      style={{ aspectRatio: tileAspect(media.format) }}
+    >
       {thumb && !failed ? (
         // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
         <img className="mtimg" src={thumb} alt={media.title} loading="lazy" onError={() => setFailed(true)} />
@@ -131,6 +153,13 @@ function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () =>
       <span className={`mtbadge ${media.origin === "generated" ? "ai" : "real"}`}>
         {media.origin === "generated" ? "AI" : media.type}
       </span>
+      {/* A flag recorded against THIS image was invisible here until now — the
+          reviewer saw only the deliverable-level guardrail note, if any. */}
+      {flagged && (
+        <span className="mtrisk" aria-hidden>
+          {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
+        </span>
+      )}
       <span className="mttitle">
         {media.title}
         {lineageLine ? <em className="mtlineage">{lineageLine}</em> : null}
@@ -225,6 +254,9 @@ function MediaLightbox({
   const rows: Array<[string, string]> = [
     ["Source", MEDIA_ORIGIN_LABEL[media.origin]],
     ["Type", media.mimeType || media.type],
+    // "Declared" is doing real work: nothing measures the stored file, so this
+    // is the producer's claim about the creative, not a verified dimension.
+    ["Format", media.format ? `${media.format} (declared)` : "Not declared"],
     ["Found in", media.source],
   ];
   if (media.description) rows.push(["Description", media.description]);
@@ -278,6 +310,24 @@ function MediaLightbox({
         </>
       }
     >
+      {/* Above the image, not in the metadata list below it. A flag recorded
+          against this asset is the reason a reviewer might decline it, and it
+          has to be in front of them before they scroll. */}
+      {media.riskFlags.length > 0 && (
+        <div className="lbrisk">
+          <b>
+            {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
+            {media.riskFlags.length === 1 ? "Risk flag on this asset" : `${media.riskFlags.length} risk flags on this asset`}
+          </b>
+          <ul>
+            {media.riskFlags.map((flag) => (
+              <li key={flag}>{flag}</li>
+            ))}
+          </ul>
+          <p>Recorded when the asset was produced. Nothing has cleared it — that is your call.</p>
+        </div>
+      )}
+
       {/* Keyed on the asset so stepping to the next one re-arms the load —
           a broken file must not leave its error over the working one. */}
       <div className="lbstage">
@@ -692,6 +742,10 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       origin: "attached",
       lineage: [],
       prompt: null,
+      // The optimistic tile knows neither — the read path fills them in on the
+      // next refresh. Guessing here would put an invented ratio on the tile.
+      format: null,
+      riskFlags: [],
       title: item.fileName,
       url: item.url,
       thumbnailUrl: item.url,
