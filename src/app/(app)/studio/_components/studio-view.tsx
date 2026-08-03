@@ -7,7 +7,7 @@ import { type CreativeLayoutOverride } from "@/domain";
 
 import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
-import { generateStudioAsset } from "../actions";
+import { generateStudioAsset, pollStudioVideo, startStudioVideo } from "../actions";
 import { StudioCanvas, type CanvasBrand, type CanvasLayer } from "./studio-canvas";
 
 const HOUSE = '<svg viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4654"/><stop offset="1" stop-color="#27303a"/></linearGradient></defs><rect width="600" height="300" fill="url(#sky)"/><path d="M0 210 L150 120 L300 200 L450 110 L600 190 V300 H0 Z" fill="#2b343d"/><path d="M120 230 L300 130 L480 230 Z" fill="#4a5663"/><path d="M120 230 L300 130 L300 250 L120 250 Z" fill="#3d4854"/><rect x="180" y="230" width="240" height="70" fill="#323b45"/><rect x="210" y="248" width="34" height="34" fill="#566270"/><rect x="356" y="248" width="34" height="34" fill="#566270"/></svg>';
@@ -150,7 +150,11 @@ const SESSION: { id: string; tag: string; item: Item }[] = [
 ];
 
 type CampaignRef = { id: string; name: string; href: string };
-type StudioDraft = { campaignId: string; assetId: string; url: string; source: string; format: string; title: string; status: string };
+type StudioDraft = { campaignId: string; assetId: string; url: string; source: string; format: string; title: string; status: string; kind?: "image" | "video" };
+
+/** Veo renders asynchronously; poll about every 10s for up to ~6 minutes. */
+const VIDEO_POLL_MS = 10_000;
+const VIDEO_MAX_POLLS = 36;
 
 /**
  * Starting copy for the canvas text layers. The sample set is restoration
@@ -418,6 +422,18 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [gen, startGen] = useTransition();
   const [genErr, setGenErr] = useState<string | null>(null);
   const [draftBusy, setDraftBusy] = useState<string | null>(null);
+  const [videoPrompt, setVideoPrompt] = useState("");
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoNote, setVideoNote] = useState<string | null>(null);
+  // The video poll loop outlives a fast unmount; this stops it writing state
+  // into a component that is gone.
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
 
   // Why generation is unavailable (honest gating), or null when it's ready.
   const genGate = !mediaEnabled
@@ -482,6 +498,72 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         }
       }
     });
+  };
+
+  // Video is its own engine: it needs a described SCENE, not a background photo
+  // to composite over, so it has its own prompt and its own gate. The render is
+  // async (start → poll), which is why this can't reuse runGenerate's transition.
+  // Veo takes landscape or portrait only; mirror the server's videoAspectFor so
+  // the button never promises a ratio the render won't produce.
+  const videoAspect = FORMATS[fmt].r === "9:16" ? "9:16" : "16:9";
+  const videoGate = !mediaEnabled
+    ? "Media generation is off — set ARC_MEDIA_ENABLED + GEMINI_API_KEY"
+    : !live
+      ? "Connect a backend to generate"
+      : !campaignId
+        ? "Pick a campaign above first"
+        : !videoPrompt.trim()
+          ? "Describe the video you want first"
+          : null;
+
+  const runVideo = async () => {
+    if (videoGate || videoBusy) return;
+    const prompt = videoPrompt.trim();
+    const title = headline.trim() || "Studio video";
+    setGenErr(null);
+    setVideoBusy(true);
+    setVideoNote("Starting the render…");
+    try {
+      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId });
+      if (!started.ok) {
+        setGenErr(started.error);
+        return;
+      }
+      setVideoNote("Rendering — this usually takes 1–3 minutes.");
+      for (let i = 0; i < VIDEO_MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, VIDEO_POLL_MS));
+        if (!aliveRef.current) return;
+        const poll = await pollStudioVideo({
+          operationName: started.operationName,
+          ticket: started.ticket,
+          model: started.model,
+          prompt,
+          format: started.aspectRatio,
+          title,
+          campaignId,
+        });
+        if (!aliveRef.current) return;
+        if (!poll.ok) {
+          setGenErr(poll.error);
+          return;
+        }
+        if (poll.status === "done") {
+          setDrafts((prev) => [
+            { campaignId: poll.campaignId, assetId: poll.assetId, url: poll.media.url, source: poll.media.source, format: poll.media.format, title, status: "pending_approval", kind: "video" },
+            ...prev,
+          ]);
+          return;
+        }
+      }
+      // Don't claim failure for work that is probably still running — the draft
+      // lands on the campaign whenever it finishes.
+      setGenErr("Still rendering after 6 minutes. It should appear on the campaign shortly.");
+    } finally {
+      if (aliveRef.current) {
+        setVideoBusy(false);
+        setVideoNote(null);
+      }
+    }
   };
 
   // Approve / decline reuse the wired campaign approval action; revise reuses the
@@ -819,8 +901,39 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="psec">
                   <h3 className="ph2">Generate</h3>
                   {genErr ? <div role="alert" style={{ margin: "0 2px 8px", fontSize: 11, color: "#cc6666", lineHeight: 1.4 }}>{genErr}</div> : null}
-                  <div className="exrow gold" onClick={() => runGenerate([FORMATS[fmt].r])} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>{gen ? "Generating…" : `Generate creative · ${FORMATS[fmt].r}`}</div>
-                  <div className="exrow" onClick={() => runGenerate(FORMATS.map((f) => f.r))} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.6" /></svg>Resize for all platforms <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)" }}>1:1 4:5 9:16 16:9</span></div>
+                  {mode === "video" ? (
+                    <>
+                      {/* Video doesn't composite over the selected photo — Veo renders
+                          the scene you describe. Keep that distinction visible so the
+                          canvas background isn't mistaken for the video's input. */}
+                      <div className="field">
+                        <div className="fieldl"><span>Describe the shot</span></div>
+                        <textarea
+                          className="input"
+                          rows={3}
+                          style={{ resize: "vertical", lineHeight: 1.45 }}
+                          placeholder="e.g. A clean service van pulls into a suburban driveway on a bright morning, slow steady camera"
+                          value={videoPrompt}
+                          onChange={(e) => setVideoPrompt(e.target.value)}
+                          disabled={videoBusy}
+                        />
+                      </div>
+                      <div className="exrow gold" onClick={runVideo} style={!videoGate && !videoBusy ? { cursor: "pointer" } : { opacity: 0.55 }} {...(videoGate ? { "data-soon": videoGate } : {})}>
+                        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2" /><path d="M17 9l4-2v10l-4-2" /></svg>
+                        {videoBusy ? "Rendering video…" : `Generate video · ${videoAspect}`}
+                      </div>
+                      <div className="scapt">
+                        {videoNote
+                          ? videoNote
+                          : `Veo renders a short clip from your description — it does not use the selected photo. Landscape and portrait only, so this renders at ${videoAspect}. Lands as a draft for your approval.`}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="exrow gold" onClick={() => runGenerate([FORMATS[fmt].r])} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>{gen ? "Generating…" : `Generate creative · ${FORMATS[fmt].r}`}</div>
+                      <div className="exrow" onClick={() => runGenerate(FORMATS.map((f) => f.r))} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.6" /></svg>Resize for all platforms <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)" }}>1:1 4:5 9:16 16:9</span></div>
+                    </>
+                  )}
                 </div>
 
                 {drafts.length > 0 && (
@@ -829,8 +942,14 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     {drafts.map((d) => (
                       <div className="grow" key={d.assetId} style={{ alignItems: "center", gap: 9 }}>
                         <span style={{ width: 42, height: 42, borderRadius: 6, overflow: "hidden", flexShrink: 0, background: "var(--line)" }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element -- generated media URL */}
-                          <img src={d.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          {d.kind === "video" ? (
+                            // A video draft has to be watchable to be reviewable —
+                            // an <img> pointed at an MP4 renders a broken thumbnail.
+                            <video src={d.url} muted playsInline preload="metadata" controls style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element -- generated media URL
+                            <img src={d.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          )}
                         </span>
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <div className="gt">{d.title} · {d.format}</div>
