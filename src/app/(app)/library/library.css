@@ -242,13 +242,13 @@
 /* provenance color classes */
 .arc-library .pv-real { background: var(--ok); }
 .arc-library .pv-ai { background: var(--accent); }
-.arc-library .pv-comp { background: var(--vio); }
+.arc-library .pv-comp { background: var(--slate); }
 .arc-library .pv-upload { background: var(--blue); }
 .arc-library .pv-logo { background: #9aa0ac; }
 .arc-library .pv-doc { background: #9aa0ac; }
 .arc-library .pvc-real { color: var(--ok-text); }
 .arc-library .pvc-ai { color: var(--accent-contrast); }
-.arc-library .pvc-comp { color: var(--vio-text); }
+.arc-library .pvc-comp { color: var(--slate-text); }
 .arc-library .pvc-upload { color: var(--blue-text); }
 .arc-library .pvc-logo { color: var(--text-2); }
 .arc-library .pvc-doc { color: var(--text-2); }
@@ -296,3 +296,8 @@
   .arc-library .ov .qa button { width: 44px; height: 44px; border-radius: 11px; }
   .arc-library .ov .qa svg { width: 18px; height: 18px; }
 }
+
+/* Legend for the provenance dot on each card — colour that carries meaning gets
+   a key, or it teaches nothing (BSR-661). */
+.arc-library .pvlegend { display: inline-flex; align-items: center; gap: 12px; font-size: 10.5px; color: var(--muted); }
+.arc-library .pvlegend span { display: inline-flex; align-items: center; gap: 5px; }

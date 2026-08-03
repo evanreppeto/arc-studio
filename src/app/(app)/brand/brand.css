@@ -203,7 +203,7 @@
 .arc-brand .isrc .ic svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-brand .ic.bl { background: rgba(136, 182, 216, 0.14); color: var(--blue-text); }
 .arc-brand .ic.gd { background: var(--accent-soft); color: var(--accent); }
-.arc-brand .ic.vi { background: rgba(150, 120, 200, 0.16); color: var(--vio-text); }
+.arc-brand .ic.vi { background: var(--slate-soft); color: var(--slate-text); }
 .arc-brand .ic.mu { background: var(--inset); color: var(--text-2); }
 .arc-brand .isrc .nm { font-size: 12.5px; font-weight: 600; }
 .arc-brand .isrc .ds { font-size: 10.5px; color: var(--muted); margin-top: 2px; line-height: 1.4; }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, statusTone } from "@/domain";
+import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, statusTone, personaAccent,} from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
 import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord, searchCrmRecords } from "../actions";
@@ -294,17 +294,6 @@ function bumpTasksLabel(current: string, delta: number): string {
   return total > 0 ? `${total} open` : "";
 }
 
-function personaDotOf(persona: string): string {
-  const p = (persona || "").toLowerCase();
-  if (/emergency|urgent|storm|hail|flood|fire|burst|water\s*damage/.test(p)) return "#cc6a6a";
-  if (/insurance|adjuster|agent/.test(p)) return "#88b6d8";
-  if (/plumb|partner|contractor|referral|vendor|trade|sub/.test(p)) return "#7fb89a";
-  if (/preventative|preventive|maintenance|monitor|inspection/.test(p)) return "#6fae9e";
-  if (/rebuild|restoration|reconstruct|remodel|renov/.test(p)) return "#d8a24a";
-  if (/hoa|board|association|landlord|tenant/.test(p)) return "#9678c8";
-  if (/past|repeat|existing|customer|reactivat/.test(p)) return "#b58fd0";
-  return "#c8a24a";
-}
 function titleCase(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -334,7 +323,7 @@ function buildOptimisticRow(
     statusLabel: label || "—",
     statusTone: statusTone(label),
     persona: personaLabelOf(v.persona || ""),
-    dot: personaDotOf(v.persona || ""),
+    dot: personaAccent(v.persona || ""),
     score: null,
     scoreColor: "var(--muted)",
     owner: "You",
@@ -510,7 +499,7 @@ export function CrmBoard({
     setPersonaMenuOpen(false);
     if (ids.length === 0) return;
     setError(null);
-    const dot = personaDotOf(opt.label);
+    const dot = personaAccent(opt.label);
     const prev = personaEdits;
     setPersonaEdits((e) => {
       const next = { ...e };
