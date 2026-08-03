@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { CAMPAIGN_NOUN, countOf, WORK_STATE_LABEL } from "@/domain";
+import { CAMPAIGN_NOUN, countOf, WORK_STATE_LABEL, personaAccent,} from "@/domain";
 
 import { createCampaign, type NewCampaignInput } from "../actions";
 import { NewCampaignModal } from "./new-campaign-modal";
@@ -73,14 +73,6 @@ function personaLabelOf(persona: string): string {
   const s = (persona || "").replace(/^persona[\s_-]+/i, "").replace(/[_-]+/g, " ").trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 }
-function personaDotOf(persona: string): string {
-  const p = (persona || "").toLowerCase();
-  if (/storm|hail|weather|damage/.test(p)) return "#7fb89a";
-  if (/property|manager|realtor|hoa|commercial/.test(p)) return "#c8a24a";
-  if (/insurance|adjuster/.test(p)) return "#88b6d8";
-  if (/past|repeat|existing|customer|reactivation/.test(p)) return "#9678c8";
-  return "#c8a24a";
-}
 function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
   const audience = personaLabelOf(v.persona);
   return {
@@ -95,7 +87,7 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
     next: "Arc is still building it",
     nextTone: "",
     audience,
-    dot: personaDotOf(v.persona || audience),
+    dot: personaAccent(v.persona || audience),
     channels: "",
     updatedRel: "now",
     updatedAbs: "",

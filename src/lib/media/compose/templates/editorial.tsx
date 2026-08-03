@@ -1,8 +1,15 @@
-import type { CreativeTemplate } from "../types";
+import { creativeScale } from "@/domain";
 
-/** Editorial: accent side-rail, kicker + headline up top on a dark band, logo + outline CTA at the foot. */
-export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, backgroundDataUrl, logoDataUrl }) => {
-  const u = dims.width / 1080;
+import type { CreativeTemplate } from "../types";
+import { brandColor } from "./tokens";
+
+/** Editorial: accent side-rail, kicker + headline up top on a dark band, logo + outline CTA at the foot.
+ *
+ *  Geometry and type scale come from CREATIVE_LAYOUTS.editorial (BSR-679). */
+export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl }) => {
+  const u = creativeScale(dims.width);
+  const L = layout;
+  const c = (ref: Parameters<typeof brandColor>[1]) => brandColor(brand, ref);
 
   return (
     <div
@@ -12,7 +19,7 @@ export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, backgro
         flexDirection: "column",
         width: dims.width,
         height: dims.height,
-        backgroundColor: brand.dark,
+        backgroundColor: c(L.surface),
         fontFamily: "Body",
         overflow: "hidden",
       }}
@@ -24,7 +31,17 @@ export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, backgro
         style={{ position: "absolute", top: 0, left: 0, width: dims.width, height: dims.height, objectFit: "cover" }}
       />
       {/* accent rail */}
-      <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 16 * u, display: "flex", backgroundColor: brand.accent }} />
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: L.rail!.width * u,
+          display: "flex",
+          backgroundColor: c(L.rail!.color),
+        }}
+      />
       {/* top band */}
       <div
         style={{
@@ -34,23 +51,23 @@ export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, backgro
           right: 0,
           display: "flex",
           flexDirection: "column",
-          paddingTop: 56 * u,
-          paddingBottom: 64 * u,
-          paddingLeft: 64 * u,
-          paddingRight: 56 * u,
-          background: `linear-gradient(180deg, ${brand.dark} 30%, rgba(15,17,21,0) 100%)`,
+          paddingTop: L.topBand!.padTop * u,
+          paddingBottom: L.topBand!.padBottom * u,
+          paddingLeft: L.topBand!.padLeft * u,
+          paddingRight: L.topBand!.padRight * u,
+          background: `linear-gradient(180deg, ${c(L.surface)} ${L.topBand!.solidStop}%, rgba(15,17,21,0) 100%)`,
         }}
       >
         {copy.kicker ? (
           <div
             style={{
               display: "flex",
-              color: brand.accent,
+              color: c(L.kicker.color),
               fontFamily: "Heading",
-              fontSize: 24 * u,
-              letterSpacing: 3 * u,
+              fontSize: L.kicker.size * u,
+              letterSpacing: L.kicker.tracking! * u,
               textTransform: "uppercase",
-              marginBottom: 16 * u,
+              marginBottom: L.kicker.marginBottom! * u,
             }}
           >
             {copy.kicker}
@@ -60,14 +77,14 @@ export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, backgro
           style={{
             display: "-webkit-box",
             WebkitBoxOrient: "vertical",
-            WebkitLineClamp: 3,
+            WebkitLineClamp: L.headline.clampLines,
             overflow: "hidden",
             textOverflow: "ellipsis",
-            color: brand.light,
+            color: c(L.headline.color),
             fontFamily: "Heading",
-            fontSize: 70 * u,
-            lineHeight: 1.06,
-            letterSpacing: -1 * u,
+            fontSize: L.headline.size * u,
+            lineHeight: L.headline.lineHeight,
+            letterSpacing: L.headline.tracking! * u,
           }}
         >
           {copy.headline}
@@ -80,42 +97,44 @@ export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, backgro
           left: 0,
           right: 0,
           bottom: 0,
-          height: dims.height * 0.34,
+          height: dims.height * L.scrim!.heightRatio,
           display: "flex",
-          background: `linear-gradient(0deg, ${brand.dark} 8%, rgba(15,17,21,0) 100%)`,
+          background: `linear-gradient(0deg, ${c(L.surface)} ${L.scrim!.solidStop}%, rgba(15,17,21,0) 100%)`,
         }}
       />
       {/* foot: logo + outline CTA */}
       <div
         style={{
           position: "absolute",
-          left: 64 * u,
-          right: 56 * u,
-          bottom: 56 * u,
+          left: L.copyInset.left * u,
+          right: L.copyInset.right * u,
+          bottom: L.copyInset.bottom! * u,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
         }}
       >
         {logoDataUrl ? (
-          <img src={logoDataUrl} style={{ width: 260 * u, height: 56 * u, objectFit: "contain" }} />
+          <img src={logoDataUrl} style={{ width: L.logo.width * u, height: L.logo.height * u, objectFit: "contain" }} />
         ) : (
-          <div style={{ display: "flex", color: brand.light, fontFamily: "Heading", fontSize: 34 * u }}>{brand.displayName}</div>
+          <div style={{ display: "flex", color: c("light"), fontFamily: "Heading", fontSize: L.logo.fallbackSize * u }}>
+            {brand.displayName}
+          </div>
         )}
         {copy.ctaLabel ? (
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              color: brand.light,
+              color: c(L.cta.color),
               fontFamily: "Heading",
-              fontSize: 28 * u,
-              paddingTop: 16 * u,
-              paddingBottom: 16 * u,
-              paddingLeft: 28 * u,
-              paddingRight: 28 * u,
-              border: `${3 * u}px solid ${brand.light}`,
-              borderRadius: 12 * u,
+              fontSize: L.cta.size * u,
+              paddingTop: L.cta.padY * u,
+              paddingBottom: L.cta.padY * u,
+              paddingLeft: L.cta.padX * u,
+              paddingRight: L.cta.padX * u,
+              border: `${L.cta.borderWidth! * u}px solid ${c(L.cta.borderColor!)}`,
+              borderRadius: L.cta.radius * u,
             }}
           >
             {copy.ctaLabel}

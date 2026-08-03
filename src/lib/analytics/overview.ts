@@ -3,7 +3,7 @@
 // lead→job→won funnel, and revenue-by-persona / leads-by-source breakdowns)
 // straight from real leads / jobs / outcomes rows. Everything is derived, so it
 // degrades gracefully when the tables are sparse or unconfigured.
-import { humanizePersonaLabel } from "@/domain";
+import { humanizePersonaLabel, personaAccent, PERSONA_ACCENTS,} from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { isWonStatus } from "@/domain";
@@ -55,7 +55,7 @@ export type AnalyticsOverview = {
   dataError?: string | null;
 };
 
-const PERSONA_DOTS = ["#c8a24a", "#7fb89a", "#88b6d8", "#9678c8", "#cc6a6a", "#d8935a", "#6ea8a0", "#b08fd0"];
+
 
 function humanizePersona(p: string): string {
   const label = humanizePersonaLabel(p);
@@ -166,11 +166,11 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
     ["Procurement", 1_020_000],
   ];
   const revMax = Math.max(1, ...personaRev.map(([, v]) => v));
-  const revenueByPersona: BreakdownRow[] = personaRev.map(([label, v], i) => ({
+  const revenueByPersona: BreakdownRow[] = personaRev.map(([label, v]) => ({
     label,
     count: v,
     width: Math.round((v / revMax) * 100),
-    dot: PERSONA_DOTS[i % PERSONA_DOTS.length],
+    dot: personaAccent(label),
     valueLabel: money(v),
   }));
 
@@ -182,11 +182,11 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
     ["Referral", 74],
   ];
   const srcMax = Math.max(1, ...sources.map(([, v]) => v));
-  const leadsBySource: BreakdownRow[] = sources.map(([label, v], i) => ({
+  const leadsBySource: BreakdownRow[] = sources.map(([label, v]) => ({
     label,
     count: v,
     width: Math.round((v / srcMax) * 100),
-    dot: PERSONA_DOTS[i % PERSONA_DOTS.length],
+    dot: PERSONA_ACCENTS.gold,
   }));
 
   const trendLabels = Array.from({ length: windowDays }, (_, i) => {
@@ -329,11 +329,11 @@ export async function getAnalyticsOverview(
   }
   const revEntries = [...revByPersona.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
   const revMax = Math.max(1, ...revEntries.map(([, v]) => v));
-  const revenueByPersona: BreakdownRow[] = revEntries.map(([label, v], i) => ({
+  const revenueByPersona: BreakdownRow[] = revEntries.map(([label, v]) => ({
     label,
     count: v,
     width: Math.round((v / revMax) * 100),
-    dot: PERSONA_DOTS[i % PERSONA_DOTS.length],
+    dot: personaAccent(label),
     valueLabel: money(v),
   }));
 
@@ -346,11 +346,11 @@ export async function getAnalyticsOverview(
   }
   const srcEntries = [...bySource.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
   const srcMax = Math.max(1, ...srcEntries.map(([, v]) => v));
-  const leadsBySource: BreakdownRow[] = srcEntries.map(([label, v], i) => ({
+  const leadsBySource: BreakdownRow[] = srcEntries.map(([label, v]) => ({
     label,
     count: v,
     width: Math.round((v / srcMax) * 100),
-    dot: PERSONA_DOTS[i % PERSONA_DOTS.length],
+    dot: PERSONA_ACCENTS.gold,
   }));
 
   // Arc's read — narrative from the real deltas.

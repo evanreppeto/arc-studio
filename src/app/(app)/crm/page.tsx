@@ -21,7 +21,15 @@ import { reportDegraded } from "@/lib/observability/report-degraded";
 /** How many custom fields become list columns. See the note at the call site. */
 const MAX_CUSTOM_COLUMNS = 2;
 
-export const metadata = { title: "CRM — Arc Studio" };
+export async function generateMetadata() {
+  const ctx = await getCurrentWorkspaceContext();
+  const [appSettings, businessProfile] = await Promise.all([
+    getAppSettings(ctx.orgId).catch(() => null),
+    getBusinessProfile(ctx.orgId).catch(() => null),
+  ]);
+  const { crmLabel } = getProductLanguage(appSettings?.industry || businessProfile?.industry);
+  return { title: `${crmLabel} — Arc Studio` };
+}
 
 const OBJECT_KEYS: CrmObjectKey[] = ["companies", "contacts", "properties", "leads", "jobs", "outcomes"];
 
@@ -88,14 +96,16 @@ export default async function CrmPage() {
     if (leadsK)
       kpis.push({
         label: "Leads",
+        sublabel: "vs previous 30 days",
         value: leadsK.value,
         delta: { label: leadsK.deltaLabel, dir: leadsK.dir },
         spark: { points: overview.trend.leads.cur, up: leadsK.dir === "up" },
       });
-    if (wonStage) kpis.push({ label: "Lead → won", value: wonStage.note });
+    if (wonStage) kpis.push({ label: "Lead → won", value: wonStage.note, sublabel: "of leads become customers" });
     if (revK)
       kpis.push({
         label: "Won revenue",
+        sublabel: "vs previous 30 days",
         value: revK.value,
         delta: { label: revK.deltaLabel, dir: revK.dir },
         spark: { points: overview.trend.revenue.cur, up: revK.dir === "up" },

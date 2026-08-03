@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { archivePersona, createPersona, editPersona, type EditPersonaInput, type NewPersonaInput } from "../actions";
 import { EditPersonaModal } from "./edit-persona-modal";
 import { NewPersonaModal } from "./new-persona-modal";
+import { KpiStrip } from "../../_components/kpi-strip";
 
 export type PersonaVM = {
   slug: string;
@@ -260,12 +261,15 @@ export function PersonasView({ personas, initialSlug }: { personas: PersonaVM[];
             </button>
           </div>
         </div>
-        <div className="pstats">
-          <div className="pstat"><div className="sl">Personas</div><div className="sv">{allPersonas.length}</div><div className="sd">you defined these</div></div>
-          <div className="pstat"><div className="sl">Segments</div><div className="sv">{headStats.segmentCount}</div><div className="sd">winning · keeping · growing</div></div>
-          <div className="pstat"><div className="sl">With an angle</div><div className="sv">{headStats.withAngle}</div><div className="sd">ready for Arc to use</div></div>
-          <div className="pstat"><div className="sl">Attributed leads</div><div className="sv">{headStats.leads.toLocaleString()}</div><div className="sd">last 30 days</div></div>
-        </div>
+        <KpiStrip
+          className="pstats"
+          items={[
+            { label: "Personas", value: String(allPersonas.length), sublabel: "you defined these" },
+            { label: "Segments", value: String(headStats.segmentCount), sublabel: "winning · keeping · growing" },
+            { label: "With an angle", value: String(headStats.withAngle), sublabel: "ready for Arc to use" },
+            { label: "Attributed leads", value: headStats.leads.toLocaleString(), sublabel: "last 30 days" },
+          ]}
+        />
         {/* The "N personas scoring below target — Arc can draft refreshed proof points"
             banner was removed with the score itself. It fired off persona.score, a
             constant 60 nothing ever updates, so it appeared for every workspace on
@@ -469,12 +473,20 @@ function PersonaDetail({ p, onEdit, onArchive }: { p: PersonaVM; onEdit: () => v
               Couldn&rsquo;t read leads / outcomes from your CRM — these figures aren&rsquo;t your data.
             </p>
           )}
-          <div className="perfgrid">
-            <div className="pc"><div className="pl">Leads (30d)</div><div className="pv">{p.perf.leads}</div><div className="pd">attributed</div></div>
-            <div className="pc"><div className="pl">Booked jobs</div><div className="pv">{p.perf.jobs}</div><div className="pd">scheduled</div></div>
-            <div className="pc"><div className="pl">Won revenue</div><div className="pv">{p.perf.revenue}</div><div className="pd">outcomes</div></div>
-            <div className="pc"><div className="pl">Conversion</div><div className="pv">{p.perf.leads > 0 ? `${Math.round((p.perf.jobs / p.perf.leads) * 100)}%` : "—"}</div><div className="pd">lead → job</div></div>
-          </div>
+          <KpiStrip
+            className="perfgrid"
+            items={[
+              { label: "Leads (30d)", value: String(p.perf.leads), sublabel: "attributed to this persona" },
+              { label: "Booked jobs", value: String(p.perf.jobs), sublabel: "scheduled" },
+              { label: "Won revenue", value: p.perf.revenue, sublabel: "from closed outcomes" },
+              {
+                label: "Conversion",
+                value: p.perf.leads > 0 ? `${Math.round((p.perf.jobs / p.perf.leads) * 100)}%` : "",
+                sublabel: "lead to job",
+                emptyHint: "Fills in once this persona has leads",
+              },
+            ]}
+          />
         </div>
       </div>
 

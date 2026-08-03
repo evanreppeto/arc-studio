@@ -66,6 +66,15 @@
   --ok-border-soft: rgba(127, 184, 154, 0.40);
   --on-ok: #0e1612;
 
+  /* Neutral category tint — the "this is a different KIND of thing" colour, for
+     provenance and channel chips. Replaces a violet (`--vio` / `--vio-text`)
+     that DESIGN.md §8 bans and that was, in most of its call sites, resolving to
+     nothing at all: `--vio` was never defined anywhere, and `--vio-text` only
+     existed inside `.arc-outbox` (BSR-661). */
+  --slate: #8fa2ba;
+  --slate-soft: rgba(150, 168, 196, 0.16);
+  --slate-text: #a9b6c9;
+
   --warn: #d8b65e;
   --warn-solid: #c8a24a;
   --warn-hover: #e3c878;

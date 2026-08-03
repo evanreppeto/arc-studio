@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type ChangeEvent, useMemo, useRef, useState, useTransition } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { decideArcDraftAction, requestArcDraftRevisionAction, sendArcMessageAction } from "../../arc/actions";
+import { type CreativeLayoutOverride } from "@/domain";
+
+import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
 import { generateStudioAsset } from "../actions";
+import { StudioCanvas, type CanvasBrand, type CanvasLayer } from "./studio-canvas";
 
 const HOUSE = '<svg viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4654"/><stop offset="1" stop-color="#27303a"/></linearGradient></defs><rect width="600" height="300" fill="url(#sky)"/><path d="M0 210 L150 120 L300 200 L450 110 L600 190 V300 H0 Z" fill="#2b343d"/><path d="M120 230 L300 130 L480 230 Z" fill="#4a5663"/><path d="M120 230 L300 130 L300 250 L120 250 Z" fill="#3d4854"/><rect x="180" y="230" width="240" height="70" fill="#323b45"/><rect x="210" y="248" width="34" height="34" fill="#566270"/><rect x="356" y="248" width="34" height="34" fill="#566270"/></svg>';
 const SC: Record<string, string> = {
@@ -145,12 +147,11 @@ type StudioDraft = { campaignId: string; assetId: string; url: string; source: s
 const SAMPLE_COPY = {
   kicker: "Storm season",
   headline: "Your roof, ready before the next storm.",
-  sub: "Free assessment · same-week scheduling",
   cta: "Get my free quote",
 };
-const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
+const EMPTY_COPY = { kicker: "", headline: "", cta: "" };
 
-export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, brandPalette = [] }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; brandPalette?: string[] }) {
+export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, brandPalette = [], brandTokens = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; brandPalette?: string[]; brandTokens?: CanvasBrand | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
   // The "Approved media" source shows the workspace's real media_assets. Live, it
   // shows ONLY those — never the built-in samples, which would present stock art as
@@ -189,13 +190,32 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [accent, setAccent] = useState(swatches[0] ?? "#c8a24a");
   const [kicker, setKicker] = useState(startingCopy.kicker);
   const [headline, setHeadline] = useState(startingCopy.headline);
-  const [sub, setSub] = useState(startingCopy.sub);
   const [cta, setCta] = useState(startingCopy.cta);
   const [safe, setSafe] = useState(false);
   // Per-layer visibility for the canvas. The Layers panel eye toggles drive this;
   // a hidden layer isn't rendered on the canvas, and a hidden text layer is left
   // out of the composited generate so the output matches the preview.
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  // Canvas editing (BSR-680): which layer is selected, and the operator's nudge.
+  // Constrained on purpose — the copy block moves and the headline scales; the
+  // template keeps everything else, which is what keeps creative on brand.
+  const [selectedLayer, setSelectedLayer] = useState<CanvasLayer | null>(null);
+  const [layoutOverride, setLayoutOverride] = useState<CreativeLayoutOverride>({});
+  const nudged = Boolean(layoutOverride.copyDx || layoutOverride.copyDy || (layoutOverride.headlineScale ?? 1) !== 1);
+
+  // Escape drops the selection — but only when focus is not inside a field, or
+  // it would fight the modals and the in-place text editor, which use Escape to
+  // cancel their own edit.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      setSelectedLayer(null);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
   const shown = (layer: string) => !hidden.has(layer);
   const toggleLayer = (layer: string) =>
     setHidden((prev) => {
@@ -211,7 +231,16 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [msg, setMsg] = useState("");
   const [sendErr, setSendErr] = useState<string | null>(null);
   const [sending, startSend] = useTransition();
-  const router = useRouter();
+  // The conversation Studio is holding. It used to be thrown at the router the
+  // moment it existed, which is why this panel never showed a reply (BSR-681).
+  const [convId, setConvId] = useState<string | null>(null);
+  const [thread, setThread] = useState<ArcThreadMessage[]>([]);
+  const [awaitingReply, setAwaitingReply] = useState(false);
+  const [streamBody, setStreamBody] = useState<string | null>(null);
+  const [reconcileTick, setReconcileTick] = useState(0);
+  /** When the last message was sent, so a reply from BEFORE it can't be mistaken
+   *  for the answer to it on a follow-up turn. */
+  const sentAtRef = useRef<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
@@ -225,17 +254,91 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     if (!text || sending || !live) return;
     setSendErr(null);
     const context = `\n\n(From Studio · ${cmode} · ${mode} · ${FORMATS[fmt].r}${headline ? ` · headline: "${headline}"` : ""})`;
+    // Optimistic: the operator's own words appear immediately, so the panel
+    // never looks like it swallowed the message while the round trip runs.
+    const localId = `local-${Date.now()}`;
+    setThread((prev) => [...prev, { id: localId, role: "operator", body: text, status: "sent", createdAt: new Date().toISOString() }]);
+    setMsg("");
     startSend(async () => {
-      const result = await sendArcMessageAction({ conversationId: null, body: text + context });
+      const result = await sendArcMessageAction({ conversationId: convId, body: text + context });
       if (result.ok) {
-        setMsg("");
-        router.push(`/arc?c=${result.conversationId}`);
-        router.refresh();
+        sentAtRef.current = new Date().toISOString();
+        setConvId(result.conversationId);
+        setAwaitingReply(true);
       } else {
+        // Take the optimistic bubble back rather than leaving a message that
+        // was never sent sitting in the thread.
+        setThread((prev) => prev.filter((m) => m.id !== localId));
+        setMsg(text);
         setSendErr(result.error);
       }
     });
   };
+  // Arc answers HERE. Same mechanism the chat page uses — cumulative snapshots
+  // over SSE — but rendered in this panel instead of navigating away from the
+  // canvas (BSR-681).
+  //
+  // `done` does NOT end the wait. The stream reports "done" whenever nothing is
+  // in flight, and the pending reply row is written by the runner AFTER the send
+  // action returns — so subscribing immediately can catch that gap and be told
+  // the reply is finished before it has started. Only the reconcile below, which
+  // looks for an actual completed reply, decides we are no longer waiting.
+  useEffect(() => {
+    if (!live || !awaitingReply || !convId) return;
+    const source = new EventSource(`/api/arc/stream/${encodeURIComponent(convId)}`);
+    source.onmessage = (event) => {
+      try {
+        const frame = JSON.parse(event.data) as { messageId?: string; body?: string };
+        if (frame.messageId) setStreamBody(frame.body ?? "");
+      } catch {
+        /* ignore a malformed frame */
+      }
+    };
+    source.addEventListener("done", () => setReconcileTick((n) => n + 1));
+    source.onerror = () => setReconcileTick((n) => n + 1);
+    return () => source.close();
+  }, [live, awaitingReply, convId]);
+
+  // The canonical thread. Runs on a slow cadence while waiting (and immediately
+  // whenever the stream says something changed), and is what actually ends the
+  // wait — when a completed Arc reply newer than the message we sent exists.
+  useEffect(() => {
+    if (!convId) return;
+    let cancelled = false;
+
+    const pull = async () => {
+      const result = await getArcConversationTailAction({ conversationId: convId });
+      if (cancelled || !result.ok) return;
+      setThread(result.messages);
+      const replied = result.messages.some(
+        (m) => m.role === "arc" && m.status !== "pending" && m.body.trim() && (!sentAtRef.current || m.createdAt >= sentAtRef.current),
+      );
+      if (replied) {
+        setAwaitingReply(false);
+        setStreamBody(null);
+      }
+    };
+
+    void pull();
+    if (!awaitingReply) return () => { cancelled = true; };
+
+    // Bounded: a reply that never lands stops the poll rather than leaving a
+    // timer running for the life of the tab.
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      if (Date.now() - startedAt > 120_000) {
+        window.clearInterval(interval);
+        setAwaitingReply(false);
+        return;
+      }
+      void pull();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [convId, awaitingReply, reconcileTick]);
 
   // Import art: reuse the wired Library upload (real media_assets rows, provenance-
   // tagged, held for review before Arc may reuse). New assets appear under Imported.
@@ -343,6 +446,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           // a template from a hash of the background URL and always used the brand
           // kit's accent, whatever the swatches showed.
           template: TEMPLATES[tmpl]?.id,
+          // What the operator moved on the canvas has to reach the render, or
+          // the drag was theatre (BSR-680).
+          layoutOverride,
           accent,
           campaignId,
         });
@@ -387,6 +493,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     setTab(t.target === "arc" ? "arc" : "design");
   };
   const logoInitial = (brandName || "S").trim().charAt(0).toUpperCase();
+  // What the canvas paints with. The accent is the swatch the operator picked
+  // (the same value sent to the renderer); everything else comes from the Brand
+  // Kit so the preview's colours are the export's colours. Without a kit we fall
+  // back to the renderer's own neutral tokens rather than inventing a palette.
+  const canvasBrand: CanvasBrand = {
+    primary: brandTokens?.primary ?? "#16161a",
+    secondary: brandTokens?.secondary ?? "#2a2a32",
+    accent,
+    dark: brandTokens?.dark ?? "#0f1115",
+    light: brandTokens?.light ?? "#f1ede2",
+    displayName: brandTokens?.displayName ?? brandName,
+    shortMark: brandTokens?.shortMark ?? logoInitial,
+  };
 
   const Tile = ({ item, i }: { item: Item; i: number }) => (
     <div className={`mtile${selTile === i ? " on" : ""}`} onClick={() => { setSelTile(i); setBg(item); }}>
@@ -477,6 +596,21 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             {FORMATS.map((f, i) => (
               <span key={f.r} className={`fchip${fmt === i ? " on" : ""}`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></span>
             ))}
+            {/* Only offered once something has been moved — an always-present
+                "Reset layout" on an untouched canvas is noise. */}
+            {nudged && (
+              <span
+                className="szbtn"
+                role="button"
+                tabIndex={0}
+                onClick={() => setLayoutOverride({})}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLayoutOverride({}); } }}
+                title="Put the copy back where the template puts it"
+              >
+                <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" /></svg>
+                Reset layout
+              </span>
+            )}
             <span className="fspacer" />
             <span className={`szbtn${safe ? " on" : ""}`} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Safe zones</span>
             <span className="zoom">Fit · 100%</span>
@@ -485,37 +619,40 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           <div className="stagewrap">
             <div className="artboard">
               <div className={`canvas${safe ? " szon" : ""}${mode === "video" ? " video" : ""}`} style={{ aspectRatio: FORMATS[fmt].ar }}>
-                <div className="cbg">
-                  {!bg ? (
-                    <div className="cbg-empty">No approved media yet — pick a source, upload, or generate to set a background.</div>
-                  ) : shown("Background") ? (
-                    <ItemMedia item={bg} />
-                  ) : null}
-                </div>
+                {/* Laid out from CREATIVE_LAYOUTS — the same numbers the exporter
+                    uses — so switching template changes what you see, and what
+                    you see is the shape that ships (BSR-679). */}
+                <StudioCanvas
+                  template={(TEMPLATES[tmpl]?.id ?? "bold") as "bold" | "editorial" | "minimal"}
+                  brand={canvasBrand}
+                  copy={{ kicker, headline, cta }}
+                  shown={shown}
+                  override={layoutOverride}
+                  onOverrideChange={setLayoutOverride}
+                  selected={selectedLayer}
+                  onSelect={setSelectedLayer}
+                  onCopyChange={(field, value) => {
+                    if (field === "kicker") setKicker(value);
+                    else if (field === "headline") setHeadline(value);
+                    else setCta(value);
+                  }}
+                  background={
+                    !bg ? (
+                      <div className="cbg-empty">No approved media yet — pick a source, upload, or generate to set a background.</div>
+                    ) : shown("Background") ? (
+                      <ItemMedia item={bg} />
+                    ) : null
+                  }
+                />
                 <div className="cveil" />
                 <div className="cplay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div>
-                {shown("Logo") && <div className="clogo"><span className="lm" style={{ background: accent }}>{logoInitial}</span> {brandName}</div>}
                 {bg && <div className="cprov">{PVLABEL[bg.p]}</div>}
-                {/* Empty text layers render as muted placeholders rather than
-                    collapsed nothing, so a workspace starting from scratch still
-                    sees where the copy lands. The CTA is a filled pill — an empty
-                    one is just a coloured smudge, so it sits out entirely. */}
-                <div className="ctext">
-                  {shown("Kicker") && (kicker
-                    ? <div className="ckick" style={{ color: accent === "#f1ede2" ? "#f1ede2" : accent }}>{kicker}</div>
-                    : <div className="ckick cplace">Kicker</div>)}
-                  {shown("Headline") && (headline
-                    ? <div className="chead">{headline}</div>
-                    : <div className="chead cplace">Your headline goes here.</div>)}
-                  <div className={`csub${sub ? "" : " cplace"}`}>{sub || "Supporting line"}</div>
-                  {shown("CTA button") && cta && <div className="ccta" style={{ background: accent, color: accent === "#f1ede2" ? "#201808" : "#1a1505" }}>{cta}</div>}
-                </div>
                 <div className="safez"><div className="szb szt"><span className="szl">caption / UI safe area</span></div><div className="szb szbo" /></div>
               </div>
               <div className="cspec">
                 <span>Rendered by <b>Arc</b></span><span className="dotsep" />
                 <span><b>{FORMATS[fmt].dim}</b> px</span><span className="dotsep" />
-                <span>{brandName} brand kit</span><span className="dotsep" />
+                <span title="Colours and type come from your Brand page, not from Arc">{brandName}&rsquo;s own colours</span><span className="dotsep" />
                 <span className="draftpill">Draft · not approved</span>
               </div>
             </div>
@@ -583,9 +720,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
 
                 <div className="psec">
                   <h3 className="ph2">Layers</h3>
-                  <div className="layer sel" style={shown("Background") ? undefined : { opacity: 0.5 }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">Background</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
+                  <div className={`layer${selectedLayer === "Background" ? " sel" : ""}`} role="button" tabIndex={0} onClick={() => setSelectedLayer("Background")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer("Background"); } }} style={shown("Background") ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">Background</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
                   {[["Kicker", kicker], ["Headline", headline], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
-                    <div className="layer" key={lt} style={shown(lt) ? undefined : { opacity: 0.5 }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
+                    <div className={`layer${selectedLayer === lt ? " sel" : ""}`} key={lt} role="button" tabIndex={0} onClick={() => setSelectedLayer(lt as CanvasLayer)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer(lt as CanvasLayer); } }} style={shown(lt) ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
                   ))}
                 </div>
 
@@ -593,7 +730,6 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   <h3 className="ph2">Edit copy</h3>
                   <div className="fieldl"><span>Kicker</span><span>eyebrow</span></div><input className="input" placeholder="Short eyebrow" value={kicker} onChange={(e) => setKicker(e.target.value)} />
                   <div className="field"><div className="fieldl"><span>Headline</span></div><input className="input" placeholder="The one line that has to land" value={headline} onChange={(e) => setHeadline(e.target.value)} /></div>
-                  <div className="field"><div className="fieldl"><span>Subhead</span></div><input className="input" placeholder="Supporting detail or offer" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
                   <div className="field"><div className="fieldl"><span>CTA</span></div><input className="input" placeholder="Button text" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
                 </div>
 
@@ -720,18 +856,38 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   </div>
                 </div>
                 <div className="arcscroll">
-                  <div className="arcempty">
-                    <div className="arcempty-t">Ask Arc about this creative</div>
-                    <p className="arcempty-d">
-                      Your message starts a new Arc conversation seeded with what&rsquo;s on the canvas — the
-                      format, the headline, and the campaign you picked — and opens it in Arc, where the reply
-                      and any drafts appear.
-                    </p>
-                    <p className="arcempty-d">
-                      Arc drafts only; nothing it produces goes outbound until you approve it. Drafts you
-                      generate here show up under <b>Drafts</b> on the Design tab.
-                    </p>
-                  </div>
+                  {thread.length === 0 && !awaitingReply ? (
+                    <div className="arcempty">
+                      <div className="arcempty-t">Ask Arc about this creative</div>
+                      <p className="arcempty-d">
+                        Your message starts an Arc conversation seeded with what&rsquo;s on the canvas — the
+                        format, the headline, and the campaign you picked. The reply appears here; you keep
+                        the artboard.
+                      </p>
+                      <p className="arcempty-d">
+                        Arc drafts only; nothing it produces goes outbound until you approve it. Drafts you
+                        generate here show up under <b>Drafts</b> on the Design tab.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="arcthread">
+                      {thread.map((m) => (
+                        <div key={m.id} className={`arcmsg ${m.role === "operator" ? "me" : "arc"}`}>
+                          {m.body}
+                        </div>
+                      ))}
+                      {awaitingReply && (
+                        <div className="arcmsg arc">
+                          {streamBody ? streamBody : <span className="arcdots">Arc is thinking…</span>}
+                        </div>
+                      )}
+                      {convId && (
+                        <a className="arcopen" href={`/arc?c=${convId}`}>
+                          Open the full conversation in Arc →
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="composer">
                   <div className="modes">{["Ask", "Act", "Draft"].map((m) => <span key={m} className={`mode${cmode === m ? " on" : ""}`} onClick={() => setCmode(m)}>{m}</span>)}</div>

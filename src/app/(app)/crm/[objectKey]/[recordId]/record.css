@@ -135,7 +135,7 @@
 .arc-record .tdot.note { background: var(--accent); }
 .arc-record .tdot.task { background: var(--ok); }
 .arc-record .tdot.email { background: var(--blue); }
-.arc-record .tdot.ai { background: var(--vio); }
+.arc-record .tdot.ai { background: var(--slate); }
 .arc-record .tdot.status { background: var(--warn); }
 .arc-record .tev .tt { font-size: 12.5px; font-weight: 600; }
 .arc-record .tev .tt .by { font-weight: 400; color: var(--muted); font-size: 11px; }

@@ -218,11 +218,24 @@ export type CsvParseSummary = {
   /** Every header in the file, in order — including the ones nothing matched. */
   headers: string[];
   /**
-   * Headers the detector did not recognise. These are silently dropped today
-   * (BSR-645 turns them into custom fields); listing them is the difference
-   * between the operator choosing to drop a column and never learning it existed.
+   * Headers the detector did not recognise. Listing them is the difference
+   * between the operator choosing to drop a column and never learning it existed;
+   * BSR-645 turns the accepted ones into custom fields.
    */
   unmappedColumns: string[];
+  /**
+   * Every value under each unmapped header, in row order — what type inference
+   * reads. Kept out of `contacts` deliberately: these are not part of the lead
+   * contract, and mixing them in would let an unrecognised column reach the
+   * ingest payload.
+   */
+  unmappedValues: Record<string, string[]>;
+  /**
+   * Unmapped values keyed by the contact id the row produced, so the importer can
+   * attach them to the record that row actually became. Rows the parser dropped
+   * are absent, because there is nothing to attach them to.
+   */
+  extraValuesByContactId: Record<string, Record<string, string>>;
 };
 
 /**
@@ -244,7 +257,10 @@ export const CSV_PERSONA_PROPERTY = "persona";
 export function parseCsvContacts(text: string, overrides?: CsvColumnOverrides): CsvParseSummary {
   const rows = parseCsv(text);
   if (rows.length === 0) {
-    return { contacts: [], mappedColumns: {}, totalRows: 0, skipped: 0, headers: [], unmappedColumns: [] };
+    return {
+      contacts: [], mappedColumns: {}, totalRows: 0, skipped: 0, headers: [],
+      unmappedColumns: [], unmappedValues: {}, extraValuesByContactId: {},
+    };
   }
   const [header, ...dataRows] = rows;
   const mapping = detectColumnMapping(header);
@@ -276,8 +292,15 @@ export function parseCsvContacts(text: string, overrides?: CsvColumnOverrides): 
   for (const [idxStr, field] of Object.entries(mapping)) mappedColumns[field] = header[Number(idxStr)];
   const unmappedColumns = header.filter((_, index) => !(index in mapping)).map((h) => h.trim()).filter(Boolean);
 
+  const unmappedIndexes = header
+    .map((name, index) => ({ name: name.trim(), index }))
+    .filter((h) => h.name && !(h.index in mapping));
+
   const contacts: HubspotContact[] = [];
   const seen = new Set<string>();
+  const unmappedValues: Record<string, string[]> = {};
+  const extraValuesByContactId: Record<string, Record<string, string>> = {};
+  for (const h of unmappedIndexes) unmappedValues[h.name] = [];
   let skipped = 0;
   for (const row of dataRows) {
     const contact = csvRowToContact(mapCsvRow(row, mapping));
@@ -285,6 +308,14 @@ export function parseCsvContacts(text: string, overrides?: CsvColumnOverrides): 
     if (seen.has(contact.id)) continue; // in-file dedup (same email twice in one paste)
     seen.add(contact.id);
     contacts.push(contact);
+
+    const extras: Record<string, string> = {};
+    for (const h of unmappedIndexes) {
+      const value = (row[h.index] ?? "").trim();
+      unmappedValues[h.name].push(value);
+      if (value) extras[h.name] = value;
+    }
+    if (Object.keys(extras).length > 0) extraValuesByContactId[contact.id] = extras;
   }
   return {
     contacts,
@@ -293,5 +324,7 @@ export function parseCsvContacts(text: string, overrides?: CsvColumnOverrides): 
     skipped,
     headers: header.map((h) => h.trim()),
     unmappedColumns,
+    unmappedValues,
+    extraValuesByContactId,
   };
 }

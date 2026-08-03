@@ -2,11 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 
-import { type CsvColumnOverrides } from "@/domain";
+import {
+  detectPreset,
+  inferCustomField,
+  parseCsv,
+  presetOverrides,
+  type CsvColumnOverrides,
+  type ImportEntityKind,
+  type ImportPresetKey,
+  type InferredField,
+} from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { runCsvImport } from "@/lib/connectors/import";
+import { provisionCustomFields, type AcceptedCustomField } from "@/lib/import-runs/custom-fields";
 import { reverseImportRun } from "@/lib/import-runs/reverse";
+import { runEntityImport } from "@/lib/import-runs/run-entity-import";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -43,9 +54,28 @@ async function tenant() {
  * Resolve the file and report what an import WOULD do. Writes nothing, opens no
  * import run, and spends nothing on enrichment.
  */
+/**
+ * Fold a source preset into the operator's own corrections (BSR-646).
+ *
+ * The operator's overrides win: a preset is a starting point, and once someone
+ * has corrected a column by hand, re-applying the preset over the top would undo
+ * their fix on the next keystroke.
+ */
+function withPreset(
+  csvText: string,
+  preset: ImportPresetKey | undefined,
+  overrides: CsvColumnOverrides | undefined,
+): CsvColumnOverrides {
+  if (!preset || preset === "generic") return overrides ?? {};
+  const [headerRow] = parseCsv(csvText);
+  if (!headerRow) return overrides ?? {};
+  return { ...presetOverrides(preset, headerRow), ...(overrides ?? {}) };
+}
+
 export async function previewCsvImportAction(input: {
   csvText: string;
   columnOverrides?: CsvColumnOverrides;
+  preset?: ImportPresetKey;
 }): Promise<PreviewResult> {
   await requireOperator();
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect this workspace to a database before importing." };
@@ -58,7 +88,7 @@ export async function previewCsvImportAction(input: {
     const outcome = await runCsvImport({
       ...scope,
       csvText: input.csvText,
-      columnOverrides: input.columnOverrides,
+      columnOverrides: withPreset(input.csvText, input.preset, input.columnOverrides),
       allowedPersonaKeys: await getOrgPersonaKeys(scope.orgId),
       dryRun: true,
     });
@@ -75,6 +105,10 @@ export async function previewCsvImportAction(input: {
         unmappedColumns: outcome.parse.unmappedColumns,
         headers: outcome.parse.headers,
         sample: outcome.result.sample ?? [],
+        suggestedFields: outcome.parse.unmappedColumns.map((header) =>
+          inferCustomField(header, outcome.parse.unmappedValues[header] ?? []),
+        ),
+        detectedPreset: detectPreset(outcome.parse.headers),
       },
     };
   } catch (error) {
@@ -112,6 +146,9 @@ export async function reverseImportRunAction(input: { importRunId: string }): Pr
 export async function commitCsvImportAction(input: {
   csvText: string;
   columnOverrides?: CsvColumnOverrides;
+  /** Unmapped columns the operator chose to keep (BSR-645). */
+  customFields?: AcceptedCustomField[];
+  preset?: ImportPresetKey;
 }): Promise<CommitResult> {
   await requireOperator();
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect this workspace to a database before importing." };
@@ -121,10 +158,20 @@ export async function commitCsvImportAction(input: {
   if (!scope) return { ok: false, error: "No active workspace." };
 
   try {
+    // Definitions first: the import writes values against them, so a field that
+    // could not be provisioned must be dropped from the set BEFORE the run rather
+    // than failing per record afterwards.
+    const requested = input.customFields ?? [];
+    const provisioned = requested.length ? await provisionCustomFields(scope.orgId, requested, undefined) : null;
+    const usable = provisioned
+      ? requested.filter((f) => !provisioned.failed.some((x) => x.key === f.key))
+      : [];
+
     const outcome = await runCsvImport({
       ...scope,
       csvText: input.csvText,
-      columnOverrides: input.columnOverrides,
+      columnOverrides: withPreset(input.csvText, input.preset, input.columnOverrides),
+      customFields: usable,
       allowedPersonaKeys: await getOrgPersonaKeys(scope.orgId),
     });
     if (!outcome.ok) return { ok: false, error: messageFor(outcome.error) };
@@ -133,11 +180,90 @@ export async function commitCsvImportAction(input: {
     revalidatePath("/crm");
     return {
       ok: true,
-      message: `Imported ${r.imported} new and updated ${r.updated} of ${outcome.parse.totalRows} rows${
-        r.skipped ? `, skipping ${r.skipped}` : ""
-      }.`,
+      message:
+        `Imported ${r.imported} new and updated ${r.updated} of ${outcome.parse.totalRows} rows${
+          r.skipped ? `, skipping ${r.skipped}` : ""
+        }.` +
+        (provisioned && provisioned.created.length
+          ? ` Added ${provisioned.created.length} new field${provisioned.created.length === 1 ? "" : "s"}.`
+          : "") +
+        (provisioned && provisioned.failed.length
+          ? ` ${provisioned.failed.length} column${provisioned.failed.length === 1 ? "" : "s"} could not be added and were not imported.`
+          : ""),
     };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "That import could not run." };
   }
+}
+
+/**
+ * Companies, deals and notes (BSR-644). A sibling of the contacts actions rather
+ * than a branch inside them: these write different tables through a different
+ * engine, and the only thing they share is the surface.
+ */
+export async function importEntityAction(input: {
+  kind: ImportEntityKind;
+  csvText: string;
+  columnOverrides?: CsvColumnOverrides;
+  dryRun?: boolean;
+}): Promise<PreviewResult | CommitResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect this workspace to a database before importing." };
+  if (!input.csvText?.trim()) return { ok: false, error: "Add a file or paste some CSV first." };
+
+  const scope = await tenant();
+  if (!scope) return { ok: false, error: "No active workspace." };
+
+  const personas = await getOrgPersonaKeys(scope.orgId);
+  const outcome = await runEntityImport({
+    ...scope,
+    kind: input.kind,
+    csvText: input.csvText,
+    columnOverrides: input.columnOverrides,
+    // Companies and jobs carry a NOT NULL persona with a DB default, so this is a
+    // nicety rather than a gate — unlike leads, which reject unassigned_persona.
+    defaultPersona: personas[0],
+    dryRun: input.dryRun,
+  });
+  if (!outcome.ok) return { ok: false, error: messageFor(outcome.error) };
+
+  const r = outcome.result;
+  if (input.dryRun) {
+    return {
+      ok: true,
+      preview: {
+        willCreate: r.created,
+        willUpdate: r.updated,
+        willSkip: r.skipped,
+        totalRows: outcome.parse.totalRows,
+        mappedColumns: outcome.parse.mappedColumns as never,
+        unmappedColumns: outcome.parse.unmappedColumns,
+        headers: outcome.parse.headers,
+        // The entity engine reports per-row reasons rather than resolved records:
+        // for a deal or a note, "which company did this attach to" is the thing
+        // worth checking, and an unresolved parent is the only interesting row.
+        // Companies/deals/notes do not offer custom fields yet — their columns
+        // land on different tables with different definitions. Empty rather than
+        // absent, so the shape stays honest.
+        suggestedFields: [] as InferredField[],
+        detectedPreset: null,
+        sample: r.errors.slice(0, 25).map((e) => ({
+          externalId: e.externalId,
+          action: "skip" as const,
+          name: null, email: null, phone: null, company: null, persona: null, lastContactedAt: null,
+          reason: e.message,
+        })),
+      },
+    };
+  }
+
+  revalidatePath("/crm");
+  revalidatePath("/crm/import");
+  return {
+    ok: true,
+    message:
+      `Imported ${r.created} new and updated ${r.updated}` +
+      (r.skipped ? `, skipping ${r.skipped} that could not be matched` : "") +
+      ".",
+  };
 }

@@ -149,18 +149,17 @@ export const TENANCY_CONTRACT = {
   arc_project_shares: { category: "inherits", parent: "arc_projects" },
   agent_task_label_assignments: { category: "inherits", parent: "agent_tasks" },
 
-  // guardrail_findings and partner_health_snapshots were classified "inherits"
-  // first, on the strength of having a foreign key to a tenant-scoped parent. The
-  // check rejected both on its very first run, correctly: their parent FKs are
-  // NULLABLE, so a row can exist attached to nothing and belonging to no tenant.
-  // guardrail_findings is the worse case — all FOUR of its parents
-  // (guardrail_rule_id, approval_item_id, campaign_asset_id, agent_task_id) are
-  // nullable, and it is actively written by src/lib/arc-api/draft-review.ts.
+  // These two were classified "inherits" first, on the strength of having a
+  // foreign key to a tenant-scoped parent. The check rejected both on its very
+  // first run, correctly: their parent FKs are NULLABLE, so a row could exist
+  // attached to nothing and belonging to no tenant. guardrail_findings was the
+  // worse case — all FOUR of its parents are nullable and it is actively written
+  // by src/lib/arc-api/draft-review.ts.
   //
-  // "Has an FK to a scoped parent" is not the test. "Has a NOT NULL FK to a scoped
-  // parent" is. Both need a scoping column of their own — tracked in BSR-653.
-  guardrail_findings: { category: "workspace", pending: "BSR-653 — nullable parent FKs; needs its own scoping column" },
-  partner_health_snapshots: { category: "org", pending: "BSR-653 — nullable parent FKs; needs its own scoping column" },
+  // "Has an FK to a scoped parent" is not the test. "Has a NOT NULL FK to a
+  // scoped parent" is. Both carry their own columns as of BSR-653.
+  guardrail_findings: "workspace",
+  partner_health_snapshots: "org",
 
   // ── Category 4: platform, deliberately not tenant-scoped ─────────────────
   organizations: "platform",

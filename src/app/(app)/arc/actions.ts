@@ -31,6 +31,7 @@ import {
   deleteConversation,
   deleteMessagesAfter,
   getArcMessage,
+  listMessages,
   getConversation,
   getMessageConversationId,
   getPrecedingOperatorMessage,
@@ -76,6 +77,17 @@ import { saveAppSettings } from "@/lib/settings/store";
 const MAX_MESSAGE_LENGTH = 8000;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const CONTEXT_SCOPES = new Set(["workspace", "brand", "crm", "campaigns"]);
+
+/** One message as an inline surface needs it — body and role, nothing else.
+ *  Deliberately narrower than ArcMessage: Studio's panel is not the chat view
+ *  and should not start carrying action cards, recall and feedback state. */
+export type ArcThreadMessage = {
+  id: string;
+  role: "operator" | "arc" | string;
+  body: string;
+  status: string;
+  createdAt: string;
+};
 
 export type SendArcMessageResult =
   | { ok: true; conversationId: string }
@@ -606,6 +618,45 @@ export async function getArcAssetStatusesAction(
     return await getArcAssetStatuses(assetIds, ctx.orgId);
   } catch {
     return {};
+  }
+}
+
+/**
+ * The tail of a conversation, for a surface that renders Arc inline without
+ * owning the whole chat view — Studio's copilot panel (BSR-681).
+ *
+ * Studio's panel used to be a permanent empty state: `askArc` sent the message
+ * and then pushed the router at /arc, so the reply arrived on a different page
+ * and the operator lost the canvas they were editing. It needs the messages
+ * themselves, and it has no server component to refetch through.
+ *
+ * Access-checked like every other conversation read: being able to open Studio
+ * is not permission to read someone else's thread.
+ */
+export async function getArcConversationTailAction(input: {
+  conversationId: string;
+  limit?: number;
+}): Promise<{ ok: true; messages: ArcThreadMessage[] } | { ok: false; error: string }> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Arc chat needs a connected backend." };
+  const conversationId = input.conversationId?.trim();
+  if (!conversationId) return { ok: false, error: "No conversation." };
+  try {
+    await assertConversationAccess(conversationId, "view");
+    const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
+    const all = await listMessages(conversationId);
+    return {
+      ok: true,
+      messages: all.slice(-limit).map((message) => ({
+        id: message.id,
+        role: message.role,
+        body: message.body,
+        status: message.status,
+        createdAt: message.createdAt,
+      })),
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not load the conversation." };
   }
 }
 

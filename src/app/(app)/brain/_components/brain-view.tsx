@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Modal } from "../../_components/modal";
 import { archiveBrainNode, correctBrainFact, decideBrainNode, rebuildBrainMemoryAction, searchBrainFacts } from "../actions";
 import { KnowledgeGraph, type GraphEdge, type GraphNode } from "./knowledge-graph";
+import { KpiStrip } from "../../_components/kpi-strip";
 
 export type FactVM = {
   id: string;
@@ -338,15 +339,17 @@ export function BrainView({
             </button>
           </span>
         </div>
-        <div className="bstats">
-          {stats.map((s) => (
-            <div className="bstat" key={s.label}>
-              <div className="sl">{s.label}</div>
-              <div className="sv" style={s.color ? { color: s.color } : undefined}>{s.value.toLocaleString()}</div>
-              <div className="sd">{s.sub}</div>
-            </div>
-          ))}
-        </div>
+        <KpiStrip
+          className="bstats"
+          items={stats.map((s) => ({
+            label: s.label,
+            value: s.value.toLocaleString(),
+            sublabel: s.sub,
+            // The per-stat colour override becomes a tone: gold when something
+            // is waiting on you, green when Arc is cleared to use it.
+            tone: s.color === "var(--warn-text)" ? ("attention" as const) : s.color === "var(--ok-text)" ? ("ok" as const) : undefined,
+          }))}
+        />
         {data.coverageNote && review.length > 0 && (
           <div className="covbanner">
             {IconResync}
