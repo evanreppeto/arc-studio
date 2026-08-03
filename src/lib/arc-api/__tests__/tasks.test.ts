@@ -105,6 +105,36 @@ describe("claimAgentTask", () => {
 
     expect(result).toMatchObject({ ok: false, reason: "not_found" });
   });
+
+  /**
+   * The claim must be a compare-and-set, not read-then-write. Two callers can
+   * race for one task — a wake push and an operator's Retry — and if both see
+   * `queued` and both write, the same instruction runs twice (two Arc turns, two
+   * charges). The guard is what makes exactly one of them win.
+   */
+  it("guards the write on status=queued so a racing claimer cannot also win", async () => {
+    const supabase = createSupabaseQueryMock({ agent_tasks: { data: taskRow("queued"), error: null } });
+
+    await claimAgentTask(TASK_ID, supabase);
+
+    // The update chain carries the CAS guard, not just the row id.
+    expect(supabase.calls).toContainEqual(["eq", "status", "queued"]);
+  });
+
+  it("reports a conflict when the guard misses (another worker claimed it first)", async () => {
+    // The read sees `queued`, but by the time the guarded update runs the row has
+    // moved on, so it matches zero rows and comes back empty.
+    const supabase = createSupabaseQueryMock({
+      agent_tasks: [
+        { data: taskRow("queued"), error: null },
+        { data: null, error: null },
+      ],
+    });
+
+    const result = await claimAgentTask(TASK_ID, supabase);
+
+    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+  });
 });
 
 describe("completeAgentTask", () => {
