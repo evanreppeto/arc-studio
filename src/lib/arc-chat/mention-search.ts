@@ -1,9 +1,10 @@
 import { type ArcMention, type MentionType } from "@/domain";
-import { OFFICIAL_PERSONA_MAPPINGS, personaInspectHref } from "@/domain";
+import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, personaInspectHref } from "@/domain";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
 import { getCrmMentionSamples, type CrmObjectKey } from "@/lib/crm/read-model";
 import { listPersonas } from "@/lib/personas/console";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { listVaultNotes } from "@/lib/vault/persistence";
 
@@ -22,36 +23,40 @@ const CRM_GROUPS: Array<{ key: CrmObjectKey; type: MentionType; label: string }>
   { key: "outcomes", type: "outcome", label: "Outcomes" },
 ];
 
-function personaLabel(key: string): string {
-  return key
-    .replace(/^persona_/, "")
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
+/**
+ * BSR's 12 personas, offered as @-mentions ONLY in demo mode.
+ *
+ * Personas are per-org (the org's `personas` rows are the authority), so these
+ * keys are meaningless in a real workspace: mentioning one deep-links to a
+ * persona the workspace does not have, and hands Arc a persona key it cannot
+ * map to anything. An empty list is the correct answer for a workspace with no
+ * personas — this fails closed, matching `getOrgPersonaKeys`
+ * (`src/lib/personas/read-model.ts`), which made the same choice for validation.
+ */
+function demoPersonaGroup(): MentionGroup[] {
+  if (!isDemoDataEnabled()) return [];
+  return [
+    {
+      type: "persona",
+      label: "Personas",
+      items: OFFICIAL_PERSONA_MAPPINGS.map((key) => ({
+        type: "persona" as const,
+        id: key,
+        label: humanizePersonaLabel(key),
+        href: personaInspectHref(key),
+      })),
+    },
+  ];
 }
 
 /**
  * Build the full @-mention catalog. Read-only, defensive: any group that fails
- * to load resolves to empty rather than breaking the page. Personas are always
- * available (static); the rest require Supabase.
+ * to load resolves to empty rather than breaking the page. Every group requires
+ * Supabase — including personas, which are per-org data.
  */
 export async function getMentionables(): Promise<MentionGroup[]> {
-  // Offline/demo fallback only. Personas are per-org (the `personas` table is the
-  // authority), so mentioning one of these static keys in a workspace that
-  // doesn't use them would deep-link to a persona it doesn't have.
-  const fallbackPersonas: MentionGroup = {
-    type: "persona",
-    label: "Personas",
-    items: OFFICIAL_PERSONA_MAPPINGS.map((key) => ({
-      type: "persona" as const,
-      id: key,
-      label: personaLabel(key),
-      href: personaInspectHref(key),
-    })),
-  };
-
   if (!isSupabaseAdminConfigured()) {
-    return [fallbackPersonas];
+    return demoPersonaGroup();
   }
 
   const client = getSupabaseAdminClient();
@@ -72,18 +77,25 @@ export async function getMentionables(): Promise<MentionGroup[]> {
     listPersonas().catch(() => []),
   ]);
 
-  const personas: MentionGroup = orgPersonas.length
-    ? {
-        type: "persona",
-        label: "Personas",
-        items: orgPersonas.map((persona) => ({
-          type: "persona" as const,
-          id: persona.slug,
-          label: persona.name,
-          href: personaInspectHref(persona.slug),
-        })),
-      }
-    : fallbackPersonas;
+  // The org's own personas, or nothing. This used to fall back to the BSR 12
+  // whenever `listPersonas()` came back empty — but with Supabase configured that
+  // branch is a LIVE workspace, not the offline preview, so it injected
+  // restoration personas into real tenants (and into any workspace whose persona
+  // read merely failed, since the `.catch` above resolves to `[]`).
+  const personas: MentionGroup[] = orgPersonas.length
+    ? [
+        {
+          type: "persona",
+          label: "Personas",
+          items: orgPersonas.map((persona) => ({
+            type: "persona" as const,
+            id: persona.slug,
+            label: persona.name,
+            href: personaInspectHref(persona.slug),
+          })),
+        },
+      ]
+    : demoPersonaGroup();
 
   const campaigns: MentionGroup = {
     type: "campaign",
@@ -118,5 +130,5 @@ export async function getMentionables(): Promise<MentionGroup[]> {
     })),
   };
 
-  return [campaigns, ...crmGroups, personas, vault].filter((g) => g.items.length > 0);
+  return [campaigns, ...crmGroups, ...personas, vault].filter((g) => g.items.length > 0);
 }

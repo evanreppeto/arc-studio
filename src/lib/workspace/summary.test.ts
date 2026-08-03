@@ -70,6 +70,7 @@ describe("getWorkspaceSummary", () => {
       pendingApprovals: 4,
       personas: 2,
       records: { contacts: 243, companies: 12, leads: 0, campaigns: 3 },
+      dismissalPatterns: [],
     });
   });
 
@@ -99,6 +100,7 @@ describe("getWorkspaceSummary", () => {
       personas: 0,
       // Unconfigured means unknown, not empty.
       records: { contacts: null, companies: null, leads: null, campaigns: null },
+      dismissalPatterns: [],
     });
     expect(getBusinessProfile).not.toHaveBeenCalled();
   });
