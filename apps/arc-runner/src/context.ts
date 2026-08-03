@@ -231,6 +231,17 @@ function workspaceStateBlock(s: WorkspaceSummary | null | undefined): string | n
           "  Treat these as standing guidance for what to propose next, not as a ban: the pattern says what has not been worth their time, and a genuinely stronger signal of the same kind is still worth raising.",
         ]
       : []),
+    // What the operator sent back, in their own words (BSR-685). Unaggregated
+    // and verbatim: these are specific enough to act on directly, and
+    // paraphrasing them would lose the detail that makes them useful — a phone
+    // number, a logo placement, a thing that must appear in the shot.
+    ...(s.recentCorrections && s.recentCorrections.length > 0
+      ? [
+          "- Recent corrections from this operator, in their words:",
+          ...s.recentCorrections.map((line) => `  · ${line}`),
+          "  Apply these to comparable work before it reaches them again. They are the operator's stated preferences for THIS workspace, not general rules — and they describe what to change, not permission to send anything.",
+        ]
+      : []),
   ].join("\n");
 }
 
