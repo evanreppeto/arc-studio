@@ -67,10 +67,20 @@ export async function recordDraftReview(
   const grounded = input.findings.length - problems.length;
 
   if (problems.length > 0) {
-    // guardrail_findings has no org_id column — it is scoped transitively by its
-    // approval_item_id / campaign_asset_id FKs (both ON DELETE CASCADE).
+    // guardrail_findings carries its own org_id + workspace_id as of BSR-653.
+    //
+    // It used to rely on being "scoped transitively" by its approval_item_id /
+    // campaign_asset_id FKs. That was never true: every one of its four parent
+    // FKs is nullable, so a row could be written attached to nothing and
+    // belonging to no tenant. The columns are NOT NULL now, so a scope-less
+    // caller fails here rather than writing an unplaceable row.
+    if (!scope) {
+      throw new Error("guardrail_findings requires a resolved org and workspace — call recordDraftReview with a scope.");
+    }
     const { error: findingsError } = await client.from("guardrail_findings").insert(
       problems.map((finding) => ({
+        org_id: scope.orgId,
+        workspace_id: scope.workspaceId,
         approval_item_id: item.id,
         campaign_asset_id: input.assetId,
         scope: "generated_output" as const,
