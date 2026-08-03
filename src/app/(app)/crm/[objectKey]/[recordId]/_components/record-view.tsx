@@ -70,7 +70,7 @@ const KIND_COLOR: Record<string, string> = {
   contact: "#c8a24a",
   property: "#88b6d8",
   lead: "#88b6d8",
-  job: "#9678c8",
+  job: "#8fa2ba",
   outcome: "#7fb89a",
 };
 

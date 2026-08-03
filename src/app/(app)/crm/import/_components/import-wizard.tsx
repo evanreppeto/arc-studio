@@ -3,9 +3,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
-import { type CsvColumnOverrides, type CsvField } from "@/domain";
+import { CUSTOM_FIELD_TYPES, type CsvColumnOverrides, type CsvField, type CustomFieldType, type ImportEntityKind } from "@/domain";
+import { type AcceptedCustomField } from "@/lib/import-runs/custom-fields";
 
-import { commitCsvImportAction, previewCsvImportAction } from "../actions";
+import { commitCsvImportAction, importEntityAction, previewCsvImportAction } from "../actions";
 import { MAPPABLE_FIELDS, type ImportPreview } from "./types";
 
 /**
@@ -19,12 +20,25 @@ import { MAPPABLE_FIELDS, type ImportPreview } from "./types";
  * `dryRun`. A preview built on a second parser would eventually disagree with the
  * import, which is worse than no preview.
  */
+/** What a file is being imported AS. "contacts" is the original engine. */
+type ImportKind = "contacts" | ImportEntityKind;
+
+const KINDS: Array<{ kind: ImportKind; label: string; hint: string }> = [
+  { kind: "contacts", label: "Contacts", hint: "People — becomes a lead with a contact and company attached" },
+  { kind: "companies", label: "Companies", hint: "Accounts and organizations" },
+  { kind: "deals", label: "Deals", hint: "Jobs and opportunities, attached to a company by its id" },
+  { kind: "notes", label: "Notes", hint: "Attached to a contact or company by its id" },
+];
+
 export function ImportWizard({ ready }: { ready: boolean }) {
+  const [kind, setKind] = useState<ImportKind>("contacts");
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [overrides, setOverrides] = useState<CsvColumnOverrides>({});
   const [preview, setPreview] = useState<ImportPreview | null>(null);
+  /** Unmapped columns the operator has chosen to keep, by header. */
+  const [keepFields, setKeepFields] = useState<Record<string, CustomFieldType | null>>({});
   const [pending, setPending] = useState<"preview" | "commit" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -38,6 +52,7 @@ export function ImportWizard({ ready }: { ready: boolean }) {
     setFileName(file.name);
     setPreview(null);
     setOverrides({});
+    setKeepFields({});
     setDone(null);
     setError(null);
   }, []);
@@ -46,7 +61,12 @@ export function ImportWizard({ ready }: { ready: boolean }) {
     setPending("preview");
     setError(null);
     setDone(null);
-    const res = await previewCsvImportAction({ csvText, columnOverrides: nextOverrides });
+    const res =
+      kind === "contacts"
+        ? await previewCsvImportAction({ csvText, columnOverrides: nextOverrides })
+        : ((await importEntityAction({ kind, csvText, columnOverrides: nextOverrides, dryRun: true })) as
+            | { ok: true; preview: ImportPreview }
+            | { ok: false; error: string });
     setPending(null);
     if (!res.ok) {
       setError(res.error);
@@ -59,7 +79,12 @@ export function ImportWizard({ ready }: { ready: boolean }) {
   async function commit() {
     setPending("commit");
     setError(null);
-    const res = await commitCsvImportAction({ csvText, columnOverrides: overrides });
+    const res =
+      kind === "contacts"
+        ? await commitCsvImportAction({ csvText, columnOverrides: overrides, customFields: acceptedFields() })
+        : ((await importEntityAction({ kind, csvText, columnOverrides: overrides })) as
+            | { ok: true; message: string }
+            | { ok: false; error: string });
     setPending(null);
     if (!res.ok) {
       setError(res.error);
@@ -92,6 +117,20 @@ export function ImportWizard({ ready }: { ready: boolean }) {
 
   const dateMapped = Boolean(preview && preview.mappedColumns.lastContactedAt);
 
+  /** The kept columns, in the shape the action provisions from. */
+  function acceptedFields(): AcceptedCustomField[] {
+    if (!preview) return [];
+    return preview.suggestedFields
+      .filter((f) => keepFields[f.label] !== undefined && keepFields[f.label] !== null)
+      .map((f) => ({
+        header: preview.unmappedColumns.find((h) => h === f.label) ?? f.label,
+        key: f.key,
+        label: f.label,
+        fieldType: keepFields[f.label] as CustomFieldType,
+        options: f.options,
+      }));
+  }
+
   return (
     <>
       <section className="imp-step" data-done={hasData}>
@@ -101,6 +140,25 @@ export function ImportWizard({ ready }: { ready: boolean }) {
           {fileName && <span className="imp-sub">{fileName}</span>}
         </div>
         <div className="imp-step-b">
+          {/* Order matters and the copy says so: a deal cannot attach to a company
+              that has not been imported yet, and the engine reports rather than
+              guesses when a reference does not resolve. */}
+          <div className="imp-kinds" role="group" aria-label="What is in this file">
+            {KINDS.map((k) => (
+              <button
+                key={k.kind}
+                type="button"
+                className="imp-kind"
+                data-on={kind === k.kind}
+                title={k.hint}
+                onClick={() => { setKind(k.kind); setPreview(null); setOverrides({}); setKeepFields({}); setDone(null); setError(null); }}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+          <p className="imp-kind-hint">{KINDS.find((k) => k.kind === kind)?.hint}</p>
+
           <label
             className="imp-drop"
             data-over={dragOver}
@@ -216,11 +274,54 @@ export function ImportWizard({ ready }: { ready: boolean }) {
                 </div>
               )}
 
-              {preview.unmappedColumns.length > 0 && (
-                <p className="imp-note">
-                  Not importing: {preview.unmappedColumns.join(", ")}. These are dropped for now — map any you
-                  need above.
-                </p>
+              {preview.suggestedFields.length > 0 && (
+                <div className="imp-extra">
+                  <div className="imp-extra-h">
+                    Columns we don&apos;t have a home for
+                    <span>Keep one and it becomes a field on your records. Otherwise it isn&apos;t imported.</span>
+                  </div>
+                  <table className="imp-map">
+                    <tbody>
+                      {preview.suggestedFields.map((f) => {
+                        const chosen = keepFields[f.label] ?? null;
+                        return (
+                          <tr key={f.key}>
+                            <td className="imp-col">
+                              {f.label}
+                              {f.samples.length > 0 && <span className="imp-samples">{f.samples.join(" · ")}</span>}
+                              {/* The guess, visible without opening the dropdown.
+                                  A suggestion nobody can see is not a suggestion —
+                                  but it stays a suggestion: nothing is kept unless
+                                  the operator chooses to keep it. */}
+                              <span className="imp-samples">looks like {f.fieldType.replace("_", " ")}</span>
+                            </td>
+                            <td>
+                              <select
+                                value={chosen ?? ""}
+                                data-dropped={chosen === null}
+                                aria-label={`Keep the ${f.label} column as`}
+                                onChange={(e) =>
+                                  setKeepFields((k) => ({
+                                    ...k,
+                                    [f.label]: e.target.value ? (e.target.value as CustomFieldType) : null,
+                                  }))
+                                }
+                              >
+                                <option value="">Don&apos;t import</option>
+                                {CUSTOM_FIELD_TYPES.map((t) => (
+                                  <option key={t} value={t}>
+                                    Keep as {t.replace("_", " ")}
+                                    {t === f.fieldType ? " (suggested)" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </>
           )}

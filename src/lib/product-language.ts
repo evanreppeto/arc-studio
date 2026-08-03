@@ -71,7 +71,7 @@ export function canonicalIndustryKey(value?: string | null): ProductIndustryKey 
 const GENERAL_OBJECTS: ProductLanguage["crmObjects"] = {
   companies: { label: "Organizations", noun: "organizations", nameHeader: "Organization", singular: "organization" },
   contacts: { label: "People", noun: "people", nameHeader: "Person", singular: "person" },
-  properties: { label: "Assets", noun: "assets", nameHeader: "Asset", singular: "asset" },
+  properties: { label: "Sites", noun: "sites", nameHeader: "Site", singular: "site" },
   leads: { label: "Leads", noun: "leads", nameHeader: "Lead", singular: "lead" },
   jobs: { label: "Projects", noun: "projects", nameHeader: "Project", singular: "project" },
   outcomes: { label: "Outcomes", noun: "outcomes", nameHeader: "Outcome", singular: "outcome" },

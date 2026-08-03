@@ -82,6 +82,43 @@ Tone: gold = `needs_you` / `needs_changes` (the one accent per screen), green = 
 
 **Never in customer copy:** vendor names (Resend, Gemini, Higgsfield in body text), architecture terms (`layer`, `scoped`, `gated`, `metered`, `runner`, `node`, `token`), database identifiers, or billing-system vocabulary. An empty metric says what the user would have to do to fill it — "Starts once you send your first campaign" — never which input is missing.
 
+## 4.3 The KPI strip
+
+`src/app/(app)/_components/kpi-strip.tsx` is the only KPI row. Import `KpiStrip`; do not hand-roll another grid.
+
+It exists because there were **seven** — `.metrics`, `.okpis`, `.kpis`, `.asum`, `.pstats`, `.bstats`, `.jr-kpis` — six of them an equal `repeat(N, 1fr)` row, which §5 below bans in bold, while the shared component built for the job was used by CRM alone (BSR-658).
+
+**Cell anatomy, in order:** label → value + delta → sparkline → sublabel. Every strip, every screen. The slots are `label`, `value`, `delta`, `sublabel`, `spark`, `tone`, `emptyHint`.
+
+- **Asymmetric by default.** The first metric is the lead and takes ~1.5× the width. That is the reason equal rows are banned: an equal row claims every number matters the same, which is never true.
+- **Four cells is the intent, five the ceiling.**
+- **The sublabel carries the period.** A delta with no baseline is decoration — prefer "vs previous 30 days" over "580 prev".
+- **An empty metric uses `emptyHint`**, and it says what the *user* must do ("Starts once you send your first campaign"), never which input our pipeline lacks.
+- **Tone is gold (needs you) or green (healthy). Never red** — a KPI is a fact, not a destructive control.
+
+## 4.4 Colour is semantic, never decorative
+
+Colour has to answer a question. If a hue varies across a list and nothing tells the reader why, it is decoration wearing the costume of meaning — and it costs the palette its ability to signal (BSR-661).
+
+**The contract:**
+
+| Colour | Means | Where |
+|---|---|---|
+| gold `--accent` / `--warn` | **needs you** — the one focal cue per screen | status pills, KPI `attention` tone |
+| green `--ok` | live, sent, healthy, won | status pills, KPI `ok` tone |
+| **red `--priority`** | **destructive only** | delete/decline controls. **Never a category, never a persona, never a KPI** |
+| blue `--blue` | not identified yet / anonymous | journey stages, insurance persona |
+| slate `--slate` | a different *kind* of thing | provenance + channel chips |
+| neutral | everything else | any category with no status meaning |
+
+**Rules:**
+
+- **No purple.** Banned in §8 and it kept coming back — as a persona hue, a journey stage, a folder colour, and a `--vio` token that was mostly resolving to nothing because it was never defined globally.
+- **Persona colour comes from `personaAccent()`** in `src/domain/persona-accent.ts`. It is deterministic on the persona's *name*, so the same persona is the same colour on CRM, Campaigns, Analytics and Personas. It used to be derived five separate ways, one of them by array index — which meant a persona was gold on one screen and blue on the next.
+- **A magnitude gets one hue.** Funnels, bars and ramps vary lightness, not hue: a rainbow funnel claims each stage is a different *kind* of thing rather than a smaller *amount* of the same thing.
+- **Any colour that carries meaning gets a legend** adjacent to it, or a `title` at minimum. If you can't write the legend, the colour isn't carrying meaning and should be neutral.
+- **A tenant's brand colours are theirs.** Where the app renders customer brand colour (the Studio canvas), say so — otherwise an off-palette blue reads as our inconsistency.
+
 ## 5. Layout Principles
 
 Persistent command rail + asymmetric content grids. Avoid repeated equal 3-column rows. Lead each route with the operational task, then supporting guidance, queues, and next actions. Constrain explanatory copy to ~65–74ch.

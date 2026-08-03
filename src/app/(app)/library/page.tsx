@@ -11,7 +11,9 @@ import "./library.css";
 
 export const metadata = { title: "Library — Arc Studio" };
 
-const FOLDER_PALETTE = ["#c47055", "#7fb89a", "#c8a24a", "#9678c8", "#88b6d8", "#bd6a58"];
+// Purple-free and red-free: folder colours are decoration, and red is reserved
+// for destructive controls (DESIGN.md §4.2, BSR-661).
+const FOLDER_PALETTE = ["#c8a24a", "#7fb89a", "#88b6d8", "#8fa2ba", "#6fae9e", "#d8935a"];
 
 function provFromSource(source: string): Asset["pv"] {
   switch (source) {

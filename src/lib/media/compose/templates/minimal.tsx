@@ -1,9 +1,16 @@
-import type { CreativeTemplate } from "../types";
+import { creativeScale } from "@/domain";
 
-/** Minimal: solid brand-primary side panel with the headline; photo fills the rest. */
-export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, backgroundDataUrl, logoDataUrl }) => {
-  const u = dims.width / 1080;
-  const panelW = dims.width * 0.5;
+import type { CreativeTemplate } from "../types";
+import { brandColor } from "./tokens";
+
+/** Minimal: solid brand-primary side panel with the headline; photo fills the rest.
+ *
+ *  Geometry and type scale come from CREATIVE_LAYOUTS.minimal (BSR-679). */
+export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl }) => {
+  const u = creativeScale(dims.width);
+  const L = layout;
+  const c = (ref: Parameters<typeof brandColor>[1]) => brandColor(brand, ref);
+  const panelW = dims.width * L.panel!.widthRatio;
 
   return (
     <div
@@ -12,7 +19,7 @@ export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, backgroun
         display: "flex",
         width: dims.width,
         height: dims.height,
-        backgroundColor: brand.primary,
+        backgroundColor: c(L.surface),
         fontFamily: "Body",
         overflow: "hidden",
       }}
@@ -33,29 +40,31 @@ export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, backgroun
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          paddingTop: 64 * u,
-          paddingBottom: 64 * u,
-          paddingLeft: 64 * u,
-          paddingRight: 64 * u,
-          backgroundColor: brand.primary,
+          paddingTop: L.panel!.padTop * u,
+          paddingBottom: L.panel!.padBottom * u,
+          paddingLeft: L.panel!.padLeft * u,
+          paddingRight: L.panel!.padRight * u,
+          backgroundColor: c(L.panel!.background),
         }}
       >
         {logoDataUrl ? (
-          <img src={logoDataUrl} style={{ width: 300 * u, height: 64 * u, objectFit: "contain" }} />
+          <img src={logoDataUrl} style={{ width: L.logo.width * u, height: L.logo.height * u, objectFit: "contain" }} />
         ) : (
-          <div style={{ display: "flex", color: brand.light, fontFamily: "Heading", fontSize: 38 * u }}>{brand.displayName}</div>
+          <div style={{ display: "flex", color: c("light"), fontFamily: "Heading", fontSize: L.logo.fallbackSize * u }}>
+            {brand.displayName}
+          </div>
         )}
         <div style={{ display: "flex", flexDirection: "column" }}>
           {copy.kicker ? (
             <div
               style={{
                 display: "flex",
-                color: brand.accent,
+                color: c(L.kicker.color),
                 fontFamily: "Heading",
-                fontSize: 24 * u,
-                letterSpacing: 3 * u,
+                fontSize: L.kicker.size * u,
+                letterSpacing: L.kicker.tracking! * u,
                 textTransform: "uppercase",
-                marginBottom: 18 * u,
+                marginBottom: L.kicker.marginBottom! * u,
               }}
             >
               {copy.kicker}
@@ -65,32 +74,41 @@ export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, backgroun
             style={{
               display: "-webkit-box",
               WebkitBoxOrient: "vertical",
-              WebkitLineClamp: 3,
+              WebkitLineClamp: L.headline.clampLines,
               overflow: "hidden",
               textOverflow: "ellipsis",
-              color: brand.light,
+              color: c(L.headline.color),
               fontFamily: "Heading",
-              fontSize: 64 * u,
-              lineHeight: 1.1,
+              fontSize: L.headline.size * u,
+              lineHeight: L.headline.lineHeight,
             }}
           >
             {copy.headline}
           </div>
-          <div style={{ display: "flex", width: 64 * u, height: 4 * u, backgroundColor: brand.accent, marginTop: 28 * u, marginBottom: 28 * u }} />
+          <div
+            style={{
+              display: "flex",
+              width: L.divider!.width * u,
+              height: L.divider!.height * u,
+              backgroundColor: c(L.divider!.color),
+              marginTop: L.divider!.marginTop * u,
+              marginBottom: L.divider!.marginBottom * u,
+            }}
+          />
           {copy.ctaLabel ? (
             <div
               style={{
                 display: "flex",
                 alignSelf: "flex-start",
-                backgroundColor: brand.accent,
-                color: brand.primary,
+                backgroundColor: c(L.cta.background!),
+                color: c(L.cta.color),
                 fontFamily: "Heading",
-                fontSize: 28 * u,
-                paddingTop: 18 * u,
-                paddingBottom: 18 * u,
-                paddingLeft: 30 * u,
-                paddingRight: 30 * u,
-                borderRadius: 10 * u,
+                fontSize: L.cta.size * u,
+                paddingTop: L.cta.padY * u,
+                paddingBottom: L.cta.padY * u,
+                paddingLeft: L.cta.padX * u,
+                paddingRight: L.cta.padX * u,
+                borderRadius: L.cta.radius * u,
               }}
             >
               {copy.ctaLabel}

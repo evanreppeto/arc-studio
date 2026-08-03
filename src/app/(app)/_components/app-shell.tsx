@@ -51,33 +51,37 @@ const IconLibrary = <NavIcon src="/brand/nav-icons/sidebar-v2/library.png" />;
 const IconBrand = <NavIcon src="/brand/nav-icons/sidebar-v2/brand.png" />;
 const IconOutbox = <NavIcon src="/brand/nav-icons/sidebar-v2/outbox.png" />;
 
-type NavGroup = { group: string; items: { label: string; href: string; icon: React.ReactNode }[] };
+type NavItem = { label: string; href: string; icon: React.ReactNode; hint: string };
+type NavGroup = { group: string; items: NavItem[] };
 
-const PRIMARY_NAV_ITEMS: NavGroup["items"] = [
-  { label: "Arc Chat", href: "/arc", icon: IconArc },
-  { label: "Home", href: "/home", icon: IconHome },
-  { label: "Campaigns", href: "/campaigns", icon: IconCampaigns },
-  { label: "Relationships", href: "/crm", icon: IconCrm },
-  { label: "Opportunities", href: "/opportunities", icon: IconOpp },
+const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { label: "Arc Chat", href: "/arc", icon: IconArc, hint: "Ask Arc to find work or draft something" },
+  { label: "Home", href: "/home", icon: IconHome, hint: "What needs you today" },
+  { label: "Campaigns", href: "/campaigns", icon: IconCampaigns, hint: "Everything Arc has drafted, and its approval state" },
+  { label: "Relationships", href: "/crm", icon: IconCrm, hint: "Your contacts, companies and leads" },
+  { label: "Opportunities", href: "/opportunities", icon: IconOpp, hint: "Chances Arc found, with the evidence behind them" },
 ];
 
 const ADVANCED_NAV_GROUPS: NavGroup[] = [
-  { group: "Measure", items: [{ label: "Analytics", href: "/analytics", icon: IconAnalytics }] },
   {
-    group: "Intelligence",
+    group: "See how it's going",
+    items: [{ label: "Analytics", href: "/analytics", icon: IconAnalytics, hint: "Leads, jobs and revenue over time" }],
+  },
+  {
+    group: "What Arc knows",
     items: [
-      { label: "Journeys", href: "/journeys", icon: IconJourneys },
-      { label: "Brain", href: "/brain", icon: IconBrain },
-      { label: "Personas", href: "/personas", icon: IconPersonas },
+      { label: "Journeys", href: "/journeys", icon: IconJourneys, hint: "How each customer got to you" },
+      { label: "Brain", href: "/brain", icon: IconBrain, hint: "What Arc knows about your business" },
+      { label: "Personas", href: "/personas", icon: IconPersonas, hint: "The customer types you sell to" },
     ],
   },
   {
-    group: "Create & manage",
+    group: "Make & send",
     items: [
-      { label: "Studio", href: "/studio", icon: IconStudio },
-      { label: "Library", href: "/library", icon: IconLibrary },
-      { label: "Brand", href: "/brand", icon: IconBrand },
-      { label: "Outbox", href: "/outbox", icon: IconOutbox },
+      { label: "Studio", href: "/studio", icon: IconStudio, hint: "Design ads and images" },
+      { label: "Library", href: "/library", icon: IconLibrary, hint: "Your photos, logos and files" },
+      { label: "Brand", href: "/brand", icon: IconBrand, hint: "Your colours, voice and proof points" },
+      { label: "Outbox", href: "/outbox", icon: IconOutbox, hint: "Approved messages waiting to go out" },
     ],
   },
 ];
@@ -342,6 +346,7 @@ export function AppShell({
                       href={it.href}
                       className={`nav${active ? " on" : ""}`}
                       aria-current={active ? "page" : undefined}
+                      title={it.hint}
                       onClick={() => closeMobileNav(false)}
                     >
                       {active && <span className="tick" />}
@@ -370,6 +375,7 @@ export function AppShell({
                       href={it.href}
                       className={`nav${active ? " on" : ""}`}
                       aria-current={active ? "page" : undefined}
+                      title={it.hint}
                       onClick={() => closeMobileNav(false)}
                     >
                       {active && <span className="tick" />}

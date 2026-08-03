@@ -56,6 +56,7 @@ export * from "./campaign-performance";
 export * from "./brand-kit";
 export * from "./brand-design";
 export * from "./creative-templates";
+export * from "./creative-layout";
 export * from "./dispatch-scheduling";
 export * from "./opportunity-detection";
 export * from "./nws-weather";
@@ -65,6 +66,7 @@ export * from "./review-signals";
 export * from "./competitor-ads";
 export * from "./crm-import";
 export * from "./csv-import";
+export * from "./entity-import";
 export * from "./enrichment";
 export * from "./opportunity-kinds";
 export * from "./opportunity-proposal";
@@ -83,6 +85,7 @@ export * from "./media-config";
 export * from "./email-templates";
 export * from "./crm-matching";
 export * from "./custom-fields";
+export * from "./custom-field-inference";
 export * from "./env-capabilities";
 export * from "./pipeline-stages";
 export * from "./audience-resolution";
@@ -125,3 +128,7 @@ export * from "./brain-dedup-backfill";
 // Import WORK_STATE_LABEL / toWorkState / countOf from here rather than
 // spelling a status label into a component.
 export * from "./vocabulary";
+
+// One colour per persona, everywhere (BSR-661). Import personaAccent rather
+// than re-deriving a hue from a regex ladder.
+export * from "./persona-accent";

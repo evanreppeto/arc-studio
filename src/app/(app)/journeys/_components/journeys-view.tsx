@@ -16,6 +16,7 @@ import {
 import type { JourneyWithMeta, JourneysReadModel } from "@/lib/journey/read-model";
 
 import { setJourneyConsentMode } from "../actions";
+import { KpiStrip } from "../../_components/kpi-strip";
 
 // Compact labels for the lens picker — the 320px side panel can't fit the full
 // names. The full label + blurb ride along in each button's title.
@@ -27,16 +28,17 @@ const LENS_SHORT: Record<AttributionModel, string> = {
   position_based: "40/20/40",
 };
 
-// Stage → tone token (see the .journeys CSS block). Two anonymous stages read
-// blue; the known-side stages escalate gold → amber → green, with retention its
-// own violet so repeat/expansion is visually distinct from a first conversion.
+// Stage → tone token (see the .journeys CSS block). Three tones, each meaning
+// something a person can state: blue = we don't know who this is yet, gold =
+// known and in progress, green = won. Retention used to have its own violet,
+// which DESIGN.md §8 bans outright and which no legend explained (BSR-661).
 const STAGE_TONE: Record<JourneyStageKey, string> = {
   reached: "blue",
   engaged: "blue",
   identified: "gold",
-  nurtured: "amber",
+  nurtured: "gold",
   converted: "green",
-  retained: "vio",
+  retained: "green",
 };
 
 // Nicer labels for the touch kinds the read-model emits; anything else is titleized.
@@ -269,19 +271,32 @@ export function JourneysView({
         </div>
       </header>
 
-      <div className="jr-kpis">
-        <Kpi label="Journeys" value={String(kpis.total)} hint="contacts with a path" />
-        <Kpi label="In flight" value={String(kpis.inFlight)} hint="identified, not yet converted" tone="amber" />
-        <Kpi label="Converted" value={String(kpis.converted)} hint={`${Math.round(kpis.conversionRate * 100)}% of identified`} tone="green" />
-        <Kpi label="Realized" value={money(kpis.realizedCents)} hint="from converted journeys" tone="green" />
-        <Kpi label="Avg. time to convert" value={kpis.avgDaysToConvert !== null ? `${kpis.avgDaysToConvert}d` : "—"} hint="first touch → paid" />
-      </div>
+      <KpiStrip
+        className="jr-kpis"
+        items={[
+          { label: "Journeys", value: String(kpis.total), sublabel: "contacts with a path" },
+          { label: "In flight", value: String(kpis.inFlight), sublabel: "identified, not yet converted", tone: "attention" },
+          { label: "Converted", value: String(kpis.converted), sublabel: `${Math.round(kpis.conversionRate * 100)}% of identified`, tone: "ok" },
+          { label: "Revenue earned", value: money(kpis.realizedCents), sublabel: "from converted journeys", tone: "ok" },
+          {
+            label: "Avg. time to convert",
+            value: kpis.avgDaysToConvert !== null ? `${kpis.avgDaysToConvert}d` : "",
+            sublabel: "first touch → paid",
+            emptyHint: "Fills in once a journey completes",
+          },
+        ]}
+      />
 
       <section className="jr-panel jr-funnelpanel">
         <h2>
           The journey funnel
           <span className="jr-sub2">how many contacts reach each stage</span>
         </h2>
+        <div className="jr-legend">
+          <span><i className="t-blue" />Not identified yet</span>
+          <span><i className="t-gold" />Known, in progress</span>
+          <span><i className="t-green" />Won</span>
+        </div>
         <div className="jr-funnel">
           {funnel.map((f, i) => {
             const meta = JOURNEY_STAGES[i];
@@ -300,7 +315,7 @@ export function JourneysView({
                   {meta?.anonymous && <span className="jr-anon" title="Anonymous / pre-identification stage — full capture arrives in P1">pre-lead</span>}
                 </span>
                 <span className="jr-fbar">
-                  <i className={`t-${STAGE_TONE[f.key]}`} style={{ width: `${width}%` }} />
+                  <i style={{ width: `${width}%`, opacity: 1 - i * 0.12 }} />
                 </span>
                 <span className="jr-fcount">{f.count}</span>
                 <span className="jr-frate">{i === 0 ? "" : `${Math.round(f.rateFromPrev * 100)}%`}</span>
@@ -413,16 +428,6 @@ export function JourneysView({
           <CollectorInstall origin={origin} consentMode={consentMode} />
         </aside>
       </div>
-    </div>
-  );
-}
-
-function Kpi({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: string }) {
-  return (
-    <div className={`jr-kpi${tone ? ` t-${tone}` : ""}`}>
-      <span className="jr-klab">{label}</span>
-      <span className="jr-kval">{value}</span>
-      <span className="jr-khint">{hint}</span>
     </div>
   );
 }

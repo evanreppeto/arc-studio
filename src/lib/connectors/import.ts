@@ -1,6 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type EnrichmentFields, CSV_PERSONA_PROPERTY, parseCsvContacts, type CsvParseSummary, type CsvColumnOverrides } from "@/domain";
+import { writeImportedCustomValues, type AcceptedCustomField } from "@/lib/import-runs/custom-fields";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import {
@@ -63,6 +64,8 @@ async function beginRun(
   tenant: { orgId: string; workspaceId: string },
   source: ImportSource,
   options: Record<string, unknown>,
+  /** Runs after each record is recorded — used to attach custom field values. */
+  afterRecord?: (record: { externalId: string; leadId: string }) => Promise<void>,
 ) {
   const runId = await startImportRun({ ...tenant, source, options, client });
   const externalSystemId = runId ? await resolveExternalSystemId(tenant, source, client) : null;
@@ -89,6 +92,7 @@ async function beginRun(
           externalSystemId,
           client,
         );
+        if (afterRecord) await afterRecord({ externalId: record.externalId, leadId: record.leadId });
       }
     : undefined;
 
@@ -286,6 +290,11 @@ export type RunCsvImportInput = {
   dryRun?: boolean;
   /** The operator's corrections to the detected column mapping (BSR-642). */
   columnOverrides?: CsvColumnOverrides;
+  /**
+   * Unmapped columns the operator chose to keep as tenant fields (BSR-645).
+   * Definitions must already be provisioned; this only writes the values.
+   */
+  customFields?: AcceptedCustomField[];
 };
 
 export type RunCsvImportResult =
@@ -331,6 +340,7 @@ export async function runCsvImport(input: RunCsvImportInput): Promise<RunCsvImpo
   }
 
   const tenant = { orgId: input.orgId, workspaceId: input.workspaceId };
+  const accepted = input.customFields ?? [];
   const { runId, recordProvenance } = await beginRun(client, tenant, "csv", {
     defaultPersona,
     // The parse summary, not the CSV itself — a run record must not become a
@@ -338,7 +348,14 @@ export async function runCsvImport(input: RunCsvImportInput): Promise<RunCsvImpo
     // half: it is what BSR-642's mapping step will replay to explain a past run.
     mappedColumns: parse.mappedColumns,
     totalRows: parse.totalRows,
-  });
+    customFields: accepted.map((f) => f.key),
+  },
+  // The engine knows which lead each source row became; this is the only place
+  // that can pair that with the row's unmapped values.
+  accepted.length
+    ? async ({ externalId, leadId }) =>
+        writeImportedCustomValues(input.orgId, leadId, accepted, parse.extraValuesByContactId[externalId] ?? {}, client)
+    : undefined);
 
   try {
     const result = await importContactsFromSource({

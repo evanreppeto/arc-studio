@@ -54,7 +54,7 @@ const SC: Record<string, string> = {
   doc: '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice"><rect width="100" height="100" fill="#1b1b20"/><rect x="34" y="24" width="32" height="44" rx="3" fill="#26262d" stroke="#3a3a42"/><path d="M40 36h20M40 44h20M40 52h14" stroke="#83838c" stroke-width="2"/><path d="M58 24v8h8" fill="none" stroke="#3a3a42" stroke-width="2"/></svg>',
   beforeafter: '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice"><rect width="50" height="100" fill="#34302a"/><rect x="50" width="50" height="100" fill="#2a3b34"/><path d="M8 72 L25 56 L42 72 Z" fill="#4a443a"/><path d="M58 72 L75 56 L92 72 Z" fill="#3e5a4c"/><rect x="48" width="4" height="100" fill="rgba(200,162,74,.5)"/></svg>',
 };
-const PVL: Record<Prov, string> = { real: "Real", ai: "AI", comp: "Composite", upload: "Imported", logo: "Logo", doc: "Doc" };
+const PVL: Record<Prov, string> = { real: "Real", ai: "AI", comp: "Photo + text", upload: "Imported", logo: "Logo", doc: "Doc" };
 const IMGBASE = "https://d8j0ntlcm91z4.cloudfront.net/user_3FaOq1cCR2Izxa2haYxVnIrhIBK/";
 const IMG = {
   team: IMGBASE + "hf_20260625_205928_522fa33a-3aa6-4e05-8a8b-db2bd83a688d_min.webp",
@@ -83,7 +83,7 @@ const TREE: Folder[] = [
   { f: "brand", name: "Brand kit", color: "#c47055", icon: "shield", children: [{ f: "logos", name: "Logos & marks", color: "#9aa0ac", icon: "mark" }] },
   { f: "real", name: "Real photos", color: "#7fb89a", icon: "photo", children: [{ f: "customers", name: "Customer photos", color: "#7fb89a", icon: "photo" }] },
   { f: "ai", name: "AI-generated", color: "#c8a24a", icon: "sparkle" },
-  { f: "comp", name: "Composites", color: "#9678c8", icon: "layers" },
+  { f: "comp", name: "Photo + text mockups", color: "#8fa2ba", icon: "layers" },
   { f: "upload", name: "Imported", color: "#88b6d8", icon: "import" },
   { f: "video", name: "Videos", color: "#bd6a58", icon: "video" },
 ];
@@ -632,6 +632,11 @@ export function LibraryView({
           <span className="obar"><i style={{ background: "#9aa0ac" }} />{totals.byk.document} docs</span>
         </div>
         <div className="ospacer" />
+        <span className="pvlegend" aria-label="What the dot on each item means">
+          {(["real", "ai", "comp"] as const).map((k) => (
+            <span key={k}><i className={`pdot pv-${k}`} />{PVL[k]}</span>
+          ))}
+        </span>
         <span className="ostat ok" onClick={() => setCurColl("arc")}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3d0b8" strokeWidth={2}><path d="M5 12l4 4 10-10" /></svg><b>{totals.arc}</b> Arc-ready</span>
         <span className="ostat warn" onClick={() => setCurColl("review")}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e7c486" strokeWidth={2}><path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z" /></svg><b>{totals.rev}</b> need review</span>
         <span className="ostat" onClick={() => setCurColl("unused")}><b>{totals.un}</b> unused</span>
@@ -737,7 +742,7 @@ export function LibraryView({
                       </div>
                     </div>
                     <div className="ainfo">
-                      <div className="an"><span className={`pdot pv-${a.pv}`} />{a.nm}</div>
+                      <div className="an"><span className={`pdot pv-${a.pv}`} title={`${PVL[a.pv]} — where this came from`} />{a.nm}</div>
                       <div className="am">
                         <span>{a.kind}</span><span>·</span><span>{a.dim.split(" · ")[0]}</span>
                         {isArc(a) ? <span className="arcok"><Ico d='<path d="M5 12l4 4 10-10"/>' /> Arc</span> : a.uses === 0 ? <span className="unused">unused</span> : null}
