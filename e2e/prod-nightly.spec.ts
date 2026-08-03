@@ -198,9 +198,22 @@ test.describe("nightly prod smoke", () => {
     await instruction.fill("Nightly smoke check — no action needed; this asset is reopened immediately.");
     await page.getByRole("button", { name: /send to arc/i }).click();
 
-    // The assertion that matters is PERSISTENCE, not the optimistic UI: the view
-    // flips the pill locally before the server answers, so asserting without a
-    // reload would pass even if the write never landed.
+    // The assertion below is PERSISTENCE, not the optimistic UI: the view flips
+    // the pill locally before the server answers, so asserting without a reload
+    // would pass even if the write never landed.
+    //
+    // Know what this does NOT prove, because for six nights it was mistaken for
+    // proof (BSR-708). "revision requested" surviving a reload says the row was
+    // written. It says nothing about whether anything CONSUMED it — and it did
+    // not: `queueArcRevision` never woke the runner, nothing polls `agent_tasks`,
+    // and every revision this test filed sat `queued` forever while this step
+    // reported success (BSR-695). Persistence was never the thing in doubt.
+    //
+    // Execution is asserted OUT OF BAND, by the "No agent work is stranded" step
+    // in .github/workflows/prod-nightly.yml — a task still `queued` 30 minutes on
+    // fails the run. It lives there rather than here because a real revision is
+    // an Opus turn plus possible media generation: far past this test's budget,
+    // and not something to pay for inside a page assertion.
     await expect(async () => {
       await page.reload({ waitUntil: "domcontentloaded" });
       await expect(
