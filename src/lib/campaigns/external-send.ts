@@ -3,6 +3,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import { resolveCampaignAudience, stampCampaignLinks, type ResolvedRecipient } from "@/domain";
 import { type AgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 import { buildEmailPayload, loadCampaignTarget, loadCandidateContacts } from "@/lib/dispatch/persistence";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 /**
  * BYO send channel — the outbound half of "use your own tools, keep the
@@ -168,7 +169,7 @@ export async function recordExternalSend(
   if (engagementError) return { ok: false, error: `engagement_events insert: ${engagementError.message}` };
 
   const { error: eventError } = await client.from("campaign_events").insert({
-    org_id: input.tenant.org_id,
+    ...workspaceScopeFields(input.tenant),
     campaign_id: asset.campaign_id,
     // campaign_event_type is an ENUM on prod; "exported" is its value for
     // content leaving through a non-dispatch path. The detail line carries the

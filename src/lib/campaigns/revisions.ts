@@ -3,6 +3,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import { type AgentTaskTenantFields, getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 import { notifyArcCampaignTask } from "@/lib/arc-chat/notify";
 import { getSupabaseAdminClient } from "../supabase/server";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 export type RevisionRequestInput = {
   campaignId: string;
@@ -60,7 +61,7 @@ export async function requestAssetRevision(
   // 2 + 3. Log the decision and move the approval item to revision_requested.
   if (approvalRow) {
     const { error: decisionError } = await client.from("approval_decisions").insert({
-      org_id: tenant.org_id,
+      ...workspaceScopeFields(tenant),
       approval_item_id: approvalRow.id,
       decision: "revision_requested",
       decided_by: operator,
@@ -95,7 +96,7 @@ export async function requestAssetRevision(
 
   // 5. Campaign event for the timeline.
   const { error: eventError } = await client.from("campaign_events").insert({
-    org_id: tenant.org_id,
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     campaign_asset_id: assetId,
     approval_item_id: approvalItemId,
