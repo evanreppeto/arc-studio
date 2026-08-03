@@ -14,6 +14,14 @@ import { fixtureCrmImportSourceFromContacts } from "@/lib/integrations/crm/sourc
 import { type EnrichmentLookupKeys, type EnrichmentProvider } from "@/lib/integrations/enrichment/provider";
 import { vendorEnrichmentProvider } from "@/lib/integrations/enrichment/vendor";
 
+import {
+  finishImportRun,
+  recordImportedRecord,
+  resolveExternalSystemId,
+  startImportRun,
+  type ImportSource,
+} from "@/lib/import-runs/persistence";
+
 import { getConnectorConfig } from "./config";
 import { readConnectorCredential } from "./credentials";
 import { resolveHubspotAccessToken } from "./hubspot-oauth";
@@ -38,6 +46,51 @@ export const HUBSPOT_IMPORT_CONNECTOR_KEY = "hubspot-import";
 export const LEAD_ENRICHMENT_CONNECTOR_KEY = "lead-enrichment";
 export const CSV_IMPORT_CONNECTOR_KEY = "csv-import";
 export const MAILCHIMP_IMPORT_CONNECTOR_KEY = "mailchimp-import";
+
+/**
+ * Open an import run and build the per-record provenance recorder for it (BSR-640).
+ *
+ * Returns a null runId when provenance could not be started — the import then runs
+ * exactly as it did before. That degradation is deliberate: a customer's data
+ * import must not fail because a bookkeeping row would not write.
+ *
+ * The workspace is the point. The connector is configured per workspace but the
+ * CRM rows it writes are org-owned, so without recording it here "where did these
+ * 400 contacts come from" has no answer at all once a company has two workspaces.
+ */
+async function beginRun(
+  client: SupabaseClient,
+  tenant: { orgId: string; workspaceId: string },
+  source: ImportSource,
+  options: Record<string, unknown>,
+) {
+  const runId = await startImportRun({ ...tenant, source, options, client });
+  const externalSystemId = runId ? await resolveExternalSystemId(tenant, source, client) : null;
+
+  const recordProvenance = runId
+    ? async (record: { externalId: string; leadId: string; action: "created" | "updated" }) => {
+        await recordImportedRecord(
+          tenant,
+          {
+            importRunId: runId,
+            localTable: "leads",
+            localId: record.leadId,
+            externalId: record.externalId,
+            action: record.action,
+            // BSR-643 owns restoring overwritten values and will populate this from
+            // the pre-update row. Recording the action now is what lets it tell a
+            // created row (delete on undo) from an updated one (restore), which is
+            // the distinction a blanket delete would destroy.
+            previous: null,
+          },
+          externalSystemId,
+          client,
+        );
+      }
+    : undefined;
+
+  return { runId, recordProvenance };
+}
 
 export type RunCrmImportInput = {
   workspaceId: string;
@@ -139,22 +192,32 @@ export async function runCrmImport(input: RunCrmImportInput): Promise<RunCrmImpo
 
   const enrichment = await resolveEnrichmentProvider(client, input.workspaceId, input.orgId);
 
-  const result = await importContactsFromSource({
-    client,
-    orgId: input.orgId,
-    source,
-    options: {
-      defaultPersona,
-      personaProperty: typeof config.personaProperty === "string" ? config.personaProperty : undefined,
-      source: typeof config.source === "string" ? config.source : "hubspot",
-    },
-    now: input.now,
-    enrichment: enrichment ?? undefined,
-    allowedPersonaKeys: input.allowedPersonaKeys,
-    maxPages: input.maxPages,
-  });
+  const tenant = { orgId: input.orgId, workspaceId: input.workspaceId };
+  const { runId, recordProvenance } = await beginRun(client, tenant, "hubspot", { defaultPersona });
 
-  return { ok: true, result, enrichmentEnabled: Boolean(enrichment) };
+  try {
+    const result = await importContactsFromSource({
+      client,
+      orgId: input.orgId,
+      source,
+      options: {
+        defaultPersona,
+        personaProperty: typeof config.personaProperty === "string" ? config.personaProperty : undefined,
+        source: typeof config.source === "string" ? config.source : "hubspot",
+      },
+      now: input.now,
+      enrichment: enrichment ?? undefined,
+      allowedPersonaKeys: input.allowedPersonaKeys,
+      maxPages: input.maxPages,
+      recordProvenance,
+    });
+
+    await finishImportRun(runId, { status: "completed", counts: result }, client);
+    return { ok: true, result, enrichmentEnabled: Boolean(enrichment) };
+  } catch (error) {
+    await finishImportRun(runId, { status: "failed" }, client);
+    throw error;
+  }
 }
 
 /**
@@ -181,17 +244,27 @@ export async function runMailchimpImport(input: RunCrmImportInput): Promise<RunC
   const defaultPersona = asAllowedPersona(config.defaultPersona, input.allowedPersonaKeys);
   if (!defaultPersona) return { ok: false, error: "missing_default_persona" };
 
-  const result = await importContactsFromSource({
-    client,
-    orgId: input.orgId,
-    source: mailchimpImportSource(apiKey, audienceId),
-    options: { defaultPersona, source: "mailchimp" },
-    now: input.now,
-    allowedPersonaKeys: input.allowedPersonaKeys,
-    maxPages: input.maxPages,
-  });
+  const tenant = { orgId: input.orgId, workspaceId: input.workspaceId };
+  const { runId, recordProvenance } = await beginRun(client, tenant, "mailchimp", { defaultPersona, audienceId });
 
-  return { ok: true, result, enrichmentEnabled: false };
+  try {
+    const result = await importContactsFromSource({
+      client,
+      orgId: input.orgId,
+      source: mailchimpImportSource(apiKey, audienceId),
+      options: { defaultPersona, source: "mailchimp" },
+      now: input.now,
+      allowedPersonaKeys: input.allowedPersonaKeys,
+      maxPages: input.maxPages,
+      recordProvenance,
+    });
+
+    await finishImportRun(runId, { status: "completed", counts: result }, client);
+    return { ok: true, result, enrichmentEnabled: false };
+  } catch (error) {
+    await finishImportRun(runId, { status: "failed" }, client);
+    throw error;
+  }
 }
 
 export type RunCsvImportInput = {
@@ -233,19 +306,36 @@ export async function runCsvImport(input: RunCsvImportInput): Promise<RunCsvImpo
   const { contacts, ...parse } = parseCsvContacts(input.csvText);
   if (contacts.length === 0) return { ok: false, error: "no_rows" };
 
-  const result = await importContactsFromSource({
-    client,
-    orgId: input.orgId,
-    source: fixtureCrmImportSourceFromContacts(contacts),
-    options: {
-      defaultPersona,
-      // A `persona` column (when the CSV has one) overrides the default per row.
-      personaProperty: CSV_PERSONA_PROPERTY,
-      source: "csv",
-    },
-    now: input.now,
-    allowedPersonaKeys: input.allowedPersonaKeys,
+  const tenant = { orgId: input.orgId, workspaceId: input.workspaceId };
+  const { runId, recordProvenance } = await beginRun(client, tenant, "csv", {
+    defaultPersona,
+    // The parse summary, not the CSV itself — a run record must not become a
+    // second copy of the customer's contact list. mappedColumns is the useful
+    // half: it is what BSR-642's mapping step will replay to explain a past run.
+    mappedColumns: parse.mappedColumns,
+    totalRows: parse.totalRows,
   });
 
-  return { ok: true, result, parse };
+  try {
+    const result = await importContactsFromSource({
+      client,
+      orgId: input.orgId,
+      source: fixtureCrmImportSourceFromContacts(contacts),
+      options: {
+        defaultPersona,
+        // A `persona` column (when the CSV has one) overrides the default per row.
+        personaProperty: CSV_PERSONA_PROPERTY,
+        source: "csv",
+      },
+      now: input.now,
+      allowedPersonaKeys: input.allowedPersonaKeys,
+      recordProvenance,
+    });
+
+    await finishImportRun(runId, { status: "completed", counts: result }, client);
+    return { ok: true, result, parse };
+  } catch (error) {
+    await finishImportRun(runId, { status: "failed" }, client);
+    throw error;
+  }
 }
