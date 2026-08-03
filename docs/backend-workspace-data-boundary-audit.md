@@ -283,11 +283,37 @@ column changes nothing until the reads use it. Do **not** ship step 4 without th
 CI contract check (BSR-638), or the next table to land will repeat the whole
 thing.
 
-### Standing rule
+### Standing rule — now enforced, not asserted
 
-New tables declare their category before they ship, and the CI check in BSR-638
-enforces it against `information_schema`. A boundary that lives only in this
-document is exactly what produced the gap it is fixing.
+New tables declare their category before they ship. As of BSR-638 that is a build
+failure rather than a convention:
+
+- **`supabase/tenancy-contract.mjs`** is the machine-readable version of the five
+  categories above. Every table appears in it.
+- **`pnpm db:check-tenancy`** (`scripts/check-tenancy-contract.mjs`, run in the
+  Migrations workflow after the RLS suite) holds the real schema to it: every
+  public table must be classified, its category's columns must exist and be
+  `NOT NULL`, an `inherits` table must really have a `NOT NULL` FK to its named
+  parent, and anything tenant-scoped must have RLS on.
+- **`src/lib/db/tenancy-contract.test.ts`** runs in the normal suite with no
+  database: the contract is internally coherent, every table in the generated
+  `database.types.ts` is classified, and no `unclassified` table is referenced
+  anywhere in `src/` or `apps/` — that last one is what stops dead scaffold being
+  revived without a category.
+
+`pending` marks a table whose category is decided but whose migration hasn't
+landed. It relaxes the column assertion and nothing else, and the check prints the
+outstanding count on every run so the remaining Group A/B work stays visible
+instead of quietly becoming permanent.
+
+**Known limitation, stated rather than discovered later:** the Migrations workflow
+is path-filtered and deliberately not a required check, so `db:check-tenancy` runs
+only when `supabase/**` or its own scripts change. A new table always arrives with
+a migration, so the case that matters is covered — but a PR that wires an existing
+table without touching `supabase/` is caught by the vitest half alone.
+
+A boundary that lives only in this document is exactly what produced the gap this
+section fixes.
 
 ## Current Gaps
 
