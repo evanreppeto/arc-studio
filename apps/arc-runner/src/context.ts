@@ -198,6 +198,11 @@ function workspaceStateBlock(s: WorkspaceSummary | null | undefined): string | n
       : s.brandKit === "draft"
         ? "Brand Kit in draft — not yet active; tell the operator to activate it in Settings"
         : "no Brand Kit yet — running on neutral defaults";
+  // "unknown" rather than 0 when a count could not be read: reporting an
+  // unreadable table as empty is how this block would recreate the bug it exists
+  // to prevent.
+  const count = (n: number | null | undefined) => (typeof n === "number" ? String(n) : "unknown");
+  const r = s.records;
   return [
     "WORKSPACE STATE (live snapshot — use for situational awareness; call get_workspace_settings for detail):",
     `- ${brand}`,
@@ -205,6 +210,17 @@ function workspaceStateBlock(s: WorkspaceSummary | null | undefined): string | n
     `- Library: ${s.mediaAvailable} approved media available to you`,
     `- Approvals: ${s.pendingApprovals} pending`,
     `- Personas: ${s.personas} configured`,
+    ...(r
+      ? [
+          `- Records: ${count(r.contacts)} contacts, ${count(r.companies)} companies, ${count(r.leads)} leads, ${count(r.campaigns)} campaigns`,
+          // The counts above are read live this turn. Arc once told an operator
+          // the CRM was empty 85 minutes after 243 contacts landed, sourcing it
+          // from memory and citing a tool that carries no CRM data (BSR-678).
+          // Saying which wins is the point of putting them here at all.
+          "  These counts are LIVE, read this turn. They override any remembered figure — if a memory disagrees, the memory is stale, and say so.",
+          "  They are counts only: to name or use specific records, read them with the CRM tools.",
+        ]
+      : []),
   ].join("\n");
 }
 
