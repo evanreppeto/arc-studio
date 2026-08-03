@@ -763,6 +763,37 @@ export async function runArcOpportunityScan(
 }
 
 /**
+ * The instruction block for a campaign task wake. Pure and exported so the
+ * rules below are assertable — they are load-bearing behaviour, not phrasing,
+ * and both were learned from a revision that silently did nothing (BSR-695,
+ * BSR-706).
+ */
+export function buildCampaignTaskPrompt(payload: ArcCampaignTaskPayload): string {
+  return [
+    `Campaign task: ${payload.taskType}.`,
+    `Work only on campaign_id "${payload.campaignId}". When creating campaign drafts, attach them to that campaign_id.`,
+    "Create approval-gated draft assets only. Do not send, publish, launch, approve, unlock dispatch, or spend.",
+    // A revision names one asset. Without this the operator's instruction
+    // arrives scoped only to the campaign, and Arc has to guess which asset
+    // "add the logo" referred to as soon as the campaign holds more than one.
+    ...(payload.taskType === "campaign_asset_revision" && payload.assetId
+      ? [
+          "",
+          `This is a REVISION of the existing asset "${payload.assetId}". The operator's instruction below describes what to change about that asset specifically — read it first, keep everything they did not ask you to change, and produce the revised version as a new approval-gated draft on the same campaign. Do not start an unrelated concept from scratch.`,
+          // Branding revisions are the single most common ask on an image asset
+          // and the one generation can never satisfy: every prompt is hardened to
+          // forbid text and logos, so regenerating returns an image without them
+          // again and the operator sees their request silently ignored (BSR-706).
+          "If the instruction asks for the business's logo, name, phone number, or any words on the image, do NOT regenerate the background to add them. Image generation is hardened to refuse text and logos, so a regenerated image comes back without them and the operator's request is silently dropped. Use compose_creative instead, passing the existing asset's image as background_url — it overlays the real Brand Kit logo, colours and fonts.",
+          "Be straight about what compositing gives them: the logo lands as a brand lockup positioned by the layout, NOT painted onto an object inside the photo. If they asked for branding on a vehicle, a sign, a uniform, or anything else in the scene, say plainly in your reply that you cannot paint it into the image, describe what you produced instead, and let them decide. A draft that quietly ignores the instruction is worse than an honest 'here is the closest I can get'.",
+        ]
+      : []),
+    "",
+    payload.message,
+  ].join("\n");
+}
+
+/**
  * Run an Arc turn for a campaign task wake. This is the production path for
  * "Ask Arc to build" and "Hand to Arc": DRAFT mode, fixed campaign scope, and
  * a prompt that keeps all work approval-gated.
@@ -791,22 +822,7 @@ export async function runArcCampaignTask(
     skill,
   };
 
-  const prompt = [
-    `Campaign task: ${payload.taskType}.`,
-    `Work only on campaign_id "${payload.campaignId}". When creating campaign drafts, attach them to that campaign_id.`,
-    "Create approval-gated draft assets only. Do not send, publish, launch, approve, unlock dispatch, or spend.",
-    // A revision names one asset. Without this the operator's instruction
-    // arrives scoped only to the campaign, and Arc has to guess which asset
-    // "add the logo" referred to as soon as the campaign holds more than one.
-    ...(payload.taskType === "campaign_asset_revision" && payload.assetId
-      ? [
-          "",
-          `This is a REVISION of the existing asset "${payload.assetId}". The operator's instruction below describes what to change about that asset specifically — read it first, keep everything they did not ask you to change, and produce the revised version as a new approval-gated draft on the same campaign. Do not start an unrelated concept from scratch.`,
-        ]
-      : []),
-    "",
-    payload.message,
-  ].join("\n");
+  const prompt = buildCampaignTaskPrompt(payload);
 
   const result = await runArcQuery({
     step,
