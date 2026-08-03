@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 
-import { type CsvColumnOverrides, type ImportEntityKind } from "@/domain";
+import { inferCustomField, type CsvColumnOverrides, type ImportEntityKind, type InferredField } from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { runCsvImport } from "@/lib/connectors/import";
+import { provisionCustomFields, type AcceptedCustomField } from "@/lib/import-runs/custom-fields";
 import { reverseImportRun } from "@/lib/import-runs/reverse";
 import { runEntityImport } from "@/lib/import-runs/run-entity-import";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
@@ -76,6 +77,9 @@ export async function previewCsvImportAction(input: {
         unmappedColumns: outcome.parse.unmappedColumns,
         headers: outcome.parse.headers,
         sample: outcome.result.sample ?? [],
+        suggestedFields: outcome.parse.unmappedColumns.map((header) =>
+          inferCustomField(header, outcome.parse.unmappedValues[header] ?? []),
+        ),
       },
     };
   } catch (error) {
@@ -113,6 +117,8 @@ export async function reverseImportRunAction(input: { importRunId: string }): Pr
 export async function commitCsvImportAction(input: {
   csvText: string;
   columnOverrides?: CsvColumnOverrides;
+  /** Unmapped columns the operator chose to keep (BSR-645). */
+  customFields?: AcceptedCustomField[];
 }): Promise<CommitResult> {
   await requireOperator();
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect this workspace to a database before importing." };
@@ -122,10 +128,20 @@ export async function commitCsvImportAction(input: {
   if (!scope) return { ok: false, error: "No active workspace." };
 
   try {
+    // Definitions first: the import writes values against them, so a field that
+    // could not be provisioned must be dropped from the set BEFORE the run rather
+    // than failing per record afterwards.
+    const requested = input.customFields ?? [];
+    const provisioned = requested.length ? await provisionCustomFields(scope.orgId, requested, undefined) : null;
+    const usable = provisioned
+      ? requested.filter((f) => !provisioned.failed.some((x) => x.key === f.key))
+      : [];
+
     const outcome = await runCsvImport({
       ...scope,
       csvText: input.csvText,
       columnOverrides: input.columnOverrides,
+      customFields: usable,
       allowedPersonaKeys: await getOrgPersonaKeys(scope.orgId),
     });
     if (!outcome.ok) return { ok: false, error: messageFor(outcome.error) };
@@ -134,9 +150,16 @@ export async function commitCsvImportAction(input: {
     revalidatePath("/crm");
     return {
       ok: true,
-      message: `Imported ${r.imported} new and updated ${r.updated} of ${outcome.parse.totalRows} rows${
-        r.skipped ? `, skipping ${r.skipped}` : ""
-      }.`,
+      message:
+        `Imported ${r.imported} new and updated ${r.updated} of ${outcome.parse.totalRows} rows${
+          r.skipped ? `, skipping ${r.skipped}` : ""
+        }.` +
+        (provisioned && provisioned.created.length
+          ? ` Added ${provisioned.created.length} new field${provisioned.created.length === 1 ? "" : "s"}.`
+          : "") +
+        (provisioned && provisioned.failed.length
+          ? ` ${provisioned.failed.length} column${provisioned.failed.length === 1 ? "" : "s"} could not be added and were not imported.`
+          : ""),
     };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "That import could not run." };
@@ -189,6 +212,10 @@ export async function importEntityAction(input: {
         // The entity engine reports per-row reasons rather than resolved records:
         // for a deal or a note, "which company did this attach to" is the thing
         // worth checking, and an unresolved parent is the only interesting row.
+        // Companies/deals/notes do not offer custom fields yet — their columns
+        // land on different tables with different definitions. Empty rather than
+        // absent, so the shape stays honest.
+        suggestedFields: [] as InferredField[],
         sample: r.errors.slice(0, 25).map((e) => ({
           externalId: e.externalId,
           action: "skip" as const,

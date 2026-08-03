@@ -1,4 +1,4 @@
-import { type CsvField } from "@/domain";
+import { type CsvField, type InferredField } from "@/domain";
 import { type ImportSampleRecord } from "@/lib/integrations/crm/import-run";
 
 /** What the preview step renders. Mirrors the engine's dry-run result. */
@@ -12,6 +12,11 @@ export type ImportPreview = {
   unmappedColumns: string[];
   headers: string[];
   sample: ImportSampleRecord[];
+  /**
+   * Unmapped columns with a suggested field type (BSR-645). Offering them is what
+   * turns "dropped silently" into a choice the operator made.
+   */
+  suggestedFields: InferredField[];
 };
 
 /** The fields an operator can map a column onto, with what each one is for. */
