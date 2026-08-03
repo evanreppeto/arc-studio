@@ -89,10 +89,10 @@ const TOOLS = {
   generate: [
     { t: "genimg", target: "arc", label: "Image", ai: true, d: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z"/>' },
     { t: "genvid", target: "arc", label: "Video", ai: true, d: '<rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9l4-2v10l-4-2"/>' },
-    { t: "vary", target: "arc", label: "Variations", ai: true, d: '<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 002-2V9"/>' },
+    { t: "vary", target: "arc", label: "Other versions", ai: true, d: '<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 002-2V9"/>' },
   ],
   edit: [
-    { t: "reframe", target: "arc", label: "Reframe", ai: true, d: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 6v12"/>' },
+    { t: "reframe", target: "arc", label: "Resize", ai: true, d: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 6v12"/>' },
     { t: "expand", target: "arc", label: "Expand", ai: true, d: '<path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3"/>' },
     { t: "cutout", target: "arc", label: "Cut-out", ai: true, d: '<path d="M5 5l14 14M9 5a4 4 0 014 4M5 9a4 4 0 004 4"/><rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="3 3"/>' },
     { t: "upscale", target: "arc", label: "Upscale", ai: true, d: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>' },
@@ -104,11 +104,26 @@ const TOOLS = {
   ],
 } as const;
 
+/**
+ * Layer names as a person would say them. The keys stay as they are — they are
+ * the contract `studio-canvas` and the exporter share — but "Kicker" and "CTA
+ * button" are craft words a roofer has no reason to know, and the Edit-copy
+ * panel taught a SECOND one ("eyebrow") for the same element.
+ */
+const LAYER_LABEL: Record<string, string> = {
+  Background: "Photo",
+  Logo: "Logo",
+  Kicker: "Small line on top",
+  Headline: "Headline",
+  Subhead: "Supporting line",
+  "CTA button": "Button",
+};
+
 const FORMATS = [
-  { ar: "1 / 1", dim: "1080 × 1080", label: "Square", r: "1:1" },
-  { ar: "4 / 5", dim: "1080 × 1350", label: "Portrait", r: "4:5" },
-  { ar: "9 / 16", dim: "1080 × 1920", label: "Story", r: "9:16" },
-  { ar: "16 / 9", dim: "1920 × 1080", label: "Landscape", r: "16:9" },
+  { ar: "1 / 1", dim: "1080 × 1080", label: "Square", r: "1:1", use: "Feed post" },
+  { ar: "4 / 5", dim: "1080 × 1350", label: "Portrait", r: "4:5", use: "Tall feed post" },
+  { ar: "9 / 16", dim: "1080 × 1920", label: "Story", r: "9:16", use: "Story / Reel" },
+  { ar: "16 / 9", dim: "1920 × 1080", label: "Landscape", r: "16:9", use: "Wide / web banner" },
 ];
 /**
  * Template tiles. `id` MUST match a CREATIVE_TEMPLATE_IDS value in
@@ -531,7 +546,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             ) : (
               <div className="cn">No campaigns yet</div>
             )}
-            <div className="cmeta">{campaigns.length ? "Anything you make here gets attached for approval" : "Make one in Campaigns first"}</div>
+            <div className="cmeta">{campaigns.length ? "Anything you make here gets attached for approval" : "Create a campaign first, then anything you make here attaches to it"}</div>
           </div>
         </div>
         <span className="proj"><span className="dot" />Untitled creative · autosaved</span>
@@ -597,7 +612,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             <span className="fmdiv" />
             <span className="fl">Format</span>
             {FORMATS.map((f, i) => (
-              <span key={f.r} className={`fchip${fmt === i ? " on" : ""}`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></span>
+              <span key={f.r} className={`fchip${fmt === i ? " on" : ""}`} title={`${f.use} · ${f.dim} px`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></span>
             ))}
             {/* Only offered once something has been moved — an always-present
                 "Reset layout" on an untouched canvas is noise. */}
@@ -615,8 +630,8 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
               </span>
             )}
             <span className="fspacer" />
-            <span className={`szbtn${safe ? " on" : ""}`} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Safe zones</span>
-            <span className="zoom">Fit · 100%</span>
+            <span className={`szbtn${safe ? " on" : ""}`} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Keep text clear of edges</span>
+            <span className="zoom">Zoom 100%</span>
           </div>
 
           <div className="stagewrap">
@@ -698,7 +713,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         <aside className="insp">
           <div className="itabs">
             <div className={`itab${tab === "design" ? " on" : ""}`} onClick={() => setTab("design")}><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M4 9h16M9 9v11" /></svg>Design</div>
-            <div className={`itab${tab === "arc" ? " on" : ""}`} onClick={() => setTab("arc")}><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Arc<span className="ibadge">copilot</span></div>
+            <div className={`itab${tab === "arc" ? " on" : ""}`} onClick={() => setTab("arc")}><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Arc</div>
           </div>
 
           {tab === "design" ? (
@@ -707,7 +722,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="brief">
                   <div className="bh"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Campaign context</div>
                   <div className="bn">{campaigns.find((c) => c.id === campaignId)?.name ?? "No campaign selected"}</div>
-                  <div className="bmeta">generated drafts attach here → pending approval</div>
+                  <div className="bmeta">Pick a campaign and anything you make here gets attached to it for approval</div>
                   {/* The angle and proof chips are sample brief copy — there is no
                       wired source for a campaign's angle here yet. Showing them
                       live would put another tenant's positioning on this canvas
@@ -723,19 +738,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 </div>
 
                 <div className="psec">
-                  <h3 className="ph2">Layers</h3>
-                  <div className={`layer${selectedLayer === "Background" ? " sel" : ""}`} role="button" tabIndex={0} onClick={() => setSelectedLayer("Background")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer("Background"); } }} style={shown("Background") ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">Background</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
+                  <h3 className="ph2">Parts of this ad</h3>
+                  <div className={`layer${selectedLayer === "Background" ? " sel" : ""}`} role="button" tabIndex={0} onClick={() => setSelectedLayer("Background")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer("Background"); } }} style={shown("Background") ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL.Background}</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
                   {[["Kicker", kicker], ["Headline", headline], ["Subhead", sub], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
-                    <div className={`layer${selectedLayer === lt ? " sel" : ""}`} key={lt} role="button" tabIndex={0} onClick={() => setSelectedLayer(lt as CanvasLayer)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer(lt as CanvasLayer); } }} style={shown(lt) ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
+                    <div className={`layer${selectedLayer === lt ? " sel" : ""}`} key={lt} role="button" tabIndex={0} onClick={() => setSelectedLayer(lt as CanvasLayer)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer(lt as CanvasLayer); } }} style={shown(lt) ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL[lt as string] ?? lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
                   ))}
                 </div>
 
                 <div className="psec">
                   <h3 className="ph2">Edit copy</h3>
-                  <div className="fieldl"><span>Kicker</span><span>eyebrow</span></div><input className="input" placeholder="Short eyebrow" value={kicker} onChange={(e) => setKicker(e.target.value)} />
+                  <div className="fieldl"><span>{LAYER_LABEL.Kicker}</span></div><input className="input" placeholder="e.g. Storm season" value={kicker} onChange={(e) => setKicker(e.target.value)} />
                   <div className="field"><div className="fieldl"><span>Headline</span></div><input className="input" placeholder="The one line that has to land" value={headline} onChange={(e) => setHeadline(e.target.value)} /></div>
-                  <div className="field"><div className="fieldl"><span>Subhead</span></div><input className="input" placeholder="Supporting detail or offer" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
-                  <div className="field"><div className="fieldl"><span>CTA</span></div><input className="input" placeholder="Button text" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
+                  <div className="field"><div className="fieldl"><span>{LAYER_LABEL.Subhead}</span></div><input className="input" placeholder="Supporting detail or offer" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
+                  <div className="field"><div className="fieldl"><span>Button</span></div><input className="input" placeholder="e.g. Get my free quote" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
                 </div>
 
                 <div className="psec">
@@ -856,7 +871,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="archead">
                   <span className="am">A</span>
                   <div>
-                    <div className="at">Arc · Creative copilot</div>
+                    <div className="at">Arc</div>
                     <div className="ad"><i />{selectedCampaignLabel ? `Working in ${selectedCampaignLabel}` : "No campaign selected"}</div>
                   </div>
                 </div>
@@ -902,7 +917,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       value={msg}
                       onChange={(e) => setMsg(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askArc(); } }}
-                      placeholder={live ? "Ask Arc to edit, generate, or repackage this creative…" : "Connect a backend to chat with Arc"}
+                      placeholder={live ? "Ask Arc to change the words, the photo, or the size…" : "Connect a backend to chat with Arc"}
                       disabled={!live || sending}
                     />
                     <button
