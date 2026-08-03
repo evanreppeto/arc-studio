@@ -41,7 +41,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_APP_URL?.startsWith("http")
 
 const OG_TITLE = "Arc Studio — Marketing operations, with your approval";
 const OG_DESCRIPTION =
-  "Arc finds source-backed opportunities, drafts approval-gated campaigns, and prepares creative — and never sends without your sign-off.";
+  "Arc finds opportunities backed by real evidence, drafts the campaigns, and prepares the creative — and never sends anything without your sign-off.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

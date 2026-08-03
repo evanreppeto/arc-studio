@@ -56,6 +56,32 @@ Several of these are installed but **not yet used anywhere in `src/`** — the n
 - **Charts are hand-built inline SVG.** Analytics and the Brain knowledge graph both draw their own SVG — that is the pattern. Recharts is **not installed** (§6 bans it). `@mui/x-charts` and `cytoscape` are in `package.json` but imported by nothing (cytoscape only has type shims in `src/types/`); adopting either is a new decision, not a continuation.
 - **Radix, MUI, dnd-kit, Rive: installed, zero imports.** If you reach for one, you are establishing the pattern, so do it deliberately: Radix for accessible menus/popovers/collapsibles/dialogs rather than hand-rolled focus trapping; MUI Joy/Material only for dense product controls, always wrapped and mapped to CSS variables, never raw in a page; dnd-kit for board/sortable workflows; Rive and shader effects as brand moments only, never ambient decoration on ordinary workflow screens.
 
+## 4.2 Vocabulary — the words the product uses
+
+Canonical source: **`src/domain/vocabulary.ts`**. Import `WORK_STATE_LABEL` / `toWorkState` / `countOf` — never spell a status label into a component.
+
+This exists because the approval state had **eleven** names at once (BSR-656): *packages waiting, Waiting on you, to decide, Needs you, Needs approval, In review, need review, Ready for review, Awaiting your confirm, Awaiting review, proposed*. `/arc` rendered "Ready for review" and "Needs review" on the same card.
+
+**States.** One string per state, everywhere — board, tab, pill, KPI tile, chat card:
+
+| State | Label | Means |
+|---|---|---|
+| `draft` | Draft | Arc is still building this. |
+| `needs_you` | **Needs you** | Arc finished it and is waiting for your decision. |
+| `needs_changes` | Needs changes | You asked for changes. Arc is reworking it. |
+| `approved` | Approved | You said yes. It has not gone out yet. |
+| `scheduled` | Scheduled | Approved and queued to go out at a set time. |
+| `sending` | Sending | Going out to customers now. (Replaces the old split between "Live" and "Sending".) |
+| `sent` | Sent | Already delivered. |
+| `declined` | Declined | You said no. Nothing will go out. |
+| `archived` | Archived | Put away. Nothing will go out. |
+
+Tone: gold = `needs_you` / `needs_changes` (the one accent per screen), green = approved through sent, neutral = the rest. **Red never appears in this table** — it is for destructive controls only. A compliance hold keeps red as an exception and is worded "Blocked by a rule".
+
+**Nouns.** A **campaign** contains **assets** (the email, the SMS, the ad, the landing copy, the image). "Package", "piece", and "deliverable" are retired as user-facing words.
+
+**Never in customer copy:** vendor names (Resend, Gemini, Higgsfield in body text), architecture terms (`layer`, `scoped`, `gated`, `metered`, `runner`, `node`, `token`), database identifiers, or billing-system vocabulary. An empty metric says what the user would have to do to fill it — "Starts once you send your first campaign" — never which input is missing.
+
 ## 5. Layout Principles
 
 Persistent command rail + asymmetric content grids. Avoid repeated equal 3-column rows. Lead each route with the operational task, then supporting guidance, queues, and next actions. Constrain explanatory copy to ~65–74ch.

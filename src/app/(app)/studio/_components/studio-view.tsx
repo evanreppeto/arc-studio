@@ -409,7 +409,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             ) : (
               <div className="cn">No campaigns yet</div>
             )}
-            <div className="cmeta">{campaigns.length ? "attaches on generate · approval-gated" : "create one in Campaigns first"}</div>
+            <div className="cmeta">{campaigns.length ? "Anything you make here gets attached for approval" : "Make one in Campaigns first"}</div>
           </div>
         </div>
         <span className="proj"><span className="dot" />Untitled creative · autosaved</span>

@@ -42,7 +42,7 @@ const STEP_COPY: Record<ActivationStepKey, { title: string; why: string; cta: st
   },
   campaign: {
     title: "Approve your first campaign",
-    why: "Arc drafts the whole package — email, copy, creative — and waits. Nothing reaches a customer until you approve it, and this step stays open until you have.",
+    why: "Arc drafts every asset — email, copy, creative — and waits. Nothing reaches a customer until you approve it, and this step stays open until you have.",
     cta: "See campaigns",
     href: "/campaigns",
   },

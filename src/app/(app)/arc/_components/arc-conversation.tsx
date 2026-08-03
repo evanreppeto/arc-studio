@@ -11,6 +11,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { ArrowRight, ArrowUpRight, Bookmark, Brain, Check, CircleAlert, ClipboardCheck, Copy, CornerUpLeft, Database, Link2, MessageSquareText, PanelRightOpen, PencilLine, RefreshCcw, RotateCcw, ShieldCheck, Target, X, Zap } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
+import { WORK_STATE_LABEL } from "@/domain";
 import type { ArcActionCard, ArcAssetStatus, ArcMention, ArcMode, ArcRecall, ArcRoute } from "@/domain";
 import type { ArcMessage, ArcStep } from "@/lib/arc-chat/persistence";
 import { buildArcLauncherRecommendation } from "@/lib/arc-chat/launcher-state";
@@ -235,9 +236,12 @@ function packageMenuItems({
 function ReviewableWork({ children }: { children: ReactNode }) {
   return (
     <section className="arc-response-output" aria-label="Reviewable work">
+      {/* The right-hand label used to read "Ready for review" while the pill on
+          the card inside said "Needs review" — one card, two states, saying
+          opposite things (BSR-656). Both are the queue label now. */}
       <div className="arc-response-output-label">
         <span><ClipboardCheck size={13} />Created by Arc</span>
-        <b>Ready for review</b>
+        <b>{WORK_STATE_LABEL.needs_you}</b>
       </div>
       {children}
     </section>

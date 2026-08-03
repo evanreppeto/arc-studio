@@ -15,7 +15,7 @@ export type ActivityTone = "green" | "red" | "amber" | "blue" | "gray";
 export type ActivityActorType = "human" | "arc" | "sub_agent" | "integration" | "system";
 export type ActivityCategory = "approval" | "campaign" | "crm" | "asset" | "agent" | "integration" | "risk" | "system";
 export type ActivityInsightLabel =
-  | "Needs review"
+  | "Needs you"
   | "Marketing progress"
   | "Risk blocked"
   | "Data changed"
@@ -354,7 +354,7 @@ export function groupActivityEntriesByDay(entries: ActivityEntry[], now = new Da
 }
 
 function isNeedsReviewEntry(entry: ActivityEntry): boolean {
-  return entry.insightLabel === "Needs review";
+  return entry.insightLabel === "Needs you";
 }
 
 export function mapDecision(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS): ActivityEntry {
@@ -492,8 +492,8 @@ function insightForDecision(decision: string): ActivityInsightLabel {
 }
 
 function insightForOutput(approval: string, compliance: string, tone: ActivityTone): ActivityInsightLabel {
-  if (isActiveReviewStatus(approval) || isActiveReviewStatus(compliance)) return "Needs review";
-  if (!approval && !compliance) return "Needs review";
+  if (isActiveReviewStatus(approval) || isActiveReviewStatus(compliance)) return "Needs you";
+  if (!approval && !compliance) return "Needs you";
   if (isApprovedStatus(approval)) return "Marketing progress";
   if (tone === "red") return "Risk blocked";
   if (isTerminalReviewStatus(approval) || isTerminalReviewStatus(compliance)) return "Data changed";
@@ -585,7 +585,7 @@ function campaignTone(eventType: string, decisionSignal: string | null): Activit
 
 function insightForCampaignEvent(eventType: string, tone: ActivityTone): ActivityInsightLabel {
   if (tone === "red") return "Risk blocked";
-  if (tone === "amber" && normalizeStatus(eventType).includes("submitted")) return "Needs review";
+  if (tone === "amber" && normalizeStatus(eventType).includes("submitted")) return "Needs you";
   if (tone === "green") return "Marketing progress";
   return "Data changed";
 }
@@ -674,7 +674,7 @@ function insightForEvent(subjectType: string, eventType: string): ActivityInsigh
   const subject = subjectType.toLowerCase();
   const event = eventType.toLowerCase();
   if (event.includes("risk") || event.includes("block")) return "Risk blocked";
-  if (event.includes("review") || event.includes("approval") || event.includes("pending")) return "Needs review";
+  if (event.includes("review") || event.includes("approval") || event.includes("pending")) return "Needs you";
   if (subject.includes("campaign")) {
     return event.includes("result") || event.includes("sent") || event.includes("launch")
       ? "Campaign result"

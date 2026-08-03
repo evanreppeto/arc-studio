@@ -29,7 +29,7 @@ export type KpiTag = "wired" | "partial" | "sync";
 export type OverviewKpi = {
   label: string;
   value: string;
-  deltaLabel: string; // e.g. "+12.5%" or "— est."
+  deltaLabel: string; // e.g. "+12.5%"; empty when there is nothing to compare
   dir: "up" | "dn" | "flat";
   prevLabel: string;
   tag: KpiTag;
@@ -148,8 +148,8 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
     { label: "Leads", value: curLeads.toLocaleString(), ...pct(curLeads, prevLeads), prevLabel: `${prevLeads} prev`, tag: "wired", tagLabel: "wired" },
     { label: "Booked jobs", value: curJobs.toLocaleString(), ...pct(curJobs, prevJobs), prevLabel: `${prevJobs} prev`, tag: "wired", tagLabel: "wired" },
     { label: "Won revenue", value: money(curRev), ...pct(curRev, prevRev), prevLabel: `${money(prevRev)} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Reply rate", value: "—", deltaLabel: "needs sends", dir: "flat", prevLabel: "no send denominator", tag: "partial", tagLabel: "partial" },
-    { label: "Cost / job", value: "—", deltaLabel: "— est.", dir: "flat", prevLabel: "needs spend feed", tag: "sync", tagLabel: "needs sync" },
+    { label: "Reply rate", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Starts once you send your first campaign", tag: "partial", tagLabel: "not yet" },
+    { label: "Cost / job", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Connect an ad account to see this", tag: "sync", tagLabel: "not yet" },
   ];
 
   const funnelMax = Math.max(1, curLeads);
@@ -309,8 +309,8 @@ export async function getAnalyticsOverview(
     { label: "Leads", value: curLeads.toLocaleString(), ...leadsDelta, prevLabel: `${prevLeads} prev`, tag: "wired", tagLabel: "wired" },
     { label: "Booked jobs", value: curJobs.toLocaleString(), ...jobsDelta, prevLabel: `${prevJobs} prev`, tag: "wired", tagLabel: "wired" },
     { label: "Won revenue", value: money(curRev), ...revDelta, prevLabel: `${money(prevRev)} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Reply rate", value: "—", deltaLabel: "needs sends", dir: "flat", prevLabel: "no send denominator", tag: "partial", tagLabel: "partial" },
-    { label: "Cost / job", value: "—", deltaLabel: "— est.", dir: "flat", prevLabel: "needs spend feed", tag: "sync", tagLabel: "needs sync" },
+    { label: "Reply rate", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Starts once you send your first campaign", tag: "partial", tagLabel: "not yet" },
+    { label: "Cost / job", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Connect an ad account to see this", tag: "sync", tagLabel: "not yet" },
   ];
 
   // Funnel (current window): leads -> booked -> won.

@@ -201,7 +201,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
         <div className="intakehead">
           <div>
             <div className="ih-title"><span className="sp"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg></span>Teach Arc your brand</div>
-            <div className="ih-sub">Add your website, documents, and logo — Arc parses, reads, and analyzes them with Gemini, then proposes brand details for you to approve. Extracted facts land in your <b>Brain</b> and your Brand profile, gated by review — <b>nothing is auto-applied</b>.</div>
+            <div className="ih-sub">Add your website, documents, and logo. Arc reads them and suggests brand details for you to approve — what it learns lands in your <b>Brain</b> and your Brand profile, and <b>nothing is applied until you say so</b>.</div>
           </div>
           <div className="ih-prog">{sources.length} {sources.length === 1 ? "source" : "sources"} connected</div>
         </div>
@@ -258,7 +258,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           </div>
           <div className="isrc">
             <span className="tg est">vision · partial</span>
-            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logo &amp; images</div><div className="ds">Arc reads them with Gemini vision</div></div></div>
+            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logo &amp; images</div><div className="ds">Arc looks at them and learns your look</div></div></div>
             <div className="ucta drop" data-soon="Logo & image upload is coming soon"><svg className="upi" viewBox="0 0 24 24"><path d="M12 16V6M8 10l4-4 4 4" /><path d="M5 16v3a1 1 0 001 1h12a1 1 0 001-1v-3" /></svg><span><b>Drop logo / photos</b></span></div>
           </div>
           <div className="isrc">
@@ -295,7 +295,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
               )}
             </div>
             {palette.length > 0 && (
-              <div className="bsnote">Click a color to preview it as the active accent on the generated ad → Arc uses these tokens across every generated ad, landing page, and email render.</div>
+              <div className="bsnote">Click a color to preview it on the ad above. Arc uses these colors on every ad, landing page, and email it makes.</div>
             )}
           </div>
 
@@ -412,7 +412,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
                 ))
               )}
             </div>
-            <div className="bsnote">Upload a deck, brief, or guidelines — Arc parses it (docx/pdf/md/csv) and writes what it learns into the <b>Brain</b> as proposed facts you approve. <b>Re-sync</b> re-learns a source when your docs change. Click a source to see its facts.</div>
+            <div className="bsnote">Upload a deck, brief, or guidelines (Word, PDF, Markdown or CSV). Arc reads it and adds what it learns to the <b>Brain</b> as facts waiting on your approval. <b>Re-sync</b> re-reads a source when your documents change. Click a source to see what it learned.</div>
           </div>
 
           {/* ARC USES THIS */}
