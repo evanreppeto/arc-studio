@@ -1,7 +1,9 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  MICROCENTS_PER_CENT,
   bucketCostByDay,
+  centsFromMicrocents,
   summarizeUsage,
   type UsageRollupEvent,
   type UsageSummary,
@@ -44,6 +46,7 @@ type UsageEventRow = {
   output_tokens: number | null;
   units: number | null;
   cost_estimate_cents: number;
+  cost_microcents: number | null;
 };
 
 function emptyUsage(range: UsageRange, workspaceName: string): WorkspaceUsage {
@@ -67,6 +70,7 @@ function toRollup(row: UsageEventRow): UsageRollupEvent {
     outputTokens: row.output_tokens,
     units: row.units,
     costCents: row.cost_estimate_cents,
+    costMicrocents: row.cost_microcents,
     occurredAt: row.occurred_at,
   };
 }
@@ -116,13 +120,13 @@ export async function loadWorkspaceUsage(range: UsageRange): Promise<WorkspaceUs
     const [{ data: currentRows }, { data: prevRows }] = await Promise.all([
       db
         .from("ai_usage_events")
-        .select("occurred_at,actor_user,service,model,input_tokens,output_tokens,units,cost_estimate_cents")
+        .select("occurred_at,actor_user,service,model,input_tokens,output_tokens,units,cost_estimate_cents,cost_microcents")
         .eq("workspace_id", workspaceId)
         .gte("occurred_at", rangeStart.toISOString())
         .order("occurred_at", { ascending: false }),
       db
         .from("ai_usage_events")
-        .select("cost_estimate_cents")
+        .select("cost_estimate_cents,cost_microcents")
         .eq("workspace_id", workspaceId)
         .gte("occurred_at", prevStart.toISOString())
         .lt("occurred_at", rangeStart.toISOString()),
@@ -132,9 +136,12 @@ export async function loadWorkspaceUsage(range: UsageRange): Promise<WorkspaceUs
     const events = rows.map(toRollup);
     const summary = summarizeUsage(events);
     const daily = bucketCostByDay(events, lastNDayKeys(days, now));
-    const previousTotalCostCents = ((prevRows ?? []) as Array<{ cost_estimate_cents: number }>).reduce(
-      (sum, r) => sum + (r.cost_estimate_cents ?? 0),
-      0,
+    // Summed in microcents, rounded once — see BSR-502 Finding 5.
+    const previousTotalCostCents = centsFromMicrocents(
+      ((prevRows ?? []) as Array<{ cost_estimate_cents: number; cost_microcents: number | null }>).reduce(
+        (sum, r) => sum + (r.cost_microcents ?? (r.cost_estimate_cents ?? 0) * MICROCENTS_PER_CENT),
+        0,
+      ),
     );
     const recent: RecentUsageRow[] = rows.slice(0, 12).map((r) => ({
       occurredAt: r.occurred_at,
