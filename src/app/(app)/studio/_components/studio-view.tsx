@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { type CreativeLayoutOverride } from "@/domain";
 
-import { decideArcDraftAction, requestArcDraftRevisionAction, sendArcMessageAction } from "../../arc/actions";
+import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
 import { generateStudioAsset } from "../actions";
 import { StudioCanvas, type CanvasBrand, type CanvasLayer } from "./studio-canvas";
@@ -232,7 +231,16 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [msg, setMsg] = useState("");
   const [sendErr, setSendErr] = useState<string | null>(null);
   const [sending, startSend] = useTransition();
-  const router = useRouter();
+  // The conversation Studio is holding. It used to be thrown at the router the
+  // moment it existed, which is why this panel never showed a reply (BSR-681).
+  const [convId, setConvId] = useState<string | null>(null);
+  const [thread, setThread] = useState<ArcThreadMessage[]>([]);
+  const [awaitingReply, setAwaitingReply] = useState(false);
+  const [streamBody, setStreamBody] = useState<string | null>(null);
+  const [reconcileTick, setReconcileTick] = useState(0);
+  /** When the last message was sent, so a reply from BEFORE it can't be mistaken
+   *  for the answer to it on a follow-up turn. */
+  const sentAtRef = useRef<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
@@ -246,17 +254,91 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     if (!text || sending || !live) return;
     setSendErr(null);
     const context = `\n\n(From Studio · ${cmode} · ${mode} · ${FORMATS[fmt].r}${headline ? ` · headline: "${headline}"` : ""})`;
+    // Optimistic: the operator's own words appear immediately, so the panel
+    // never looks like it swallowed the message while the round trip runs.
+    const localId = `local-${Date.now()}`;
+    setThread((prev) => [...prev, { id: localId, role: "operator", body: text, status: "sent", createdAt: new Date().toISOString() }]);
+    setMsg("");
     startSend(async () => {
-      const result = await sendArcMessageAction({ conversationId: null, body: text + context });
+      const result = await sendArcMessageAction({ conversationId: convId, body: text + context });
       if (result.ok) {
-        setMsg("");
-        router.push(`/arc?c=${result.conversationId}`);
-        router.refresh();
+        sentAtRef.current = new Date().toISOString();
+        setConvId(result.conversationId);
+        setAwaitingReply(true);
       } else {
+        // Take the optimistic bubble back rather than leaving a message that
+        // was never sent sitting in the thread.
+        setThread((prev) => prev.filter((m) => m.id !== localId));
+        setMsg(text);
         setSendErr(result.error);
       }
     });
   };
+  // Arc answers HERE. Same mechanism the chat page uses — cumulative snapshots
+  // over SSE — but rendered in this panel instead of navigating away from the
+  // canvas (BSR-681).
+  //
+  // `done` does NOT end the wait. The stream reports "done" whenever nothing is
+  // in flight, and the pending reply row is written by the runner AFTER the send
+  // action returns — so subscribing immediately can catch that gap and be told
+  // the reply is finished before it has started. Only the reconcile below, which
+  // looks for an actual completed reply, decides we are no longer waiting.
+  useEffect(() => {
+    if (!live || !awaitingReply || !convId) return;
+    const source = new EventSource(`/api/arc/stream/${encodeURIComponent(convId)}`);
+    source.onmessage = (event) => {
+      try {
+        const frame = JSON.parse(event.data) as { messageId?: string; body?: string };
+        if (frame.messageId) setStreamBody(frame.body ?? "");
+      } catch {
+        /* ignore a malformed frame */
+      }
+    };
+    source.addEventListener("done", () => setReconcileTick((n) => n + 1));
+    source.onerror = () => setReconcileTick((n) => n + 1);
+    return () => source.close();
+  }, [live, awaitingReply, convId]);
+
+  // The canonical thread. Runs on a slow cadence while waiting (and immediately
+  // whenever the stream says something changed), and is what actually ends the
+  // wait — when a completed Arc reply newer than the message we sent exists.
+  useEffect(() => {
+    if (!convId) return;
+    let cancelled = false;
+
+    const pull = async () => {
+      const result = await getArcConversationTailAction({ conversationId: convId });
+      if (cancelled || !result.ok) return;
+      setThread(result.messages);
+      const replied = result.messages.some(
+        (m) => m.role === "arc" && m.status !== "pending" && m.body.trim() && (!sentAtRef.current || m.createdAt >= sentAtRef.current),
+      );
+      if (replied) {
+        setAwaitingReply(false);
+        setStreamBody(null);
+      }
+    };
+
+    void pull();
+    if (!awaitingReply) return () => { cancelled = true; };
+
+    // Bounded: a reply that never lands stops the poll rather than leaving a
+    // timer running for the life of the tab.
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      if (Date.now() - startedAt > 120_000) {
+        window.clearInterval(interval);
+        setAwaitingReply(false);
+        return;
+      }
+      void pull();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [convId, awaitingReply, reconcileTick]);
 
   // Import art: reuse the wired Library upload (real media_assets rows, provenance-
   // tagged, held for review before Arc may reuse). New assets appear under Imported.
@@ -774,18 +856,38 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   </div>
                 </div>
                 <div className="arcscroll">
-                  <div className="arcempty">
-                    <div className="arcempty-t">Ask Arc about this creative</div>
-                    <p className="arcempty-d">
-                      Your message starts a new Arc conversation seeded with what&rsquo;s on the canvas — the
-                      format, the headline, and the campaign you picked — and opens it in Arc, where the reply
-                      and any drafts appear.
-                    </p>
-                    <p className="arcempty-d">
-                      Arc drafts only; nothing it produces goes outbound until you approve it. Drafts you
-                      generate here show up under <b>Drafts</b> on the Design tab.
-                    </p>
-                  </div>
+                  {thread.length === 0 && !awaitingReply ? (
+                    <div className="arcempty">
+                      <div className="arcempty-t">Ask Arc about this creative</div>
+                      <p className="arcempty-d">
+                        Your message starts an Arc conversation seeded with what&rsquo;s on the canvas — the
+                        format, the headline, and the campaign you picked. The reply appears here; you keep
+                        the artboard.
+                      </p>
+                      <p className="arcempty-d">
+                        Arc drafts only; nothing it produces goes outbound until you approve it. Drafts you
+                        generate here show up under <b>Drafts</b> on the Design tab.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="arcthread">
+                      {thread.map((m) => (
+                        <div key={m.id} className={`arcmsg ${m.role === "operator" ? "me" : "arc"}`}>
+                          {m.body}
+                        </div>
+                      ))}
+                      {awaitingReply && (
+                        <div className="arcmsg arc">
+                          {streamBody ? streamBody : <span className="arcdots">Arc is thinking…</span>}
+                        </div>
+                      )}
+                      {convId && (
+                        <a className="arcopen" href={`/arc?c=${convId}`}>
+                          Open the full conversation in Arc →
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="composer">
                   <div className="modes">{["Ask", "Act", "Draft"].map((m) => <span key={m} className={`mode${cmode === m ? " on" : ""}`} onClick={() => setCmode(m)}>{m}</span>)}</div>
