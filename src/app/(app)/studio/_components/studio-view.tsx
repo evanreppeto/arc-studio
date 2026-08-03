@@ -147,9 +147,10 @@ type StudioDraft = { campaignId: string; assetId: string; url: string; source: s
 const SAMPLE_COPY = {
   kicker: "Storm season",
   headline: "Your roof, ready before the next storm.",
+  sub: "Free assessment · same-week scheduling",
   cta: "Get my free quote",
 };
-const EMPTY_COPY = { kicker: "", headline: "", cta: "" };
+const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
 
 export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, brandPalette = [], brandTokens = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; brandPalette?: string[]; brandTokens?: CanvasBrand | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
@@ -190,6 +191,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [accent, setAccent] = useState(swatches[0] ?? "#c8a24a");
   const [kicker, setKicker] = useState(startingCopy.kicker);
   const [headline, setHeadline] = useState(startingCopy.headline);
+  const [sub, setSub] = useState(startingCopy.sub);
   const [cta, setCta] = useState(startingCopy.cta);
   const [safe, setSafe] = useState(false);
   // Per-layer visibility for the canvas. The Layers panel eye toggles drive this;
@@ -440,6 +442,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           // (Background/Logo are composited server-side from the media + brand kit.)
           headline: shown("Headline") ? headline : "",
           kicker: shown("Kicker") ? kicker : "",
+          subhead: shown("Subhead") ? sub : "",
           ctaLabel: shown("CTA button") ? cta : "",
           // Send what the operator actually picked, so the render matches the canvas
           // they just approved by eye. Both were previously dropped: the server chose
@@ -625,7 +628,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <StudioCanvas
                   template={(TEMPLATES[tmpl]?.id ?? "bold") as "bold" | "editorial" | "minimal"}
                   brand={canvasBrand}
-                  copy={{ kicker, headline, cta }}
+                  copy={{ kicker, headline, subhead: sub, cta }}
                   shown={shown}
                   override={layoutOverride}
                   onOverrideChange={setLayoutOverride}
@@ -634,6 +637,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   onCopyChange={(field, value) => {
                     if (field === "kicker") setKicker(value);
                     else if (field === "headline") setHeadline(value);
+                    else if (field === "subhead") setSub(value);
                     else setCta(value);
                   }}
                   background={
@@ -721,7 +725,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="psec">
                   <h3 className="ph2">Layers</h3>
                   <div className={`layer${selectedLayer === "Background" ? " sel" : ""}`} role="button" tabIndex={0} onClick={() => setSelectedLayer("Background")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer("Background"); } }} style={shown("Background") ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">Background</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
-                  {[["Kicker", kicker], ["Headline", headline], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
+                  {[["Kicker", kicker], ["Headline", headline], ["Subhead", sub], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
                     <div className={`layer${selectedLayer === lt ? " sel" : ""}`} key={lt} role="button" tabIndex={0} onClick={() => setSelectedLayer(lt as CanvasLayer)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer(lt as CanvasLayer); } }} style={shown(lt) ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
                   ))}
                 </div>
@@ -730,6 +734,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   <h3 className="ph2">Edit copy</h3>
                   <div className="fieldl"><span>Kicker</span><span>eyebrow</span></div><input className="input" placeholder="Short eyebrow" value={kicker} onChange={(e) => setKicker(e.target.value)} />
                   <div className="field"><div className="fieldl"><span>Headline</span></div><input className="input" placeholder="The one line that has to land" value={headline} onChange={(e) => setHeadline(e.target.value)} /></div>
+                  <div className="field"><div className="fieldl"><span>Subhead</span></div><input className="input" placeholder="Supporting detail or offer" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
                   <div className="field"><div className="fieldl"><span>CTA</span></div><input className="input" placeholder="Button text" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
                 </div>
 

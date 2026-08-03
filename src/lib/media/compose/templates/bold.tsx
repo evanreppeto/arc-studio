@@ -119,11 +119,29 @@ export const templateBold: CreativeTemplate = ({ brand, copy, dims, layout, back
             fontSize: L.headline.size * u,
             lineHeight: L.headline.lineHeight,
             letterSpacing: L.headline.tracking! * u,
-            marginBottom: copy.ctaLabel ? L.headline.marginBottom! * u : 0,
+            marginBottom: copy.subhead || copy.ctaLabel ? L.headline.marginBottom! * u : 0,
           }}
         >
           {copy.headline}
         </div>
+        {copy.subhead ? (
+          <div
+            style={{
+              display: "-webkit-box",
+              WebkitBoxOrient: "vertical",
+              WebkitLineClamp: L.subhead.clampLines,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              color: c(L.subhead.color),
+              fontFamily: "Body",
+              fontSize: L.subhead.size * u,
+              lineHeight: L.subhead.lineHeight,
+              marginBottom: copy.ctaLabel ? L.subhead.marginBottom! * u : 0,
+            }}
+          >
+            {copy.subhead}
+          </div>
+        ) : null}
         {copy.ctaLabel ? (
           <div
             style={{

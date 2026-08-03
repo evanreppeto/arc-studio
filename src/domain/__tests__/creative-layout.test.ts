@@ -122,3 +122,27 @@ describe("layout overrides (constrained canvas editing)", () => {
     expect(JSON.stringify(CREATIVE_LAYOUTS)).toBe(before);
   });
 });
+
+describe("subhead slot", () => {
+  it("every template can carry one", () => {
+    for (const id of CREATIVE_TEMPLATE_IDS) {
+      expect(CREATIVE_LAYOUTS[id].subhead.size, id).toBeGreaterThan(0);
+      expect(CREATIVE_LAYOUTS[id].subhead.clampLines, id).toBeGreaterThan(0);
+    }
+  });
+
+  // It reads as support, not as a second headline.
+  it("is smaller than the headline on every template", () => {
+    for (const id of CREATIVE_TEMPLATE_IDS) {
+      expect(CREATIVE_LAYOUTS[id].subhead.size, id).toBeLessThan(CREATIVE_LAYOUTS[id].headline.size);
+    }
+  });
+
+  // Scaling the headline alone would break the type relationship the template
+  // was designed around, so the subhead rides the same multiplier.
+  it("scales with the headline", () => {
+    const scaled = withLayoutOverride(CREATIVE_LAYOUTS.bold, { headlineScale: 1.5 });
+    expect(scaled.subhead.size).toBe(CREATIVE_LAYOUTS.bold.subhead.size * 1.5);
+    expect(scaled.kicker.size).toBe(CREATIVE_LAYOUTS.bold.kicker.size);
+  });
+});
