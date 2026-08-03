@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   PRICING_VERSION,
   estimateClaudeCostCents,
+  estimateClaudeCostMicrocents,
   estimateEmbeddingCostCents,
   estimateGeminiTextCostCents,
+  estimateMediaCostMicrocents,
+  eventMicrocents,
   estimateMediaCostCents,
   foldGeminiTextUsage,
   estimateTokensFromChars,
@@ -256,5 +259,68 @@ describe("foldGeminiTextUsage (BSR-502)", () => {
   it("records ZERO for an unpriced Gemini text model — and declares it unpriced", () => {
     expect(estimateGeminiTextCostCents("gemini-2.5-flash", 31_000, 3_000)).toBe(0);
     expect(isPricedUsage("gemini_text", "gemini-2.5-flash")).toBe(false);
+  });
+});
+
+describe("sub-cent precision (BSR-502 Finding 5)", () => {
+  it("keeps a sub-half-cent call as a real cost instead of zero", () => {
+    // 10 output tokens of opus at 7500 cents/Mtok = 0.075 cents. The old code
+    // rounded that to 0 at write time and the money vanished.
+    expect(estimateClaudeCostMicrocents("claude-opus-4-8", 0, 10)).toBe(75);
+    expect(estimateClaudeCostCents("claude-opus-4-8", 0, 10)).toBe(0);
+  });
+
+  it("sums a thousand tiny turns to real money instead of nothing", () => {
+    // The heart of the finding: the floor only ever rounds DOWN, so it cannot
+    // average out — it compounds with the number of small calls, and short turns
+    // are what a chat-heavy product makes most of.
+    const events: UsageRollupEvent[] = Array.from({ length: 1_000 }, () => ({
+      service: "arc_claude" as const,
+      model: "claude-opus-4-8",
+      actorUser: null,
+      inputTokens: 0,
+      outputTokens: 10,
+      units: null,
+      costCents: 0, // what the old write path stored
+      costMicrocents: 75, // what it actually cost
+      occurredAt: "2026-07-31T00:00:00.000Z",
+    }));
+
+    const summary = summarizeUsage(events);
+    // 1,000 x 75 microcents = 75,000 = 75 cents. Summing the stored cents gives 0.
+    expect(summary.totalCostCents).toBe(75);
+    expect(events.reduce((s, e) => s + e.costCents, 0)).toBe(0);
+  });
+
+  it("falls back to cents for rows written before precision existed", () => {
+    // costMicrocents is null on historical rows. Those never had the precision,
+    // so cents * 1000 is the honest reading — not a claim they were measured.
+    expect(eventMicrocents({ costCents: 3, costMicrocents: null })).toBe(3_000);
+    expect(eventMicrocents({ costCents: 3 })).toBe(3_000);
+    expect(eventMicrocents({ costCents: 0, costMicrocents: 75 })).toBe(75);
+  });
+
+  it("rounds each daily bucket once, not each event", () => {
+    const day = (n: number): UsageRollupEvent[] =>
+      Array.from({ length: n }, () => ({
+        service: "arc_claude" as const,
+        model: "claude-opus-4-8",
+        actorUser: null,
+        inputTokens: null,
+        outputTokens: null,
+        units: null,
+        costCents: 0,
+        costMicrocents: 300,
+        occurredAt: "2026-07-30T12:00:00.000Z",
+      }));
+    const [bucket] = bucketCostByDay(day(10), ["2026-07-30"]);
+    expect(bucket.costCents).toBe(3); // 10 x 300 = 3000 microcents
+  });
+
+  it("never yields NaN for a service with no price entry", () => {
+    // undefined * count is NaN, and NaN in a cost column is worse than a zero
+    // because it is neither a number nor an honest absence.
+    expect(estimateMediaCostMicrocents("gemini_text" as never, 2)).toBe(0);
+    expect(estimateMediaCostCents("gemini_text" as never, 2)).toBe(0);
   });
 });

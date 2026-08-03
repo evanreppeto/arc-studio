@@ -125,3 +125,75 @@ describe("surfacing what the meter cannot price (BSR-502)", () => {
     );
   });
 });
+
+describe("every service reaches a real cost, not NaN (BSR-502)", () => {
+  // REGRESSION GUARD. `gemini_text` was added to the service enum with its own
+  // pricing function — which `costForInput` never called, because media was the
+  // fallthrough for "everything else". MEDIA_PRICING["gemini_text"] is undefined
+  // and `undefined * units` is NaN, so every gemini_text row would have written
+  // NaN into an integer cost column.
+  //
+  // The unit tests were green: the pure pricing function was tested, and the
+  // meter helper was tested with recordUsageEvent mocked. Neither crossed the
+  // integration point where the bug lived. This test crosses it.
+  const SERVICES = ["arc_claude", "gemini_image", "gemini_video", "gemini_embedding", "gemini_text"] as const;
+
+  for (const service of SERVICES) {
+    it(`computes a finite cost for ${service}`, async () => {
+      configureSupabase();
+      let inserted: Record<string, unknown> | null = null;
+      const chain = {
+        insert: (row: Record<string, unknown>) => {
+          inserted = row;
+          return chain;
+        },
+        select: () => chain,
+        single: () => Promise.resolve({ data: { id: "evt-1" }, error: null }),
+      } as Record<string, unknown>;
+      getAdmin.mockReturnValue({ from: () => chain } as never);
+
+      const result = await recordUsageEvent({
+        orgId: "org-1",
+        workspaceId: "ws-1",
+        service,
+        model: "some-model",
+        inputTokens: 1200,
+        outputTokens: 800,
+        units: 2,
+      });
+
+      if (!result.recorded) throw new Error(`expected a record, got ${result.reason}`);
+      expect(Number.isFinite(result.costCents)).toBe(true);
+      expect(Number.isFinite(inserted!.cost_estimate_cents as number)).toBe(true);
+      expect(Number.isFinite(inserted!.cost_microcents as number)).toBe(true);
+    });
+  }
+
+  it("writes cost_microcents as the precise value behind the rounded cents", async () => {
+    configureSupabase();
+    let inserted: Record<string, unknown> | null = null;
+    const chain = {
+      insert: (row: Record<string, unknown>) => {
+        inserted = row;
+        return chain;
+      },
+      select: () => chain,
+      single: () => Promise.resolve({ data: { id: "evt-1" }, error: null }),
+    } as Record<string, unknown>;
+    getAdmin.mockReturnValue({ from: () => chain } as never);
+
+    // 100 output tokens of opus at 7500 cents/Mtok = 0.75 cents. The cents column
+    // rounds to 1; the microcents column keeps the 750 that makes summation honest.
+    await recordUsageEvent({
+      orgId: "org-1",
+      workspaceId: "ws-1",
+      service: "arc_claude",
+      model: "claude-opus-4-8",
+      inputTokens: 0,
+      outputTokens: 100,
+    });
+
+    expect(inserted!.cost_microcents).toBe(750);
+    expect(inserted!.cost_estimate_cents).toBe(1);
+  });
+});

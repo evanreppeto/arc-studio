@@ -43,6 +43,13 @@ type OpportunityEvidence = {
   topAsset?: string;
   /** Ready-to-send Arc prompt for the follow-up draft. */
   arcPrompt?: string;
+  /**
+   * The keys above are what the DETERMINISTIC detectors emit. Arc's generative
+   * scan names its own key per finding, so the shape is genuinely open — the
+   * inbox renders unrecognized keys generically rather than dropping them
+   * (see opportunities/evidence.ts).
+   */
+  [key: string]: unknown;
 };
 
 type OpportunityRecord = {
