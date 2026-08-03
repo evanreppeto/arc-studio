@@ -3,9 +3,9 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
-import { type CsvColumnOverrides, type CsvField } from "@/domain";
+import { type CsvColumnOverrides, type CsvField, type ImportEntityKind } from "@/domain";
 
-import { commitCsvImportAction, previewCsvImportAction } from "../actions";
+import { commitCsvImportAction, importEntityAction, previewCsvImportAction } from "../actions";
 import { MAPPABLE_FIELDS, type ImportPreview } from "./types";
 
 /**
@@ -19,7 +19,18 @@ import { MAPPABLE_FIELDS, type ImportPreview } from "./types";
  * `dryRun`. A preview built on a second parser would eventually disagree with the
  * import, which is worse than no preview.
  */
+/** What a file is being imported AS. "contacts" is the original engine. */
+type ImportKind = "contacts" | ImportEntityKind;
+
+const KINDS: Array<{ kind: ImportKind; label: string; hint: string }> = [
+  { kind: "contacts", label: "Contacts", hint: "People — becomes a lead with a contact and company attached" },
+  { kind: "companies", label: "Companies", hint: "Accounts and organizations" },
+  { kind: "deals", label: "Deals", hint: "Jobs and opportunities, attached to a company by its id" },
+  { kind: "notes", label: "Notes", hint: "Attached to a contact or company by its id" },
+];
+
 export function ImportWizard({ ready }: { ready: boolean }) {
+  const [kind, setKind] = useState<ImportKind>("contacts");
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -46,7 +57,12 @@ export function ImportWizard({ ready }: { ready: boolean }) {
     setPending("preview");
     setError(null);
     setDone(null);
-    const res = await previewCsvImportAction({ csvText, columnOverrides: nextOverrides });
+    const res =
+      kind === "contacts"
+        ? await previewCsvImportAction({ csvText, columnOverrides: nextOverrides })
+        : ((await importEntityAction({ kind, csvText, columnOverrides: nextOverrides, dryRun: true })) as
+            | { ok: true; preview: ImportPreview }
+            | { ok: false; error: string });
     setPending(null);
     if (!res.ok) {
       setError(res.error);
@@ -59,7 +75,12 @@ export function ImportWizard({ ready }: { ready: boolean }) {
   async function commit() {
     setPending("commit");
     setError(null);
-    const res = await commitCsvImportAction({ csvText, columnOverrides: overrides });
+    const res =
+      kind === "contacts"
+        ? await commitCsvImportAction({ csvText, columnOverrides: overrides })
+        : ((await importEntityAction({ kind, csvText, columnOverrides: overrides })) as
+            | { ok: true; message: string }
+            | { ok: false; error: string });
     setPending(null);
     if (!res.ok) {
       setError(res.error);
@@ -101,6 +122,25 @@ export function ImportWizard({ ready }: { ready: boolean }) {
           {fileName && <span className="imp-sub">{fileName}</span>}
         </div>
         <div className="imp-step-b">
+          {/* Order matters and the copy says so: a deal cannot attach to a company
+              that has not been imported yet, and the engine reports rather than
+              guesses when a reference does not resolve. */}
+          <div className="imp-kinds" role="group" aria-label="What is in this file">
+            {KINDS.map((k) => (
+              <button
+                key={k.kind}
+                type="button"
+                className="imp-kind"
+                data-on={kind === k.kind}
+                title={k.hint}
+                onClick={() => { setKind(k.kind); setPreview(null); setOverrides({}); setDone(null); setError(null); }}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+          <p className="imp-kind-hint">{KINDS.find((k) => k.kind === kind)?.hint}</p>
+
           <label
             className="imp-drop"
             data-over={dragOver}
