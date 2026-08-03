@@ -132,3 +132,6 @@ export * from "./vocabulary";
 // One colour per persona, everywhere (BSR-661). Import personaAccent rather
 // than re-deriving a hue from a regex ladder.
 export * from "./persona-accent";
+
+// What the app's invented words mean (BSR-659). Render with <Define>.
+export * from "./definitions";

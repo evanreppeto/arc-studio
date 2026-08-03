@@ -6,6 +6,7 @@ import { archivePersona, createPersona, editPersona, type EditPersonaInput, type
 import { EditPersonaModal } from "./edit-persona-modal";
 import { NewPersonaModal } from "./new-persona-modal";
 import { KpiStrip } from "../../_components/kpi-strip";
+import { HowThisWorks } from "../../_components/define";
 
 export type PersonaVM = {
   slug: string;
@@ -492,6 +493,16 @@ function PersonaDetail({ p, onEdit, onArchive }: { p: PersonaVM; onEdit: () => v
 
       <div className="sec">
         <div className="sh">Playbook</div>
+        <HowThisWorks>
+          <p>
+            A persona is a type of customer you sell to — how they found you, what they worry about, and what usually
+            convinces them. Arc matches each new contact to one, then writes to them in the way that persona responds to.
+          </p>
+          <p>
+            These are yours to edit. Change the message angle or the proof points and Arc uses your wording from its next
+            draft onward — nothing already approved changes.
+          </p>
+        </HowThisWorks>
         <div className="pbk">
           {p.angle && (
             <div className="pbi full">
