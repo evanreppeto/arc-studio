@@ -45,6 +45,7 @@ export type CanvasBrand = {
 export type CanvasCopy = {
   kicker: string;
   headline: string;
+  subhead: string;
   cta: string;
 };
 
@@ -53,13 +54,14 @@ export type CanvasCopy = {
 const PLACEHOLDER: CanvasCopy = {
   kicker: "Kicker",
   headline: "Your headline goes here.",
+  subhead: "Supporting line",
   cta: "",
 };
 
 /** Layers the operator can select on the artboard. Selecting any part of the
  *  copy selects the block, because the block is what moves — the template owns
  *  the arrangement inside it. */
-export type CanvasLayer = "Background" | "Logo" | "Kicker" | "Headline" | "CTA button";
+export type CanvasLayer = "Background" | "Logo" | "Kicker" | "Headline" | "Subhead" | "CTA button";
 
 type CanvasProps = {
   template: CreativeTemplateId;
@@ -75,7 +77,7 @@ type CanvasProps = {
   selected?: CanvasLayer | null;
   onSelect?: (layer: CanvasLayer | null) => void;
   /** Commit an in-place text edit. */
-  onCopyChange?: (field: "kicker" | "headline" | "cta", value: string) => void;
+  onCopyChange?: (field: "kicker" | "headline" | "subhead" | "cta", value: string) => void;
 };
 
 function color(brand: CanvasBrand, ref: BrandColorRef): string {
@@ -235,7 +237,7 @@ function CopyStack({
   shown: (l: string) => boolean;
   selected?: CanvasLayer | null;
   onSelect?: (l: CanvasLayer | null) => void;
-  onCopyChange?: (field: "kicker" | "headline" | "cta", value: string) => void;
+  onCopyChange?: (field: "kicker" | "headline" | "subhead" | "cta", value: string) => void;
 }) {
   return (
     <>
@@ -259,6 +261,17 @@ function CopyStack({
           selected={selected === "Headline"}
           onSelect={onSelect}
           onCommit={(v) => onCopyChange?.("headline", v)}
+        />
+      )}
+      {shown("Subhead") && (
+        <EditableText
+          value={copy.subhead}
+          placeholder={PLACEHOLDER.subhead}
+          style={{ ...textStyle(brand, L.subhead), display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: L.subhead.clampLines, overflow: "hidden" }}
+          layer="Subhead"
+          selected={selected === "Subhead"}
+          onSelect={onSelect}
+          onCommit={(v) => onCopyChange?.("subhead", v)}
         />
       )}
       {L.divider && (
@@ -289,7 +302,7 @@ function CopyStack({
 
 /** Is this layer part of the copy block — i.e. does selecting it arm the drag? */
 function isCopyLayer(layer: CanvasLayer | null | undefined): boolean {
-  return layer === "Kicker" || layer === "Headline" || layer === "CTA button";
+  return layer === "Kicker" || layer === "Headline" || layer === "Subhead" || layer === "CTA button";
 }
 
 export function StudioCanvas({
@@ -425,6 +438,17 @@ export function StudioCanvas({
               selected={selected === "Headline"}
               onSelect={onSelect}
               onCommit={(v) => onCopyChange?.("headline", v)}
+            />
+          )}
+          {shown("Subhead") && (
+            <EditableText
+              value={copy.subhead}
+              placeholder={PLACEHOLDER.subhead}
+              style={{ ...textStyle(brand, L.subhead), display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: L.subhead.clampLines, overflow: "hidden", marginTop: du(L.kicker.marginBottom ?? 0) }}
+              layer="Subhead"
+              selected={selected === "Subhead"}
+              onSelect={onSelect}
+              onCommit={(v) => onCopyChange?.("subhead", v)}
             />
           )}
           {blockChrome}
