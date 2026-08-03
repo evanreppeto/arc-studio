@@ -697,7 +697,7 @@ export function CrmBoard({
           </div>
         </div>
         <div className="sp">
-          <Link className="gbtn" href="/settings?s=connections&c=csv-import" title="Import contacts from a CSV">
+          <Link className="gbtn" href="/crm/import" title="Import contacts from a CSV">
             <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
             Import
           </Link>
