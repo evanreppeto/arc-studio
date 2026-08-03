@@ -40,10 +40,11 @@ export type WorkspaceSummary = {
 export const getWorkspaceSummary = cache(async function getWorkspaceSummary(
   orgId: string,
   agentName = "Arc",
+  workspaceId?: string | null,
 ): Promise<WorkspaceSummary> {
   const [approvals, campaignList, opportunities, crmCounts, activity] = await Promise.all([
     listApprovalCards({ orgId, agentName, limit: 5 }).catch(() => [] as ApprovalCard[]),
-    getCampaignWorkspaceList(undefined, agentName, orgId).catch(() => ({ status: "unavailable" as const })),
+    getCampaignWorkspaceList(undefined, agentName, orgId, workspaceId).catch(() => ({ status: "unavailable" as const })),
     listOpenOpportunities(undefined, orgId).catch(() => [] as OpportunityRecord[]),
     getCrmNavCounts().catch(() => null),
     getRecentActivity({ limit: 6 }, undefined, orgId).catch(() => null),
