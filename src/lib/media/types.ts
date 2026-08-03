@@ -8,7 +8,13 @@ export type GeneratedMedia = {
   jobId: string;
 };
 
-export type VideoGenInput = { prompt: string; aspectRatio?: string; durationSeconds?: number };
+export type VideoGenInput = {
+  prompt: string;
+  aspectRatio?: string;
+  durationSeconds?: number;
+  /** DONT_ALLOW | ALLOW_ADULT | ALLOW_ALL. Omit for the deployment default. */
+  personGeneration?: string;
+};
 export type VideoStart = { operationName: string; model: string; jobId: string };
 export type VideoPoll =
   | { status: "running" }
