@@ -1,3 +1,5 @@
+import { WORK_STATE_LABEL } from "@/domain";
+
 import type { ArcWaitingOpp } from "./waiting-opps";
 
 export type ArcLauncherMode = "urgent" | "review" | "opportunity" | "quiet";
@@ -61,7 +63,9 @@ export function buildArcLauncherRecommendation(waiting?: {
     const count = waiting?.approvals ?? 0;
     return {
       mode: "review",
-      eyebrow: "Ready for review",
+      // Was "Ready for review" — a fifth name for the state the card below it
+      // already calls "Needs you" (BSR-656).
+      eyebrow: WORK_STATE_LABEL.needs_you,
       title: `${count} ${count === 1 ? "item needs" : "items need"} your decision`,
       description: "Open the review workspace to approve, revise, or decline it.",
       urgency: "medium",

@@ -46,6 +46,8 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import {
   arcToolLabel,
+  ASSET_NOUN,
+  countOf,
   summarizeSteps,
   WORK_STATE_LABEL,
   type ArcActionCard,
@@ -585,17 +587,17 @@ export function DraftPackageCard({ cards, statuses, onReview, onContextMenu }: {
   const approvedCount = cards.filter((card) => statusOf(card) === "approved").length;
   return (
     <div className="arc-package" onContextMenu={onContextMenu}>
-      <div className="arc-package-kicker">Campaign package · {approvedCount}/{cards.length} approved</div>
+      <div className="arc-package-kicker">Campaign · {approvedCount}/{cards.length} approved</div>
       <div className="arc-package-row">
         <span className="arc-package-icon"><MessageSquareText size={18} /></span>
-        <span className="arc-package-title"><b>{cards.length} assets ready for review</b><small>Review each channel in the workspace</small></span>
+        <span className="arc-package-title"><b>{countOf(cards.length, ASSET_NOUN)} need you</b><small>Review each channel in the workspace</small></span>
         <div className="arc-package-channels">
           {cards.slice(0, 4).map((card, index) => {
             const meta = assetStatusMeta(statusOf(card));
             return <span key={`${card.title}-${index}`} data-tone={meta.tone}><i />{card.channel ?? card.title}<small>{meta.label}</small></span>;
           })}
         </div>
-        <button type="button" className="arc-review-button" data-arc-review-trigger="true" onClick={onReview}>Review package <PanelRightOpen size={15} /></button>
+        <button type="button" className="arc-review-button" data-arc-review-trigger="true" onClick={onReview}>Review assets <PanelRightOpen size={15} /></button>
       </div>
     </div>
   );
@@ -1058,7 +1060,7 @@ export function AssetReviewPanel({ cards, statuses, onStatus, onClose }: { cards
       transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
     >
       <header className="arc-artifact-header">
-        <div><span>Review workspace</span><h2>{cards.length === 1 ? "Asset review" : "Campaign package"}</h2><p>{cards.length} {cards.length === 1 ? "asset" : "assets"} · {approvedCount} approved</p></div>
+        <div><span>Review workspace</span><h2>{cards.length === 1 ? "Asset review" : "Campaign assets"}</h2><p>{countOf(cards.length, ASSET_NOUN)} · {approvedCount} approved</p></div>
         <button type="button" onClick={onClose} aria-label="Close review workspace"><PanelRightClose size={17} /></button>
       </header>
       <div className="arc-artifact-shell">
