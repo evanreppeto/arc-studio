@@ -693,7 +693,7 @@ export function CrmBoard({
         <div>
           <h2 className="ct">{active.label}</h2>
           <div className="csub">
-            {countFor(active).toLocaleString()} {active.noun} · org-scoped · synced with Arc
+            {countFor(active).toLocaleString()} {active.noun} · kept up to date by Arc
           </div>
         </div>
         <div className="sp">
@@ -944,7 +944,7 @@ export function CrmBoard({
       <div className="gfoot">
         <span className="arcnote">
           <i />
-          Arc keeps {active.noun} enriched and lead scores current
+          Arc keeps {active.noun} up to date, and keeps their lead scores current
         </span>
         <div className="pager">
           <span className="rpp">

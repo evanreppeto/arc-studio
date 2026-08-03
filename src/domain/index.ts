@@ -120,3 +120,8 @@ export * from "./lead-fit";
 export * from "./arc-eval";
 export * from "./brain-dedup";
 export * from "./brain-dedup-backfill";
+
+// The one place the user-facing approval vocabulary is decided (BSR-656).
+// Import WORK_STATE_LABEL / toWorkState / countOf from here rather than
+// spelling a status label into a component.
+export * from "./vocabulary";

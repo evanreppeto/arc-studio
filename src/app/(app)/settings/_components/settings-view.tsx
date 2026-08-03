@@ -284,7 +284,7 @@ const CONNECTOR_META: Record<string, { c: string; l: string; credLabel: string; 
     c: "#c8a24a",
     l: "Hf",
     credLabel: "Higgsfield API token",
-    credHint: "From your Higgsfield account. Stored in your Vault; the runner uses it only for approval-gated draft assets.",
+    credHint: "From your Higgsfield account. Stored securely, and only ever used to make drafts that wait for your approval.",
   },
   "weather-signals": {
     c: "#7fb89a",
@@ -803,13 +803,15 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     INDUSTRY_OPTIONS.find((o) => o.value === settings.industry)?.label ?? "Not set";
 
   const activeConnections = connectors.connectors.filter((c) => c.enabled).length + (emailConnection?.enabled ? 1 : 0);
+  // "Runner" is what we call the Cloud Run worker; a customer has no idea what
+  // one is, and "Idle" told them nothing about whether Arc was working (BSR-657).
   const runnerValue = !agentConnection?.enabled
     ? "Off"
     : agentConnection.health.lastStatus === "ok"
-      ? "OK"
+      ? "Working"
       : agentConnection.health.lastStatus
-        ? "Down"
-        : "Idle";
+        ? "Not responding"
+        : "Waiting for work";
 
   const sections: Record<string, ReactNode> = {
     fields: (
@@ -1038,8 +1040,8 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
           {[
             ["connections", "connections", String(activeConnections), "Connections active"],
             ["team", "team", String(memberCount), "Team members"],
-            ["general", "agent", runnerValue, "Runner status"],
-            ["usage", "usage", `${usageView.pctOfCap}%`, "Of monthly cap"],
+            ["general", "agent", runnerValue, "Arc"],
+            ["usage", "usage", `${usageView.pctOfCap}%`, "Of this month’s budget"],
           ].map(([route, icon, value, label]) => (
             <button type="button" className="ovcard" key={label} onClick={() => navTo(route, route === "general" ? "Agent" : undefined)}><div className="ovi"><Ic d={ICON[icon]} /></div><div className="ovv">{value}</div><div className="ovl">{label}</div></button>
           ))}
@@ -1148,7 +1150,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     ),
     media: (
       <>
-        <Head t="Media models" d="Two engines generate creative — both produce approval-gated, provenance-tagged drafts. Higgsfield (primary, Ultra) auto-picks per task from its live 44-model roster. The built-in Gemini/Veo path uses the default you set below." />
+        <Head t="Image &amp; video quality" d="Two engines make your creative, and both produce a draft that waits for your approval — nothing goes out on its own. Arc picks the best one for each job automatically; the setting below only chooses the fallback." />
         {subBar}
         {activeSub === "Roster" ? (
           <div className="panel">
@@ -1369,7 +1371,7 @@ function BillingPlanControl({ billing }: { billing: SettingsBillingView | null }
   const statusSuffix = billing.subscriptionStatus ? ` · ${billing.subscriptionStatus}` : "";
 
   return (
-    <Panel title="Plan" tag={TGOK} foot="The monthly cap is enforced against metered usage.">
+    <Panel title="Plan" tag={TGOK} foot="Your monthly budget applies to paid lookups and creative.">
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ fontWeight: 600 }}>{current.label}{statusSuffix}</div>
@@ -2700,7 +2702,7 @@ function ModelModal({ model, onClose }: { model: RosterModel; onClose: () => voi
 
         <div className="cxm-sec">
           <div className="cxm-label">How Arc uses it</div>
-          <p className="cxm-hint">Arc auto-picks the best model per task from this roster — you don’t choose one per generation. Everything it makes is an approval-gated, provenance-tagged draft; nothing goes out until you approve it.</p>
+          <p className="cxm-hint">Arc picks the best model for each job — you don’t choose one every time. Everything it makes is a draft that records where it came from, and nothing goes out until you approve it.</p>
         </div>
       </div>
     </Modal>
@@ -2875,9 +2877,9 @@ function ConnectorSpendPanel({ spend }: { spend: ConnectorSpendView | null }) {
         </div>
       </Panel>
 
-      <Panel title="Spend cap" tag={TGOK} foot="Raising the cap approves more metered spend. Runs over the cap are refused.">
+      <Panel title="Spend cap" tag={TGOK} foot="Raising the cap is how you approve more spend. Anything over it is refused.">
         {!spend.configured && <div style={{ fontSize: 11.5, color: "var(--muted)", padding: "10px 0 4px", lineHeight: 1.5 }}>You’re previewing without a connected workspace — changes won’t persist here.</div>}
-        <Row label="Monthly cap" desc="Metered data connectors (enrichment, permit / property data) may spend up to this per month. A run that would exceed it is refused; raising the cap is your approval of the extra spend.">
+        <Row label="Monthly cap" desc="Paid data lookups (contact details, property records) can spend up to this each month. Anything that would go over is refused — raising the cap is how you approve the extra spend.">
           <span className="pillrow" style={{ alignItems: "center", gap: 8 }}>
             <span style={{ color: "var(--muted)", fontSize: 13 }}>$</span>
             <input className="inp" style={{ minWidth: 0, width: 96 }} type="number" min={0} step={5} value={cap} onChange={(e) => setCap(e.target.value)} />

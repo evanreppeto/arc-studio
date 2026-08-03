@@ -196,7 +196,7 @@ function SignalsBlock({ anomalies, nextMoves }: { anomalies: PerformanceAnomaly[
         </div>
       </div>
       <div className="blk">
-        <h2>Recommended next moves <span className="tg sync">Arc · approval-gated</span></h2>
+        <h2>Recommended next moves <span className="tg sync">Drafted by Arc · needs your approval</span></h2>
         <div className="moves">
           {nextMoves.map((m) => (
             <Link className="move" key={m.id} href={m.href}>
@@ -222,7 +222,7 @@ function WhatConverts({ model }: { model: OpportunityConversionReadModel }) {
         <h2>What converts <span className="tg wired">opportunity → booked</span></h2>
         <div className="psub">
           {model.status === "unavailable"
-            ? "Connect a workspace to see which opportunity types convert."
+            ? "Nothing to show yet. This fills in once opportunities start turning into booked work."
             : "Not enough data yet — Arc learns which opportunity types convert as campaigns get approved and book work."}
         </div>
       </div>
@@ -381,8 +381,8 @@ export function AnalyticsView({
                   <h2 className="pt">Performance overview</h2>
                   <div className="psub">
                     {overview.dataError
-                      ? `Last ${range} days · org-scoped`
-                      : `Last ${range} days · compared to the prior ${range} · org-scoped, straight from CRM`}
+                      ? `Last ${range} days`
+                      : `Last ${range} days · compared with the previous ${range} days`}
                   </div>
                 </div>
               </div>

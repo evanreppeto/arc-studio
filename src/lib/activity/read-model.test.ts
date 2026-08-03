@@ -107,7 +107,7 @@ describe("applyActivityFilters", () => {
       title: "Evan approved Launch Email",
       detail: "Approval recorded for Launch Campaign.",
       relatedLabel: "Launch Campaign",
-      insightLabel: "Needs review",
+      insightLabel: "Needs you",
     }),
     entry("risk", "2026-06-11T14:00:00Z", {
       actor: "Arc",
@@ -165,7 +165,7 @@ describe("applyActivityFilters", () => {
     );
     const olderNeedsReviewEntry = entry("older-needs-review", "2026-06-11T12:00:00Z", {
       category: "approval",
-      insightLabel: "Needs review",
+      insightLabel: "Needs you",
       tone: "amber",
     });
     const query = { needsReview: true };
@@ -181,7 +181,7 @@ describe("applyActivityFilters", () => {
       [
         entry("active-review", "2026-06-12T14:00:00Z", {
           category: "asset",
-          insightLabel: "Needs review",
+          insightLabel: "Needs you",
           tone: "amber",
         }),
         entry("declined-history", "2026-06-12T13:00:00Z", {
@@ -207,7 +207,7 @@ describe("buildActivitySummary", () => {
     const summary = buildActivitySummary([
       entry("review", "2026-06-12T14:00:00Z", {
         category: "approval",
-        insightLabel: "Needs review",
+        insightLabel: "Needs you",
         actorType: "human",
       }),
       entry("arc", "2026-06-12T13:00:00Z", {
@@ -240,7 +240,7 @@ describe("buildActivitySummary", () => {
     const summary = buildActivitySummary([
       entry("active-review", "2026-06-12T14:00:00Z", {
         category: "asset",
-        insightLabel: "Needs review",
+        insightLabel: "Needs you",
         tone: "amber",
       }),
       entry("declined-history", "2026-06-12T13:00:00Z", {
@@ -435,7 +435,7 @@ describe("mapCampaignEvent", () => {
     expect(mapped).toMatchObject({
       tone: "amber",
       category: "campaign",
-      insightLabel: "Needs review",
+      insightLabel: "Needs you",
       // The campaign detail page is the review surface. `/approvals?item=…` was
       // never a route in this app, and Arc cites these hrefs back to operators.
       href: "/campaigns/camp_1",

@@ -1,3 +1,4 @@
+import { WORK_STATE_LABEL } from "@/domain";
 import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
 import { countNodesByTier, listGraphEdges, listNodes, type BrainNode } from "@/lib/knowledge-graph/read-model";
 
@@ -80,10 +81,12 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
     .map(toFact);
 
   const stats = [
-    { label: "Knowledge nodes", value: counts.total, sub: "in Arc's memory", color: "" },
-    { label: "Trusted", value: counts.trusted, sub: "approved for outbound", color: "var(--ok-text)" },
-    { label: "Observed", value: counts.observed, sub: "watching, not yet trusted", color: "" },
-    { label: "Awaiting review", value: counts.proposed, sub: "human approval required", color: counts.proposed > 0 ? "var(--warn-text)" : "" },
+    // "Knowledge nodes" was graph vocabulary for what the tabs below already call
+    // facts, and "Awaiting review" was a third name for "Needs you" (BSR-656/657).
+    { label: "Things Arc knows", value: counts.total, sub: "in Arc's memory", color: "" },
+    { label: "Trusted", value: counts.trusted, sub: "Arc can use these in your copy", color: "var(--ok-text)" },
+    { label: "Watching", value: counts.observed, sub: "seen, not trusted yet", color: "" },
+    { label: WORK_STATE_LABEL.needs_you, value: counts.proposed, sub: "waiting on your approval", color: counts.proposed > 0 ? "var(--warn-text)" : "" },
   ];
 
   // Reads the true count for the same reason the tile does: this note IS the trust
@@ -91,7 +94,7 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
   // to sit outside the capped list.
   const coverageNote =
     counts.proposed > 0
-      ? `${counts.proposed} proposed fact${counts.proposed === 1 ? "" : "s"} stay out of all outbound copy until you approve them — Arc's trust gate.`
+      ? `${counts.proposed} new fact${counts.proposed === 1 ? "" : "s"} stay out of everything Arc writes until you approve them.`
       : "";
 
   // Reads that FAILED, as distinct from returning nothing. Without this, a
