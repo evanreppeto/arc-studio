@@ -84,3 +84,47 @@ describe("record counts in the WORKSPACE STATE block", () => {
     }
   });
 });
+
+/**
+ * BSR-686. Dismiss was the operator's most frequent judgement and recorded
+ * nothing: 46 of prod's 134 opportunities sat dismissed with no reason, so Arc
+ * had no way to know it had been told no forty-six times. Same structural shape
+ * as the record counts above — a fact that lived only in a table the model never
+ * read.
+ */
+describe("dismissal patterns in the WORKSPACE STATE block", () => {
+  const render = (dismissalPatterns: string[] | null | undefined) =>
+    buildSystemPrompt("BASE", { ...base, workspaceState: { ...summary, dismissalPatterns } });
+
+  it("puts what the operator keeps rejecting in front of the model", () => {
+    const out = render([
+      '11× "Not relevant to us" on crm_inactivity — the targeting was wrong',
+      '4× "Real, but not worth it" on weather_event — raise the bar for this kind',
+    ]);
+    expect(out).toContain("repeatedly dismissed");
+    expect(out).toContain("Not relevant to us");
+    expect(out).toContain("crm_inactivity");
+    expect(out).toContain("weather_event");
+  });
+
+  it("frames them as guidance, not a ban", () => {
+    // A pattern must not read as "never raise this kind again" — a genuinely
+    // stronger signal of the same kind is still worth the operator's attention.
+    const out = render(['11× "Not relevant to us" on crm_inactivity — the targeting was wrong']);
+    expect(out).toContain("not as a ban");
+  });
+
+  it("renders no block at all when there is no pattern", () => {
+    // Not an empty header: a heading over nothing reads as "we checked and there
+    // is nothing", which is a different claim from "we have not learned yet".
+    for (const empty of [[], null, undefined]) {
+      expect(render(empty)).not.toContain("repeatedly dismissed");
+    }
+  });
+
+  it("keeps the rest of the snapshot intact", () => {
+    const out = render([]);
+    expect(out).toContain("WORKSPACE STATE");
+    expect(out).toContain("243 contacts");
+  });
+});

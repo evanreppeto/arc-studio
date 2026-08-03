@@ -50,6 +50,7 @@ beforeEach(() => {
     pendingApprovals: 3,
     personas: 5,
     records: { contacts: 243, companies: 12, leads: 0, campaigns: 3 },
+    dismissalPatterns: [],
   });
   detailMock.mockResolvedValue({
     brandKit: "active",
@@ -58,6 +59,7 @@ beforeEach(() => {
     pendingApprovals: 3,
     personas: 5,
     records: { contacts: 243, companies: 12, leads: 0, campaigns: 3 },
+    dismissalPatterns: [],
     connectorList: [],
     personaList: [],
     compliance: { disallowedClaims: ["guarantee"], complianceNotes: "" },

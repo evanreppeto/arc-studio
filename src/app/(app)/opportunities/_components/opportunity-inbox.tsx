@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,7 +14,7 @@ import {
 } from "../actions";
 import { scanMessage } from "../scan-feedback";
 import { DraftCampaignModal, type DraftMode } from "./draft-campaign-modal";
-import { definitionText, DEFINITIONS } from "@/domain";
+import { definitionText, DEFINITIONS, DISMISS_REASON_OPTIONS, type DismissReason } from "@/domain";
 import { Define, HowThisWorks } from "../../_components/define";
 
 /** `hint` carries the definition for a coined label (BSR-659). */
@@ -172,6 +172,39 @@ export function OpportunityInbox({
   // optimistically so the card leaves the inbox instantly, before the refetch.
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [dismissOpen, setDismissOpen] = useState(false);
+  const triageRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Close the triage menus on an outside click or Escape.
+   *
+   * This replaced a pair of click-catching scrim overlays. A scrim div is
+   * invisible to a keyboard: there is no way to tab to it and Escape did
+   * nothing, so a keyboard user who opened a menu was stuck with it open —
+   * BSR-664's ratchet caught the second one being added here, which is the
+   * ratchet working. Listening on the document covers both pointer and
+   * keyboard, and matches what `FilterMenu`/`SortMenu` in crm-board.tsx do.
+   *
+   * (Prose here deliberately avoids naming the old markup literally: this
+   * guard greps raw source and does not strip comments, unlike its sibling in
+   * plumbing-vocabulary.test.ts, so a comment quoting a tag trips it.)
+   */
+  useEffect(() => {
+    if (!snoozeOpen && !dismissOpen) return;
+    const close = () => { setSnoozeOpen(false); setDismissOpen(false); };
+    function onDown(e: MouseEvent) {
+      if (triageRef.current && !triageRef.current.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [snoozeOpen, dismissOpen]);
   const [triaging, setTriaging] = useState(false);
   const router = useRouter();
 
@@ -224,16 +257,17 @@ export function OpportunityInbox({
   // Triage the focused opportunity out of the inbox. Optimistic: advance to the
   // next card and hide this one now, then persist + refetch. On failure, restore
   // it and surface the error. Never sends or contacts anything.
-  const triage = (kind: "dismiss" | "snooze", days?: number) => {
+  const triage = (kind: "dismiss" | "snooze", days?: number, reason?: DismissReason) => {
     if (triaging) return;
     const id = o.id;
     const at = ordered.findIndex((op) => op.id === id);
     setCurId(ordered[at + 1]?.id ?? ordered[at - 1]?.id ?? null);
     setTriaging(true);
     setSnoozeOpen(false);
+    setDismissOpen(false);
     setNotice(null);
     setRemoved((prev) => new Set(prev).add(id));
-    (kind === "dismiss" ? dismissOpportunityAction(id) : snoozeOpportunityAction(id, days ?? 7)).then((res) => {
+    (kind === "dismiss" ? dismissOpportunityAction(id, reason ?? null) : snoozeOpportunityAction(id, days ?? 7)).then((res) => {
       setTriaging(false);
       if (!res.ok) {
         setRemoved((prev) => { const next = new Set(prev); next.delete(id); return next; });
@@ -451,25 +485,57 @@ export function OpportunityInbox({
               </div>
 
               {o.status !== "drafting" && (
-                <div className="triage">
+                <div className="triage" ref={triageRef}>
                   <span className="triage-q">Not relevant right now?</span>
-                  <button type="button" className="triage-btn" onClick={() => triage("dismiss")} disabled={triaging}>
-                    Dismiss
-                  </button>
+                  {/* Dismiss opens a reason picker rather than firing straight
+                      away (BSR-686). Every item completes the dismissal in one
+                      tap — the reason is the tap, not an extra step — and
+                      "Just dismiss" keeps the no-reason path one tap deeper
+                      rather than removing it. */}
+                  <div className="triage-snooze">
+                    <button
+                      type="button"
+                      className="triage-btn"
+                      aria-haspopup="menu"
+                      aria-expanded={dismissOpen}
+                      onClick={() => { setDismissOpen((v) => !v); setSnoozeOpen(false); }}
+                      disabled={triaging}
+                    >
+                      Dismiss ▾
+                    </button>
+                    {dismissOpen && (
+                      <>
+                        <div className="triage-menu triage-menu-wide" role="menu" aria-label="Dismiss because">
+                          {DISMISS_REASON_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => triage("dismiss", undefined, opt.value)}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                          <button type="button" role="menuitem" className="triage-menu-plain" onClick={() => triage("dismiss")}>
+                            Just dismiss
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                   <div className="triage-snooze">
                     <button
                       type="button"
                       className="triage-btn"
                       aria-haspopup="menu"
                       aria-expanded={snoozeOpen}
-                      onClick={() => setSnoozeOpen((v) => !v)}
+                      onClick={() => { setSnoozeOpen((v) => !v); setDismissOpen(false); }}
                       disabled={triaging}
                     >
                       Snooze ▾
                     </button>
                     {snoozeOpen && (
                       <>
-                        <div className="triage-scrim" onClick={() => setSnoozeOpen(false)} />
                         <div className="triage-menu" role="menu" aria-label="Snooze for">
                           <button type="button" role="menuitem" onClick={() => triage("snooze", 1)}>1 day</button>
                           <button type="button" role="menuitem" onClick={() => triage("snooze", 3)}>3 days</button>
