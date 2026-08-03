@@ -28,6 +28,27 @@ export function isNarrationEntry(label: string): boolean {
   return label.trim() === ARC_NARRATION_LABEL;
 }
 
+/**
+ * Pair each trace entry with its position, counting actions only.
+ *
+ * Narration gets `null`: it is prose Arc wrote between actions, not a step of
+ * the run. A surface that numbers its steps has to skip these, and it cannot
+ * just use the array index to do it — that leaves the visible sequence jumping
+ * (1, 3, 6…) as soon as narration stops taking a number. In a typical prod run
+ * two thirds of the entries are narration, so the jump is the common case, not
+ * the edge one.
+ */
+export function numberRunSteps<T extends { label: string }>(
+  steps: readonly T[],
+): { step: T; position: number | null }[] {
+  let position = 0;
+  return steps.map((step) => {
+    if (isNarrationEntry(step.label)) return { step, position: null };
+    position += 1;
+    return { step, position };
+  });
+}
+
 const RUN_PHASE_LABELS = new Set([
   "Reading your workspace",
   "Checking what's active right now",
