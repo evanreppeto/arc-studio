@@ -66,16 +66,22 @@ No scoping column of its own; isolated by a `FOREIGN KEY` to a Category 1 or 2
 row and reached only through it. Legitimate — the contract check must not demand
 columns here.
 
-`custom_field_values` → `custom_field_definitions`, `journey_touchpoints` →
-`journey_identities`, `campaign_shares` / `campaign_audiences` → `campaigns`,
+`campaign_shares` / `campaign_audiences` → `campaigns`,
 `arc_conversation_shares` → `arc_conversations`, `arc_project_shares` →
-`arc_projects`, `guardrail_findings` → `agent_tasks` / `approval_items` /
-`campaign_assets`, `partner_health_snapshots` → `companies` / `contacts`,
-`agent_task_label_assignments` → `agent_tasks`
+`arc_projects`, `agent_task_label_assignments` → `agent_tasks`
 
-Condition of membership: the FK is `NOT NULL` and every read reaches the row via
-its parent. A Category 3 table that acquires a direct read path has to be
+Condition of membership: the FK is **`NOT NULL`** and every read reaches the row
+via its parent. A Category 3 table that acquires a direct read path has to be
 reclassified into 1 or 2 first.
+
+**That `NOT NULL` is load-bearing, and this list was wrong about it once.**
+`guardrail_findings` and `partner_health_snapshots` were listed here on the
+strength of merely *having* an FK to a scoped parent. The BSR-638 check rejected
+both on its first run: every one of their parent FKs is nullable, so a row can be
+inserted attached to nothing and belonging to no tenant — and `guardrail_findings`
+is actively written by `src/lib/arc-api/draft-review.ts`. Both are now Categories 2
+and 1 respectively, pending a scoping column of their own (BSR-653). "Has an FK to
+a scoped parent" is not the test; "has a `NOT NULL` FK to a scoped parent" is.
 
 ### Category 4 — Platform, deliberately not tenant-scoped
 
