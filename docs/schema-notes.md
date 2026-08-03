@@ -15,26 +15,30 @@ The schema keeps relationship fields nullable where real-world intake may arrive
 
 ## Persona Mapping
 
-The `persona_mapping` enum contains the 12 official personas from the Big Shoulders Restoration Persona Knowledge Base:
+**Personas are per-org data, not a database enum.** Migration
+`20260713120000_persona_taxonomy_per_org.sql` converted all 15 persona columns
+from the `persona_mapping` enum to `text`, so each org's own `personas.slug` rows
+define what is valid. Read them with `getOrgPersonaKeys` /
+`getOrgPersonaOptions` (`src/lib/personas/read-model.ts`) and validate with
+`isAllowedPersona(persona, allowedKeys)`.
 
-- `persona_homeowner_emergency`
-- `persona_homeowner_preventative`
-- `persona_homeowner_rebuild`
-- `persona_landlord`
-- `persona_hoa_board`
-- `persona_property_manager`
-- `persona_insurance_agent`
-- `persona_listing_agent`
-- `persona_buyers_agent`
-- `persona_plumbing_partner`
-- `persona_hvac_roof_electrical_partner`
-- `persona_gc_remodeler_partner`
+New workspaces are seeded a starter pack chosen by the industry picked at
+onboarding (`src/lib/personas/industry-templates.ts` — 8 verticals plus a neutral
+`general` fallback), and the operator can add, rename, and archive them from the
+Personas console.
 
-It also includes `unassigned_persona` for internal legacy/admin records only.
+The original 12 restoration personas survive in `OFFICIAL_PERSONA_MAPPINGS`
+(`src/domain/personas.ts`) as the **demo-tenant seed and offline fallback only**.
+They are not the validation authority — don't extend that list and don't validate
+against it. The `persona_mapping` enum type still exists in the baseline
+migration but no live column uses it.
+
+`unassigned_persona` remains a reserved internal sentinel for legacy/admin
+records.
 
 ## Ingestion Boundary
 
-New lead ingestion must reject `unassigned_persona`. The database also enforces this with `leads_persona_not_unassigned_check`, so API code cannot accidentally persist a newly ingested lead without a verified persona.
+New lead ingestion must reject `unassigned_persona`. The database also enforces this with `leads_persona_not_unassigned_check` — re-created as a text check by the per-org persona migration and confirmed live on prod — so API code cannot accidentally persist a newly ingested lead without a verified persona.
 
 `companies`, `contacts`, `properties`, `jobs`, and `outcomes` may temporarily use `unassigned_persona` for backfilled, legacy, or admin-created records where attribution is still being reconciled. AI routing and outbound messaging should treat this value as ineligible.
 
@@ -72,7 +76,7 @@ Core operating tables:
 - `agents`, `agent_tasks`, `agent_task_inputs`, `agent_outputs`, `agent_run_logs`, `agent_permissions`, and `agent_tool_requests` model agent work as queued backend records.
 - `partner_health_snapshots`, `next_best_actions`, and `score_weight_configs` support explainable recommendations without hard-coding every scoring detail in the UI.
 - `partner_referral_tokens` and `partner_referral_submissions` support authenticated partner intake and anomaly-friendly referral auditing.
-- `nurture_sequences`, `nurture_enrollments`, and `tracking_links` support the 12 persona nurture sequences, encrypted/signed recipient tracking, and 14-day suppression logic for storm-triggered messaging.
+- `nurture_sequences`, `nurture_enrollments`, and `tracking_links` support per-persona nurture sequences (one per persona in the org's own taxonomy), encrypted/signed recipient tracking, and 14-day suppression logic for weather-triggered messaging.
 - `weather_events` and `weather_event_targets` store qualified weather alerts and the contacts/properties selected for geofenced response.
 - `capacity_snapshots`, `ad_spend_decisions`, and `ad_platform_actions` store Manager-app capacity signals and deterministic budget throttle/re-route actions before any ad API write occurs.
 - `external_systems`, `platform_events`, `external_object_mappings`, and `sync_conflicts` are the cross-platform event bus/interoperability layer for Marketing, Manager, and Business Development apps.
