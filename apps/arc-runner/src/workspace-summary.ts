@@ -7,6 +7,17 @@ export type WorkspaceSummary = {
   mediaAvailable: number;
   pendingApprovals: number;
   personas: number;
+  /**
+   * Live record counts (BSR-678). Absent on an older app deploy, so optional.
+   * A field is `null` when the count could not be read — which is NOT the same
+   * as zero, and the prompt block says so rather than printing a confident 0.
+   */
+  records?: {
+    contacts: number | null;
+    companies: number | null;
+    leads: number | null;
+    campaigns: number | null;
+  } | null;
 };
 
 /**
