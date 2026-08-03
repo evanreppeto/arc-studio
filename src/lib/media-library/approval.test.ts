@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdminClient: vi.fn() }));
 
-import { decideAssetApproval, getAssetApprovalStates } from "./approval";
+import { APPROVAL_RISK_LEVELS, assetRiskLevel, decideAssetApproval, getAssetApprovalStates } from "./approval";
 
 const FLAG = "Provenance unverified — origin not recorded";
 
@@ -152,5 +152,49 @@ describe("getAssetApprovalStates", () => {
   it("degrades to an empty map rather than throwing", async () => {
     const { client } = makeClient({ approvalRows: [] });
     await expect(getAssetApprovalStates("org-1", client)).resolves.toEqual({});
+  });
+});
+
+/**
+ * The bug this block exists for (BSR-687): every asset approval failed at the
+ * database and nothing here noticed, because a mocked client does not enforce
+ * check constraints. The insert wrote `risk_level: 'elevated' | 'standard'` and
+ * `approval_items_risk_level_check` allows only low/medium/high/blocked, so the
+ * whole feature was unreachable — `approval_items.media_asset_id` had zero rows
+ * from the day the column shipped.
+ *
+ * These tests cannot execute SQL, so they pin the two things a mock CAN see: the
+ * value written is drawn from the legal set, and the row names its subject. The
+ * constraint itself was verified against prod inside BEGIN…ROLLBACK.
+ */
+describe("risk_level written to approval_items", () => {
+  it("only ever writes a value the check constraint accepts", () => {
+    expect(APPROVAL_RISK_LEVELS).toEqual(["low", "medium", "high", "blocked"]);
+    for (const flags of [null, [], [FLAG], [FLAG, "second"]]) {
+      expect(APPROVAL_RISK_LEVELS).toContain(assetRiskLevel(flags));
+    }
+  });
+
+  it("rates a flagged asset above an unflagged one", () => {
+    expect(assetRiskLevel([FLAG])).toBe("high");
+    expect(assetRiskLevel([])).toBe("medium");
+    expect(assetRiskLevel(null)).toBe("medium");
+  });
+
+  it("writes a legal risk_level and a subject on the real insert path", async () => {
+    const { client, inserts } = makeClient({ asset: { id: "a1", risk_flags: [FLAG] }, existingItem: null });
+    const res = await decideAssetApproval(
+      { assetId: "a1", orgId: "org-1", decision: "approved", operator: "maya", acknowledgement: "Release on file." },
+      client,
+    );
+    expect(res.ok).toBe(true);
+
+    const item = inserts.find((i) => i.table === "approval_items")?.row;
+    expect(item).toBeDefined();
+    // Legal per approval_items_risk_level_check.
+    expect(APPROVAL_RISK_LEVELS).toContain(item!.risk_level as string);
+    // Legal per approval_items_subject_check — the row has to be ABOUT something,
+    // and for asset approval media_asset_id is the only subject that is set.
+    expect(item!.media_asset_id).toBe("a1");
   });
 });
