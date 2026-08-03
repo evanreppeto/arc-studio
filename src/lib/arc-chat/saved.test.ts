@@ -31,7 +31,7 @@ describe("saved.ts", () => {
     const supabase = createSupabaseQueryMock({ arc_saved_items: { data: ROW, error: null } });
 
     const item = await saveItem(
-      { operator: "op", kind: "media", title: "t", mediaUrl: "u", caption: "c", sourceConversationId: "c1", sourceMessageId: "m1" },
+      { operator: "op", orgId: "org-1", kind: "media", title: "t", mediaUrl: "u", caption: "c", sourceConversationId: "c1", sourceMessageId: "m1" },
       supabase,
     );
 
@@ -39,6 +39,10 @@ describe("saved.ts", () => {
     expect(payload.media_url).toBe("u");
     expect(payload.source_conversation_id).toBe("c1");
     expect(payload.kind).toBe("media");
+    // arc_saved_items.org_id is NOT NULL with no default. This test used to omit
+    // it and still pass, because a mocked client cannot enforce a constraint —
+    // the insert it asserted on would have been rejected by Postgres.
+    expect(payload.org_id).toBe("org-1");
     expect(item.mediaUrl).toBe("u");
     expect(item.kind).toBe("media");
   });
