@@ -126,6 +126,20 @@ export const TENANCY_CONTRACT = {
   workspace_connectors: { category: "workspace", pending: GROUP_B },
   workspace_media_config: { category: "workspace", pending: GROUP_B },
 
+  // Import provenance (BSR-640). An import artifact belongs to the workspace that
+  // triggered the run — the connector is configured per workspace even though the
+  // CRM rows it writes are org-owned, so the run is the only place that answers
+  // "where did these 400 contacts come from".
+  //
+  // external_systems and external_object_mappings were Category 5 dead scaffold
+  // until now; they were built for exactly this and never wired. Reviving them had
+  // to pick a category first, which is the rule this contract exists to enforce —
+  // and it enforced it on the very next ticket after it shipped.
+  import_runs: "workspace",
+  import_run_records: "workspace",
+  external_systems: "workspace",
+  external_object_mappings: "workspace",
+
   // ── Category 3: inherits tenancy through a parent FK ─────────────────────
   // Every currently-wired table without a scoping column is in here. The check
   // must not demand columns of them, or it gets switched off as noise.
@@ -184,11 +198,9 @@ export const TENANCY_CONTRACT = {
   tracking_links: "unclassified",
   visitor_persona_contexts: "unclassified",
   weather_event_targets: "unclassified",
-  // The import scaffold. BSR-640 revives these — when it does they become
-  // Category 2 (an import run belongs to the workspace that ran it), and this
-  // check is what will stop them being wired without a workspace column.
-  external_systems: "unclassified",
-  external_object_mappings: "unclassified",
+  // The other half of the import scaffold. external_systems and
+  // external_object_mappings graduated to Category 2 in BSR-640; sync_conflicts
+  // stays here until something actually reconciles a two-way sync.
   sync_conflicts: "unclassified",
   // Ad-hoc backups from the 2026-07-29 status migration, created by hand — they
   // exist in prod but no migration builds them, so a fresh database does not have

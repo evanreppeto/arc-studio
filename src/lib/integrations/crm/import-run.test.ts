@@ -140,3 +140,66 @@ describe("importContactsFromSource", () => {
     expect(capped.imported).toBe(1);
   });
 });
+
+// BSR-640. The engine can now report what it did to each row, so a run leaves a
+// record instead of a line of status text that scrolls away.
+describe("per-record provenance", () => {
+  it("reports created for a new lead and updated for a re-import of the same external id", async () => {
+    const h = harness();
+    const recorded: Array<{ externalId: string; leadId: string; action: string }> = [];
+    const recordProvenance = async (r: { externalId: string; leadId: string; action: "created" | "updated" }) => {
+      recorded.push({ externalId: r.externalId, leadId: r.leadId, action: r.action });
+    };
+    const contacts = [contact("c1", { firstname: "Ada", email: "ada@example.com" })];
+
+    await importContactsFromSource({
+      client, orgId: "org-1", source: fixtureCrmImportSourceFromContacts(contacts), options, deps: h.deps, recordProvenance,
+    });
+    await importContactsFromSource({
+      client, orgId: "org-1", source: fixtureCrmImportSourceFromContacts(contacts), options, deps: h.deps, recordProvenance,
+    });
+
+    // Same lead id both times — the re-import updated rather than duplicating, and
+    // the record says so. An undo that could not tell these apart would delete a
+    // row the first run created and the second merely touched.
+    expect(recorded).toEqual([
+      { externalId: "c1", leadId: "lead-1", action: "created" },
+      { externalId: "c1", leadId: "lead-1", action: "updated" },
+    ]);
+  });
+
+  it("does not count a record as failed when only its provenance write blew up", async () => {
+    // Provenance is bookkeeping AROUND the import. If a recorder failure fell
+    // through to the per-record catch, a row that actually landed would be
+    // reported to the operator as failed — worse than having no record at all.
+    const h = harness();
+    const recordProvenance = async () => {
+      throw new Error("provenance table offline");
+    };
+
+    const result = await importContactsFromSource({
+      client,
+      orgId: "org-1",
+      source: fixtureCrmImportSourceFromContacts([contact("c1", { firstname: "Ada", email: "ada@example.com" })]),
+      options,
+      deps: h.deps,
+      recordProvenance,
+    });
+
+    expect(result.imported).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("imports exactly as before when no recorder is supplied", async () => {
+    const h = harness();
+    const result = await importContactsFromSource({
+      client,
+      orgId: "org-1",
+      source: fixtureCrmImportSourceFromContacts([contact("c1", { firstname: "Ada", email: "ada@example.com" })]),
+      options,
+      deps: h.deps,
+    });
+    expect(result.imported).toBe(1);
+  });
+});
