@@ -17,6 +17,8 @@ function media(over: Partial<CampaignMediaAsset> = {}): CampaignMediaAsset {
     description: null,
     source: "library",
     virality: null,
+    format: null,
+    riskFlags: [],
     lineage: [],
     prompt: null,
     ...over,
