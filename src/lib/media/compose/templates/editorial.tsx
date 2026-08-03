@@ -89,6 +89,24 @@ export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, layout,
         >
           {copy.headline}
         </div>
+        {copy.subhead ? (
+          <div
+            style={{
+              display: "-webkit-box",
+              WebkitBoxOrient: "vertical",
+              WebkitLineClamp: L.subhead.clampLines,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              color: c(L.subhead.color),
+              fontFamily: "Body",
+              fontSize: L.subhead.size * u,
+              lineHeight: L.subhead.lineHeight,
+              marginTop: L.kicker.marginBottom! * u,
+            }}
+          >
+            {copy.subhead}
+          </div>
+        ) : null}
       </div>
       {/* bottom scrim */}
       <div
