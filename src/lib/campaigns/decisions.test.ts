@@ -48,7 +48,7 @@ describe("decideApprovalItem", () => {
       approval_items: { data: itemRow, error: null },
     });
 
-    await decideApprovalItem({ approvalItemId: "appr-1", decision: "archived", operator: "Operator" }, supabase);
+    await decideApprovalItem({ approvalItemId: "appr-1", decision: "archived", operator: "Operator", tenant: { org_id: "org-1", workspace_id: "workspace-1" } }, supabase);
 
     expect(findCalls(supabase, "insert")).toContainEqual(expect.objectContaining({ event_type: "archived", payload: expect.objectContaining({ decision: "archived" }) }));
   });
