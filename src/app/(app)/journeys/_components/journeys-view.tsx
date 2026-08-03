@@ -21,11 +21,11 @@ import { KpiStrip } from "../../_components/kpi-strip";
 // Compact labels for the lens picker — the 320px side panel can't fit the full
 // names. The full label + blurb ride along in each button's title.
 const LENS_SHORT: Record<AttributionModel, string> = {
-  last_touch: "Last",
-  first_touch: "First",
-  linear: "Linear",
-  time_decay: "Decay",
-  position_based: "40/20/40",
+  last_touch: "The last thing they saw",
+  first_touch: "The first thing they saw",
+  linear: "Split evenly",
+  time_decay: "Weighted to the end",
+  position_based: "First and last count most",
 };
 
 // Stage → tone token (see the .journeys CSS block). Three tones, each meaning
@@ -148,13 +148,13 @@ function JourneyRow({ journey }: { journey: JourneyWithMeta }) {
         <span className="jr-who">
           <b>{journey.identity.label}</b>
           {journey.persona && <span className="jr-persona">{titleize(journey.persona)}</span>}
-          {journey.identity.resolution !== "known" && <span className={`jr-res ${journey.identity.resolution}`}>{journey.identity.resolution}</span>}
+          {journey.identity.resolution !== "known" && <span className={`jr-res ${journey.identity.resolution}`}>{titleize(journey.identity.resolution)}</span>}
         </span>
         <StageTrack current={journey.currentStage} />
         <span className={`jr-pill t-${tone}`}>{stageLabel(journey.currentStage)}</span>
         <span className="jr-span">{spanLabel}</span>
         <span className="jr-val">
-          {journey.converted ? money(journey.conversionValueCents) : <span className="jr-muted">in flight</span>}
+          {journey.converted ? money(journey.conversionValueCents) : <span className="jr-muted" title="No revenue from this journey yet">—</span>}
         </span>
         <span className={`jr-caret${open ? " up" : ""}`} aria-hidden>
           ⌄
@@ -265,9 +265,9 @@ export function JourneysView({
           </h2>
           <p className="jr-lede">Every contact&rsquo;s path from first touch to conversion — one stitched timeline.</p>
         </div>
-        <div className="jr-model" title="Attribution lens applied to channel credit">
-          <span className="jr-modellab">Credit</span>
-          <span className="jr-modelval">{activeLens?.label ?? defaultLabel}</span>
+        <div className="jr-model" title={activeLens?.blurb ?? "How revenue is shared between the campaigns a customer saw"}>
+          <span className="jr-modellab">Revenue credited to</span>
+          <span className="jr-modelval">{LENS_SHORT[lens] ?? defaultLabel}</span>
         </div>
       </header>
 
@@ -312,7 +312,7 @@ export function JourneysView({
               >
                 <span className="jr-flabel">
                   {f.label}
-                  {meta?.anonymous && <span className="jr-anon" title="Anonymous / pre-identification stage — full capture arrives in P1">pre-lead</span>}
+                  {meta?.anonymous && <span className="jr-anon" title={`${meta.meaning} We do not know who they are at this stage yet.`}>not identified yet</span>}
                 </span>
                 <span className="jr-fbar">
                   <i style={{ width: `${width}%`, opacity: 1 - i * 0.12 }} />
@@ -359,21 +359,24 @@ export function JourneysView({
               Revenue by channel
               <span className="jr-sub2">credit across converted journeys</span>
             </h2>
-            <div className="jr-lens" role="group" aria-label="Attribution model">
-              {ATTRIBUTION_MODELS.map((m) => (
-                <button
-                  key={m.key}
-                  type="button"
-                  className={`jr-lensbtn${lens === m.key ? " on" : ""}`}
-                  onClick={() => setLens(m.key)}
-                  aria-pressed={lens === m.key}
-                  title={`${m.label} — ${m.blurb}`}
-                >
-                  {LENS_SHORT[m.key]}
-                </button>
-              ))}
-            </div>
             <p className="jr-lensblurb">{activeLens?.blurb}</p>
+            <details className="jr-lenswrap">
+              <summary>Change how credit is shared</summary>
+              <div className="jr-lens" role="group" aria-label="How credit is shared between campaigns">
+                {ATTRIBUTION_MODELS.map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    className={`jr-lensbtn${lens === m.key ? " on" : ""}`}
+                    onClick={() => setLens(m.key)}
+                    aria-pressed={lens === m.key}
+                    title={m.blurb}
+                  >
+                    {LENS_SHORT[m.key]}
+                  </button>
+                ))}
+              </div>
+            </details>
             {channelCredit.length === 0 ? (
               // "No credit" and "no conversions" are different things, and conflating
               // them reads as broken: a workspace whose campaigns haven't sent yet has
