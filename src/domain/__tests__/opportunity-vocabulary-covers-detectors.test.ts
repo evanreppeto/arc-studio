@@ -39,6 +39,7 @@ const emitted = (): OpportunityCandidate[] => [
         leadScore: 71,
         status: "qualified",
         lastActivityAt: "2026-06-06T13:00:00.000Z",
+        activityKnown: true,
         hasActiveCampaign: false,
       },
     ],

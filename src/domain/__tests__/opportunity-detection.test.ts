@@ -29,6 +29,7 @@ function lead(over: Partial<ColdLeadInput> = {}): ColdLeadInput {
     leadScore: 70,
     status: "qualified",
     lastActivityAt: "2026-05-01T00:00:00.000Z", // 47 days before NOW
+    activityKnown: true,
     hasActiveCampaign: false,
     ...over,
   };
