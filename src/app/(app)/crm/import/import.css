@@ -111,3 +111,9 @@
 .crm-import .imp-kind:hover { color: var(--text-2); }
 .crm-import .imp-kind[data-on="true"] { background: var(--panel); color: var(--text); }
 .crm-import .imp-kind-hint { font-size: 11px; color: var(--muted); margin: 7px 0 13px; }
+
+/* Unmapped columns offered as tenant fields (BSR-645) */
+.crm-import .imp-extra { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 13px; }
+.crm-import .imp-extra-h { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 9px; }
+.crm-import .imp-extra-h span { display: block; font-size: 11px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.crm-import .imp-samples { display: block; font-size: 10.5px; color: var(--muted); font-family: inherit; margin-top: 2px; }
