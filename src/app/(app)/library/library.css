@@ -319,3 +319,10 @@
    a key, or it teaches nothing (BSR-661). */
 .arc-library .pvlegend { display: inline-flex; align-items: center; gap: 12px; font-size: 10.5px; color: var(--muted); }
 .arc-library .pvlegend span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* The three readiness counts belong to one axis and sum to the total; usage is a
+   separate question and sits past a divider so nobody tries to add it in
+   (BSR-667). */
+.arc-library .ostatgrp { display: inline-flex; align-items: center; gap: 14px; }
+.arc-library .ostatsep { width: 1px; height: 14px; background: var(--line-2); margin: 0 4px; }
+.arc-library .ostat:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
