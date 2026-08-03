@@ -665,8 +665,8 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
     const campaigns = (data ?? []) as CampaignRow[];
     const campaignIds = campaigns.map((campaign) => campaign.id);
     const [assets, approvals] = await Promise.all([
-      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at", resolvedOrgId),
-      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at", resolvedOrgId),
+      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at", resolvedOrgId, workspaceId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at", resolvedOrgId, workspaceId),
     ]);
     const approvalOutputs = await selectIn<AgentOutputRow>(
       supabase,
@@ -1903,20 +1903,20 @@ export async function getCampaignWorkspaceDetail(
 
     const campaign = data as CampaignRow;
     const [assets, events, agentTasks] = await Promise.all([
-      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", [campaignId], "updated_at", resolvedOrgId),
-      selectIn<CampaignEventRow>(supabase, "campaign_events", "id,event_type,actor,detail,occurred_at", "campaign_id", [campaignId], "occurred_at", resolvedOrgId),
-      selectIn<AgentTaskRow>(supabase, "agent_tasks", AGENT_TASK_SELECT, "campaign_id", [campaignId], "created_at", resolvedOrgId),
+      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", [campaignId], "updated_at", resolvedOrgId, workspaceId),
+      selectIn<CampaignEventRow>(supabase, "campaign_events", "id,event_type,actor,detail,occurred_at", "campaign_id", [campaignId], "occurred_at", resolvedOrgId, workspaceId),
+      selectIn<AgentTaskRow>(supabase, "agent_tasks", AGENT_TASK_SELECT, "campaign_id", [campaignId], "created_at", resolvedOrgId, workspaceId),
     ]);
     const assetIds = assets.map((asset) => asset.id);
     const [campaignApprovals, assetApprovals] = await Promise.all([
-      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", [campaignId], "submitted_at", resolvedOrgId),
-      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_asset_id", assetIds, "submitted_at", resolvedOrgId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", [campaignId], "submitted_at", resolvedOrgId, workspaceId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_asset_id", assetIds, "submitted_at", resolvedOrgId, workspaceId),
     ]);
     const approvals = uniqueById([...campaignApprovals, ...assetApprovals]);
     const approvalIds = approvals.map((approval) => approval.id);
     const [assetOutputs, approvalOutputs] = await Promise.all([
-      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "campaign_asset_id", assetIds, "created_at", resolvedOrgId),
-      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "approval_item_id", approvalIds, "created_at", resolvedOrgId),
+      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "campaign_asset_id", assetIds, "created_at", resolvedOrgId, workspaceId),
+      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "approval_item_id", approvalIds, "created_at", resolvedOrgId, workspaceId),
     ]);
     const outputs = uniqueById([...assetOutputs, ...approvalOutputs]);
     const decisions = await selectIn<ApprovalDecisionRow>(supabase, "approval_decisions", DECISION_SELECT, "approval_item_id", approvalIds, "decided_at", resolvedOrgId);
@@ -1932,6 +1932,7 @@ export async function getCampaignWorkspaceDetail(
         approvalIds,
         "created_at",
         resolvedOrgId,
+        workspaceId,
       ).catch(() => []),
     );
     // NB no org scope: guardrail_findings has no org_id column, so passing one
@@ -1949,9 +1950,9 @@ export async function getCampaignWorkspaceDetail(
     );
     const relatedIds = collectRelatedIds(campaign, approvals);
     const [companies, contacts, leads] = await Promise.all([
-      selectIn<CompanyRow>(supabase, "companies", "id,name,website_url,phone,email,partner_tier", "id", relatedIds.companyIds, undefined, resolvedOrgId),
-      selectIn<ContactRow>(supabase, "contacts", "id,full_name,email,phone,title", "id", relatedIds.contactIds, undefined, resolvedOrgId),
-      selectIn<LeadRow>(supabase, "leads", "id,source,status,loss_summary,lead_score,metadata", "id", relatedIds.leadIds, undefined, resolvedOrgId),
+      selectIn<CompanyRow>(supabase, "companies", "id,name,website_url,phone,email,partner_tier", "id", relatedIds.companyIds, undefined, resolvedOrgId, workspaceId),
+      selectIn<ContactRow>(supabase, "contacts", "id,full_name,email,phone,title", "id", relatedIds.contactIds, undefined, resolvedOrgId, workspaceId),
+      selectIn<LeadRow>(supabase, "leads", "id,source,status,loss_summary,lead_score,metadata", "id", relatedIds.leadIds, undefined, resolvedOrgId, workspaceId),
     ]);
 
     const assetsBeforeReview = addPreviewCampaignPieces(
@@ -2976,6 +2977,38 @@ function classifyAssetText(value: string): CampaignWorkspaceAssetCategory {
   return "other";
 }
 
+/**
+ * Tables that carry `workspace_id` and must be filtered on it (BSR-711).
+ *
+ * Kept as a set rather than passed per call so `selectIn` is safe to hand a
+ * workspace for ANY table: the org-owned ones (`companies`, `contacts`, `leads`)
+ * have no such column, and filtering them on it would return nothing at all
+ * rather than erroring — a silent empty result is the worst failure available
+ * here.
+ */
+const WORKSPACE_SCOPED_TABLES = new Set([
+  "campaigns",
+  "campaign_assets",
+  "campaign_events",
+  "campaign_dispatches",
+  "campaign_results",
+  "approval_items",
+  "approval_decisions",
+  "approval_recommendations",
+  "agent_outputs",
+  "agent_tasks",
+]);
+
+/**
+ * Narrow a query to a workspace, but only for a table that has the column. Same
+ * generic shape as `applyOrgScope` — a `typeof query` self-reference here makes
+ * the Supabase builder's types recurse infinitely.
+ */
+function applyWorkspaceScope<Query>(query: Query, table: string, workspaceId?: string | null): Query {
+  if (!workspaceId || !WORKSPACE_SCOPED_TABLES.has(table)) return query;
+  return (query as { eq(column: string, value: string): Query }).eq("workspace_id", workspaceId);
+}
+
 export async function selectIn<T>(
   client: SupabaseClient,
   table: string,
@@ -2984,11 +3017,16 @@ export async function selectIn<T>(
   values: string[],
   orderBy?: string,
   orgId?: string,
+  workspaceId?: string | null,
 ): Promise<T[]> {
   const uniqueValues = [...new Set(values.filter(Boolean))];
   if (uniqueValues.length === 0) return [];
 
-  let query = applyOrgScope(client.from(table).select(columns).in(column, uniqueValues), orgId);
+  let query = applyWorkspaceScope(
+    applyOrgScope(client.from(table).select(columns).in(column, uniqueValues), orgId),
+    table,
+    workspaceId,
+  );
   if (orderBy) {
     query = query.order(orderBy, { ascending: false });
   }
