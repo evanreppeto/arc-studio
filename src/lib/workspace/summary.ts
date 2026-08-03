@@ -6,6 +6,8 @@ import { getBusinessContext } from "@/lib/brand-kit/read-model";
 import { listWorkspaceConnectors } from "@/lib/connectors/read-model";
 import { countActiveApprovals } from "@/lib/approvals/read-model";
 import { listAvailableArcMedia } from "@/lib/media-library/arc-handoff";
+import { getDismissalPatterns } from "@/lib/opportunities/read-model";
+import { summarizeDismissals } from "@/domain";
 
 export type WorkspaceSummary = {
   brandKit: "active" | "draft" | "none";
@@ -40,6 +42,18 @@ export type WorkspaceSummary = {
     leads: number | null;
     campaigns: number | null;
   };
+  /**
+   * What this workspace keeps dismissing, already phrased as what to change
+   * (BSR-686). Empty when no pattern has repeated often enough to be a rule
+   * rather than an opinion about one record.
+   *
+   * Here for the same structural reason as `records` above: the operator's
+   * judgement was being written to the database and never put in front of the
+   * model, so Arc had no way to know it had been told no forty-six times. A
+   * value that only lives in a table the model never reads may as well not
+   * exist.
+   */
+  dismissalPatterns: string[];
 };
 
 export type WorkspaceSettingsDetail = WorkspaceSummary & {
@@ -61,6 +75,7 @@ const NEUTRAL_WORKSPACE_SUMMARY: WorkspaceSummary = {
   personas: 0,
   // Unconfigured Supabase means the counts are unknown, not zero.
   records: { contacts: null, companies: null, leads: null, campaigns: null },
+  dismissalPatterns: [],
 };
 
 /**
@@ -101,7 +116,7 @@ export async function getWorkspaceSummary(
 ): Promise<WorkspaceSummary> {
   if (!isSupabaseAdminConfigured()) return { ...NEUTRAL_WORKSPACE_SUMMARY };
   const db = client ?? getSupabaseAdminClient();
-  const [profile, connectors, approvals, personas, media, contacts, companies, leads, campaigns] = await Promise.all([
+  const [profile, connectors, approvals, personas, media, contacts, companies, leads, campaigns, dismissals] = await Promise.all([
     safe(() => getBusinessProfile(orgId), null),
     safe(() => listWorkspaceConnectors(db, workspaceId), []),
     safe(() => countActiveApprovals(orgId, db), 0),
@@ -113,6 +128,7 @@ export async function getWorkspaceSummary(
     countRows(db, "companies", "org_id", orgId),
     countRows(db, "leads", "org_id", orgId),
     countRows(db, "campaigns", "workspace_id", workspaceId),
+    safe(() => getDismissalPatterns(orgId, db), [] as Awaited<ReturnType<typeof getDismissalPatterns>>),
   ]);
 
   return {
@@ -125,6 +141,7 @@ export async function getWorkspaceSummary(
     pendingApprovals: approvals,
     personas: personas.length,
     records: { contacts, companies, leads, campaigns },
+    dismissalPatterns: summarizeDismissals(dismissals),
   };
 }
 
