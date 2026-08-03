@@ -27,6 +27,19 @@ const dispatches = (rows: DispatchView[], statuses: DispatchStatus[]): number =>
 /** Reach for a sub-line, or a plain-English absence — never a bare "0 recipients". */
 const reachSub = (n: number, empty: string): string => (n > 0 ? `${n.toLocaleString()} recipients` : empty);
 
+/** What happened to the messages that left: confirmed deliveries, then reach. */
+const sentSub = (rows: DispatchView[]): string => {
+  const out = dispatches(rows, ["sent", "delivered"]);
+  if (out === 0) return "nothing sent yet";
+  const confirmed = dispatches(rows, ["delivered"]);
+  const reach = recipients(rows, ["sent", "delivered"]);
+  const parts = [
+    confirmed > 0 ? `${confirmed} confirmed delivered` : null,
+    reach > 0 ? `${reach.toLocaleString()} recipients` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "reach not recorded";
+};
+
 export function buildOutboxKpis(rows: DispatchView[]): OutboxKpi[] {
   const queued = dispatches(rows, ["queued"]);
   const failed = dispatches(rows, ["failed"]);
@@ -48,17 +61,18 @@ export function buildOutboxKpis(rows: DispatchView[]): OutboxKpi[] {
       alert: false,
     },
     {
-      // sent + delivered: everything that actually left, delivered included.
       value: `${dispatches(rows, ["sent", "delivered"])}`,
       label: "Sent",
-      sub: reachSub(recipients(rows, ["sent", "delivered"]), "nothing sent yet"),
+      sub: sentSub(rows),
       alert: false,
     },
-    {
-      value: `${dispatches(rows, ["delivered"])}`,
-      label: "Delivered",
-      sub: failed ? `${failed} failed` : "no failures",
-      alert: failed > 0,
-    },
+    ...(failed > 0
+      ? [{
+          value: `${failed}`,
+          label: "Failed",
+          sub: "these did not reach anyone",
+          alert: true,
+        }]
+      : []),
   ];
 }
