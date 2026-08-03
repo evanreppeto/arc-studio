@@ -14,7 +14,7 @@ describe("product language", () => {
   it("uses neutral language when an industry is missing", () => {
     const language = getProductLanguage();
     expect(language.crmLabel).toBe("Relationships");
-    expect(language.crmObjects.properties.label).toBe("Assets");
+    expect(language.crmObjects.properties.label).toBe("Sites");
     expect(language.crmObjects.jobs.nameHeader).toBe("Project");
   });
 
