@@ -14,7 +14,9 @@ export type PersonaStage = "New" | "Hot lead" | "Active" | "Champion" | "At risk
 
 export type ScoreSignalKey = "engagement" | "fit" | "intent";
 
-export type ArcActivityStatus = "Awaiting approval" | "Draft ready" | "Prepared";
+// "Needs you" rather than a local "Awaiting approval": one name per state,
+// from `domain/vocabulary.ts` (BSR-656).
+export type ArcActivityStatus = "Needs you" | "Draft ready" | "Prepared";
 
 export type PersonaArcActivity = { title: string; status: ArcActivityStatus; when: string };
 
@@ -141,7 +143,7 @@ export const DEMO_PERSONAS: DemoPersona[] = [
       preview: "Here's exactly how we compare on the things you're weighing.",
     },
     arcActivity: [
-      { title: "Comparison one-pager", status: "Awaiting approval", when: "2 hours ago" },
+      { title: "Comparison one-pager", status: "Needs you", when: "2 hours ago" },
       { title: "Demo follow-up email", status: "Draft ready", when: "Yesterday" },
     ],
   },
@@ -177,7 +179,7 @@ export const DEMO_PERSONAS: DemoPersona[] = [
       preview: "The full value, a transparent price, and a risk-free guarantee.",
     },
     arcActivity: [
-      { title: "Limited-time offer email", status: "Awaiting approval", when: "Today" },
+      { title: "Limited-time offer email", status: "Needs you", when: "Today" },
       { title: "Pricing FAQ snippet", status: "Prepared", when: "3 days ago" },
     ],
   },
@@ -250,7 +252,7 @@ export const DEMO_PERSONAS: DemoPersona[] = [
     },
     arcActivity: [
       { title: "Personalized recommendations", status: "Draft ready", when: "Today" },
-      { title: "Upgrade offer", status: "Awaiting approval", when: "1 day ago" },
+      { title: "Upgrade offer", status: "Needs you", when: "1 day ago" },
     ],
   },
   {
@@ -285,7 +287,7 @@ export const DEMO_PERSONAS: DemoPersona[] = [
       preview: "Share it and you'll both get something for it.",
     },
     arcActivity: [
-      { title: "Referral invite", status: "Awaiting approval", when: "Today" },
+      { title: "Referral invite", status: "Needs you", when: "Today" },
       { title: "Review request", status: "Draft ready", when: "2 days ago" },
     ],
   },
@@ -321,7 +323,7 @@ export const DEMO_PERSONAS: DemoPersona[] = [
       preview: "We noticed you've been away — here's how to get back on track fast.",
     },
     arcActivity: [
-      { title: "Re-engagement email", status: "Awaiting approval", when: "Today" },
+      { title: "Re-engagement email", status: "Needs you", when: "Today" },
       { title: "Check-in + help offer", status: "Draft ready", when: "Yesterday" },
     ],
   },

@@ -3,6 +3,8 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
   parseConsideredAudiences,
   normalizeHandoffNote,
+  toWorkState,
+  WORK_STATE_LABEL,
   type ConsideredAudience,
 } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
@@ -920,8 +922,20 @@ export function buildDemoCampaignWorkspaceList(agentName = "Arc"): CampaignWorks
 
 /** Map a demo status string to the same plain status labels the real read-model
  *  emits, so downstream launch/checklist logic behaves identically. */
+/**
+ * `CampaignWorkspaceAsset.status` carries the STORED status, not a label.
+ *
+ * It is re-read as a status all over the detail view — `statusMeta`,
+ * `isActionable`, `/^approved/i` — and the view writes raw values back into it
+ * optimistically (`"revision_requested"`, `"pending_approval"`). Passing it
+ * through `statusLabel` used to work only by accident: "Pending approval"
+ * happens to contain "pending", so the round-trip survived. The moment the label
+ * became "Needs you" — which contains neither "pending" nor "review" — every
+ * pending asset rendered as "Draft" (BSR-656). Label at the display boundary,
+ * never in the read model.
+ */
 function demoAssetStatus(rawStatus: string): string {
-  return statusLabel(rawStatus);
+  return rawStatus;
 }
 
 function demoDetailAsset(piece: DemoPiece): CampaignWorkspaceAsset {
@@ -1185,7 +1199,10 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
   }): DemoCampaign => {
     const pending = pieceStatus === "pending_approval";
     const status = pending ? "In Review" : lifecycle === "Live" ? "Live" : "Approved";
-    const statusLabel = pending ? "Pending approval" : "Approved";
+    // The raw status, exactly as a real row stores it — the view maps it to a
+    // label. A fixture holding "Needs you" here would round-trip through
+    // `statusMeta` as "Draft", because "Needs you" is not a status.
+    const pieceStatusValue = pending ? "pending_approval" : "approved";
     const action = target.cta || "Take the next step";
     return {
       id,
@@ -1247,7 +1264,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
           title: `${name} — email`,
           kind: "Email",
           channel: "Email",
-          status: statusLabel,
+          status: pieceStatusValue,
           rawStatus: pieceStatus,
           needsReview: pending,
           preview: `${target.angle} ${action}.`,
@@ -1260,7 +1277,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
           title: `${name} — social post`,
           kind: "Social Post",
           channel: "LinkedIn",
-          status: statusLabel,
+          status: pieceStatusValue,
           rawStatus: pieceStatus,
           needsReview: pending,
           preview: `${target.angle} ${action}.`,
@@ -1401,7 +1418,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
           title: "Water in your home? We respond in 60 minutes.",
           kind: "Email",
           channel: "Email",
-          status: "Pending approval",
+          status: "pending_approval",
           rawStatus: "pending_approval",
           needsReview: true,
           preview: "When a pipe bursts, every minute counts. A Summit Restoration crew is on call 24/7 across the North Shore.",
@@ -1416,7 +1433,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
           title: "SMS — Same-day mitigation reminder",
           kind: "SMS",
           channel: "SMS",
-          status: "Pending approval",
+          status: "pending_approval",
           rawStatus: "pending_approval",
           needsReview: true,
           preview: "A crew can be on-site within the hour for your water emergency. Reply YES and we'll call you right back.",
@@ -1507,7 +1524,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
           title: "Still dealing with that burst pipe?",
           kind: "Email",
           channel: "Email",
-          status: "Pending approval",
+          status: "pending_approval",
           rawStatus: "pending_approval",
           needsReview: true,
           preview: "We saw you reached out overnight. A crew can be at your door this morning, ready to go.",
@@ -2384,7 +2401,8 @@ function mapAsset(asset: CampaignAssetRow): CampaignWorkspaceAsset {
     assetType: humanize(asset.asset_type),
     category: classifyAssetCategory(asset),
     channel: humanize(asset.channel ?? asset.asset_type),
-    status: statusLabel(asset.status),
+    // Raw, not labelled — see demoAssetStatus. The view labels it.
+    status: asset.status,
     body: readableBody === EMPTY_READABLE_PREVIEW ? rawBody : readableBody,
     preview: readableBody,
     complianceNotes: asset.compliance_notes ?? "No asset-level compliance notes captured.",
@@ -2568,7 +2586,7 @@ function buildPreviewCampaignPieces(updatedAt: string): CampaignWorkspaceAsset[]
       assetType: "Call Script",
       category: "other",
       channel: "CRM",
-      status: "Pending approval",
+      status: "pending_approval",
       body: "Open by referencing the launch this week, ask whether any teams are still stuck on setup, then offer a short onboarding walkthrough before the schedule fills.",
       preview: "CRM/call script for teams that responded to recent launch outreach.",
       complianceNotes: "Demo preview content for layout review only.",
@@ -2664,7 +2682,7 @@ function attachApproval(
   const rows = recommendations?.get(approval.id);
   return {
     ...view,
-    approval: { id: approval.id, status: statusLabel(approval.status) },
+    approval: { id: approval.id, status: approval.status },
     recommendation: pickRecommendation(rows),
     claimsReviewed: reviewedByCritic(rows),
   };
@@ -2686,7 +2704,8 @@ function mapOutputAsAsset(output: AgentOutputRow, agentName: string): CampaignWo
     assetType: humanize(type),
     category: classifyAssetText(`${type} ${output.title}`),
     channel: channelLabelFromType(type),
-    status: statusLabel(output.approval_status),
+    // Raw status — the view labels it (see demoAssetStatus).
+    status: output.approval_status,
     body: readableBody === EMPTY_READABLE_PREVIEW ? rawBody : readableBody,
     preview: readableBody,
     complianceNotes: output.compliance_status ? `Compliance: ${humanize(output.compliance_status)}` : "No output-level compliance notes captured.",
@@ -2720,7 +2739,8 @@ function mapApprovalAsAsset(approval: ApprovalItemRow, agentName: string): Campa
     assetType: humanize(type),
     category: classifyAssetText(`${type} ${channel} ${buildApprovalTitle(approval)}`),
     channel: humanize(channel),
-    status: statusLabel(approval.status),
+    // Raw status — the view labels it (see demoAssetStatus).
+    status: approval.status,
     body: readableBody === EMPTY_READABLE_PREVIEW ? rawBody : readableBody,
     preview: readableBody,
     complianceNotes: approval.compliance_notes ?? "No approval-level compliance notes captured.",
@@ -2737,7 +2757,7 @@ function mapApprovalAsAsset(approval: ApprovalItemRow, agentName: string): Campa
     updatedAt: formatDate(approval.updated_at),
     media,
     revision: null,
-    approval: { id: approval.id, status: statusLabel(approval.status) },
+    approval: { id: approval.id, status: approval.status },
   };
 }
 
@@ -3791,12 +3811,22 @@ function stableId(value: string) {
   return hash.toString(36);
 }
 
+/**
+ * The stored status, in the product's one vocabulary (BSR-656).
+ *
+ * This used to spell its own labels — "Pending approval", "Pending owner
+ * approval", "Revision requested" — which is how the campaign screen ended up
+ * showing four names for one state: this function fed the header while the
+ * asset cards went through `WORK_STATE_LABEL`. Both halves now come from the
+ * same place. `pending_approval` and `pending_owner_approval` collapse to one
+ * label on purpose: to the person looking at it, both mean it is on their desk.
+ */
 function statusLabel(status: string) {
-  if (status === "pending_owner_approval") return "Pending owner approval";
-  if (status === "pending_approval") return "Pending approval";
-  if (status === "needs_compliance") return "Needs compliance";
-  if (status === "revision_requested") return "Revision requested";
-  return humanize(status);
+  // A compliance block is NOT a routine "needs you" — it is stopped by a rule
+  // rather than waiting on a decision, and the campaign view already words it
+  // this way. Kept distinct, and worded the same as there.
+  if (status === "needs_compliance") return "Blocked by a rule";
+  return WORK_STATE_LABEL[toWorkState(status)];
 }
 
 export function humanize(value: string) {
