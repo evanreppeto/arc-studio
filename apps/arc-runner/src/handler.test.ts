@@ -42,10 +42,12 @@ function client() {
     postChatReply: vi.fn(async () => {}),
     apiPost: vi.fn(async () => ({})),
     postUsage: vi.fn(async () => {}),
+    claimTask: vi.fn(async () => true),
   } as unknown as ArcClient & {
     postChatReply: ReturnType<typeof vi.fn>;
     apiPost: ReturnType<typeof vi.fn>;
     postUsage: ReturnType<typeof vi.fn>;
+    claimTask: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -95,6 +97,73 @@ describe("handleChatMessage", () => {
 });
 
 describe("handleCampaignTask", () => {
+  /**
+   * Claiming is what makes a `queued` row mean "never started". Campaign tasks
+   * used to run without ever leaving `queued` — only the final /complete moved
+   * them — so a task mid-run was indistinguishable from one whose wake was
+   * dropped, and stranded revisions could not be retried safely (BSR-695).
+   */
+  it("claims the task before running it", async () => {
+    const fakeClient = client();
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-1",
+      campaignId: "campaign-1",
+      conversationId: null,
+      message: "Add the truck.",
+      operator: "Operator",
+      taskType: "campaign_asset_revision",
+    });
+
+    expect(fakeClient.claimTask).toHaveBeenCalledWith("task-1");
+    expect(runArcCampaignTask).toHaveBeenCalled();
+  });
+
+  /** A wake racing an operator's Retry: exactly one may run the instruction. */
+  it("skips the run entirely when another worker already claimed the task", async () => {
+    const fakeClient = client();
+    fakeClient.claimTask.mockResolvedValueOnce(false);
+    vi.mocked(runArcCampaignTask).mockClear();
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-1",
+      campaignId: "campaign-1",
+      conversationId: null,
+      message: "Add the truck.",
+      operator: "Operator",
+      taskType: "campaign_asset_revision",
+    });
+
+    expect(runArcCampaignTask).not.toHaveBeenCalled();
+    expect(fakeClient.apiPost).not.toHaveBeenCalled();
+    expect(fakeClient.postChatReply).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Bookkeeping must not cost the operator their revision: if the app is briefly
+   * unreachable the work still runs, and the retry path has its own re-read
+   * guard against duplicates.
+   */
+  it("still runs the task when the claim call itself fails", async () => {
+    const fakeClient = client();
+    fakeClient.claimTask.mockRejectedValueOnce(new Error("app unreachable"));
+    vi.mocked(runArcCampaignTask).mockClear();
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-1",
+      campaignId: "campaign-1",
+      conversationId: null,
+      message: "Add the truck.",
+      operator: "Operator",
+      taskType: "campaign_asset_revision",
+    });
+
+    expect(runArcCampaignTask).toHaveBeenCalled();
+  });
+
   it("runs a campaign task in Arc and posts the reply to the linked conversation", async () => {
     const fakeClient = client();
 

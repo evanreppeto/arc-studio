@@ -5,6 +5,7 @@ import { getCampaignAudiencePreview } from "@/lib/audience/campaign-audience";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { listAttachableMedia, type AttachableMediaItem } from "@/lib/campaigns/attach-media";
 import { getCampaignWorkspaceDetail } from "@/lib/campaigns/read-model";
+import { listStalledRevisions, type StalledRevision } from "@/lib/campaigns/revision-recovery";
 import { getCampaignPerformancePanel } from "@/lib/performance/campaign-panel";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -71,7 +72,30 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       ? await listAttachableMedia(orgId).catch(() => [])
       : DEMO_ATTACHABLE_MEDIA;
 
+  // Revisions the operator asked for that Arc never started. PRIMARY, not
+  // decorative: the whole point is that the operator currently has no way to
+  // learn a revision was dropped, so failing this read to `[]` would restore
+  // exactly the silence it exists to break — hence reportDegraded rather than a
+  // bare catch.
+  const stalledRevisions: StalledRevision[] =
+    orgId && isSupabaseAdminConfigured()
+      ? await listStalledRevisions({ campaignId: decodeURIComponent(campaignId), orgId }).catch((error) => {
+          reportDegraded(error, {
+            scope: "campaigns.listStalledRevisions",
+            surface: "primary",
+            detail: { campaignId: decodeURIComponent(campaignId) },
+          });
+          return [];
+        })
+      : [];
+
   return (
-    <CampaignDetailView detail={detail} performance={performance} audience={audience} attachableMedia={attachableMedia} />
+    <CampaignDetailView
+      detail={detail}
+      performance={performance}
+      audience={audience}
+      attachableMedia={attachableMedia}
+      stalledRevisions={stalledRevisions}
+    />
   );
 }
