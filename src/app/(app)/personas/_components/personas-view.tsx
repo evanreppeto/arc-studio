@@ -251,18 +251,18 @@ export function PersonasView({ personas, initialSlug }: { personas: PersonaVM[];
         <div className="ph1row">
           <div>
             <h2 className="pt">Personas</h2>
-            <div className="psub">The revenue-intelligence layer — playbooks that power CRM, targeting &amp; campaigns</div>
+            <div className="psub">Who you sell to — and how Arc talks to each type</div>
           </div>
           <div style={{ display: "flex", gap: 9 }}>
             <button type="button" className="gbtn" onClick={() => setNewOpen(true)}>
               <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-              New persona <span className="tg" style={{ marginLeft: 2 }}>org-config</span>
+              New persona
             </button>
           </div>
         </div>
         <div className="pstats">
-          <div className="pstat"><div className="sl">Personas</div><div className="sv">{allPersonas.length}</div><div className="sd">org-defined</div></div>
-          <div className="pstat"><div className="sl">Segments</div><div className="sv">{headStats.segmentCount}</div><div className="sd">acq · eng · ret</div></div>
+          <div className="pstat"><div className="sl">Personas</div><div className="sv">{allPersonas.length}</div><div className="sd">you defined these</div></div>
+          <div className="pstat"><div className="sl">Segments</div><div className="sv">{headStats.segmentCount}</div><div className="sd">winning · keeping · growing</div></div>
           <div className="pstat"><div className="sl">With an angle</div><div className="sv">{headStats.withAngle}</div><div className="sd">ready for Arc to use</div></div>
           <div className="pstat"><div className="sl">Attributed leads</div><div className="sv">{headStats.leads.toLocaleString()}</div><div className="sd">last 30 days</div></div>
         </div>
@@ -462,7 +462,7 @@ function PersonaDetail({ p, onEdit, onArchive }: { p: PersonaVM; onEdit: () => v
           </p>
         </div>
         <div className="perfcard">
-          <h3 className="sh">Performance {p.perfUnavailable ? <span className="tg est">unavailable</span> : <span className="tg wired">wired · leads / outcomes</span>}</h3>
+          <h3 className="sh">Performance {p.perfUnavailable ? <span className="tg est">not available yet</span> : null}</h3>
           {/* A failed CRM read is not a persona with no conversions. */}
           {p.perfUnavailable && (
             <p style={{ margin: "0 2px 10px", fontSize: "11.5px", lineHeight: 1.55, color: "var(--warn-text)" }}>

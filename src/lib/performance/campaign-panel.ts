@@ -448,7 +448,7 @@ export function buildPerformanceLearning(
   const recommendation = `For the next iteration, ${moves.join(", ")}.`;
 
   const label = campaignName?.trim() ? `the ${campaignName.trim()} campaign` : "this campaign";
-  const arcPrompt = `Draft the next iteration of ${label} based on what worked: ${recommendation} Keep it approval-gated.`;
+  const arcPrompt = `Draft the next iteration of ${label} based on what worked: ${recommendation} Keep it a draft for my approval.`;
 
   return { wins, recommendation, arcPrompt };
 }

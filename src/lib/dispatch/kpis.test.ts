@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { WORK_STATE_LABEL } from "@/domain";
+
 import { buildOutboxKpis } from "./kpis";
 import { type DispatchStatus, type DispatchView } from "./status";
 
@@ -38,14 +40,14 @@ describe("buildOutboxKpis", () => {
     // The bug: "Sent" showed 4,384 — the recipient sum — while its sub read
     // "recorded dispatches". Two dispatches went out, to 4,384 people.
     expect(tile(PROD, "Sent").value).toBe("2");
-    expect(tile(PROD, "Awaiting your confirm").value).toBe("2");
+    expect(tile(PROD, WORK_STATE_LABEL.needs_you).value).toBe("2");
     expect(tile(PROD, "Scheduled").value).toBe("2");
     expect(tile(PROD, "Delivered").value).toBe("1");
   });
 
   it("puts the reach in the sub, where it is labelled", () => {
     expect(tile(PROD, "Sent").sub).toBe("4,384 recipients");
-    expect(tile(PROD, "Awaiting your confirm").sub).toBe("11,152 recipients");
+    expect(tile(PROD, WORK_STATE_LABEL.needs_you).sub).toBe("11,152 recipients");
   });
 
   it("never labels a value with a unit it isn't using", () => {
@@ -62,14 +64,14 @@ describe("buildOutboxKpis", () => {
 
   it("says nothing sent yet rather than '0 recipients'", () => {
     expect(tile([d("queued", 5)], "Sent").sub).toBe("nothing sent yet");
-    expect(tile([], "Awaiting your confirm").sub).toBe("in the send queue");
+    expect(tile([], WORK_STATE_LABEL.needs_you).sub).toBe("in the send queue");
     expect(tile([], "Scheduled").sub).toBe("none scheduled");
   });
 
   it("alerts only where a human decision is outstanding, and on failures", () => {
     // An alerting tile is a claim on the operator's attention; "Sent" has none.
     const kpis = buildOutboxKpis(PROD);
-    expect(kpis.filter((k) => k.alert).map((k) => k.label)).toEqual(["Awaiting your confirm", "Delivered"]);
+    expect(kpis.filter((k) => k.alert).map((k) => k.label)).toEqual([WORK_STATE_LABEL.needs_you, "Delivered"]);
     expect(tile(PROD, "Delivered").sub).toBe("1 failed");
     expect(tile([d("delivered", 1)], "Delivered").sub).toBe("no failures");
     expect(tile([d("delivered", 1)], "Delivered").alert).toBe(false);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
+import { WORK_STATE_LABEL } from "@/domain";
 import { type DispatchStatus } from "@/lib/dispatch/status";
 
 import { sendDispatchAction, transitionDispatchAction } from "../actions";
@@ -249,7 +250,7 @@ export function OutboxBoard({
       <div className="oq">
         <section className="oq-section oq-hero">
           <div className="oq-head">
-            <span className="oq-label">Needs your confirmation</span>
+            <span className="oq-label">{WORK_STATE_LABEL.needs_you}</span>
             <span className="oq-count">{view.needsYou.length}</span>
           </div>
           {view.needsYou.length === 0 ? (

@@ -11,8 +11,17 @@ export type ColdLeadInput = {
   persona: string;
   leadScore: number; // 0–100
   status: string; // lead_status value
-  /** ISO timestamp of the lead's most recent activity (latest event, else received_at). */
+  /** ISO timestamp of the lead's most recent activity, else when it arrived. */
   lastActivityAt: string;
+  /**
+   * Whether `lastActivityAt` is a real recorded interaction, or the fallback to
+   * the lead's arrival date because nothing has been logged against it.
+   *
+   * These are different facts and the card must not state the second as the
+   * first. "No activity in 90 days" asserts that someone checked; "nothing
+   * recorded since it arrived 90 days ago" is what we actually know.
+   */
+  activityKnown: boolean;
   hasActiveCampaign: boolean;
 };
 
@@ -193,11 +202,19 @@ export function detectColdLeadOpportunities(leads: ColdLeadInput[], config: Dete
       kind: "crm_inactivity",
       subjectType: "lead",
       subjectId: lead.id,
-      title: `${lead.label} — quiet ${daysCold} days`,
-      summary: `Open lead (score ${lead.leadScore}) with no live campaign and no activity in ${daysCold} days.`,
+      title: lead.activityKnown ? `${lead.label} — quiet ${daysCold} days` : `${lead.label} — nothing recorded in ${daysCold} days`,
+      summary: lead.activityKnown
+        ? `Open lead (score ${lead.leadScore}) with no live campaign and no activity in ${daysCold} days.`
+        : `Open lead (score ${lead.leadScore}) with no live campaign. Nothing has been recorded against it since it arrived ${daysCold} days ago — that is not the same as knowing nobody has worked it.`,
       confidence,
       urgency,
-      evidence: { daysCold, leadScore: lead.leadScore, persona: lead.persona, lastActivityAt: lead.lastActivityAt },
+      evidence: {
+        daysCold,
+        leadScore: lead.leadScore,
+        persona: lead.persona,
+        lastActivityAt: lead.lastActivityAt,
+        activitySource: lead.activityKnown ? "recorded_activity" : "lead_arrival_date",
+      },
       recommendedAction: "Re-engage with a persona-tailored campaign",
       recommendedCampaignType: "re_engagement",
     });

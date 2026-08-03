@@ -600,7 +600,7 @@ export function LibraryView({
   const arcSugg = !suggDismissed && !q && unshipped > 0 ? (
     <div className="arcsugg">
       <span className="am">A</span>
-      <span className="at"><b>{unshipped} approved {unshipped === 1 ? "asset has" : "assets have"} never shipped.</b> Want Arc to draft ad variants from your best unused photos?</span>
+      <span className="at"><b>{unshipped} approved {unshipped === 1 ? "photo has" : "photos have"} never been used.</b> Want Arc to draft ad variants from your best unused photos?</span>
       <span className="ab">
         <a className="miniabtn" href={STUDIO}>Draft in Studio</a>
         <span className="miniabtn ghost" onClick={() => setSuggDismissed(true)}>Dismiss</span>

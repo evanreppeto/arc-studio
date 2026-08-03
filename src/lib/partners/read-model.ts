@@ -441,9 +441,9 @@ function buildNextAction(input: {
     return { text: `Ask ${agentName} to attach source evidence and classify the partner fit.`, source: "missing evidence", href: "/arc" };
   }
   if (typeof input.score !== "number") {
-    return { text: `Ask ${agentName} to score partner fit and create an approval-gated recommendation.`, source: "missing score", href: "/arc" };
+    return { text: `Ask ${agentName} to score partner fit and draft a recommendation for you to approve.`, source: "missing score", href: "/arc" };
   }
-  return { text: "Prepare an approval-gated partner campaign brief. No outbound execution.", source: "safe default", href: "/campaigns" };
+  return { text: "Prepare a partner campaign brief for your approval. Nothing goes out.", source: "safe default", href: "/campaigns" };
 }
 
 function inferPartnerTrack(company: CompanyRow, metadata: JsonObject) {

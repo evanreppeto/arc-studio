@@ -254,7 +254,15 @@ export async function getPersonaIntelligenceData(
         { label: "Tracked personas", value: personas.length, delta: "Records with a current persona snapshot" },
         { label: "Ready to convert", value: personas.filter((persona) => persona.score >= 85).length, delta: "High confidence" },
         { label: "Partner candidates", value: personas.filter((persona) => persona.segment === "Partner").length, delta: "Referral focus" },
-        { label: "Content briefs", value: knowledgeRows.filter((entry) => isContentSignal(entry.entry_type)).length, delta: "Knowledge feed" },
+        // Same trap as "Tracked personas" above, one table over: nothing has
+        // ever written persona_knowledge_entries (BSR-671), so this is always
+        // 0. Say which zero it is — "Knowledge feed: 0" reads as "we looked and
+        // the workspace has nothing", which is a claim we cannot make.
+        {
+          label: "Content briefs",
+          value: knowledgeRows.filter((entry) => isContentSignal(entry.entry_type)).length,
+          delta: knowledgeRows.length ? "Knowledge feed" : "No knowledge entries recorded yet",
+        },
       ],
       roster,
       personas,

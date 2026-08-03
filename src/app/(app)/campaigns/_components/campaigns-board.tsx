@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { CAMPAIGN_NOUN, countOf, WORK_STATE_LABEL } from "@/domain";
+
 import { createCampaign, type NewCampaignInput } from "../actions";
 import { NewCampaignModal } from "./new-campaign-modal";
 import { needsOperatorApproval, type CampaignTone } from "./tone";
@@ -18,7 +20,7 @@ export type CampaignRow = {
   statusLabel: string;
   next: string;
   nextTone: "" | "go" | "warn";
-  /** Deliverables on this package with no decision recorded yet. */
+  /** Assets on this campaign with no decision recorded yet. */
   pendingCount: number;
   audience: string;
   dot: string;
@@ -40,13 +42,15 @@ const CampIcon = (
   </svg>
 );
 
+// Tab labels and the status pills in the rows below them are the same words now
+// (BSR-656) — the "Needs approval" tab used to sit above rows reading "In review".
 const TABS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "needs", label: "Needs approval" },
-  { key: "live", label: "Live" },
-  { key: "approved", label: "Approved" },
-  { key: "draft", label: "Draft" },
-  { key: "archived", label: "Archived" },
+  { key: "needs", label: WORK_STATE_LABEL.needs_you },
+  { key: "live", label: WORK_STATE_LABEL.sending },
+  { key: "approved", label: WORK_STATE_LABEL.approved },
+  { key: "draft", label: WORK_STATE_LABEL.draft },
+  { key: "archived", label: WORK_STATE_LABEL.archived },
 ];
 
 function inTab(tone: CampaignTone, tab: string): boolean {
@@ -82,13 +86,13 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
   return {
     id,
     name: v.name,
-    brief: v.campaignTheme || "Campaign package",
+    brief: v.campaignTheme || "New campaign",
     tone: "draft",
-    statusLabel: "Draft",
-    // A package created seconds ago has no deliverables yet, so nothing is
+    statusLabel: WORK_STATE_LABEL.draft,
+    // A campaign created seconds ago has no assets yet, so nothing is
     // undecided — Arc drafts them after this row appears.
     pendingCount: 0,
-    next: "Draft in progress",
+    next: "Arc is still building it",
     nextTone: "",
     audience,
     dot: personaDotOf(v.persona || audience),
@@ -209,7 +213,7 @@ export function CampaignsBoard({
         <div>
           <h2 className="ct">Campaigns</h2>
           <div className="csub">
-            {allRows.length} {allRows.length === 1 ? "package" : "packages"} · approval-gated · drafted by Arc
+            {countOf(allRows.length, CAMPAIGN_NOUN)} drafted by Arc · nothing sends until you approve it
           </div>
         </div>
         <div className="sp">

@@ -212,19 +212,19 @@ export const DEMO_WAITING: ArcWaiting = {
       title: "Trial nurture is converting — draft the next iteration",
       urgency: "high",
       prompt:
-        "Draft the next iteration of the Quarterly Nurture Refresh campaign based on what worked: For the next iteration, lead with Email, reuse “Trial-watch SMS nudge”. Keep it approval-gated.",
+        "Draft the next iteration of the Quarterly Nurture Refresh campaign based on what worked: For the next iteration, lead with Email, reuse “Trial-watch SMS nudge”. Keep it a draft for my approval.",
     },
     {
       id: "demo-opp-storm-riverside",
       title: "Usage dropped 40% — Riverside Labs trial at risk",
       urgency: "high",
-      prompt: "Help me act on this opportunity: “Usage dropped 40% — Riverside Labs trial at risk”. What should we draft? Keep it approval-gated.",
+      prompt: "Help me act on this opportunity: “Usage dropped 40% — Riverside Labs trial at risk”. What should we draft? Keep it a draft for my approval.",
     },
     {
       id: "demo-opp-partner-northside",
       title: "Larkfield Partners sent 3 referrals — no co-marketing in place",
       urgency: "medium",
-      prompt: "Help me act on this opportunity: “Larkfield Partners sent 3 referrals — no co-marketing in place”. What should we draft? Keep it approval-gated.",
+      prompt: "Help me act on this opportunity: “Larkfield Partners sent 3 referrals — no co-marketing in place”. What should we draft? Keep it a draft for my approval.",
     },
   ],
 };

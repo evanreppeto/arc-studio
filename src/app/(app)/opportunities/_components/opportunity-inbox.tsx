@@ -368,7 +368,7 @@ export function OpportunityInbox({
             <span className="tchip"><i />{o.typeLabel}</span>
             <span className={`upill ${o.urgencyTone}`}>{o.urgencyLabel} urgency</span>
             {o.statusLabel && <span className="sstat">{o.statusLabel}</span>}
-            <span className="det">Surfaced by Arc</span>
+            <span className="det">Found by Arc</span>
           </div>
           <h2 className="dttl">{o.title}</h2>
 
@@ -414,7 +414,7 @@ export function OpportunityInbox({
 
           <div className="dgrid">
             <div className="mainc">
-              <div className="lab">Why Arc surfaced this</div>
+              <div className="lab">Why Arc flagged this</div>
               <p className="summary">{o.summary}</p>
 
               {o.evidence.length > 0 && (
