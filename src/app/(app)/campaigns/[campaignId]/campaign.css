@@ -349,6 +349,9 @@
 
 /* Full-size media preview (the tile lightbox). Rides the shared .modal-* card,
    so only the stage and the provenance list are defined here. */
+.arc-campaign .lbstatus { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-bottom: 12px; }
+.arc-campaign .lbwho { font-size: 11.5px; color: var(--muted); }
+
 /* Risk flags sit above the image — the reviewer must meet them before they
    scroll, not after. */
 .arc-campaign .lbrisk { border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px 13px; margin-bottom: 12px; }
