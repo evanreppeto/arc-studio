@@ -29,6 +29,62 @@ import { upsertOpportunities, type PersistResult } from "./persistence";
 const ACTIVE_CAMPAIGN_STATUSES = ["draft", "briefing", "generating", "pending_approval", "approved", "active", "paused"];
 
 /**
+ * Most recent recorded interaction per lead.
+ *
+ * This used to read `public.events`, which NOTHING in the codebase, the runner,
+ * the scripts or a trigger has ever written (BSR-671). So every lead fell back
+ * to its arrival date and the card claimed "no activity in N days" about leads
+ * that had been worked that morning.
+ *
+ * The two tables that do record interactions:
+ *   - crm_activities — notes, tasks, logged touches. Keyed to the CONTACT, so a
+ *     lead inherits its contact's activity.
+ *   - engagement_events — sends, deliveries, replies. Carries lead_id when it
+ *     has one and contact_id otherwise, so both are consulted.
+ *
+ * A lead absent from the result has no recorded activity at all — the caller
+ * distinguishes that from "quiet" rather than papering over it.
+ */
+async function resolveLeadActivity(
+  db: SupabaseClient,
+  leadIds: string[],
+  contactIds: string[],
+  leadIdsByContact: Map<string, string[]>,
+): Promise<Map<string, string>> {
+  const latest = new Map<string, string>();
+  const note = (leadId: string, at: string | null | undefined) => {
+    if (!at) return;
+    const current = latest.get(leadId);
+    if (!current || at > current) latest.set(leadId, at);
+  };
+
+  const [crm, engagement, engagementByContact] = await Promise.all([
+    contactIds.length
+      ? db.from("crm_activities").select("entity_id, occurred_at").eq("entity_type", "contact").in("entity_id", contactIds)
+      : Promise.resolve({ data: [] }),
+    leadIds.length
+      ? db.from("engagement_events").select("lead_id, occurred_at").in("lead_id", leadIds)
+      : Promise.resolve({ data: [] }),
+    contactIds.length
+      ? db.from("engagement_events").select("contact_id, occurred_at").in("contact_id", contactIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  for (const row of ((crm.data ?? []) as Array<{ entity_id: string; occurred_at: string }>)) {
+    for (const leadId of leadIdsByContact.get(row.entity_id) ?? []) note(leadId, row.occurred_at);
+  }
+  for (const row of ((engagement.data ?? []) as Array<{ lead_id: string | null; occurred_at: string }>)) {
+    if (row.lead_id) note(row.lead_id, row.occurred_at);
+  }
+  for (const row of ((engagementByContact.data ?? []) as Array<{ contact_id: string | null; occurred_at: string }>)) {
+    if (!row.contact_id) continue;
+    for (const leadId of leadIdsByContact.get(row.contact_id) ?? []) note(leadId, row.occurred_at);
+  }
+
+  return latest;
+}
+
+/**
  * Run cold-lead detection over current CRM data and persist new opportunities.
  * Recency = the lead's latest `events` row, falling back to its received_at.
  */
@@ -51,17 +107,18 @@ export async function runColdLeadDetection(
   if (leads.length === 0) return { ok: true, count: 0 };
   const leadIds = leads.map((l) => l.id);
 
-  // Latest activity per lead from the events log (one query, newest first).
-  const { data: events } = await db
-    .from("events")
-    .select("subject_id, occurred_at")
-    .eq("subject_type", "lead")
-    .in("subject_id", leadIds)
-    .order("occurred_at", { ascending: false });
-  const latestActivity = new Map<string, string>();
-  for (const e of (events ?? []) as Array<{ subject_id: string; occurred_at: string }>) {
-    if (!latestActivity.has(e.subject_id)) latestActivity.set(e.subject_id, e.occurred_at);
+  // Contact ids first: a lead's activity is mostly logged against its contact,
+  // not the lead row, so recency needs them before it can be resolved.
+  const contactIds = leads.map((l) => l.contactId).filter((id): id is string => Boolean(id));
+  const leadIdsByContact = new Map<string, string[]>();
+  for (const lead of leads) {
+    if (!lead.contactId) continue;
+    const existing = leadIdsByContact.get(lead.contactId);
+    if (existing) existing.push(lead.id);
+    else leadIdsByContact.set(lead.contactId, [lead.id]);
   }
+
+  const latestActivity = await resolveLeadActivity(db, leadIds, contactIds, leadIdsByContact);
 
   // Leads that already have a non-terminal campaign.
   const { data: camps } = await db
@@ -82,7 +139,6 @@ export async function runColdLeadDetection(
   // no matter how long it has been quiet. What we CAN judge is how well-formed
   // and contactable it is. Bounded by the same org-scoped lead ids as the
   // queries above.
-  const contactIds = leads.map((l) => l.contactId).filter((id): id is string => Boolean(id));
   const contactDetail = new Map<string, { email: string | null; phone: string | null; city: string | null }>();
   if (contactIds.length > 0) {
     const { data: contactRows } = await db
@@ -116,6 +172,7 @@ export async function runColdLeadDetection(
     }),
     status: l.status,
     lastActivityAt: latestActivity.get(l.id) ?? l.receivedAt,
+    activityKnown: latestActivity.has(l.id),
     hasActiveCampaign: leadsWithCampaign.has(l.id),
   }));
 
