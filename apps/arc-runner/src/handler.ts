@@ -152,6 +152,31 @@ export async function handleCampaignTask(
     `[arc-runner] campaign-task wake received -> ${payload.taskType} for campaign ${payload.campaignId} (task ${payload.agentTaskId})`,
   );
   const started = Date.now();
+
+  // Claim first, always. Two reasons, and the second is the load-bearing one:
+  //
+  //  1. It de-duplicates. A wake racing an operator's Retry both point at this
+  //     task; the claim is a compare-and-set, so exactly one wins and the loser
+  //     drops out here instead of running the instruction a second time.
+  //  2. It makes `queued` mean something. Campaign tasks used to run without
+  //     ever leaving `queued` — only the final /complete moved them — so a task
+  //     mid-run looked identical to one whose wake was dropped. Nothing could
+  //     tell the two apart, which is why stranded revisions were unrecoverable
+  //     rather than merely retryable (BSR-695).
+  //
+  // A claim failure is NOT a reason to skip the work: if the app is briefly
+  // unreachable the operator's revision still matters more than the bookkeeping,
+  // and the retry path is guarded by its own re-read. So log and continue.
+  try {
+    const claimed = await client.claimTask(payload.agentTaskId);
+    if (!claimed) {
+      console.log(`[arc-runner] campaign task ${payload.agentTaskId} already claimed elsewhere — skipping duplicate run`);
+      return;
+    }
+  } catch (error) {
+    console.warn(`[arc-runner] could not claim campaign task ${payload.agentTaskId}, running anyway:`, error);
+  }
+
   try {
     const result = await runArcCampaignTask(payload, client);
     const reply = result.body || "(Arc returned an empty campaign update.)";

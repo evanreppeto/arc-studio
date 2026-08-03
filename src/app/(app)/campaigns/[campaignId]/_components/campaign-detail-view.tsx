@@ -18,13 +18,14 @@ import {
 } from "@/lib/campaigns/read-model";
 import { buildCampaignExport, buildDeliverableExport, exportSlug, isExportable } from "@/lib/campaigns/deliverable-export";
 import { diffLines } from "@/lib/campaigns/revision-diff";
+import { type StalledRevision } from "@/lib/campaigns/revision-recovery";
 import { LOCKED_CLAIMS, MEASUREMENT_PLAN } from "@/lib/performance/measurement-copy";
 import { buildPerformanceLearning, type CampaignPerformancePanel, type PerformanceTrendPoint } from "@/lib/performance/campaign-panel";
 
 import { Modal } from "../../../_components/modal";
 import { ShareDialog } from "../../../_components/share-dialog";
 import { ExternalSendModal } from "./external-send-modal";
-import { attachCampaignMediaAction, decideCampaignAsset, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision } from "../actions";
+import { attachCampaignMediaAction, decideCampaignAsset, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision, retryCampaignRevision } from "../actions";
 import {
   getCampaignSharingStateAction,
   setCampaignSharingAction,
@@ -682,9 +683,17 @@ function provTone(source: string): string {
   return "stock";
 }
 
-export function CampaignDetailView({ detail, performance, audience, attachableMedia = [] }: { detail: LiveCampaignWorkspace; performance: CampaignPerformancePanel; audience?: AudienceResolution | null; attachableMedia?: AttachableMediaItem[] }) {
+export function CampaignDetailView({ detail, performance, audience, attachableMedia = [], stalledRevisions = [] }: { detail: LiveCampaignWorkspace; performance: CampaignPerformancePanel; audience?: AudienceResolution | null; attachableMedia?: AttachableMediaItem[]; stalledRevisions?: StalledRevision[] }) {
   const { campaign, launchState, executiveOverview, reasoning, sources, approvalHistory, media } = detail;
   const [assets, setAssets] = useState<CampaignWorkspaceAsset[]>(detail.assets);
+  // Revisions Arc never started, by asset. Seeded from the server read and
+  // trimmed locally as retries succeed, so the notice clears without a reload.
+  const [stalled, setStalled] = useState<StalledRevision[]>(stalledRevisions);
+  const stalledByAsset = useMemo(() => new Map(stalled.map((s) => [s.assetId, s])), [stalled]);
+  // Set when a revision request comes back un-dispatched, so the operator learns
+  // immediately rather than after the 10-minute stale cutoff makes it "stalled".
+  // assetId -> the queued task, so Retry works without waiting for that sweep.
+  const [undispatched, setUndispatched] = useState<Map<string, string>>(new Map());
   const [tab, setTab] = useState("deliverables");
   const [reviseFor, setReviseFor] = useState<string | null>(null);
   const [reviseText, setReviseText] = useState("");
@@ -748,7 +757,42 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       if (!res.ok) {
         setAssetStatus(asset.id, prev);
         setErr(res.error);
+        return;
       }
+      // The request is recorded either way, so the status stays
+      // revision_requested — but `dispatched: false` means Arc has NOT started,
+      // and nothing will re-surface the task on its own. Saying so now is the
+      // difference between a visible failure and a silent one.
+      setUndispatched((current) => {
+        const next = new Map(current);
+        if (res.persisted && res.dispatched === false && res.agentTaskId) next.set(asset.id, res.agentTaskId);
+        else next.delete(asset.id);
+        return next;
+      });
+    });
+  }
+
+  /** Re-wake a revision Arc never started. Reuses the existing task — never a second one. */
+  function retryRevision(assetId: string, agentTaskId: string) {
+    if (pending) return;
+    setErr(null);
+    startTransition(async () => {
+      const res = await retryCampaignRevision(campaign.id, agentTaskId);
+      if (!res.ok) {
+        setErr(res.error);
+        return;
+      }
+      if (res.persisted && res.dispatched === false) {
+        setErr("Arc still isn't reachable. The request is saved — try again in a few minutes.");
+        return;
+      }
+      // Picked up: clear both notices for this asset.
+      setStalled((current) => current.filter((s) => s.assetId !== assetId));
+      setUndispatched((current) => {
+        const next = new Map(current);
+        next.delete(assetId);
+        return next;
+      });
     });
   }
 
@@ -1002,6 +1046,33 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                             </button>
                           )
                         )}
+                        {(() => {
+                          // A revision Arc never started. Two ways to get here:
+                          // the wake failed just now (`undispatched`), or the
+                          // task has sat `queued` past the stale cutoff
+                          // (`stalledByAsset`, from the server read). Both mean
+                          // the same thing to the operator and both are fixed
+                          // the same way, so they render as one notice.
+                          const taskId = undispatched.get(asset.id) ?? stalledByAsset.get(asset.id)?.agentTaskId;
+                          if (!taskId) return null;
+                          const instruction = stalledByAsset.get(asset.id)?.instruction;
+                          return (
+                            <div className="dstalled">
+                              <b>Arc hasn&rsquo;t started this yet</b> — your change was saved, but it never
+                              reached Arc, and it will not start on its own.
+                              {instruction ? <q className="dsq">{instruction}</q> : null}
+                              <button
+                                type="button"
+                                className="cbtn"
+                                onClick={() => retryRevision(asset.id, taskId)}
+                                disabled={pending}
+                              >
+                                {svg('<path d="M21 12a9 9 0 11-6.2-8.6"/><path d="M21 4v5h-5"/>')}
+                                Send it again
+                              </button>
+                            </div>
+                          );
+                        })()}
                         {asset.revision && <RevisionDiff revision={asset.revision} />}
                         {asset.blockedPhrases.length > 0 && (
                           <div className="dblocked">
