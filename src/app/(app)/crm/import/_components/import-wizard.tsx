@@ -3,7 +3,15 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
-import { CUSTOM_FIELD_TYPES, type CsvColumnOverrides, type CsvField, type CustomFieldType, type ImportEntityKind } from "@/domain";
+import {
+  CUSTOM_FIELD_TYPES,
+  IMPORT_PRESETS,
+  type CsvColumnOverrides,
+  type CsvField,
+  type CustomFieldType,
+  type ImportEntityKind,
+  type ImportPresetKey,
+} from "@/domain";
 import { type AcceptedCustomField } from "@/lib/import-runs/custom-fields";
 
 import { commitCsvImportAction, importEntityAction, previewCsvImportAction } from "../actions";
@@ -39,6 +47,8 @@ export function ImportWizard({ ready }: { ready: boolean }) {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   /** Unmapped columns the operator has chosen to keep, by header. */
   const [keepFields, setKeepFields] = useState<Record<string, CustomFieldType | null>>({});
+  /** Which product's export this is. Null = generic aliases only (BSR-646). */
+  const [preset, setPreset] = useState<ImportPresetKey>("generic");
   const [pending, setPending] = useState<"preview" | "commit" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -57,13 +67,13 @@ export function ImportWizard({ ready }: { ready: boolean }) {
     setError(null);
   }, []);
 
-  async function runPreview(nextOverrides = overrides) {
+  async function runPreview(nextOverrides = overrides, nextPreset: ImportPresetKey = preset) {
     setPending("preview");
     setError(null);
     setDone(null);
     const res =
       kind === "contacts"
-        ? await previewCsvImportAction({ csvText, columnOverrides: nextOverrides })
+        ? await previewCsvImportAction({ csvText, columnOverrides: nextOverrides, preset: nextPreset })
         : ((await importEntityAction({ kind, csvText, columnOverrides: nextOverrides, dryRun: true })) as
             | { ok: true; preview: ImportPreview }
             | { ok: false; error: string });
@@ -81,7 +91,7 @@ export function ImportWizard({ ready }: { ready: boolean }) {
     setError(null);
     const res =
       kind === "contacts"
-        ? await commitCsvImportAction({ csvText, columnOverrides: overrides, customFields: acceptedFields() })
+        ? await commitCsvImportAction({ csvText, columnOverrides: overrides, customFields: acceptedFields(), preset })
         : ((await importEntityAction({ kind, csvText, columnOverrides: overrides })) as
             | { ok: true; message: string }
             | { ok: false; error: string });
@@ -228,6 +238,45 @@ export function ImportWizard({ ready }: { ready: boolean }) {
             <p className="imp-hint">Read a file above and its columns will appear here to confirm.</p>
           ) : (
             <>
+              {/* Detection SUGGESTS; applying is the operator's click. Silently
+                  applying a guessed preset is how a file gets mis-mapped with
+                  nobody able to see why. */}
+              {preview.detectedPreset && preset === "generic" && (
+                <div className="imp-detected">
+                  This looks like a{" "}
+                  <b>{IMPORT_PRESETS.find((p) => p.key === preview.detectedPreset)?.label}</b> export.
+                  <button
+                    type="button"
+                    className="imp-linkbtn"
+                    onClick={() => {
+                      const next = preview.detectedPreset as ImportPresetKey;
+                      setPreset(next);
+                      void runPreview(overrides, next);
+                    }}
+                  >
+                    Use its column names
+                  </button>
+                </div>
+              )}
+
+              <div className="imp-source">
+                <label htmlFor="imp-source-select">Came from</label>
+                <select
+                  id="imp-source-select"
+                  value={preset}
+                  onChange={(e) => {
+                    const next = e.target.value as ImportPresetKey;
+                    setPreset(next);
+                    void runPreview(overrides, next);
+                  }}
+                >
+                  <option value="generic">Something else / a spreadsheet</option>
+                  {IMPORT_PRESETS.map((p) => (
+                    <option key={p.key} value={p.key}>{p.label}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="imp-scroll">
                 <table className="imp-map">
                   <thead>
