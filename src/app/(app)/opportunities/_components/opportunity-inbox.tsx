@@ -14,10 +14,11 @@ import {
 } from "../actions";
 import { scanMessage } from "../scan-feedback";
 import { DraftCampaignModal, type DraftMode } from "./draft-campaign-modal";
-import { DEFINITIONS } from "@/domain";
+import { definitionText, DEFINITIONS } from "@/domain";
 import { Define, HowThisWorks } from "../../_components/define";
 
-export type OppSignal = { label: string; value: string };
+/** `hint` carries the definition for a coined label (BSR-659). */
+export type OppSignal = { label: string; value: string; hint?: string };
 export type OppRouting = { step: string; note: string; done: boolean };
 
 export type OpportunityVM = {
@@ -47,7 +48,6 @@ export type OpportunityVM = {
   audienceNote: string;
   campaignTypes: string[];
   evidence: OppSignal[];
-  impact: OppSignal[];
   routing: OppRouting[];
   /** Lifecycle: "pending" | "drafting" | "drafted" (open states the inbox lists). */
   status: string;
@@ -346,10 +346,10 @@ export function OpportunityInbox({
               <div style={{ minWidth: 0 }}>
                 <div className="ot">
                   <span className="nm">{it.name}</span>
-                  <span className="pct">{it.confidence}%</span>
+                  <span className="pct" title={`Confidence — ${definitionText("confidence")}`}>{it.confidence}%</span>
                 </div>
                 <div className="om">
-                  Confidence <span className="src">{it.sourceLabel}</span>
+                  <span className="src">{it.sourceLabel}</span>
                   {it.staleLabel && <span className="stale">{it.staleLabel}</span>}
                   {it.statusLabel && <span className="ostat">{it.statusLabel}</span>}
                 </div>
@@ -368,7 +368,7 @@ export function OpportunityInbox({
         <div className="inner fade" key={o.id}>
           <div className="metarow">
             <span className="tchip"><i />{o.typeLabel}</span>
-            <span className={`upill ${o.urgencyTone}`}>{o.urgencyLabel} urgency</span>
+            <span className={`upill ${o.urgencyTone}`} title={definitionText("urgency")}>{o.urgencyLabel} urgency</span>
             {o.statusLabel && <span className="sstat">{o.statusLabel}</span>}
             <span className="det">Found by Arc</span>
           </div>
@@ -387,21 +387,22 @@ export function OpportunityInbox({
                   type="button"
                   className="btn gold"
                   onClick={() => {
-                    setMode("operator");
-                    setDraftOpen(true);
-                  }}
-                >
-                  Create campaign
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => {
                     setMode("arc");
                     setDraftOpen(true);
                   }}
                 >
-                  Ask Arc to draft
+                  Draft with Arc
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  title="Creates an empty campaign from this opportunity for you to write yourself"
+                  onClick={() => {
+                    setMode("operator");
+                    setDraftOpen(true);
+                  }}
+                >
+                  Start one myself
                 </button>
               </>
             )}
@@ -421,12 +422,12 @@ export function OpportunityInbox({
 
               {o.evidence.length > 0 && (
                 <div className="blk">
-                  <div className="lab">Signals</div>
+                  <div className="lab">What Arc saw</div>
                   {o.evidence.map((e, i) => (
                     <div className="evrow" key={i}>
                       <span className="n">{i + 1}</span>
                       <div style={{ minWidth: 0 }}>
-                        <div className="es">{e.label}</div>
+                        <div className="es" title={e.hint}>{e.label}</div>
                         <div className="ed">{e.value}</div>
                       </div>
                     </div>
@@ -502,20 +503,6 @@ export function OpportunityInbox({
                     </div>
                   )}
                   {o.audienceNote && <div className="audnote">{o.audienceNote}</div>}
-                </div>
-              )}
-
-              {o.impact.length > 0 && (
-                <div className="card">
-                  <div className="cl">Signal strength<Define term="signal_strength" /></div>
-                  <div className="impact">
-                    {o.impact.map((m, i) => (
-                      <div className="icell" key={i}>
-                        <div className="il">{m.label}</div>
-                        <div className="iv">{m.value}</div>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
 

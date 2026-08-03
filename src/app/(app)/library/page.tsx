@@ -105,6 +105,12 @@ function mapAsset(v: MediaAssetView, i: number): Asset {
         : []),
     ],
     prompt: external.prompt ?? undefined,
+    // The review state as a FIELD, not only as the lineage sentence above. The
+    // risk box needs to know whether this asset has already been decided on:
+    // approving acknowledges a flag, it does not clear it, so without this the
+    // box would keep offering "Resolve & approve" on an asset that was approved
+    // an hour ago and the operator would have no way to tell (BSR-687).
+    approvalStatus: v.approvalStatus ?? undefined,
     uses: v.usedInCount,
   };
 }
