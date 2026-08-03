@@ -56,6 +56,7 @@ describe("addApprovalRecommendation (safety)", () => {
         rationale: "Authorization: Bearer abcDEF123456 was pasted into the draft.",
       },
       supabase,
+      { orgId: "org-1", workspaceId: "workspace-1" },
     );
 
     const payload = insertPayload(supabase);
@@ -72,6 +73,7 @@ describe("addApprovalRecommendation (safety)", () => {
     const result = await addApprovalRecommendation(
       { approvalItemId: "missing", recommendation: "hi" },
       supabase,
+      { orgId: "org-1", workspaceId: "workspace-1" },
     );
 
     expect(result).toMatchObject({ ok: false, reason: "not_found" });

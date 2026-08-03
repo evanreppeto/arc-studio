@@ -34,7 +34,7 @@ describe("createApprovalDraft (safety)", () => {
   it("forces an invalid/elevated risk level to a safe default and never trusts a status field", async () => {
     const supabase = createSupabaseQueryMock({ approval_items: { data: { id: "ap-2" }, error: null } });
 
-    await createApprovalDraft({ itemType: "x", draft: "y", riskLevel: "totally-bogus" }, supabase);
+    await createApprovalDraft({ itemType: "x", draft: "y", riskLevel: "totally-bogus" }, supabase, { orgId: "org-1", workspaceId: "workspace-1" });
 
     const [, payload] = insertCalls(supabase)[0];
     expect(payload.risk_level).toBe("medium");
@@ -63,7 +63,7 @@ describe("createApprovalDraft (safety)", () => {
   it("redacts secrets in the draft body before storing", async () => {
     const supabase = createSupabaseQueryMock({ approval_items: { data: { id: "ap-4" }, error: null } });
 
-    await createApprovalDraft({ itemType: "x", draft: "key is sk-ABCDEFGHIJKLMNOP here" }, supabase);
+    await createApprovalDraft({ itemType: "x", draft: "key is sk-ABCDEFGHIJKLMNOP here" }, supabase, { orgId: "org-1", workspaceId: "workspace-1" });
 
     const [, payload] = insertCalls(supabase)[0];
     expect(String(payload.draft_output)).not.toContain("sk-ABCDEFGHIJKLMNOP");

@@ -44,7 +44,7 @@ describe("attachMediaToCampaignAsset", () => {
     });
 
     const result = await attachMediaToCampaignAsset(
-      { assetId: "asset-1", libraryAssetId: "lib-1", operator: "Evan" },
+      { assetId: "asset-1", libraryAssetId: "lib-1", operator: "Evan", tenant: { org_id: "org-1", workspace_id: "workspace-1" } },
       client,
     );
 
@@ -70,7 +70,7 @@ describe("attachMediaToCampaignAsset", () => {
     });
 
     const result = await attachMediaToCampaignAsset(
-      { assetId: "asset-1", libraryAssetId: "lib-1", operator: "Evan" },
+      { assetId: "asset-1", libraryAssetId: "lib-1", operator: "Evan", tenant: { org_id: "org-1", workspace_id: "workspace-1" } },
       client,
     );
 
@@ -92,7 +92,7 @@ describe("attachMediaToCampaignAsset", () => {
     });
 
     await attachMediaToCampaignAsset(
-      { assetId: "asset-1", libraryAssetId: "lib-1", operator: "Evan" },
+      { assetId: "asset-1", libraryAssetId: "lib-1", operator: "Evan", tenant: { org_id: "org-1", workspace_id: "workspace-1" } },
       client,
     );
 
