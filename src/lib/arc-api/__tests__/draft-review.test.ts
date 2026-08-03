@@ -149,3 +149,36 @@ describe("recordDraftReview", () => {
     expect(result).toEqual({ ok: false, reason: "not_found" });
   });
 });
+
+// BSR-653. guardrail_findings used to rely on being "scoped transitively" by its
+// approval_item_id / campaign_asset_id FKs. That was never true — all four of its
+// parent FKs are nullable, so a row could be written attached to nothing and
+// belonging to no tenant. It carries its own org_id + workspace_id now.
+describe("guardrail findings carry their own tenancy", () => {
+  it("stamps the org and workspace on every finding row", async () => {
+    const supabase = mocks(pendingItem);
+
+    await recordDraftReview(
+      { assetId: "asset-1", riskLevel: "high", recommendation: "decline", findings: [finding("fabricated")] },
+      supabase,
+      { orgId: "org-1", workspaceId: "ws-1" },
+    );
+
+    const findingRows = inserts(supabase).find((row) => Array.isArray(row)) as Array<Record<string, unknown>>;
+    expect(findingRows[0]).toMatchObject({ org_id: "org-1", workspace_id: "ws-1" });
+  });
+
+  it("refuses to write a finding with no resolved scope, rather than an unplaceable row", async () => {
+    // The columns are NOT NULL now, so this would fail at the database anyway.
+    // Failing here names the actual problem instead of surfacing a constraint
+    // violation three frames away.
+    const supabase = mocks(pendingItem);
+
+    await expect(
+      recordDraftReview(
+        { assetId: "asset-1", riskLevel: "high", recommendation: "decline", findings: [finding("fabricated")] },
+        supabase,
+      ),
+    ).rejects.toThrow(/requires a resolved org and workspace/);
+  });
+});
