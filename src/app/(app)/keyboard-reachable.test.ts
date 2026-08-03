@@ -46,7 +46,6 @@ const BASELINE: Record<string, number> = {
   "brand/_components/brand-view.tsx": 1,
   "campaigns/[campaignId]/_components/campaign-detail-view.tsx": 1,
   "campaigns/_components/campaigns-board.tsx": 1,
-  "opportunities/_components/opportunity-inbox.tsx": 1,
 };
 
 function tsxFiles(dir: string, out: string[] = []): string[] {
