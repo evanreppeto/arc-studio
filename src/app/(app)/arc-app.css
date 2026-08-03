@@ -525,6 +525,10 @@
    is deliberately quiet: it must not compete with the number it
    annotates, and it must never be the loudest thing in a row.
    ============================================================ */
+/* Evidence chips became focusable so their fact is reachable without a mouse
+   (BSR-670). */
+.arc-app .cite:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .arc-app .define {
   display: inline-flex;
   align-items: center;
