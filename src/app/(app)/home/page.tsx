@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   humanizePersonaLabel as humanizePersona,
   ASSET_NOUN,
+  definitionText,
   countOf,
   needsYouPhrase,
   toWorkState,
@@ -17,6 +18,7 @@ import { type OpportunityEvidence } from "@/lib/opportunities/read-model";
 
 import { QuickActions } from "./_components/quick-actions";
 import { SetupChecklist } from "./_components/setup-checklist";
+import { Define } from "../_components/define";
 import { KpiStrip } from "../_components/kpi-strip";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
@@ -64,7 +66,7 @@ function evidenceFacts(ev?: OpportunityEvidence | null): string[] {
   if (!ev) return [];
   const facts: string[] = [];
   for (const url of ev.evidence_urls ?? []) facts.push(`Source · ${url.replace(/^https?:\/\//, "")}`);
-  if (typeof ev.leadScore === "number") facts.push(`Lead score ${ev.leadScore}`);
+  if (typeof ev.leadScore === "number") facts.push(`Lead score ${ev.leadScore} — ${definitionText("lead_score")}`);
   if (typeof ev.daysCold === "number") facts.push(`${ev.daysCold} days since last activity`);
   if (ev.lastActivityAt) facts.push(`Last activity ${relativeTime(ev.lastActivityAt)}`);
   if (!facts.length && ev.persona) facts.push(`Persona · ${humanizePersona(ev.persona)}`);
@@ -159,7 +161,7 @@ export default async function HomePage() {
                 </span>
               )}
               <div className="conf">
-                <span className="cl">Confidence</span>
+                <span className="cl">Confidence<Define term="confidence" /></span>
                 <span className="track">
                   <span className="fill" style={{ width: `${focal.confidence}%` }} />
                 </span>
