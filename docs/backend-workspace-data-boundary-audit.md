@@ -66,16 +66,22 @@ No scoping column of its own; isolated by a `FOREIGN KEY` to a Category 1 or 2
 row and reached only through it. Legitimate — the contract check must not demand
 columns here.
 
-`custom_field_values` → `custom_field_definitions`, `journey_touchpoints` →
-`journey_identities`, `campaign_shares` / `campaign_audiences` → `campaigns`,
+`campaign_shares` / `campaign_audiences` → `campaigns`,
 `arc_conversation_shares` → `arc_conversations`, `arc_project_shares` →
-`arc_projects`, `guardrail_findings` → `agent_tasks` / `approval_items` /
-`campaign_assets`, `partner_health_snapshots` → `companies` / `contacts`,
-`agent_task_label_assignments` → `agent_tasks`
+`arc_projects`, `agent_task_label_assignments` → `agent_tasks`
 
-Condition of membership: the FK is `NOT NULL` and every read reaches the row via
-its parent. A Category 3 table that acquires a direct read path has to be
+Condition of membership: the FK is **`NOT NULL`** and every read reaches the row
+via its parent. A Category 3 table that acquires a direct read path has to be
 reclassified into 1 or 2 first.
+
+**That `NOT NULL` is load-bearing, and this list was wrong about it once.**
+`guardrail_findings` and `partner_health_snapshots` were listed here on the
+strength of merely *having* an FK to a scoped parent. The BSR-638 check rejected
+both on its first run: every one of their parent FKs is nullable, so a row can be
+inserted attached to nothing and belonging to no tenant — and `guardrail_findings`
+is actively written by `src/lib/arc-api/draft-review.ts`. Both are now Categories 2
+and 1 respectively, pending a scoping column of their own (BSR-653). "Has an FK to
+a scoped parent" is not the test; "has a `NOT NULL` FK to a scoped parent" is.
 
 ### Category 4 — Platform, deliberately not tenant-scoped
 
@@ -283,11 +289,37 @@ column changes nothing until the reads use it. Do **not** ship step 4 without th
 CI contract check (BSR-638), or the next table to land will repeat the whole
 thing.
 
-### Standing rule
+### Standing rule — now enforced, not asserted
 
-New tables declare their category before they ship, and the CI check in BSR-638
-enforces it against `information_schema`. A boundary that lives only in this
-document is exactly what produced the gap it is fixing.
+New tables declare their category before they ship. As of BSR-638 that is a build
+failure rather than a convention:
+
+- **`supabase/tenancy-contract.mjs`** is the machine-readable version of the five
+  categories above. Every table appears in it.
+- **`pnpm db:check-tenancy`** (`scripts/check-tenancy-contract.mjs`, run in the
+  Migrations workflow after the RLS suite) holds the real schema to it: every
+  public table must be classified, its category's columns must exist and be
+  `NOT NULL`, an `inherits` table must really have a `NOT NULL` FK to its named
+  parent, and anything tenant-scoped must have RLS on.
+- **`src/lib/db/tenancy-contract.test.ts`** runs in the normal suite with no
+  database: the contract is internally coherent, every table in the generated
+  `database.types.ts` is classified, and no `unclassified` table is referenced
+  anywhere in `src/` or `apps/` — that last one is what stops dead scaffold being
+  revived without a category.
+
+`pending` marks a table whose category is decided but whose migration hasn't
+landed. It relaxes the column assertion and nothing else, and the check prints the
+outstanding count on every run so the remaining Group A/B work stays visible
+instead of quietly becoming permanent.
+
+**Known limitation, stated rather than discovered later:** the Migrations workflow
+is path-filtered and deliberately not a required check, so `db:check-tenancy` runs
+only when `supabase/**` or its own scripts change. A new table always arrives with
+a migration, so the case that matters is covered — but a PR that wires an existing
+table without touching `supabase/` is caught by the vitest half alone.
+
+A boundary that lives only in this document is exactly what produced the gap this
+section fixes.
 
 ## Current Gaps
 

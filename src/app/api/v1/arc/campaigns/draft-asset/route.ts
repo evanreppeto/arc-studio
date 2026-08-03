@@ -23,7 +23,7 @@ import { markOpportunityDrafted } from "@/lib/opportunities/persistence";
  *   POST /api/v1/arc/campaigns/draft-asset
  *   { campaign_id?, name?, persona?, restoration_focus?,
  *     asset_type, title, body?, media_url?, media_path?,
- *     media?: { source?, model?, jobId?, format?, riskFlags? },
+ *     media?: { source?, model?, jobId?, format?, riskFlags?, libraryAssetId? },
  *     opportunity_id? }
  *   -> 201 { ok, status:"created", campaignId, assetId }
  */
@@ -59,6 +59,11 @@ export async function POST(request: Request) {
     riskFlags: Array.isArray(mediaIn.riskFlags)
       ? mediaIn.riskFlags.filter((f): f is string => typeof f === "string")
       : undefined,
+    // The Library row this creative came from. /media/generate-image returns it
+    // as `libraryAssetId`, and this contract had nowhere to put it — so every
+    // asset Arc generated and then drafted lost the link at this boundary, and
+    // per-asset review state had to fall back to matching storage paths.
+    libraryAssetId: str(mediaIn.libraryAssetId) || str(mediaIn.library_asset_id) || undefined,
   };
 
   if (!assetType) return fail("rejected", "asset_type is required.", 400);

@@ -113,6 +113,47 @@ const MEDIA_ORIGIN_LABEL: Record<CampaignMediaAsset["origin"], string> = {
   referenced: "Referenced elsewhere",
 };
 
+/**
+ * How this asset's own review reads. "Not reviewed" is the common case and the
+ * important one: asset-level approval writes to `approval_items`, and there are
+ * no such rows in prod — the path exists and has never run. An asset nobody has
+ * looked at must not read like one that passed.
+ */
+const MEDIA_REVIEW_LABEL: Record<CampaignMediaAsset["review"]["state"], string> = {
+  unreviewed: "Not reviewed",
+  pending: "Awaiting review",
+  approved: "Approved",
+  declined: "Declined",
+  needs_revision: "Revision requested",
+  archived: "Archived",
+};
+
+function mediaReviewTone(state: CampaignMediaAsset["review"]["state"]): Tone {
+  if (state === "approved") return "ok";
+  if (state === "declined") return "red";
+  if (state === "needs_revision" || state === "pending") return "amber";
+  return "gray";
+}
+
+function describeMediaReview(review: CampaignMediaAsset["review"]): string {
+  const label = MEDIA_REVIEW_LABEL[review.state];
+  if (review.state === "unreviewed") return `${label} — no decision has been recorded against this asset`;
+  const who = review.reviewer ? ` by ${review.reviewer}` : "";
+  const when = review.reviewedAt ? ` on ${fmtDate(review.reviewedAt)}` : "";
+  return `${label}${who}${when}`;
+}
+
+/**
+ * The declared ratio as a CSS `aspect-ratio`. The read-model has already
+ * rejected anything that isn't `w:h` within sane bounds; this is the render
+ * half of that. Falls back to the old fixed 4:3 when the producer declared
+ * nothing — an undeclared ratio must not silently become a square.
+ */
+function tileAspect(format: string | null): string {
+  const parts = format?.split(":");
+  return parts?.length === 2 ? `${parts[0]} / ${parts[1]}` : "4 / 3";
+}
+
 function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () => void }) {
   const thumb = media.thumbnailUrl || (media.type === "image" ? media.url : null);
   const [failed, setFailed] = useState(false);
@@ -121,8 +162,28 @@ function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () =>
   // tooltip is invisible to touch and to the keyboard, and the OS truncates a
   // long prompt anyway.
   const lineageLine = media.lineage[0]?.[1] ?? null;
+  const flagged = media.riskFlags.length > 0;
+  // A declined asset still sitting on a deliverable is worth seeing without
+  // opening it — same visual weight as a risk flag, for the same reason.
+  const declined = media.review.state === "declined";
+  const label = [
+    `Open ${media.title} at full size`,
+    flagged ? `${media.riskFlags.length} risk flag${media.riskFlags.length === 1 ? "" : "s"}` : null,
+    declined ? "declined" : null,
+  ]
+    .filter(Boolean)
+    .join(" — ");
   return (
-    <button type="button" className="mediatile" onClick={onOpen} aria-label={`Open ${media.title} at full size`}>
+    <button
+      type="button"
+      className={`mediatile${flagged || declined ? " flagged" : ""}`}
+      onClick={onOpen}
+      aria-label={label}
+      // The tile letterboxes to the creative's own shape. It used to crop
+      // everything to 4:3, so a 9:16 vertical and a 1:1 square were
+      // indistinguishable from each other and from what would actually ship.
+      style={{ aspectRatio: tileAspect(media.format) }}
+    >
       {thumb && !failed ? (
         // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
         <img className="mtimg" src={thumb} alt={media.title} loading="lazy" onError={() => setFailed(true)} />
@@ -131,6 +192,13 @@ function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () =>
       <span className={`mtbadge ${media.origin === "generated" ? "ai" : "real"}`}>
         {media.origin === "generated" ? "AI" : media.type}
       </span>
+      {/* A flag recorded against THIS image was invisible here until now — the
+          reviewer saw only the deliverable-level guardrail note, if any. */}
+      {flagged && (
+        <span className="mtrisk" aria-hidden>
+          {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
+        </span>
+      )}
       <span className="mttitle">
         {media.title}
         {lineageLine ? <em className="mtlineage">{lineageLine}</em> : null}
@@ -225,8 +293,13 @@ function MediaLightbox({
   const rows: Array<[string, string]> = [
     ["Source", MEDIA_ORIGIN_LABEL[media.origin]],
     ["Type", media.mimeType || media.type],
+    // "Declared" is doing real work: nothing measures the stored file, so this
+    // is the producer's claim about the creative, not a verified dimension.
+    ["Format", media.format ? `${media.format} (declared)` : "Not declared"],
+    ["Review", describeMediaReview(media.review)],
     ["Found in", media.source],
   ];
+  if (media.review.notes) rows.push(["Decision notes", media.review.notes]);
   if (media.description) rows.push(["Description", media.description]);
   if (media.virality) {
     // The score never travels without its disclaimer — a bare "82" reads as a
@@ -252,7 +325,7 @@ function MediaLightbox({
       open
       onClose={onClose}
       title={media.title}
-      description={MEDIA_ORIGIN_LABEL[media.origin]}
+      description={`${MEDIA_ORIGIN_LABEL[media.origin]} · ${MEDIA_REVIEW_LABEL[media.review.state]}`}
       width={920}
       footer={
         <>
@@ -278,6 +351,42 @@ function MediaLightbox({
         </>
       }
     >
+      {/* The asset's own review state, at the top of the dialog. Rendered even
+          when nothing has reviewed it — especially then. */}
+      <div className="lbstatus">
+        <span className={`pill ${mediaReviewTone(media.review.state)}`}>
+          <span className="pd" />
+          {MEDIA_REVIEW_LABEL[media.review.state]}
+        </span>
+        {media.review.reviewer && (
+          <span className="lbwho">
+            {media.review.reviewer}
+            {media.review.reviewedAt ? ` · ${fmtDate(media.review.reviewedAt)}` : ""}
+          </span>
+        )}
+        {media.review.state === "unreviewed" && (
+          <span className="lbwho">Approving the deliverable does not record a decision on this asset.</span>
+        )}
+      </div>
+
+      {/* Above the image, not in the metadata list below it. A flag recorded
+          against this asset is the reason a reviewer might decline it, and it
+          has to be in front of them before they scroll. */}
+      {media.riskFlags.length > 0 && (
+        <div className="lbrisk">
+          <b>
+            {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
+            {media.riskFlags.length === 1 ? "Risk flag on this asset" : `${media.riskFlags.length} risk flags on this asset`}
+          </b>
+          <ul>
+            {media.riskFlags.map((flag) => (
+              <li key={flag}>{flag}</li>
+            ))}
+          </ul>
+          <p>Recorded when the asset was produced. Nothing has cleared it — that is your call.</p>
+        </div>
+      )}
+
       {/* Keyed on the asset so stepping to the next one re-arms the load —
           a broken file must not leave its error over the working one. */}
       <div className="lbstage">
@@ -692,6 +801,15 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       origin: "attached",
       lineage: [],
       prompt: null,
+      // The optimistic tile knows neither — the read path fills them in on the
+      // next refresh. Guessing here would put an invented ratio on the tile.
+      format: null,
+      riskFlags: [],
+      libraryAssetId: item.id,
+      storagePath: null,
+      // The attach just happened; whatever review the asset carries arrives
+      // with the next read. Claiming one here would be inventing it.
+      review: { state: "unreviewed", reviewer: null, reviewedAt: null, notes: null },
       title: item.fileName,
       url: item.url,
       thumbnailUrl: item.url,
