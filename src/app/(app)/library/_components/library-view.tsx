@@ -61,6 +61,19 @@ const SC: Record<string, string> = {
   doc: '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice"><rect width="100" height="100" fill="#1b1b20"/><rect x="34" y="24" width="32" height="44" rx="3" fill="#26262d" stroke="#3a3a42"/><path d="M40 36h20M40 44h20M40 52h14" stroke="#83838c" stroke-width="2"/><path d="M58 24v8h8" fill="none" stroke="#3a3a42" stroke-width="2"/></svg>',
   beforeafter: '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice"><rect width="50" height="100" fill="#34302a"/><rect x="50" width="50" height="100" fill="#2a3b34"/><path d="M8 72 L25 56 L42 72 Z" fill="#4a443a"/><path d="M58 72 L75 56 L92 72 Z" fill="#3e5a4c"/><rect x="48" width="4" height="100" fill="rgba(200,162,74,.5)"/></svg>',
 };
+/** What a shape is good for. The pixel count is still on the detail panel for
+ *  anyone who needs it; the card says where the thing can go. */
+function shapeUse(dim: string): string | null {
+  const [w, h] = dim.split("×").map((n) => Number.parseInt(n.replace(/\D/g, ""), 10));
+  if (!Number.isFinite(w) || !Number.isFinite(h) || h === 0) return null;
+  const ratio = w / h;
+  if (ratio > 1.6) return "wide — web banner";
+  if (ratio > 1.15) return "landscape";
+  if (ratio > 0.9) return "square — feed post";
+  if (ratio > 0.7) return "tall — feed post";
+  return "story / reel";
+}
+
 const PVL: Record<Prov, string> = { real: "Real", ai: "AI", comp: "Photo + text", upload: "Imported", logo: "Logo", doc: "Doc" };
 const IMGBASE = "https://d8j0ntlcm91z4.cloudfront.net/user_3FaOq1cCR2Izxa2haYxVnIrhIBK/";
 const IMG = {
@@ -430,8 +443,12 @@ export function LibraryView({
     allAssets.forEach((a) => { byk[a.kind]++; });
     return {
       total: allAssets.length,
-      arc: allAssets.filter(isArc).length,
+      // Readiness — exclusive, and sums to total. `needsReview` wins over
+      // `isArc` because a risk flag on an approved asset still needs a look.
       rev: allAssets.filter(needsReview).length,
+      arc: allAssets.filter((a) => !needsReview(a) && isArc(a)).length,
+      untouched: allAssets.filter((a) => !needsReview(a) && !isArc(a)).length,
+      // Usage — a separate axis entirely.
       un: allAssets.filter((a) => a.uses === 0).length,
       byk,
     };
@@ -768,9 +785,13 @@ export function LibraryView({
             <span key={k}><i className={`pdot pv-${k}`} />{PVL[k]}</span>
           ))}
         </span>
-        <span className="ostat ok" onClick={() => setCurColl("arc")}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3d0b8" strokeWidth={2}><path d="M5 12l4 4 10-10" /></svg><b>{totals.arc}</b> Arc-ready<Define term="arc_ready" /></span>
-        <span className="ostat warn" onClick={() => setCurColl("review")}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e7c486" strokeWidth={2}><path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z" /></svg><b>{totals.rev}</b> need review</span>
-        <span className="ostat" onClick={() => setCurColl("unused")}><b>{totals.un}</b> unused</span>
+        <span className="ostatgrp" title="Every item is in exactly one of these">
+          <span className="ostat ok" role="button" tabIndex={0} onClick={() => setCurColl("arc")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCurColl("arc"); } }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3d0b8" strokeWidth={2}><path d="M5 12l4 4 10-10" /></svg><b>{totals.arc}</b> Arc-ready<Define term="arc_ready" /></span>
+          <span className="ostat warn" role="button" tabIndex={0} onClick={() => setCurColl("review")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCurColl("review"); } }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e7c486" strokeWidth={2}><path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z" /></svg><b>{totals.rev}</b> need review</span>
+          {totals.untouched > 0 ? <span className="ostat"><b>{totals.untouched}</b> not reviewed</span> : null}
+        </span>
+        <span className="ostatsep" aria-hidden="true" />
+        <span className="ostat" role="button" tabIndex={0} title="Separate from the counts on the left — an item can be Arc-ready and still never used" onClick={() => setCurColl("unused")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCurColl("unused"); } }}><b>{totals.un}</b> never used</span>
         {/* Real bytes stored. There is no storage quota in the backend, so this
             reports usage rather than a meter against an invented limit. */}
         {totalBytes != null ? <span className="ostat"><b>{formatByteSize(totalBytes)}</b> stored</span> : null}
@@ -877,7 +898,8 @@ export function LibraryView({
                     <div className="ainfo">
                       <div className="an"><span className={`pdot pv-${a.pv}`} title={`${PVL[a.pv]} — where this came from`} />{a.nm}</div>
                       <div className="am">
-                        <span>{a.kind}</span><span>·</span><span>{a.dim.split(" · ")[0]}</span>
+                        <span>{PVL[a.pv]}</span>
+                        {shapeUse(a.dim.split(" · ")[0]) ? <><span>·</span><span title={a.dim.split(" · ")[0]}>{shapeUse(a.dim.split(" · ")[0])}</span></> : null}
                         {isArc(a) ? <span className="arcok"><Ico d='<path d="M5 12l4 4 10-10"/>' /> Arc</span> : a.uses === 0 ? <span className="unused">unused</span> : null}
                       </div>
                     </div>
