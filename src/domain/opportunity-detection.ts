@@ -4,6 +4,8 @@
  * review (never auto-contacted). Deterministic so it stays unit-testable.
  */
 
+import { countOf, DAY_NOUN } from "./vocabulary";
+
 export type ColdLeadInput = {
   id: string;
   /** Human label (contact/company name or lead id) for the card. */
@@ -202,10 +204,15 @@ export function detectColdLeadOpportunities(leads: ColdLeadInput[], config: Dete
       kind: "crm_inactivity",
       subjectType: "lead",
       subjectId: lead.id,
-      title: lead.activityKnown ? `${lead.label} — quiet ${daysCold} days` : `${lead.label} — nothing recorded in ${daysCold} days`,
+      // PERSISTED. These two are written to the opportunity row, so they are
+      // what the card shows and what Arc reads back — a count disagreeing with
+      // its noun is stored, not just rendered (BSR-690).
+      title: lead.activityKnown
+        ? `${lead.label} — quiet ${countOf(daysCold, DAY_NOUN)}`
+        : `${lead.label} — nothing recorded in ${countOf(daysCold, DAY_NOUN)}`,
       summary: lead.activityKnown
-        ? `Open lead (score ${lead.leadScore}) with no live campaign and no activity in ${daysCold} days.`
-        : `Open lead (score ${lead.leadScore}) with no live campaign. Nothing has been recorded against it since it arrived ${daysCold} days ago — that is not the same as knowing nobody has worked it.`,
+        ? `Open lead (score ${lead.leadScore}) with no live campaign and no activity in ${countOf(daysCold, DAY_NOUN)}.`
+        : `Open lead (score ${lead.leadScore}) with no live campaign. Nothing has been recorded against it since it arrived ${countOf(daysCold, DAY_NOUN)} ago — that is not the same as knowing nobody has worked it.`,
       confidence,
       urgency,
       evidence: {
