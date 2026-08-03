@@ -110,8 +110,11 @@
 .arc-library .selbar { display: none; align-items: center; gap: 11px; padding: 0 clamp(14px, 1.8vw, 20px); height: 0; overflow: hidden; border-bottom: 1px solid var(--accent-border); background: linear-gradient(180deg, var(--accent-soft), transparent); transition: 0.18s var(--ease); }
 .arc-library .selbar.show { display: flex; height: 50px; }
 .arc-library .selbar .sc { font-size: 12.5px; font-weight: 600; color: var(--accent-contrast); }
-.arc-library .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 6px 10px; border-radius: 7px; transition: 0.14s; }
-.arc-library .selbar .sa:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+/* `.sa` is used on both <span>s and <button>s here — Download is a real button
+   now (BSR-687), so the reset keeps it visually identical to its siblings. */
+.arc-library .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 6px 10px; border: none; background: transparent; font-family: inherit; border-radius: 7px; transition: 0.14s; }
+.arc-library .selbar .sa:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+.arc-library .selbar .sa:disabled { opacity: 0.5; cursor: default; }
 .arc-library .selbar .sa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-library .selbar .clr { margin-left: auto; color: var(--muted); font-size: 11.5px; cursor: pointer; }
 .arc-library .selbar .clr:hover { color: var(--text); }
@@ -223,6 +226,20 @@
 .arc-library .riskbox .rt svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
 .arc-library .riskbox .rd { font-size: 11px; color: var(--text-2); margin-top: 5px; line-height: 1.45; }
 .arc-library .riskbox .rfix { margin-top: 9px; }
+/* The risk box's own confirm step (BSR-687). Approving a flagged asset requires
+   a written acknowledgement — `checkAssetApproval` enforces it server-side — so
+   the control has to collect words, not just a click. Laid out like the delete
+   confirm below it so the two read as the same kind of deliberate step. */
+.arc-library .riskbox .rack { margin-top: 9px; display: flex; flex-direction: column; gap: 7px; }
+.arc-library .riskbox .rackl { font-size: 11px; font-weight: 600; color: var(--warn-text); }
+.arc-library .riskbox .racki { width: 100%; resize: vertical; padding: 7px 9px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 11.5px; line-height: 1.45; }
+.arc-library .riskbox .racki:focus { outline: none; border-color: var(--accent-border); }
+.arc-library .riskbox .racki::placeholder { color: var(--muted); }
+.arc-library .riskbox .rackb { display: flex; gap: 7px; justify-content: flex-end; }
+.arc-library .riskbox .rackb .gbtn { height: 28px; font-size: 11.5px; }
+/* Reviewed state. Deliberately not celebratory and deliberately still inside the
+   warn-toned box: the flag is acknowledged, not gone. */
+.arc-library .riskbox .rdone { margin-top: 9px; font-size: 11px; color: var(--ok-text); line-height: 1.45; }
 .arc-library .usedrow { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); margin-bottom: 7px; cursor: pointer; font-size: 12px; transition: border-color 0.14s; }
 .arc-library .usedrow:hover { border-color: var(--accent-border); }
 .arc-library .usedrow svg { width: 14px; height: 14px; stroke: var(--accent); fill: none; stroke-width: 1.7; flex-shrink: 0; }
