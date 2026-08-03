@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { type EnrichmentFields, CSV_PERSONA_PROPERTY, parseCsvContacts, type CsvParseSummary } from "@/domain";
+import { type EnrichmentFields, CSV_PERSONA_PROPERTY, parseCsvContacts, type CsvParseSummary, type CsvColumnOverrides } from "@/domain";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import {
@@ -275,6 +275,14 @@ export type RunCsvImportInput = {
   client?: SupabaseClient;
   now?: string;
   allowedPersonaKeys?: readonly string[];
+  /**
+   * Resolve and report without writing (BSR-641). A dry run opens no import run
+   * either — a preview is not an event that happened, and a history full of
+   * "previewed" entries would bury the runs that actually changed something.
+   */
+  dryRun?: boolean;
+  /** The operator's corrections to the detected column mapping (BSR-642). */
+  columnOverrides?: CsvColumnOverrides;
 };
 
 export type RunCsvImportResult =
@@ -303,8 +311,21 @@ export async function runCsvImport(input: RunCsvImportInput): Promise<RunCsvImpo
   const defaultPersona = asAllowedPersona(config.defaultPersona, input.allowedPersonaKeys);
   if (!defaultPersona) return { ok: false, error: "missing_default_persona" };
 
-  const { contacts, ...parse } = parseCsvContacts(input.csvText);
+  const { contacts, ...parse } = parseCsvContacts(input.csvText, input.columnOverrides);
   if (contacts.length === 0) return { ok: false, error: "no_rows" };
+
+  if (input.dryRun) {
+    const preview = await importContactsFromSource({
+      client,
+      orgId: input.orgId,
+      source: fixtureCrmImportSourceFromContacts(contacts),
+      options: { defaultPersona, personaProperty: CSV_PERSONA_PROPERTY, source: "csv" },
+      now: input.now,
+      allowedPersonaKeys: input.allowedPersonaKeys,
+      dryRun: true,
+    });
+    return { ok: true, result: preview, parse };
+  }
 
   const tenant = { orgId: input.orgId, workspaceId: input.workspaceId };
   const { runId, recordProvenance } = await beginRun(client, tenant, "csv", {

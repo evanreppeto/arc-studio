@@ -174,3 +174,62 @@ describe("last-contacted column", () => {
     expect(contacts[0].updatedAt).toBeUndefined();
   });
 });
+
+// BSR-642. Auto-detection is a first guess; without a way to correct it, a column
+// named something unusual is dropped and the operator never learns it existed.
+describe("operator column overrides", () => {
+  const csv = "Full Name,Work Email,Account,Notes\nAda Lovelace,ada@example.com,Analytical Ltd,ignore me";
+
+  it("reports every header, including the ones nothing matched", () => {
+    const out = parseCsvContacts(csv);
+    expect(out.headers).toEqual(["Full Name", "Work Email", "Account", "Notes"]);
+    // "Notes" has no alias — today it is silently dropped, which is exactly what
+    // the operator needs to be told rather than left to discover.
+    expect(out.unmappedColumns).toContain("Notes");
+  });
+
+  it("maps a column the detector missed", () => {
+    const out = parseCsvContacts(csv, { Notes: "company" });
+    expect(out.mappedColumns.company).toBe("Notes");
+    expect(out.contacts[0]?.properties?.company).toBe("ignore me");
+    expect(out.unmappedColumns).not.toContain("Notes");
+  });
+
+  it("drops a column the detector claimed", () => {
+    const detected = parseCsvContacts(csv);
+    expect(detected.mappedColumns.email).toBe("Work Email");
+
+    const out = parseCsvContacts(csv, { "Work Email": null });
+    expect(out.mappedColumns.email).toBeUndefined();
+    expect(out.contacts[0]?.properties?.email).toBeUndefined();
+  });
+
+  it("targets by header name, not index, so a reordered re-upload still maps correctly", () => {
+    // An index-based override would silently mis-target the moment the same file
+    // is exported again with columns in a different order.
+    const reordered = "Notes,Full Name,Work Email,Account\nignore me,Ada Lovelace,ada@example.com,Analytical Ltd";
+    const out = parseCsvContacts(reordered, { Notes: "company" });
+    expect(out.contacts[0]?.properties?.company).toBe("ignore me");
+  });
+
+  it("ignores an override naming a column the file does not have", () => {
+    const out = parseCsvContacts(csv, { "Not A Column": "phone" });
+    expect(out.mappedColumns.phone).toBeUndefined();
+    expect(out.contacts).toHaveLength(1);
+  });
+});
+
+describe("an explicit mapping wins over detection", () => {
+  it("releases the field from whichever column the detector had claimed", () => {
+    // "Account" auto-detects as company. Mapping "Notes" to company must take it
+    // away from "Account" rather than leaving two columns fighting over one field
+    // — which one won would otherwise depend on their order in the file.
+    const csv = "Full Name,Account,Notes\nAda Lovelace,Analytical Ltd,Difference Engine Co";
+    const out = parseCsvContacts(csv, { Notes: "company" });
+
+    expect(out.mappedColumns.company).toBe("Notes");
+    expect(out.contacts[0]?.properties?.company).toBe("Difference Engine Co");
+    // And the column it was taken from is now honestly reported as not imported.
+    expect(out.unmappedColumns).toContain("Account");
+  });
+});

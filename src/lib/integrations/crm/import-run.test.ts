@@ -203,3 +203,109 @@ describe("per-record provenance", () => {
     expect(result.imported).toBe(1);
   });
 });
+
+// BSR-641. The only way to find out what an import would do used to be to run it.
+describe("dry run", () => {
+  it("produces the same create/update/skip counts without writing anything", async () => {
+    const h = harness();
+    const contacts = [
+      contact("c1", { firstname: "Ada", email: "ada@example.com" }),
+      contact("c2", { firstname: "Grace", email: "grace@example.com" }),
+      contact("c3", {}), // no usable name/email/phone
+    ];
+
+    // Commit one contact first, so the dry run has both a create and an update to
+    // classify rather than only the easy case.
+    await importContactsFromSource({
+      client, orgId: "org-1", source: fixtureCrmImportSourceFromContacts([contacts[0]]), options, deps: h.deps,
+    });
+    const persistCallsBefore = h.calls.length;
+
+    const preview = await importContactsFromSource({
+      client, orgId: "org-1", source: fixtureCrmImportSourceFromContacts(contacts), options, deps: h.deps, dryRun: true,
+    });
+
+    expect(preview.imported).toBe(1); // c2 is new
+    expect(preview.updated).toBe(1);  // c1 already exists
+    expect(preview.skipped).toBe(1);  // c3 is unusable
+    // The assertion that matters: the persist seam was never called again.
+    expect(h.calls.length).toBe(persistCallsBefore);
+  });
+
+  it("carries resolved sample rows so a mis-mapped column is visible before committing", async () => {
+    const h = harness();
+    const preview = await importContactsFromSource({
+      client,
+      orgId: "org-1",
+      source: fixtureCrmImportSourceFromContacts([
+        contact("c1", { firstname: "Ada", lastname: "Lovelace", email: "ada@example.com", company: "Analytical Ltd" }),
+      ]),
+      options,
+      deps: h.deps,
+      dryRun: true,
+    });
+
+    expect(preview.sample).toEqual([
+      expect.objectContaining({
+        externalId: "c1",
+        action: "create",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        company: "Analytical Ltd",
+        reason: null,
+      }),
+    ]);
+  });
+
+  it("explains a skipped row rather than only counting it", async () => {
+    const h = harness();
+    const preview = await importContactsFromSource({
+      client, orgId: "org-1", source: fixtureCrmImportSourceFromContacts([contact("c9", {})]), options, deps: h.deps, dryRun: true,
+    });
+    expect(preview.sample?.[0]).toMatchObject({ externalId: "c9", action: "skip", reason: "no usable name/email/phone" });
+  });
+
+  it("spends nothing on enrichment — it reports what WOULD be enriched", async () => {
+    // meterConnectorCall authorizes each lookup against the workspace spend cap and
+    // records usage after. A preview that silently spends money is a worse bug than
+    // no preview at all.
+    const h = harness();
+    let lookups = 0;
+    const enrichment = { enrich: async () => { lookups += 1; return { industry: "Restoration" }; } };
+
+    const preview = await importContactsFromSource({
+      client,
+      orgId: "org-1",
+      source: fixtureCrmImportSourceFromContacts([contact("c1", { firstname: "Ada", email: "ada@example.com" })]),
+      options,
+      deps: h.deps,
+      enrichment,
+      dryRun: true,
+    });
+
+    expect(preview.enriched).toBe(1);
+    expect(lookups).toBe(0);
+  });
+
+  it("caps the sample so a preview never becomes a second copy of the file", async () => {
+    const h = harness();
+    const many = Array.from({ length: 60 }, (_, i) => contact(`c${i}`, { firstname: `P${i}`, email: `p${i}@example.com` }));
+    const preview = await importContactsFromSource({
+      client, orgId: "org-1", source: fixtureCrmImportSourceFromContacts(many), options, deps: h.deps, dryRun: true,
+    });
+    expect(preview.imported).toBe(60);
+    expect(preview.sample).toHaveLength(25);
+  });
+
+  it("leaves the sample undefined on a real import", async () => {
+    const h = harness();
+    const result = await importContactsFromSource({
+      client,
+      orgId: "org-1",
+      source: fixtureCrmImportSourceFromContacts([contact("c1", { firstname: "Ada", email: "ada@example.com" })]),
+      options,
+      deps: h.deps,
+    });
+    expect(result.sample).toBeUndefined();
+  });
+});
