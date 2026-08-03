@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, statusTone } from "@/domain";
+import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, isPipelineObjectKey, statusTone } from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
 import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord, searchCrmRecords } from "../actions";
@@ -28,12 +28,15 @@ function FilterMenu({
   options,
   value,
   onChange,
+  footer,
 }: {
   icon: React.ReactNode;
   label: string;
   options: FilterOption[];
   value: string;
   onChange: (value: string) => void;
+  /** Optional link below the choices — where the choices themselves are defined. */
+  footer?: { href: string; label: string };
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -81,6 +84,13 @@ function FilterMenu({
               <span className="fmenu-c">{o.count}</span>
             </button>
           ))}
+          {footer && (
+            // Reading the list of stages is when you notice one is missing or
+            // misnamed. Nothing else in CRM says where they come from.
+            <Link className="fmenu-foot" href={footer.href}>
+              {footer.label}
+            </Link>
+          )}
         </div>
       )}
     </span>
@@ -767,6 +777,15 @@ export function CrmBoard({
           options={options.status}
           value={statusF}
           onChange={setStatusF}
+          // Only the three pipeline objects draw their status from editable
+          // stages. For the rest it is a fixed field, so pointing at the stage
+          // editor would send you somewhere that cannot change what you're
+          // looking at.
+          footer={
+            isPipelineObjectKey(active.key)
+              ? { href: `/settings?s=records&t=Stages&o=${encodeURIComponent(active.key)}`, label: "Edit stages" }
+              : undefined
+          }
         />
         <FilterMenu
           icon={<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" /></svg>}
