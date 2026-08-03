@@ -231,6 +231,17 @@ export const ENV_CAPABILITIES: readonly CapabilitySpec[] = [
     ],
   },
   {
+    key: "support-triage",
+    label: "Support triage",
+    summary: "In-app feedback becomes a labelled Linear ticket instead of only an email.",
+    vars: [
+      v("LINEAR_API_KEY", "required", "Support requests are stored and emailed but never reach Linear, so feedback lives only in an inbox."),
+      v("LINEAR_TEAM_ID", "required", "There is no team to file against — ticket creation is skipped entirely."),
+      v("LINEAR_PROJECT_ID", "optional", "Tickets land in the team's backlog with no project, so they miss the roadmap board."),
+      v("LINEAR_SUPPORT_SYNC", "optional", "Ticket creation follows the credentials. Set to 0 to switch it off without pulling the key."),
+    ],
+  },
+  {
     key: "preview",
     label: "Demo & preview",
     summary: "Sales demos and the backend-less local preview.",

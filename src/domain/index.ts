@@ -100,6 +100,9 @@ export * from "./exemplar-skills";
 export * from "./auto-draft-selection";
 
 export * from "./support";
+// How a support request becomes a Linear ticket. Separate file, same feature —
+// support.ts owns the request itself, this owns the ticket it turns into.
+export * from "./support-linear";
 
 export * from "./workspace-identity";
 export * from "./branding-image";
