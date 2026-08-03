@@ -1,6 +1,6 @@
 # Group A/B migration plan — finishing the workspace boundary
 
-Last updated: 2026-08-03
+Last updated: 2026-08-03 (amended after Wave 1 — see the ⚠️ section below)
 
 BSR-637 decided the boundary and BSR-638 made it enforceable. 77 tables are
 enforced today; **35 are still marked `pending`** in `supabase/tenancy-contract.mjs`,
@@ -69,13 +69,54 @@ The backfill is ~2,000 rows and provably resolvable. The thing that will break
 production is a table gaining `NOT NULL workspace_id` while some insert site still
 doesn't stamp it.
 
-`orgTenantFields()` — **six identical copies** across `campaigns/{launch,decisions,
-attach-media}`, `dispatch/persistence`, and `arc-api/{drafts,approvals}` — takes a
-full `{org_id, workspace_id}` tenant and returns `org_id` **only**. BSR-639 fixed
-the seventh (`campaigns/create.ts`) for the `campaigns` table alone.
+There were **eight** copies of the same org-only tenant builder, each taking a full
+`{org_id, workspace_id}` and returning `org_id` alone: six private
+`orgTenantFields()`, `campaignTenantFields` in `campaigns/create.ts`, and `withOrg`
+in `arc/orchestrator.ts` — the last of which no filename-based search found,
+because it was the one under a different name.
 
-Every one of those copies writes to tables in this migration. Miss one and the
-insert starts failing in prod the moment `SET NOT NULL` lands.
+All eight are gone as of BSR-710/BSR-720, replaced by
+`src/lib/tenancy/write-scope.ts` (`workspaceScopeFields` / `orgScopeFields`) and
+`src/lib/tenancy/resolve-workspace.ts` for sites that carry only an `orgId`.
+Waves 2-4 change one file, not eight.
+
+The residual risk is not the helpers — it is an insert site nobody looked at. That
+is what the automated audit below now covers.
+
+### ⚠️ Amended 2026-08-03, after Wave 1 broke production
+
+This section originally put the writer audit in **Phase B's** gate, and framed the
+gap between phases as *time* — ship Phase A, let real traffic run, then check for
+new NULLs. Wave 1 proved both halves of that wrong, and the amendment is the most
+important thing in this document.
+
+**What happened.** Wave 1 Phase A (BSR-710) updated "the writers" — meaning the six
+files its ticket named. An exhaustive audit afterwards found **15 more insert sites
+in 8 files**, including an *eighth* copy of the org-only helper (`withOrg` in
+`arc/orchestrator.ts`) that no filename-based search would ever have found. One of
+them had already broken production: `campaigns.workspace_id` went `NOT NULL` in
+BSR-639, so `runArcPartnerCampaign` (`POST /api/v1/arc/runs`) could not create a
+campaign for roughly four and a half hours. **No test could see it** — a mocked
+insert cannot see a not-null constraint, so the whole suite stayed green.
+
+**Two corrections:**
+
+1. **Audit by TABLE, never by filename.** A ticket naming files is a starting
+   point, not a scope. Enumerate every insert site into the affected tables.
+2. **The time-based `new_nulls` gate is worthless on an idle prod.** It returns 0
+   because nothing was written, not because the writers are right. Waiting buys
+   nothing when there is no traffic; static enumeration is the real gate.
+
+**This is now automated.** `src/lib/db/workspace-writers.test.ts` runs the audit in
+the normal suite on **every PR**, keyed on a `hasColumn: true` marker in
+`supabase/tenancy-contract.mjs`. Adding a `workspace_id` column in a Phase A? Add
+`hasColumn: true` in the same PR, and the check starts enforcing that table's
+writers immediately — the day the column lands, not the day the lock ships.
+
+So the writer audit is now part of **Phase A's** definition of done, and it is a
+build failure rather than a discipline. Phase B's gate is reduced to what it is
+actually good for: confirming the backfill held and no NULL arrived from a path
+nobody thought of.
 
 ### The technique that makes this safe: split every wave in two
 
@@ -118,8 +159,9 @@ matters *within* the wave, because each tier derives from the one above:
 4. `campaign_events`, `campaign_dispatches`, `campaign_results` ← `campaign_id` / `campaign_asset_id` / `approval_item_id`
 
 Writers: `campaigns/{create,launch,decisions,attach-media}.ts`,
-`dispatch/persistence.ts`, `arc-api/{drafts,approvals}.ts`. This wave is where
-five of the six remaining `orgTenantFields` copies die.
+`dispatch/persistence.ts`, `arc-api/{drafts,approvals}.ts` — **plus the eight more
+files BSR-720 found by auditing the tables rather than the ticket's file list**.
+This wave is where every copy of the org-only helper died.
 
 **Do this wave first even though it has no deadline** — it is the one that proves
 the two-phase pattern, and its 310 rows all derive correctly, so a mistake shows
@@ -176,16 +218,27 @@ undercount. Do not let a tenancy change quietly drop rows: count before and afte
 Every wave, in order:
 
 1. **Before Phase A** — measure derivability on prod read-only, exactly as this
-   plan did. Numbers in the PR body, not adjectives.
-2. **Phase A merged** — confirm zero NULLs from the backfill, and record the
-   deploy timestamp for the `new_nulls` check.
-3. **Between phases** — re-run the NULL check after real traffic. This is the step
-   that catches a missed writer, and it is the only reason the two phases exist.
-4. **Phase B merged** — `db:check-tenancy` must show the wave's tables moving from
+   plan did. Numbers in the PR body, not adjectives. Use `count(*)`, never
+   `n_live_tup`.
+2. **In Phase A, before merging** — add `hasColumn: true` to each migrated table in
+   `supabase/tenancy-contract.mjs`. That switches on
+   `src/lib/db/workspace-writers.test.ts` for those tables, which enumerates every
+   insert site into them and fails on any that does not stamp a workspace.
+   **This is the step that catches a missed writer**, and it is now a build
+   failure rather than something to remember. Expect it to fail the first time —
+   that is it doing its job, and it is far cheaper here than in production.
+3. **Phase A merged** — confirm zero NULLs from the backfill on prod, and record
+   the deploy timestamp. For a wave the runner writes, record the **runner's**
+   deploy too.
+4. **Between phases** — re-run the NULL check. Treat a clean result as weak
+   evidence unless real traffic actually occurred: on an idle prod this returns 0
+   because nothing was written. Step 2 is the gate that means something; this one
+   only catches a path that step 2 could not see statically.
+5. **Phase B merged** — `db:check-tenancy` must show the wave's tables moving from
    pending to enforced, and the `chain` job must stay green (it re-runs
    `rls-cross-tenant.sql`, which is what caught the seeded-membership gap in
    BSR-639).
-5. **After Phase B** — verify on prod that the columns are `NOT NULL` and the
+6. **After Phase B** — verify on prod that the columns are `NOT NULL` and the
    policies exist, the way BSR-639 and BSR-653 were verified. Merged ≠ live.
 
 ## What I would not do
@@ -196,6 +249,11 @@ Every wave, in order:
   gap between them.
 - **Trusting `n_live_tup` for row counts.** It is a planner estimate. It said
   `guardrail_findings` had 0 rows during BSR-653; it had 6.
+- **Scoping a wave to the files a ticket names.** Wave 1 did, and missed 15 insert
+  sites in 8 files — including an eighth copy of the org-only helper under a name
+  nobody would have grepped for. Audit by table.
+- **Trusting a green `new_nulls` check on an idle prod.** It means "nothing was
+  written", not "the writers are right".
 - **Assuming a writer is covered because the table looks unused.** `agents`,
   `arc_generated_skills` and `competitor_campaigns` all look dormant and all have
   live write paths.
@@ -206,3 +264,18 @@ Four waves, each two PRs, plus a measurement pass at the head of each. Wave 1 is
 the largest by writer-surface and the smallest by risk; Wave 3 is the largest by
 rows and the smallest by code change. Nothing here is blocked on anything else,
 and nothing here is urgent — see finding (1).
+
+## Status
+
+- **Wave 1 Phase A** — done (BSR-710), plus BSR-720 for the 15 insert sites it
+  missed and the production break one of them had already caused.
+- **The writer audit is automated** — `src/lib/db/workspace-writers.test.ts`,
+  every PR, keyed on `hasColumn`. Currently enforcing 31 tables / 78 insert sites.
+- **Wave 1 Phase B** — unblocked (BSR-711). Its static gate is green and
+  automated; the traffic-based half remains weak evidence on an idle prod.
+- **Waves 2-4** — not started (BSR-712 through BSR-717).
+
+One known gap is recorded in the audit test rather than hidden: three
+`arc_messages` writes in `arc-chat/persistence.ts` do not stamp yet, tied to
+Wave 4 / BSR-716. The test asserts they are *still* unstamped, so the entry
+cannot outlive the fix.
