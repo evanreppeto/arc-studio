@@ -518,6 +518,40 @@
 }
 
 /* ============================================================
+   Definitions + explainers (BSR-659).
+
+   The app invents words — Confidence, Lead score, Arc-ready,
+   Trusted — and none of them was defined anywhere. The affordance
+   is deliberately quiet: it must not compete with the number it
+   annotates, and it must never be the loudest thing in a row.
+   ============================================================ */
+.arc-app .define {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  margin-left: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: help;
+  vertical-align: middle;
+  transition: color .14s, border-color .14s;
+}
+.arc-app .define:hover,
+.arc-app .define:focus-visible { color: var(--accent-contrast); border-color: var(--accent-border); outline: none; }
+
+.arc-app .howworks { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); padding: 16px 18px; }
+.arc-app .howworks h2 { font-family: var(--serif); font-size: 15px; font-weight: 500; color: var(--text); margin: 0 0 8px; }
+.arc-app .howworks p { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 0 0 8px; max-width: 68ch; }
+.arc-app .howworks p:last-child { margin-bottom: 0; }
+.arc-app .howworks b { color: var(--text); font-weight: 600; }
+
+/* ============================================================
    KPI strip — ONE implementation, app-wide (BSR-658).
 
    Replaces `.metrics`, `.okpis`, `.kpis`, `.asum`, `.pstats`,

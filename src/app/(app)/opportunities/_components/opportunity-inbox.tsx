@@ -14,6 +14,8 @@ import {
 } from "../actions";
 import { scanMessage } from "../scan-feedback";
 import { DraftCampaignModal, type DraftMode } from "./draft-campaign-modal";
+import { DEFINITIONS } from "@/domain";
+import { Define, HowThisWorks } from "../../_components/define";
 
 export type OppSignal = { label: string; value: string };
 export type OppRouting = { step: string; note: string; done: boolean };
@@ -278,7 +280,7 @@ export function OpportunityInbox({
           <span className="c">
             {typeFilter
               ? `${ordered.length} of ${visible.length}`
-              : `${visible.length} open${highCount > 0 ? ` · ${highCount} high` : ""} · ${avgConf}% avg`}
+              : `${visible.length} open${highCount > 0 ? ` · ${highCount} high` : ""} · ${avgConf}% avg confidence`}
           </span>
         </div>
         <div style={{ padding: "2px 4px 12px" }}>
@@ -481,10 +483,10 @@ export function OpportunityInbox({
 
             <div className="side">
               <div className="card">
-                <div className="cl">Confidence</div>
+                <div className="cl">Confidence<Define term="confidence" /></div>
                 <div className="bignum">{o.confidence}%</div>
                 <ConfidenceFill pct={o.confidence} />
-                <div className="cnote">Arc&rsquo;s confidence in this signal</div>
+                <div className="cnote">{DEFINITIONS.confidence.basedOn}</div>
               </div>
 
               {(o.persona || o.audienceNote) && (
@@ -505,7 +507,7 @@ export function OpportunityInbox({
 
               {o.impact.length > 0 && (
                 <div className="card">
-                  <div className="cl">Signal strength</div>
+                  <div className="cl">Signal strength<Define term="signal_strength" /></div>
                   <div className="impact">
                     {o.impact.map((m, i) => (
                       <div className="icell" key={i}>
@@ -518,7 +520,7 @@ export function OpportunityInbox({
               )}
 
               <div className="card">
-                <div className="cl">Approval routing</div>
+                <div className="cl">Who signs off</div>
                 <div className="tl">
                   {o.routing.map((s, i) => (
                     <div className={`tlstep${s.done ? " done" : ""}`} key={i}>
@@ -529,6 +531,17 @@ export function OpportunityInbox({
                 </div>
                 <div className="locknote"><i />Nothing sends until you approve</div>
               </div>
+
+              <HowThisWorks>
+                <p>
+                  Arc watches your records for things worth acting on — someone reading your pricing page again, a customer
+                  who has gone quiet, a review worth asking for — and lists them here with the evidence it used.
+                </p>
+                <p>
+                  <b>Confidence</b> is how sure Arc is that this is real. {DEFINITIONS.confidence.basedOn} Nothing here
+                  contacts anyone: Arc can draft from an opportunity, but it waits for you.
+                </p>
+              </HowThisWorks>
             </div>
           </div>
         </div>
