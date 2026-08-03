@@ -82,6 +82,20 @@ Tone: gold = `needs_you` / `needs_changes` (the one accent per screen), green = 
 
 **Never in customer copy:** vendor names (Resend, Gemini, Higgsfield in body text), architecture terms (`layer`, `scoped`, `gated`, `metered`, `runner`, `node`, `token`), database identifiers, or billing-system vocabulary. An empty metric says what the user would have to do to fill it — "Starts once you send your first campaign" — never which input is missing.
 
+## 4.3 The KPI strip
+
+`src/app/(app)/_components/kpi-strip.tsx` is the only KPI row. Import `KpiStrip`; do not hand-roll another grid.
+
+It exists because there were **seven** — `.metrics`, `.okpis`, `.kpis`, `.asum`, `.pstats`, `.bstats`, `.jr-kpis` — six of them an equal `repeat(N, 1fr)` row, which §5 below bans in bold, while the shared component built for the job was used by CRM alone (BSR-658).
+
+**Cell anatomy, in order:** label → value + delta → sparkline → sublabel. Every strip, every screen. The slots are `label`, `value`, `delta`, `sublabel`, `spark`, `tone`, `emptyHint`.
+
+- **Asymmetric by default.** The first metric is the lead and takes ~1.5× the width. That is the reason equal rows are banned: an equal row claims every number matters the same, which is never true.
+- **Four cells is the intent, five the ceiling.**
+- **The sublabel carries the period.** A delta with no baseline is decoration — prefer "vs previous 30 days" over "580 prev".
+- **An empty metric uses `emptyHint`**, and it says what the *user* must do ("Starts once you send your first campaign"), never which input our pipeline lacks.
+- **Tone is gold (needs you) or green (healthy). Never red** — a KPI is a fact, not a destructive control.
+
 ## 5. Layout Principles
 
 Persistent command rail + asymmetric content grids. Avoid repeated equal 3-column rows. Lead each route with the operational task, then supporting guidance, queues, and next actions. Constrain explanatory copy to ~65–74ch.

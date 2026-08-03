@@ -402,17 +402,8 @@
   & .chip { display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); font-size: 10.5px; color: var(--text-2); max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   & .ago { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 46px; text-align: right; }
 
-  /* metric strip */
-  & .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 11px; overflow: hidden; margin-top: 26px; }
-  & .metric { background: color-mix(in srgb, var(--panel) 82%, var(--canvas)); padding: 14px 16px; }
-  & .metric .ml { font-size: 10.5px; color: var(--muted); font-weight: 500; }
-  & .metric .mrow { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: 7px; }
-  & .metric .mv { font-size: 23px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-  & .metric .delta { font-family: var(--mono); font-size: 10.5px; margin-top: 5px; color: var(--ok-text); }
-  & .metric .delta.dn { color: var(--red-text); }
-  & .metric .delta.flat { color: var(--muted); }
-  & .metric .spark { margin-top: 9px; }
-  & .metric .spark svg { display: block; width: 100%; height: 22px; }
+  /* The KPI strip moved out of Home's block and is now app-wide — see the
+     `.kpistrip` section further down (BSR-658). */
 
   /* opportunities */
   & .opps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
@@ -508,7 +499,6 @@
     & .content { padding: 20px 16px 40px; }
     & .col-r { border-left: 0; border-top: 1px solid var(--line); padding: 22px 16px 40px; }
     & .opps { grid-template-columns: 1fr; }
-    & .metrics { grid-template-columns: 1fr; }
 
     /* Home hero + section headers scale down so nothing overflows. */
     & h2.greet { font-size: 27px; }
@@ -525,6 +515,81 @@
     & .task .chip { display: none; }
     & .task .ago { width: auto; white-space: nowrap; }
   }
+}
+
+/* ============================================================
+   KPI strip — ONE implementation, app-wide (BSR-658).
+
+   Replaces `.metrics`, `.okpis`, `.kpis`, `.asum`, `.pstats`,
+   `.bstats` and `.jr-kpis`: seven hand-rolled grids, six of them an
+   equal `repeat(N, 1fr)` row that DESIGN.md §5 and the Calm
+   Principles both ban in bold, and one shared component that only
+   CRM used.
+
+   The layout is asymmetric by design — the first metric is the lead
+   and takes ~1.5x the width. That is the whole reason equal rows are
+   banned: an equal row says every number matters the same, which is
+   never true. Four cells is the intent, five the ceiling.
+   ============================================================ */
+.arc-app .kpistrip {
+  display: grid;
+  gap: 1px;
+  background: var(--line-2);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.arc-app .kpistrip[data-count="2"] { grid-template-columns: 1.5fr 1fr; }
+.arc-app .kpistrip[data-count="3"] { grid-template-columns: 1.5fr 1fr 1fr; }
+.arc-app .kpistrip[data-count="4"] { grid-template-columns: 1.5fr 1fr 1fr 1fr; }
+.arc-app .kpistrip[data-count="5"] { grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; }
+
+/* Per-page spacing only — the strip itself owns no outer margin. */
+.arc-app .arc-outbox .kpistrip.okpis { margin: 12px clamp(20px, 2.6vw, 30px) 0; flex-shrink: 0; }
+.arc-app .arc-personas .kpistrip.pstats { margin-top: 16px; animation: personasHeaderIn .5s cubic-bezier(.16, 1, .3, 1) both; }
+.arc-app .arc-brain .kpistrip.bstats { margin-top: 16px; }
+.arc-app .journeys .kpistrip.jr-kpis { margin-bottom: 16px; }
+.arc-app .arc-personas .kpistrip.perfgrid { flex: 1; margin-top: 2px; }
+.arc-app .kpistrip { margin-top: 16px; }
+
+.arc-app .kpicell {
+  min-width: 0;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--panel) 82%, var(--canvas));
+}
+/* Gold = needs you, green = healthy. Never red: a KPI is a fact, not a
+   destructive control (DESIGN.md §4.2). */
+.arc-app .kpicell.attention { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.arc-app .kpicell.ok .kpivalue { color: var(--ok-text); }
+
+.arc-app .kpicell .kpilabel { font-size: 10.5px; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-app .kpicell .kpirow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 7px; min-width: 0; }
+.arc-app .kpicell .kpivalue { font-family: var(--serif); font-size: 23px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+.arc-app .kpicell .kpivalue.is-empty { color: var(--muted); }
+.arc-app .kpicell .kpidelta { font-family: var(--mono); font-size: 10.5px; color: var(--ok-text); white-space: nowrap; }
+.arc-app .kpicell .kpidelta.dn { color: var(--red-text); }
+.arc-app .kpicell .kpidelta.flat { color: var(--muted); }
+.arc-app .kpicell .kpispark { margin-top: 9px; }
+.arc-app .kpicell .kpispark svg { display: block; width: 100%; height: 22px; }
+.arc-app .kpicell .kpisub { margin-top: 6px; font-size: 10.5px; line-height: 1.35; color: var(--muted); }
+/* The needs-setup line is a sentence the user can act on, so it wraps rather
+   than truncating like an ordinary sublabel. */
+.arc-app .kpicell .kpisub.is-hint { color: var(--text-3, var(--muted)); }
+
+@media (max-width: 900px) {
+  .arc-app .kpistrip[data-count="4"],
+  .arc-app .kpistrip[data-count="5"] { grid-template-columns: 1.3fr 1fr; }
+  .arc-app .kpistrip[data-count="3"] { grid-template-columns: 1.3fr 1fr; }
+}
+@media (max-width: 560px) {
+  .arc-app .kpistrip[data-count] { grid-template-columns: 1fr 1fr; }
+  .arc-app .kpicell { padding: 11px 12px; }
+  .arc-app .kpicell .kpivalue { font-size: 19px; }
+}
+/* An odd cell count leaves a dead half-row at the end of a two-column layout —
+   the last cell takes the full width instead. */
+@media (max-width: 900px) {
+  .arc-app .kpicell:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 
 /* ============================================================
@@ -811,13 +876,6 @@
 .arc-app .arc-outbox .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
 /* KPI strip */
-.arc-app .arc-outbox .okpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; margin: 12px clamp(20px, 2.6vw, 30px) 0; flex-shrink: 0; }
-.arc-app .arc-outbox .kpi { border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); padding: 11px 13px; }
-.arc-app .arc-outbox .kpi .kv { font-family: var(--serif); font-weight: 500; font-size: 22px; letter-spacing: -.02em; line-height: 1; color: var(--text); }
-.arc-app .arc-outbox .kpi .kl { font-size: 11px; color: var(--text-2); margin-top: 5px; font-weight: 500; }
-.arc-app .arc-outbox .kpi .ks { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
-.arc-app .arc-outbox .kpi.alert { border-color: var(--accent-border); background: linear-gradient(180deg, var(--accent-soft), transparent); }
-.arc-app .arc-outbox .kpi.alert .kv { color: var(--accent-contrast); }
 
 /* tabbar: view tabs + channel filters */
 .arc-app .arc-outbox .tabbar { position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 12px; padding: 14px clamp(20px, 2.6vw, 30px) 0; border-bottom: 1px solid var(--line-2); flex-shrink: 0; flex-wrap: wrap; background: var(--canvas); }
@@ -941,7 +999,6 @@
      `overflow-x: auto` with `scrollbar-width: none`, so on a phone two of the
      four counts — including anything failed — were off-screen with no visual
      cue they existed at all (BSR-662). */
-  .arc-app .arc-outbox .okpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .arc-app .arc-outbox .tabbar { flex-wrap: nowrap; }
   .arc-app .arc-outbox .ofilters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .arc-app .arc-outbox .ofilters::-webkit-scrollbar { display: none; }
@@ -956,10 +1013,6 @@
   .arc-app .arc-outbox .ohead { padding-top: 10px; }
   .arc-app .arc-outbox .pt { font-size: 24px; }
   .arc-app .arc-outbox .gbtn { height: 30px; padding-inline: 11px; }
-  .arc-app .arc-outbox .okpis { margin-top: 9px; gap: 8px; }
-  .arc-app .arc-outbox .kpi { padding: 8px 11px; }
-  .arc-app .arc-outbox .kpi .kv { font-size: 19px; }
-  .arc-app .arc-outbox .kpi .kl { margin-top: 3px; }
   .arc-app .arc-outbox .tabbar { margin-top: 9px; }
   .arc-app .arc-outbox .oq { padding-top: 11px; gap: 16px; }
 }
@@ -998,15 +1051,6 @@
 .arc-app .arc-analytics .tg.wired { color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); }
 .arc-app .arc-analytics .tg.sync { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); }
 
-.arc-app .arc-analytics .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line-2); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; }
-.arc-app .arc-analytics .kpi { background: var(--panel); padding: 14px 16px; }
-.arc-app .arc-analytics .kpi .kl { font-size: 10.5px; color: var(--muted); font-weight: 500; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.arc-app .arc-analytics .kpi .kv { font-family: var(--serif); font-weight: 500; font-size: 25px; letter-spacing: -.02em; margin-top: 6px; color: var(--text); }
-.arc-app .arc-analytics .kpi .kp { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 4px; }
-.arc-app .arc-analytics .kpi .kd { font-family: var(--mono); font-size: 10.5px; margin-top: 5px; display: flex; align-items: center; gap: 5px; }
-.arc-app .arc-analytics .kpi .kd.up { color: var(--ok-text); }
-.arc-app .arc-analytics .kpi .kd.dn { color: var(--red-text); }
-.arc-app .arc-analytics .kpi .kd.flat { color: var(--muted); }
 
 /* trend panel + metric toggle + legend */
 .arc-app .arc-analytics .panel { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); margin-top: 20px; overflow: hidden; }
@@ -1128,8 +1172,6 @@
 .arc-app .arc-analytics .cit b { color: var(--accent-contrast); }
 
 /* activity feed */
-.arc-app .arc-analytics .asum { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-2); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
-.arc-app .arc-analytics .asum .kpi { background: var(--panel); padding: 13px 15px; }
 .arc-app .arc-analytics .aday { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 16px 2px 8px; }
 .arc-app .arc-analytics .arow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 14px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); margin-bottom: 8px; }
 .arc-app .arc-analytics .arow .adot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
@@ -1140,7 +1182,6 @@
 .arc-app .arc-analytics .arow .atime { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; }
 
 @media (max-width: 900px) {
-  .arc-app .arc-analytics .kpis, .arc-app .arc-analytics .asum { grid-template-columns: repeat(2, 1fr); }
   .arc-app .arc-analytics .grid2 { grid-template-columns: 1fr; }
 }
 
@@ -1160,11 +1201,6 @@
 .arc-app .arc-personas .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-personas .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-personas .phead .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; white-space: nowrap; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
-.arc-app .arc-personas .pstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-2); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; margin-top: 16px; animation: personasHeaderIn .5s cubic-bezier(.16, 1, .3, 1) both; }
-.arc-app .arc-personas .pstat { background: var(--panel); padding: 13px 16px; }
-.arc-app .arc-personas .pstat .sl { font-size: 10.5px; color: var(--muted); }
-.arc-app .arc-personas .pstat .sv { font-family: var(--serif); font-weight: 500; font-size: 23px; letter-spacing: -.02em; margin-top: 5px; color: var(--text); }
-.arc-app .arc-personas .pstat .sd { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-top: 3px; }
 .arc-app .arc-personas .arcalert { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(90deg, var(--accent-soft), transparent 70%); padding: 11px 14px; animation: personasHeaderIn .5s cubic-bezier(.16, 1, .3, 1) .08s both; }
 .arc-app .arc-personas .arcalert .am { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); color: var(--accent); font-size: 13px; flex-shrink: 0; }
 .arc-app .arc-personas .arcalert .at { font-size: 12.5px; color: var(--text-2); }
@@ -1176,7 +1212,6 @@
 .arc-app .arc-personas .miniabtn.ghost:hover { color: var(--text-2); }
 @keyframes personasHeaderIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (max-width: 720px) {
-  .arc-app .arc-personas .pstats { grid-template-columns: repeat(2, 1fr); }
   /* Alert banner: let text keep its own lines and drop the action buttons to
      a full-width row beneath, instead of squeezing the copy to one word/line. */
   .arc-app .arc-personas .arcalert { flex-wrap: wrap; align-items: flex-start; }
@@ -1246,11 +1281,6 @@
 .arc-app .arc-personas .rdr { display: flex; gap: 8px; font-size: 10.5px; color: var(--text-2); line-height: 1.4; }
 .arc-app .arc-personas .rdr b { color: var(--text); font-weight: 600; width: 66px; flex-shrink: 0; }
 .arc-app .arc-personas .perfcard { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); padding: 14px 16px; display: flex; flex-direction: column; }
-.arc-app .arc-personas .perfgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 11px; overflow: hidden; flex: 1; margin-top: 2px; }
-.arc-app .arc-personas .pc { background: var(--panel); padding: 12px 14px; }
-.arc-app .arc-personas .pc .pl { font-size: 10.5px; color: var(--muted); }
-.arc-app .arc-personas .pc .pv { font-family: var(--serif); font-weight: 500; font-size: 21px; letter-spacing: -.02em; margin-top: 4px; color: var(--text); }
-.arc-app .arc-personas .pc .pd { font-family: var(--mono); font-size: 9px; color: var(--ok-text); margin-top: 2px; }
 @media (max-width: 900px) { .arc-app .arc-personas .dduo { grid-template-columns: 1fr; } }
 .arc-app .arc-personas .pbk { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; border: 1px solid var(--line-2); border-radius: 13px; overflow: hidden; background: var(--line-2); }
 .arc-app .arc-personas .pbi { background: var(--panel); padding: 14px 16px; }
@@ -1313,11 +1343,6 @@
 .arc-app .arc-brain .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; }
 .arc-app .arc-brain .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-brain .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
-.arc-app .arc-brain .bstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-2); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; margin-top: 16px; }
-.arc-app .arc-brain .bstat { background: var(--panel); padding: 13px 16px; }
-.arc-app .arc-brain .bstat .sl { font-size: 10.5px; color: var(--muted); }
-.arc-app .arc-brain .bstat .sv { font-family: var(--serif); font-weight: 500; font-size: 23px; letter-spacing: -.02em; margin-top: 5px; color: var(--text); }
-.arc-app .arc-brain .bstat .sd { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-top: 3px; }
 .arc-app .arc-brain .covbanner { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: 11px; background: var(--accent-soft); padding: 11px 14px; }
 .arc-app .arc-brain .covbanner svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 1.8; flex-shrink: 0; }
 .arc-app .arc-brain .covbanner .ct { font-size: 12.5px; color: var(--text-2); }
@@ -1424,7 +1449,6 @@
 .arc-app .arc-brain .empty { color: var(--muted); font-size: 13px; padding: 30px 4px; }
 
 @media (max-width: 900px) {
-  .arc-app .arc-brain .bstats { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* ── Knowledge Web graph (ported from build-brain.html) ── */
@@ -1907,13 +1931,6 @@
 .arc-app .journeys .jr-modelval { font-size: 13px; font-weight: 600; color: var(--accent); }
 
 /* KPI row */
-.arc-app .journeys .jr-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
-.arc-app .journeys .jr-kpi { display: flex; flex-direction: column; gap: 3px; padding: 13px 15px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); }
-.arc-app .journeys .jr-klab { font-size: 11px; color: var(--muted); }
-.arc-app .journeys .jr-kval { font-size: 22px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.05; }
-.arc-app .journeys .jr-khint { font-size: 10.5px; color: var(--muted); }
-.arc-app .journeys .jr-kpi.t-green .jr-kval { color: var(--ok-text); }
-.arc-app .journeys .jr-kpi.t-amber .jr-kval { color: var(--warn-text); }
 
 /* Panels */
 .arc-app .journeys .jr-panel { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); padding: 16px 18px; margin-bottom: 16px; }
@@ -2031,7 +2048,6 @@
 .arc-app .journeys .jr-pill.t-vio { background: var(--jr-vio-soft); color: var(--jr-vio); }
 
 @media (max-width: 900px) {
-  .arc-app .journeys .jr-kpis { grid-template-columns: repeat(2, 1fr); }
   .arc-app .journeys .jr-grid { grid-template-columns: 1fr; }
   .arc-app .journeys .jr-rowhead { grid-template-columns: minmax(0, 1fr) auto 92px 62px 16px; }
   .arc-app .journeys .jr-span { display: none; }

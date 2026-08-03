@@ -1,4 +1,6 @@
+import { toBrandTokens } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getBrandProfileView } from "@/lib/brand-kit/profile-view";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
 import { resolveMediaGeneration } from "@/lib/media/enablement";
@@ -77,11 +79,22 @@ export default async function StudioPage() {
   // costs, shown here rather than only in Settings (BSR-515). Never throws.
   const spendMeter = await getMediaSpendMeter();
 
+  // The canvas paints with the Brand Kit's own colours — the same tokens the
+  // exporter resolves — so the preview is not a differently-coloured guess at
+  // the artifact (BSR-679). Null when there's no kit or the read failed; the
+  // canvas then uses the renderer's neutral defaults rather than inventing one.
+  const profile = ctx?.orgId && isSupabaseAdminConfigured() ? await getBusinessProfile(ctx.orgId).catch(() => null) : null;
+  const t = toBrandTokens(profile);
+  const brandTokens = profile
+    ? { primary: t.primary, secondary: t.secondary, accent: t.accent, dark: t.dark, light: t.light, displayName: t.displayName, shortMark: t.shortMark }
+    : null;
+
   return (
     <>
       <MediaSpendMeterBar meter={spendMeter} />
       <StudioView
       brandName={brandName}
+      brandTokens={brandTokens}
       libraryItems={libraryItems}
       live={live}
       campaigns={campaigns}
