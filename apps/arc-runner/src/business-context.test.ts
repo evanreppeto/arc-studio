@@ -76,6 +76,13 @@ describe("fromAppContext brand identity", () => {
     expect(text).toContain("Chicago's crew");
     expect(text).toContain("https://bsr.com");
   });
+  it("carries the operator's business description into the prompt", () => {
+    const ctx = fromAppContext({ ...baseApp, description: "Water, fire, and mold restoration for Chicago homeowners." });
+    expect(ctx.brandVoice).toContain("Water, fire, and mold restoration for Chicago homeowners.");
+  });
+  it("omits the description when the operator has not written one", () => {
+    expect(fromAppContext({ ...baseApp, description: null }).brandVoice).not.toContain("About:");
+  });
   it("omits empty palette slots and empty identity fields", () => {
     const ctx = fromAppContext({ ...baseApp, palette: { ...baseApp.palette, primary: emptyColor, accent: emptyColor, headingFont: "", bodyFont: "" }, logoUrl: null, tagline: null });
     const text = JSON.stringify(ctx);

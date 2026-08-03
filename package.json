@@ -32,6 +32,7 @@
     "diagnose:arc": "node scripts/diagnose-arc-connection.mjs",
     "diagnose:env": "tsx scripts/diagnose-env.ts",
     "backfill:embeddings": "node scripts/backfill-embeddings.mjs",
+    "backfill:brain-dedup": "tsx scripts/backfill-brain-dedup.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:guardrails:prod": "E2E_BASE_URL=https://arc-studio.ai playwright test e2e/guardrails.spec.ts",
