@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import { humanizePersonaLabel as humanizePersona, type AudienceResolution } from "@/domain";
 import { type AttachableMediaItem } from "@/lib/campaigns/attach-media";
@@ -16,6 +16,7 @@ import { diffLines } from "@/lib/campaigns/revision-diff";
 import { LOCKED_CLAIMS, MEASUREMENT_PLAN } from "@/lib/performance/measurement-copy";
 import { buildPerformanceLearning, type CampaignPerformancePanel, type PerformanceTrendPoint } from "@/lib/performance/campaign-panel";
 
+import { Modal } from "../../../_components/modal";
 import { ShareDialog } from "../../../_components/share-dialog";
 import { ExternalSendModal } from "./external-send-modal";
 import { attachCampaignMediaAction, decideCampaignAsset, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision } from "../actions";
@@ -98,18 +99,35 @@ function lifecycleTone(lifecycle: string): Tone {
   return "gray";
 }
 
-function MediaTile({ media }: { media: CampaignMediaAsset }) {
-  const bg = media.thumbnailUrl || (media.type === "image" ? media.url : null);
-  // First lineage row ("Made in Higgsfield · soul-x") captions the tile; the
-  // full lineage + prompt ride the native tooltip — a 4:3 tile has no room for
-  // a paragraph, but the reviewer hovering an AI tile should get the whole story.
+/** Step the lightbox, wrapping at both ends. Exported for test: the demo
+ *  fixtures only ever attach one media per deliverable, so the preview cannot
+ *  exercise the wrap. */
+export function stepMediaIndex(current: number, delta: number, length: number): number {
+  if (length <= 0) return 0;
+  return (((current + delta) % length) + length) % length;
+}
+
+const MEDIA_ORIGIN_LABEL: Record<CampaignMediaAsset["origin"], string> = {
+  generated: "AI generated",
+  attached: "Attached media",
+  referenced: "Referenced elsewhere",
+};
+
+function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () => void }) {
+  const thumb = media.thumbnailUrl || (media.type === "image" ? media.url : null);
+  const [failed, setFailed] = useState(false);
+  // First lineage row ("Made in Higgsfield · soul-x") captions the tile. The
+  // full lineage + prompt live in the lightbox, not a native tooltip — a
+  // tooltip is invisible to touch and to the keyboard, and the OS truncates a
+  // long prompt anyway.
   const lineageLine = media.lineage[0]?.[1] ?? null;
-  const tooltip = [...media.lineage.map(([, text]) => text), media.prompt ? `Prompt: ${media.prompt}` : null]
-    .filter(Boolean)
-    .join("\n");
   return (
-    <div className="mediatile" title={tooltip || undefined} style={bg ? { backgroundImage: `url(${bg})` } : undefined}>
-      <div className="mtscrim" />
+    <button type="button" className="mediatile" onClick={onOpen} aria-label={`Open ${media.title} at full size`}>
+      {thumb && !failed ? (
+        // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+        <img className="mtimg" src={thumb} alt={media.title} loading="lazy" onError={() => setFailed(true)} />
+      ) : null}
+      <span className="mtscrim" />
       <span className={`mtbadge ${media.origin === "generated" ? "ai" : "real"}`}>
         {media.origin === "generated" ? "AI" : media.type}
       </span>
@@ -117,7 +135,182 @@ function MediaTile({ media }: { media: CampaignMediaAsset }) {
         {media.title}
         {lineageLine ? <em className="mtlineage">{lineageLine}</em> : null}
       </span>
+      <span className="mtzoom" aria-hidden>
+        {svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M11 8v6M8 11h6"/>')}
+      </span>
+    </button>
+  );
+}
+
+/** The media itself, full size. Owns its own load-failure state so the parent
+ *  can reset it with a key rather than an effect. */
+function LightboxStage({ media }: { media: CampaignMediaAsset }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <p className="lbfail">
+        This file didn&apos;t load. It may have moved, or the link may have expired — open the original to check.
+      </p>
+    );
+  }
+  if (media.type === "image") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+      <img className="lbimg" src={media.url} alt={media.title} onError={() => setFailed(true)} />
+    );
+  }
+  if (media.type === "video") {
+    return (
+      <video className="lbimg" src={media.url} poster={media.thumbnailUrl ?? undefined} controls onError={() => setFailed(true)} />
+    );
+  }
+  // Embeds, files and links are somebody else's page. Show what we already
+  // have and hand over the link, rather than iframing a URL that arrived from
+  // a tool result into an authenticated shell.
+  return (
+    <div className="lbnoprev">
+      {media.thumbnailUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+        <img className="lbimg" src={media.thumbnailUrl} alt={media.title} onError={() => setFailed(true)} />
+      ) : null}
+      <p className="lbfail">No inline preview for this {media.type}. Open the original to view it.</p>
     </div>
+  );
+}
+
+/**
+ * The creative, at a size you can actually judge.
+ *
+ * The tile is a 96px thumbnail, and Approve is one button below it — reviewing
+ * a campaign image meant squinting at a cropped 4:3 crop of it. This is the
+ * full-size view: uncropped (the tile crops, this letterboxes), with the
+ * provenance the tile has no room for as readable text rather than a hover
+ * tooltip. Built on the app's one Modal so Escape, scroll-lock, and focus
+ * behave the same as every other dialog here.
+ */
+function MediaLightbox({
+  items,
+  index,
+  onClose,
+  onStep,
+}: {
+  items: CampaignMediaAsset[];
+  index: number;
+  onClose: () => void;
+  onStep: (delta: number) => void;
+}) {
+  const media = items[index];
+  const many = items.length > 1;
+
+  useEffect(() => {
+    if (!many) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        onStep(1);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        onStep(-1);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [many, onStep]);
+
+  if (!media) return null;
+
+  // Lineage tuples are [icon key, text] — the key drives the dot, exactly as
+  // the Library card renders it. It is not a label; don't print it as one.
+  const rows: Array<[string, string]> = [
+    ["Source", MEDIA_ORIGIN_LABEL[media.origin]],
+    ["Type", media.mimeType || media.type],
+    ["Found in", media.source],
+  ];
+  if (media.description) rows.push(["Description", media.description]);
+  if (media.virality) {
+    // The score never travels without its disclaimer — a bare "82" reads as a
+    // measurement, and neither of these is one.
+    rows.push(
+      media.virality.kind === "predicted"
+        ? [
+            "Viral potential",
+            `${media.virality.viralPotential}/100 — hook ${media.virality.hookScore}, sustain ${media.virality.sustain}`,
+          ]
+        : [
+            "Creative quality",
+            media.virality.factors.length
+              ? `${media.virality.qualityScore}/100 — ${media.virality.factors.join(", ")}`
+              : `${media.virality.qualityScore}/100`,
+          ],
+      ["Note", media.virality.disclaimer],
+    );
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={media.title}
+      description={MEDIA_ORIGIN_LABEL[media.origin]}
+      width={920}
+      footer={
+        <>
+          {many && (
+            <div className="lbstepper">
+              <button type="button" className="cbtn ghost" onClick={() => onStep(-1)} aria-label="Previous media">
+                {svg('<path d="M15 5l-7 7 7 7"/>')}
+              </button>
+              <span className="lbcount">
+                {index + 1} of {items.length}
+              </span>
+              <button type="button" className="cbtn ghost" onClick={() => onStep(1)} aria-label="Next media">
+                {svg('<path d="M9 5l7 7-7 7"/>')}
+              </button>
+            </div>
+          )}
+          <a className="cbtn ghost" href={media.url} target="_blank" rel="noreferrer noopener">
+            Open original
+          </a>
+          <button type="button" className="cbtn gold" onClick={onClose}>
+            Done
+          </button>
+        </>
+      }
+    >
+      {/* Keyed on the asset so stepping to the next one re-arms the load —
+          a broken file must not leave its error over the working one. */}
+      <div className="lbstage">
+        <LightboxStage key={media.id} media={media} />
+      </div>
+      <dl className="lbmeta">
+        {rows.map(([label, value], i) => (
+          <div className="lbrow" key={`${label}-${i}`}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {media.lineage.length > 0 && (
+        <div className="lbsec">
+          <b>Provenance lineage</b>
+          <div className="lblineage">
+            {media.lineage.map(([kind, text], i) => (
+              <div className="lbstep" key={`${text}-${i}`}>
+                <span className={`lbdot pv-${kind}`} />
+                <span>{text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {media.prompt && (
+        <div className="lbsec lbprompt">
+          <b>Generation prompt</b>
+          <p>{media.prompt}</p>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -386,11 +579,20 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   const [editBody, setEditBody] = useState("");
   // Media attach: which asset's picker is open.
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  // Full-size media preview: the tiles of one deliverable, and which is open.
+  const [lightbox, setLightbox] = useState<{ items: CampaignMediaAsset[]; index: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [confirmLaunch, setConfirmLaunch] = useState(false);
   const [launchErr, setLaunchErr] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const stepLightbox = useCallback((delta: number) => {
+    setLightbox((current) =>
+      current ? { ...current, index: stepMediaIndex(current.index, delta, current.items.length) } : current,
+    );
+  }, []);
+  const closeLightbox = useCallback(() => setLightbox(null), []);
 
   const persona = humanizePersona(campaign.persona);
   const renderableMediaList = media.filter((m) => m.origin !== "referenced");
@@ -635,8 +837,12 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                         {asset.preview && <div className="dbody">{asset.preview}</div>}
                         {assetMedia.length > 0 && (
                           <div className="mediagrid">
-                            {assetMedia.map((m) => (
-                              <MediaTile key={m.id} media={m} />
+                            {assetMedia.map((m, mediaIndex) => (
+                              <MediaTile
+                                key={m.id}
+                                media={m}
+                                onOpen={() => setLightbox({ items: assetMedia, index: mediaIndex })}
+                              />
                             ))}
                           </div>
                         )}
@@ -1060,8 +1266,14 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
             <div className="snsec">
               <h3 className="snh">Creative</h3>
               <div className="mediagrid">
-                {renderableMediaList.slice(0, 4).map((m) => (
-                  <MediaTile key={m.id} media={m} />
+                {renderableMediaList.slice(0, 4).map((m, mediaIndex) => (
+                  // Opens against the whole list, not the visible four — the
+                  // arrows should reach the creative the strip had to cut.
+                  <MediaTile
+                    key={m.id}
+                    media={m}
+                    onOpen={() => setLightbox({ items: renderableMediaList, index: mediaIndex })}
+                  />
                 ))}
               </div>
             </div>
@@ -1090,6 +1302,10 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
           </div>
         </aside>
       </div>
+
+      {lightbox ? (
+        <MediaLightbox items={lightbox.items} index={lightbox.index} onClose={closeLightbox} onStep={stepLightbox} />
+      ) : null}
 
       {externalSendFor ? (
         <ExternalSendModal

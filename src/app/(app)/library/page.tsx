@@ -137,7 +137,7 @@ export default async function LibraryPage() {
       }),
       // Campaign options for the selection bar's "Add to campaign" picker.
       // Correctly silent (BSR-546): picker options; an empty dropdown is visible.
-      listCampaignNames(ctx.orgId).catch(() => []),
+      listCampaignNames(ctx.orgId, undefined, ctx.workspaceId).catch(() => []),
     ]);
     if (data && data.status === "live") {
       return (
