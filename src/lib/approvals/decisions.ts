@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 import { getSupabaseAdminClient } from "../supabase/server";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 export const APPROVAL_DECISION_ACTIONS = ["approve", "reject", "revise", "archive"] as const;
 
@@ -70,12 +71,12 @@ export async function decideApprovalItem(
     throw new Error(`approval_items update failed: ${itemUpdateError.message}`);
   }
 
+  // The decision inherits both from the item it decides — approval_items.org_id is
+  // NOT NULL and its workspace_id landed in BSR-710. Unlike an ambient session
+  // lookup this cannot misfile the row for a session-less caller.
   const { error: decisionError } = await client.from("approval_decisions").insert({
-    // The decision inherits the org of the item it decides — approval_items.org_id is
-    // NOT NULL, so this is always present, and unlike an ambient session lookup it
-    // cannot misfile the row for a session-less caller. approval_decisions has no
-    // workspace_id column, so only org_id rides along.
     org_id: item.org_id,
+    ...(await workspaceIdFields(client, item.org_id, { approvalItemId })),
     approval_item_id: approvalItemId,
     decision: decision.decisionKind,
     decided_by: reviewer,
@@ -240,8 +241,12 @@ async function updateCampaignAfterDecision(input: {
   }
 
   const { error: eventError } = await input.client.from("campaign_events").insert({
-    // Inherited from the approval item; campaign_events has no workspace_id column.
+    // Inherited from the approval item, workspace included (BSR-710/720).
     org_id: input.orgId,
+    ...(await workspaceIdFields(input.client, input.orgId, {
+      approvalItemId: input.approvalItemId,
+      campaignId: input.campaignId,
+    })),
     campaign_id: input.campaignId,
     campaign_asset_id: input.campaignAssetId,
     approval_item_id: input.approvalItemId,
