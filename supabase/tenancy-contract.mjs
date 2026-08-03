@@ -201,22 +201,11 @@ export const TENANCY_CONTRACT = {
   // external_object_mappings graduated to Category 2 in BSR-640; sync_conflicts
   // stays here until something actually reconciles a two-way sync.
   sync_conflicts: "unclassified",
-  // Ad-hoc backups from the 2026-07-29 status migration, created by hand — they
-  // exist in prod but no migration builds them, so a fresh database does not have
-  // them. RLS is DISABLED and `anon` holds full DML, verified AS the role: it can
-  // read all 325 rows and could truncate them.
-  //
-  // Deliberately NOT called a leak. The tables have exactly two columns, `id` and
-  // `status` — no names, emails or phone numbers — and every row belongs to the
-  // archived seed org. It is bad hygiene and a pattern that would leak next time,
-  // not an exposure of anyone's data.
-  //
-  // Kept in the contract rather than ignored so that the one thing which cannot
-  // see them stays visible: assertion 5 of rls-cross-tenant.sql only checks tables
-  // carrying org_id, and these carry none. Deletion tracked in BSR-651.
-  status_backup_20260729_jobs: "unclassified",
-  status_backup_20260729_leads: "unclassified",
-  status_backup_20260729_outcomes: "unclassified",
+  // The status_backup_20260729_* tables were listed here while they existed in
+  // prod but in no migration — RLS disabled, anon-writable, and invisible to
+  // rls-cross-tenant.sql assertion 5 because they carried no org_id. Dropped in
+  // 20260803230000_drop_status_backups.sql (BSR-651) after confirming all 325 rows
+  // still matched the live tables exactly, so nothing was lost.
 };
 
 /** Categories that require a tenant column, and which columns those are. */
