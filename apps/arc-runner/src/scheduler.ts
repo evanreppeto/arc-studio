@@ -9,10 +9,15 @@
  *   - a PER-WORKSPACE in-flight cap plus round-robin dispatch, so one workspace
  *     flooding wakes can't monopolize the slots and starve the others.
  *
- * In-memory by design: the app's `agent_tasks` inbox is the durable queue (a task
- * is claimed on delivery and reclaimed if it goes stale), so a pending/dropped job
- * is never lost — the inbox poll / stale-reclaim path re-surfaces it. Per instance:
- * if the runner scales horizontally each instance bounds its own concurrency.
+ * In-memory by design, and note what that costs: `agent_tasks` is a durable
+ * RECORD, not a durable queue. There is no inbox poll and no stale-reclaim path
+ * — nothing in this runner or in the app's crons drains rows in `queued`. The
+ * wake POST is the only thing that ever starts a task, so a job dropped after
+ * the wake (process restart, crash) is NOT re-surfaced, and a task inserted
+ * without a wake never runs at all. That second case shipped: campaign asset
+ * revisions wrote a perfect `queued` row and were never dispatched (BSR-695).
+ * Anything that enqueues work must wake the runner itself. Per instance: if the
+ * runner scales horizontally each instance bounds its own concurrency.
  */
 
 import { captureRunnerError } from "./observability";
