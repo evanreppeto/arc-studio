@@ -39,6 +39,16 @@
 // check prints the outstanding count on every run so the remaining work stays
 // visible instead of quietly becoming permanent.
 
+// `hasColumn: true` means the workspace_id COLUMN exists even though the table is
+// still `pending` (not yet NOT NULL / RLS-narrowed). It is what
+// src/lib/db/workspace-writers.test.ts keys on: the moment a column lands, every
+// insert site into that table must stamp it, whether or not the lock has shipped.
+//
+// That distinction is not academic. BSR-720 found 15 insert sites still writing
+// org_id alone AFTER the Wave 1 columns landed — one of which had already broken
+// Arc's campaign runs in production, because campaigns.workspace_id was NOT NULL
+// by then. Waiting for Phase B to check writers is too late.
+
 /** Shared reason for the tables awaiting the Group A / Group B boundary migration. */
 const GROUP_A = "BSR-637 Group A — gains workspace_id in the boundary migration";
 const GROUP_B = "BSR-637 Group B — workspace_id/org_id exists but is still nullable";
@@ -82,14 +92,14 @@ export const TENANCY_CONTRACT = {
 
   // ── Category 2: workspace-owned — everything generated ───────────────────
   campaigns: "workspace",
-  campaign_assets: { category: "workspace", pending: GROUP_A },
-  campaign_events: { category: "workspace", pending: GROUP_A },
-  campaign_dispatches: { category: "workspace", pending: GROUP_A },
-  campaign_results: { category: "workspace", pending: GROUP_A },
-  approval_items: { category: "workspace", pending: GROUP_A },
-  approval_decisions: { category: "workspace", pending: GROUP_A },
-  approval_recommendations: { category: "workspace", pending: GROUP_A },
-  agent_outputs: { category: "workspace", pending: GROUP_A },
+  campaign_assets: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  campaign_events: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  campaign_dispatches: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  campaign_results: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  approval_items: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  approval_decisions: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  approval_recommendations: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  agent_outputs: { category: "workspace", pending: GROUP_A, hasColumn: true },
   knowledge_nodes: { category: "workspace", pending: GROUP_A },
   knowledge_edges: { category: "workspace", pending: GROUP_A },
   vault_notes: { category: "workspace", pending: GROUP_A },
@@ -114,17 +124,17 @@ export const TENANCY_CONTRACT = {
   agent_api_tokens: "workspace",
   workspace_invites: "workspace",
   workspace_memberships: "workspace",
-  arc_conversations: { category: "workspace", pending: GROUP_B },
-  arc_messages: { category: "workspace", pending: GROUP_B },
-  arc_projects: { category: "workspace", pending: GROUP_B },
-  arc_saved_items: { category: "workspace", pending: GROUP_B },
-  audit_events: { category: "workspace", pending: GROUP_B },
-  support_requests: { category: "workspace", pending: GROUP_B },
-  ai_usage_events: { category: "workspace", pending: GROUP_B },
-  connector_usage_events: { category: "workspace", pending: GROUP_B },
-  connector_spend_budgets: { category: "workspace", pending: GROUP_B },
-  workspace_connectors: { category: "workspace", pending: GROUP_B },
-  workspace_media_config: { category: "workspace", pending: GROUP_B },
+  arc_conversations: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  arc_messages: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  arc_projects: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  arc_saved_items: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  audit_events: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  support_requests: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  ai_usage_events: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  connector_usage_events: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  connector_spend_budgets: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  workspace_connectors: { category: "workspace", pending: GROUP_B, hasColumn: true },
+  workspace_media_config: { category: "workspace", pending: GROUP_B, hasColumn: true },
 
   // Import provenance (BSR-640). An import artifact belongs to the workspace that
   // triggered the run — the connector is configured per workspace even though the
