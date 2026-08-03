@@ -4736,6 +4736,7 @@ export type Database = {
           created_at: string
           detected_by: string
           dismissed_at: string | null
+          dismissed_reason: string | null
           evidence: Json
           id: string
           kind: string
@@ -4758,6 +4759,7 @@ export type Database = {
           created_at?: string
           detected_by?: string
           dismissed_at?: string | null
+          dismissed_reason?: string | null
           evidence?: Json
           id?: string
           kind: string
@@ -4780,6 +4782,7 @@ export type Database = {
           created_at?: string
           detected_by?: string
           dismissed_at?: string | null
+          dismissed_reason?: string | null
           evidence?: Json
           id?: string
           kind?: string

@@ -221,6 +221,16 @@ function workspaceStateBlock(s: WorkspaceSummary | null | undefined): string | n
           "  They are counts only: to name or use specific records, read them with the CRM tools.",
         ]
       : []),
+    // What this operator keeps saying no to (BSR-686). Only repeated patterns
+    // reach here — a single dismissal is an opinion about one record, and
+    // treating it as a rule would make Arc skittish rather than better.
+    ...(s.dismissalPatterns && s.dismissalPatterns.length > 0
+      ? [
+          "- This operator has repeatedly dismissed:",
+          ...s.dismissalPatterns.map((line) => `  · ${line}`),
+          "  Treat these as standing guidance for what to propose next, not as a ban: the pattern says what has not been worth their time, and a genuinely stronger signal of the same kind is still worth raising.",
+        ]
+      : []),
   ].join("\n");
 }
 

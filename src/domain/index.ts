@@ -136,3 +136,6 @@ export * from "./persona-accent";
 
 // What the app's invented words mean (BSR-659). Render with <Define>.
 export * from "./definitions";
+
+// Why an operator dismissed an opportunity, and what Arc should learn (BSR-686).
+export * from "./dismissal-reasons";

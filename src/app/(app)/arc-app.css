@@ -1782,6 +1782,12 @@
 .arc-app .arc-opps .triage-menu { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 21; min-width: 128px; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .9); }
 .arc-app .arc-opps .triage-menu button { text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: .12s; }
 .arc-app .arc-opps .triage-menu button:hover { background: var(--inset); color: var(--text); }
+/* The dismiss reasons are sentences, not "3 days" — they need the room, or every
+   item wraps to two lines and the picker stops being scannable (BSR-686). */
+.arc-app .arc-opps .triage-menu-wide { min-width: 190px; }
+/* "Just dismiss" is the no-reason escape hatch. Set apart and quieter than the
+   reasons above it, so the useful answers read as the default. */
+.arc-app .arc-opps .triage-menu .triage-menu-plain { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); }
 .arc-app .arc-opps .empty { padding: 60px 24px; color: var(--muted); font-size: 13px; }
 /* Empty inbox: the two-pane layout is gone, so this state carries the page title itself. */
 .arc-app .arc-opps .oempty { padding: 56px 34px; max-width: 62ch; }
