@@ -18,6 +18,12 @@ export type WorkspaceSummary = {
     leads: number | null;
     campaigns: number | null;
   } | null;
+  /**
+   * Repeated dismissal patterns, already phrased as what to change (BSR-686).
+   * Optional for the same reason as `records`: an older app deploy will not send
+   * it. Absent and empty mean the same thing here — no block is rendered.
+   */
+  dismissalPatterns?: string[] | null;
 };
 
 /**

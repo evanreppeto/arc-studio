@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import {
   buildCampaignSeedFromOpportunity,
   isAllowedPersona,
+  type DismissReason,
   type OpportunityPackageBrief,
   RESTORATION_FOCUS_VALUES,
 } from "@/domain";
@@ -63,13 +64,19 @@ export type OpportunityTriageResult = { ok: true; persisted: boolean } | { ok: f
  * outside world: triage records a decision, never sends or contacts anything. Gated
  * by requireOperator() and org-scoped. `persisted: false` is the honest offline signal.
  */
-export async function dismissOpportunityAction(opportunityId: string): Promise<OpportunityTriageResult> {
+export async function dismissOpportunityAction(
+  opportunityId: string,
+  reason?: DismissReason | null,
+): Promise<OpportunityTriageResult> {
   await requireOperator();
   if (!opportunityId) return { ok: false, error: "Missing opportunity." };
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
   try {
     const ctx = await getCurrentWorkspaceContext();
-    await dismissOpportunity(opportunityId, undefined, { orgId: ctx.orgId });
+    // `reason` is optional by design (BSR-686): a dismissal that says nothing is
+    // still a dismissal, and making it mandatory would cost the volume that
+    // makes the signal worth having.
+    await dismissOpportunity(opportunityId, reason ?? null, undefined, { orgId: ctx.orgId });
     revalidatePath("/opportunities");
     return { ok: true, persisted: true };
   } catch (error) {
