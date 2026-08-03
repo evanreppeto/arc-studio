@@ -1997,6 +1997,17 @@
 .arc-app .journeys .jr-anon { font-size: 9px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 4px; }
 .arc-app .journeys .jr-fbar { height: 22px; border-radius: 6px; background: var(--inset); overflow: hidden; }
 .arc-app .journeys .jr-fbar i { display: block; height: 100%; border-radius: 6px; min-width: 3px; background: var(--accent); transition: width 0.4s var(--ease); }
+/* The attribution choice is collapsed by default: the sentence above says what
+   the numbers mean, and the control is there for anyone who wants it without
+   being the first thing an owner-operator meets (BSR-669). */
+.arc-app .journeys .jr-lenswrap { margin-top: 8px; }
+.arc-app .journeys .jr-lenswrap > summary { cursor: pointer; font-size: 10.5px; color: var(--muted); list-style: none; }
+.arc-app .journeys .jr-lenswrap > summary::-webkit-details-marker { display: none; }
+.arc-app .journeys .jr-lenswrap > summary::before { content: "▸ "; }
+.arc-app .journeys .jr-lenswrap[open] > summary::before { content: "▾ "; }
+.arc-app .journeys .jr-lenswrap > summary:hover { color: var(--text-2); }
+.arc-app .journeys .jr-lenswrap .jr-lens { margin-top: 8px; flex-wrap: wrap; }
+
 .arc-app .journeys .jr-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; font-size: 10.5px; color: var(--muted); }
 .arc-app .journeys .jr-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .arc-app .journeys .jr-legend i { width: 8px; height: 8px; border-radius: 2px; }
