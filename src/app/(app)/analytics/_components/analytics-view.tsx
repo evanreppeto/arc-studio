@@ -120,7 +120,7 @@ function CampaignTable({ rows }: { rows: CampaignPerformanceRow[] }) {
   return (
     <div className="blk camps" style={{ marginTop: 20 }}>
       <h2>
-        Campaign performance <span className="tg wired">wired · attribution</span>
+        Campaign performance
         <span className="camphint">Open a campaign for its full performance breakdown</span>
       </h2>
       <div className="ctbl">
@@ -405,7 +405,6 @@ export function AnalyticsView({
                   <div className="kpi" key={k.label}>
                     <div className="kl">
                       {k.label}
-                      <span className={`tg ${k.tag === "wired" ? "wired" : "sync"}`}>{k.tagLabel}</span>
                     </div>
                     <div className="kv">{k.value}</div>
                     <div className={`kd ${k.dir}`}>{k.dir === "up" ? "▲" : k.dir === "dn" ? "▼" : "—"} {k.deltaLabel}</div>
@@ -439,7 +438,7 @@ export function AnalyticsView({
               <div className="grid2">
                 <div className="col">
                   <div className="blk">
-                    <h2>Funnel <span className="tg wired">wired · CRM</span></h2>
+                    <h2>Funnel</h2>
                     <div className="funnel">
                       {overview.funnel.map((s) => (
                         <div className="fstage" key={s.label}>
@@ -451,11 +450,11 @@ export function AnalyticsView({
                     </div>
                   </div>
                   <div className="blk">
-                    <h2>Revenue by persona <span className="tg wired">wired · outcomes</span></h2>
+                    <h2>Revenue by persona</h2>
                     <Breakdown rows={overview.revenueByPersona} />
                   </div>
                   <div className="blk">
-                    <h2>Leads by source <span className="tg wired">wired · CRM</span></h2>
+                    <h2>Leads by source</h2>
                     <Breakdown rows={overview.leadsBySource} />
                   </div>
                 </div>
@@ -492,16 +491,16 @@ export function AnalyticsView({
 
           {view === "personas" && (
             <>
-              <div className="vhead"><div><h2 className="pt">By persona</h2><div className="psub">Revenue per persona this period · wired from outcomes</div></div></div>
-              <div className="blk"><h2>Revenue by persona <span className="tg wired">wired · outcomes</span></h2><Breakdown rows={overview.revenueByPersona} /></div>
+              <div className="vhead"><div><h2 className="pt">By persona</h2><div className="psub">Revenue per persona this period</div></div></div>
+              <div className="blk"><h2>Revenue by persona</h2><Breakdown rows={overview.revenueByPersona} /></div>
             </>
           )}
 
           {view === "channels" && (
             <>
               <div className="vhead"><div><h2 className="pt">By channel</h2><div className="psub">Leads, booked work, revenue, spend, and ROAS per channel · attributed from CRM outcomes</div></div></div>
-              <div className="blk"><h2>Channel performance <span className="tg wired">wired · attribution</span></h2><ChannelTable rows={channels} /></div>
-              <div className="blk" style={{ marginTop: 18 }}><h2>Leads by source <span className="tg wired">wired · CRM</span></h2><Breakdown rows={overview.leadsBySource} /></div>
+              <div className="blk"><h2>Channel performance</h2><ChannelTable rows={channels} /></div>
+              <div className="blk" style={{ marginTop: 18 }}><h2>Leads by source</h2><Breakdown rows={overview.leadsBySource} /></div>
             </>
           )}
 

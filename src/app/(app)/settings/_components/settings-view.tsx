@@ -714,7 +714,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
       const h = agentConnection.health;
       const seen = h.lastSeenAt ? new Date(h.lastSeenAt).toLocaleString() : null;
       rows.push({
-        label: "Arc runner",
+        label: "Arc agent",
         desc: !agentConnection.enabled ? "Disabled for this workspace." : h.lastError ? h.lastError : seen ? `Last seen ${seen}.` : "No check-in recorded yet.",
         kind: !agentConnection.enabled ? "warn" : h.lastStatus === "ok" ? "ok" : h.lastStatus ? "err" : "warn",
         value: !agentConnection.enabled ? "Disabled" : h.lastStatus === "ok" ? "Healthy" : h.lastStatus ?? "Never checked in",
@@ -855,7 +855,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
       <>
         <Head
           t="Health"
-          d="Whether prod is actually working, in one place — env readiness, connectors, the runner, and what has recently failed. Platform-wide, across every workspace."
+          d="Whether production is actually working, in one place — configuration, connections, the Arc agent, and what has recently failed. Platform-wide, across every workspace."
         />
         <TestAlertRow />
         {/* The three answers an operator actually needs. Everything below is the
@@ -914,8 +914,8 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
           </Panel>
         ))}
 
-        <Panel title="Runner" tag={<Pill kind={health.runner.configured ? "ok" : "off"}>{health.runner.configured ? "Configured" : "Not configured"}</Pill>}>
-          <Row label="Last heartbeat" desc={health.runner.lastError || "The runner is webhook-driven, so a quiet period is not by itself a fault."}>
+        <Panel title="Arc agent" tag={<Pill kind={health.runner.configured ? "ok" : "off"}>{health.runner.configured ? "Configured" : "Not configured"}</Pill>}>
+          <Row label="Last heartbeat" desc={health.runner.lastError || "Arc only checks in when there is work, so a quiet period is not by itself a fault."}>
             <Pill kind={health.runner.lastStatus === "ok" ? "ok" : health.runner.lastStatus ? "err" : "warn"}>
               {health.runner.lastSeenAt ? relTime(health.runner.lastSeenAt) : "Never seen"}
             </Pill>
@@ -2185,8 +2185,8 @@ function ConnectorModal({ view, configured, hubspotOAuthConfigured = false, goog
           <div className="cxm-sec">
             <div className="cxm-label">Option 1 — Cloud API key (recommended for teams)</div>
             <p className="cxm-hint">
-              Create a key at cloud.higgsfield.ai → API keys and paste it here. This is the supported path for the
-              hosted runner: it belongs to your Higgsfield organization, uses your credits, and has no signed-in
+              Create a key at cloud.higgsfield.ai → API keys and paste it here. This is the supported path when Arc runs
+              in the cloud: the key belongs to your Higgsfield organization, uses your credits, and has no signed-in
               session to expire. The key is verified with Higgsfield before it&apos;s stored.
             </p>
             <div className="cxm-field">

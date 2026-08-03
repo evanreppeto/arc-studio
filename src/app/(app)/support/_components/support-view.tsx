@@ -42,8 +42,8 @@ const ANSWERS: { q: string; a: React.ReactNode }[] = [
     q: "Arc isn't replying, or a run looks stuck",
     a: (
       <>
-        Check <b>Settings → System status</b> first — it reports whether the Arc runner, database, and model
-        connections are reachable. A run that stalls mid-thought usually means the runner lost its connection;
+        Check <b>Settings → System status</b> first — it reports whether Arc, your data, and its model
+        connections are reachable. A run that stalls mid-thought usually means Arc lost its connection;
         starting a new conversation is the fastest unblock. If status is green and Arc still won&rsquo;t answer,
         report it below with the conversation open in another tab.
       </>
