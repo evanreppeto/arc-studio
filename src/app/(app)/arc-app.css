@@ -1609,7 +1609,10 @@
 .arc-app .pager .rpp { display: flex; align-items: center; gap: 7px; }
 .arc-app .pager select { background: var(--inset); border: 1px solid var(--line-2); border-radius: 7px; color: var(--text-2); font-family: inherit; font-size: 12px; padding: 4px 7px; cursor: pointer; }
 .arc-app .pager .pgbtn { width: 28px; height: 28px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: 0.14s; }
-.arc-app .pager .pgbtn:hover { border-color: var(--accent-border); color: var(--text); }
+.arc-app .pager .pgbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
+/* First/last page. Matches the Brain pager's disabled treatment so the two
+   pagers in the app read the same. */
+.arc-app .pager .pgbtn:disabled { opacity: 0.4; cursor: default; }
 .arc-app .pager .pgbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
 .arc-app .arc-grid .dt thead th.cselect, .arc-app .arc-grid .dt tbody td.cselect { width: 40px; padding-left: 16px; cursor: default; }
 .arc-app .arc-grid .dt thead th.cnum, .arc-app .arc-grid .dt tbody td.cnum { text-align: right; }
