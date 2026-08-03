@@ -130,6 +130,11 @@ export * from "./brain-dedup-backfill";
 // spelling a status label into a component.
 export * from "./vocabulary";
 
+// Does a rendered string look like a stored value rather than language (BSR-709).
+// The predicate behind the dev-only DOM check; the source scanners in
+// plumbing-vocabulary.test.ts cannot see this class.
+export * from "./identifier-leak";
+
 // One colour per persona, everywhere (BSR-661). Import personaAccent rather
 // than re-deriving a hue from a regex ladder.
 export * from "./persona-accent";
