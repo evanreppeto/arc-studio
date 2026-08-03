@@ -6,6 +6,7 @@ import { type CsvColumnOverrides } from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { runCsvImport } from "@/lib/connectors/import";
+import { reverseImportRun } from "@/lib/import-runs/reverse";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -79,6 +80,32 @@ export async function previewCsvImportAction(input: {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "That preview could not run." };
   }
+}
+
+/**
+ * Undo a past import (BSR-643). Re-checks reversibility inside
+ * `reverseImportRun` rather than trusting the page that rendered the button — a
+ * run can stop being reversible between render and click.
+ */
+export async function reverseImportRunAction(input: { importRunId: string }): Promise<CommitResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect this workspace to a database first." };
+
+  const scope = await tenant();
+  if (!scope) return { ok: false, error: "No active workspace." };
+
+  const outcome = await reverseImportRun(scope, input.importRunId);
+  if (!outcome.ok) return { ok: false, error: outcome.error };
+
+  revalidatePath("/crm/import");
+  revalidatePath("/crm");
+  return {
+    ok: true,
+    message:
+      `Undone: removed ${outcome.deleted} record${outcome.deleted === 1 ? "" : "s"} it created` +
+      (outcome.restored ? `, restored ${outcome.restored} it had changed` : "") +
+      (outcome.skipped ? `. ${outcome.skipped} could not be restored — no saved snapshot.` : "."),
+  };
 }
 
 /** Commit the import the operator just previewed. */
