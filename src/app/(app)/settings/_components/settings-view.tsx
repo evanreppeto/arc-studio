@@ -90,6 +90,9 @@ const ICON: Record<string, string> = {
   team: '<circle cx="8" cy="9" r="2.5"/><circle cx="16" cy="9" r="2.5"/><path d="M3 19c0-3 2-4.5 5-4.5M21 19c0-3-2-4.5-5-4.5M9 19c0-2 1.5-3 3-3s3 1 3 3"/>',
   workspaces: '<rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><rect x="14" y="14" width="7" height="6" rx="1.5"/>',
   connections: '<path d="M8 12l-3 3a3 3 0 004 4l3-3M16 12l3-3a3 3 0 00-4-4l-3 3M9 15l6-6"/>',
+  // Two form inputs of unequal width — "the shape of a record". Deliberately not
+  // the four-square grid (overview/workspaces) or the CRM toolbar's column glyph.
+  records: '<rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="12" height="5" rx="1.5"/>',
   agent: '<rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 8V5M9 13h.01M15 13h.01M9 16h6"/>',
   media: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
   account: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/>',
@@ -101,9 +104,12 @@ const CHECK = '<path d="M5 12l4 4L19 6"/>';
 const Ic = ({ d }: { d: string }) => <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: d }} />;
 
 const NAVGROUPS = [
-  { g: "WORKSPACE", items: [["overview", "Overview"], ["general", "Organization & brand"], ["appearance", "Appearance"], ["team", "Team"], ["workspaces", "Workspaces"]] },
+  // "Records" holds both halves of the CRM schema — the fields on a record and
+  // the stages it moves through — as sub-tabs. They were two rail rows under
+  // their own RECORDS heading, which spent a group header and two rows on one
+  // idea and read as two unrelated screens.
+  { g: "WORKSPACE", items: [["overview", "Overview"], ["general", "Organization & brand"], ["appearance", "Appearance"], ["team", "Team"], ["workspaces", "Workspaces"], ["records", "Records"]] },
   { g: "ARC", items: [["connections", "Connections"]] },
-  { g: "RECORDS", items: [["fields", "Custom fields"], ["stages", "Pipeline stages"]] },
   { g: "ACCOUNT", items: [["account", "Account"], ["usage", "Usage & billing"]] },
   { g: "ADVANCED", items: [["media", "Media models"], ["system", "System status"]] },
 ] as const;
@@ -115,7 +121,19 @@ const SUBTABS: Record<string, string[]> = {
   team: ["Members", "Invites", "Roles", "Activity"],
   connections: ["Live", "Roadmap"],
   media: ["Defaults", "Roster"],
+  records: ["Fields", "Stages"],
   usage: ["Overview", "Connectors", "By day", "By model", "Recent"],
+};
+
+/**
+ * Sections that used to have their own rail row, mapped to where they live now.
+ * A `?s=fields` link someone saved (or a CRM link written before the merge) has
+ * to keep landing on the fields editor rather than silently falling back to the
+ * overview.
+ */
+const LEGACY_SECTIONS: Record<string, { section: string; tab: string }> = {
+  fields: { section: "records", tab: "Fields" },
+  stages: { section: "records", tab: "Stages" },
 };
 const SECTION_LABEL: Record<string, string> = {
   ...Object.fromEntries(NAVGROUPS.flatMap((g) => g.items.map((it) => [it[0], it[1]]))),
@@ -133,7 +151,7 @@ const SECTION_KEYWORDS: Record<string, string> = {
   team: "members invite invitation role permission access seat",
   workspaces: "switch organization org tenant",
   connections: "integration api token credential connector gemini higgsfield mcp vault",
-  stages: "pipeline stage status funnel column won lost qualified closed rename reorder archive vocabulary",
+  records: "custom field property attribute column schema text number date choice currency link record type pipeline stage status funnel won lost qualified closed rename reorder archive vocabulary",
   media: "models image video audio gemini veo higgsfield generation default aspect",
   account: "profile photo security sign-in login session sign out",
   usage: "billing cost spend tokens runs plan cap invoice budget",
@@ -635,6 +653,11 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
   const [modelSel, setModelSel] = useState<RosterModel | null>(null);
   const [sub, setSub] = useState<Record<string, string>>({});
   const [connSel, setConnSel] = useState<string | null>(null);
+  // Which CRM object a deep link arrived pointing at (?o=leads). The Records
+  // editors list every object at once, so a "manage the fields on this record"
+  // link from CRM has to say which row it meant or it drops you at the top of a
+  // six-object list to find it yourself.
+  const [focusObject, setFocusObject] = useState<string | null>(null);
   const router = useRouter();
 
   // Deep-linkable navigation: the section + sub-tab live in the URL (?s=…&t=…),
@@ -643,13 +666,16 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
   useEffect(() => {
     const apply = () => {
       const p = new URLSearchParams(window.location.search);
-      const s = p.get("s");
+      const raw = p.get("s");
+      const legacy = raw ? LEGACY_SECTIONS[raw] : undefined;
+      const s = legacy?.section ?? raw;
       // Deep-linking a platform section without the data (i.e. not a platform
       // admin) falls back to overview rather than rendering an empty shell.
       const section = s && SECTION_LABEL[s] && (s !== "waitlist" || waitlist) && (s !== "health" || health) ? s : "overview";
-      const t = p.get("t");
+      const t = legacy?.tab ?? p.get("t");
       setCur(section);
       setConnSel(section === "connections" ? p.get("c") : null);
+      setFocusObject(p.get("o"));
       if (t && SUBTABS[section]?.includes(t)) setSub((prev) => ({ ...prev, [section]: t }));
     };
     apply();
@@ -660,6 +686,10 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
   const navTo = (section: string, tab?: string) => {
     setCur(section);
     setConnSel(null);
+    // Moving under your own steam widens the editors again. The scope came from
+    // the link, not from a choice you made here, so it should not survive you
+    // navigating somewhere else in Settings.
+    setFocusObject(null);
     if (tab && SUBTABS[section]?.includes(tab)) setSub((s) => ({ ...s, [section]: tab }));
     const first = SUBTABS[section]?.[0];
     const activeT = tab ?? sub[section] ?? first;
@@ -774,6 +804,9 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
   const subCounts: Record<string, Record<string, number>> = {
     connections: { Live: connectors.connectors.length },
     team: { Members: team.members.length, Invites: team.invites.length },
+    // Fields counts what you've defined; Stages counts pipelines, not stages —
+    // there is no single stage count across three separate pipelines.
+    records: { Fields: customFields.filter((d) => d.active).length },
   };
   const subBar = SUBTABS[cur] ? (
     <div className="subtabs">
@@ -814,26 +847,19 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         : "Waiting for work";
 
   const sections: Record<string, ReactNode> = {
-    fields: (
-      <>
-        <Head
-          t="Custom fields"
-          d="Track what the built-in fields don't cover. Fields you add here appear on the record, in the add and edit forms, and in what Arc reads when it drafts."
-        />
-        <CustomFieldsPanel definitions={customFields} objectLabels={crmObjectLabels} />
-      </>
-    ),
-    stages: (
+    records: activeSub === "Stages" ? (
       <>
         <Head
           t="Pipeline stages"
           d="The steps your records move through. Rename them to your team's words, reorder them, or add the ones you're missing — reporting follows the meaning you give each stage, not its name."
         />
+        {subBar}
         {pipelineStages && pipelineOccupancy ? (
           <PipelineStagesPanel
             stagesByObject={pipelineStages}
             occupancyByObject={pipelineOccupancy}
             objectLabels={pipelineObjectLabels}
+            focusObject={focusObject}
           />
         ) : (
           // The read failed. Rendering the default stages here would show a
@@ -849,6 +875,19 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
             </div>
           </div>
         )}
+      </>
+    ) : (
+      <>
+        <Head
+          t="Custom fields"
+          d="Track what the built-in fields don't cover. Fields you add here appear on the record, in the add and edit forms, and in what Arc reads when it drafts."
+        />
+        {subBar}
+        <CustomFieldsPanel
+          definitions={customFields}
+          objectLabels={crmObjectLabels}
+          focusObject={focusObject}
+        />
       </>
     ),
     health: health ? (

@@ -67,6 +67,45 @@ function renderedText(source: string): string[] {
   return out;
 }
 
+/**
+ * Stored identifiers rendered as body text — the same leak by a different route.
+ *
+ * The word-list guard below cannot see this one: the offending text is not a
+ * literal in the source, it is a *value* (`{stage.key}`), so nothing to match
+ * until it reaches a browser. Settings → Records printed the stored key under
+ * every row — "Needs review / needs_review", "Qualified / qualified" — and the
+ * custom-field editor printed the column name the same way. Both shipped and sat
+ * there through a manual UI audit that was looking for exactly this.
+ *
+ * Rendering an identifier a user cannot act on is the leak whether it arrives as
+ * a string literal or as a column value.
+ *
+ * Deliberately narrow: JSX *children* only. `key={x.key}` and `title={x.key}` are
+ * props, not rendered text, and are left alone.
+ */
+const IDENTIFIER_FIELDS = ["key", "objectKey", "fieldType", "slug"];
+const RENDERED_IDENTIFIER = new RegExp(
+  // Excluded by the leading class: `=` for prop values (`objectKey={record.key}`)
+  // and `$` for template interpolation (`` `cf:${c.key}` ``) — neither is text a
+  // user reads, and both are common enough that matching them would train the
+  // next person to ignore this test.
+  String.raw`(^|[^=$])\{\s*[A-Za-z_$][\w$]*\.(${IDENTIFIER_FIELDS.join("|")})\s*\}`,
+  "gm",
+);
+
+describe("stored identifiers are not rendered as body text", () => {
+  it("no component renders a bare .key / .slug / .fieldType as a JSX child", () => {
+    const offenders: string[] = [];
+    for (const file of tsxFiles(APP_DIR)) {
+      const source = stripComments(readFileSync(file, "utf8"));
+      for (const [match] of source.matchAll(RENDERED_IDENTIFIER)) {
+        offenders.push(`${file.replace(APP_DIR, "")}: ${match.trim()}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("plumbing vocabulary never reaches the customer", () => {
   const files = tsxFiles(APP_DIR);
 

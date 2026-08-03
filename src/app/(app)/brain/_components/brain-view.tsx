@@ -1,6 +1,8 @@
 "use client";
 
-import { WORK_STATE_LABEL } from "@/domain";
+import { definitionText, WORK_STATE_LABEL } from "@/domain";
+
+import { HowThisWorks } from "../../_components/define";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { Modal } from "../../_components/modal";
@@ -61,6 +63,16 @@ function tierClass(t: string): string {
  * read "proposed", and the tab read "Needs review" (BSR-656). The tier VALUE is
  * untouched; only its wording joins the shared vocabulary.
  */
+/** The tier's definition, for the pill's tooltip — "trusted" and "watching" are
+ *  invented words carrying a real rule about what Arc may write (BSR-659). */
+function tierHint(t: string): string | undefined {
+  const s = (t || "").toLowerCase();
+  if (s === "trusted" || s === "core") return definitionText("trusted");
+  if (s === "observed") return definitionText("watching");
+  if (s === "proposed") return "Arc found this but has not been cleared to use it. It stays out of your copy until you approve it.";
+  return undefined;
+}
+
 function tierLabel(t: string): string {
   const s = (t || "").toLowerCase();
   if (s === "proposed") return WORK_STATE_LABEL.needs_you;
@@ -356,6 +368,16 @@ export function BrainView({
             <span className="ct">{data.coverageNote}</span>
           </div>
         )}
+        <HowThisWorks>
+          <p>
+            Everything Arc has learned about your business lives here — from your website, the documents you upload, and
+            what it sees happening in your records. Each thing it learns is one line you can read and correct.
+          </p>
+          <p>
+            <b>Trusted</b> facts are ones you approved, and Arc may state them in anything it writes. Anything it is only{" "}
+            <b>watching</b> stays out of your copy until you say otherwise — so a wrong guess never reaches a customer.
+          </p>
+        </HowThisWorks>
       </div>
 
       <div className="btabs">
@@ -430,7 +452,7 @@ export function BrainView({
                                 <div className="fact-sum">{corrections[f.id]?.summary ?? f.summary}</div>
                               )}
                             </td>
-                            <td><span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{tierLabel(f.trustTier)}</span></td>
+                            <td><span className={`tier ${tierClass(f.trustTier)}`} title={tierHint(f.trustTier)}><span className="td" />{tierLabel(f.trustTier)}</span></td>
                             <td><Confidence value={f.confidence} /></td>
                             <td><span className="src">{f.source || "—"}</span></td>
                             <td className="factact">
@@ -501,7 +523,7 @@ export function BrainView({
                     <div className="qcard" key={f.id}>
                       <div className="qtop">
                         <span className="kindchip"><span className="d" style={{ background: f.kindColor }} />{f.kindLabel}</span>
-                        <span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{tierLabel(f.trustTier)}</span>
+                        <span className={`tier ${tierClass(f.trustTier)}`} title={tierHint(f.trustTier)}><span className="td" />{tierLabel(f.trustTier)}</span>
                         <Confidence value={f.confidence} />
                       </div>
                       <div className="qlabel">{f.label}</div>
@@ -540,7 +562,7 @@ export function BrainView({
                           <div className="tll">{f.label}</div>
                           <div className="tlk">
                             <span className="kindchip"><span className="d" style={{ background: f.kindColor }} />{f.kindLabel}</span>
-                            <span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{tierLabel(f.trustTier)}</span>
+                            <span className={`tier ${tierClass(f.trustTier)}`} title={tierHint(f.trustTier)}><span className="td" />{tierLabel(f.trustTier)}</span>
                           </div>
                         </div>
                         <span className="tlt">{f.learnedAt}</span>

@@ -276,8 +276,14 @@ function demoRun(messageId: string): ArcRunInspection {
     route: "chat",
     contextScopes: ["crm", "brand"],
     durationMs: 8400,
+    // Prose, action, prose, action — the shape a real trace has. The fixture
+    // used to be actions only, so the preview never showed a narration entry
+    // even though two thirds of the steps on a production run are one, and the
+    // page rendered all of them wrong without that being visible here (BSR-693).
     steps: [
+      { label: "Arc", status: "done", at, detail: ["Let me look at who hit pricing more than once this week."] },
       { label: "Reading the pricing-page signal", status: "done", at },
+      { label: "Arc", status: "done", at, detail: ["That is a bigger group than I expected — worth ranking by how recently they visited."] },
       { label: "Scoring intent across the account list", status: "done", at },
       { label: "Drafting the recommendation", status: "running", at },
     ],

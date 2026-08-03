@@ -59,6 +59,28 @@
 .arc-settings .srow .slt { font-size: 13px; font-weight: 500; }
 .arc-settings .srow .sld { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
 .arc-settings .srow .sc { flex-shrink: 0; }
+/* "Showing People · Show all" — when a CRM deep link scoped this editor to one
+   record type. States the narrowing rather than silently showing a short list. */
+.arc-settings .scoped {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.arc-settings .scoped b { color: var(--text-2); font-weight: 500; }
+.arc-settings .scoped button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.arc-settings .scoped button:hover { color: var(--accent); }
 
 .arc-settings .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
 .arc-settings .tg.ok { color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); }

@@ -8,6 +8,7 @@ import { createLibraryFolder, deleteLibraryAsset, deleteLibraryFolder, importLib
 import { addLibraryAssetsToCampaign } from "../actions";
 import { ImportUrlModal } from "./import-url-modal";
 import { NewFolderModal } from "./new-folder-modal";
+import { Define } from "../../_components/define";
 
 type Kind = "image" | "video" | "logo" | "document";
 type Prov = "real" | "ai" | "comp" | "upload" | "logo" | "doc";
@@ -637,7 +638,7 @@ export function LibraryView({
             <span key={k}><i className={`pdot pv-${k}`} />{PVL[k]}</span>
           ))}
         </span>
-        <span className="ostat ok" onClick={() => setCurColl("arc")}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3d0b8" strokeWidth={2}><path d="M5 12l4 4 10-10" /></svg><b>{totals.arc}</b> Arc-ready</span>
+        <span className="ostat ok" onClick={() => setCurColl("arc")}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3d0b8" strokeWidth={2}><path d="M5 12l4 4 10-10" /></svg><b>{totals.arc}</b> Arc-ready<Define term="arc_ready" /></span>
         <span className="ostat warn" onClick={() => setCurColl("review")}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e7c486" strokeWidth={2}><path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z" /></svg><b>{totals.rev}</b> need review</span>
         <span className="ostat" onClick={() => setCurColl("unused")}><b>{totals.un}</b> unused</span>
         {/* Real bytes stored. There is no storage quota in the backend, so this

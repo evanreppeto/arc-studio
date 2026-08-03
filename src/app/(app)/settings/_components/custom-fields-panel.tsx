@@ -2,6 +2,8 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 
+import { ScopedNotice } from "./scoped-notice";
+
 import {
   CHOICE_FIELD_TYPES,
   CUSTOM_FIELD_OBJECT_KEYS,
@@ -37,10 +39,17 @@ export type CustomFieldsPanelProps = {
    * product reverts to our internal vocabulary.
    */
   objectLabels: Record<CustomFieldObjectKey, string>;
+  /** CRM object a deep link arrived pointing at — narrows this editor to it. */
+  focusObject?: string | null;
 };
 
-export function CustomFieldsPanel({ definitions, objectLabels }: CustomFieldsPanelProps) {
+function isFieldObjectKey(value: string): value is CustomFieldObjectKey {
+  return (CUSTOM_FIELD_OBJECT_KEYS as readonly string[]).includes(value);
+}
+
+export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: CustomFieldsPanelProps) {
   const [openObject, setOpenObject] = useState<CustomFieldObjectKey | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -50,6 +59,12 @@ export function CustomFieldsPanel({ definitions, objectLabels }: CustomFieldsPan
       setFeedback({ ok: result.ok, text: result.ok ? result.message ?? "Saved." : result.error ?? "Something went wrong." });
     });
   };
+
+  // A deep link naming a record type narrows the list to it. "Show all" is a
+  // one-way local override, so navigating elsewhere in Settings (which clears
+  // focusObject) widens it again on its own.
+  const scoped = !showAll && focusObject && isFieldObjectKey(focusObject) ? focusObject : null;
+  const shownKeys = scoped ? [scoped] : CUSTOM_FIELD_OBJECT_KEYS;
 
   return (
     <div className="panel">
@@ -63,6 +78,8 @@ export function CustomFieldsPanel({ definitions, objectLabels }: CustomFieldsPan
           brought back.
         </p>
 
+        {scoped && <ScopedNotice label={objectLabels[scoped]} onShowAll={() => setShowAll(true)} />}
+
         {feedback && (
           <div className="cxm-statusline" role="status" style={{ marginBottom: 14 }}>
             <span style={{ fontSize: 12, color: feedback.ok ? "var(--ok-text)" : "var(--red-text)" }}>
@@ -71,7 +88,7 @@ export function CustomFieldsPanel({ definitions, objectLabels }: CustomFieldsPan
           </div>
         )}
 
-        {CUSTOM_FIELD_OBJECT_KEYS.map((objectKey) => {
+        {shownKeys.map((objectKey) => {
           const forObject = definitions.filter((d) => d.objectKey === objectKey);
           const active = forObject.filter((d) => d.active);
           const archived = forObject.filter((d) => !d.active);
@@ -165,10 +182,13 @@ function FieldRow({
           {definition.required && <span className="tg">Required</span>}
           {!definition.active && <span className="tg">Archived</span>}
         </div>
-        <div className="cxm-hint">
-          {definition.key}
-          {definition.options.length > 0 && ` · ${definition.options.map((o) => o.label).join(", ")}`}
-        </div>
+        {/* The choices, when it has any. The stored column name used to lead this
+            line — an engineer's answer in the customer's settings screen, and
+            the same leak as the stage keys next door (BSR-655). The type and
+            required badges above already say what kind of field this is. */}
+        {definition.options.length > 0 && (
+          <div className="cxm-hint">{definition.options.map((o) => o.label).join(", ")}</div>
+        )}
       </div>
       {definition.active ? (
         <button type="button" className="btn sm" disabled={pending} onClick={onArchive}>

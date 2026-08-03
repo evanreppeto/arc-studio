@@ -3,11 +3,14 @@
 import { useState, useTransition, type ReactNode } from "react";
 
 import {
+  isPipelineObjectKey,
   orderedStages,
   PIPELINE_OBJECT_KEYS,
   type PipelineObjectKey,
   type PipelineStage,
 } from "@/domain";
+
+import { ScopedNotice } from "./scoped-notice";
 
 import {
   archivePipelineStage,
@@ -75,14 +78,18 @@ export type PipelineStagesPanelProps = {
    * our internal vocabulary.
    */
   objectLabels: Record<PipelineObjectKey, string>;
+  /** CRM object a deep link arrived pointing at — narrows this editor to it. */
+  focusObject?: string | null;
 };
 
 export function PipelineStagesPanel({
   stagesByObject,
   occupancyByObject,
   objectLabels,
+  focusObject,
 }: PipelineStagesPanelProps) {
   const [openObject, setOpenObject] = useState<PipelineObjectKey | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -96,6 +103,12 @@ export function PipelineStagesPanel({
     });
   };
 
+  // A deep link naming a pipeline narrows the list to it. "Show all" is a one-way
+  // local override, so navigating elsewhere in Settings (which clears
+  // focusObject) widens it again on its own.
+  const scoped = !showAll && focusObject && isPipelineObjectKey(focusObject) ? focusObject : null;
+  const shownKeys = scoped ? [scoped] : PIPELINE_OBJECT_KEYS;
+
   return (
     <div className="panel">
       <div className="panel-h">
@@ -108,6 +121,8 @@ export function PipelineStagesPanel({
           name, so renaming one carries every record with it and leaves your reporting intact.
         </p>
 
+        {scoped && <ScopedNotice label={objectLabels[scoped]} onShowAll={() => setShowAll(true)} />}
+
         {feedback && (
           <div className="cxm-statusline" role="status" style={{ marginBottom: 14 }}>
             <span style={{ fontSize: 12, color: feedback.ok ? "var(--ok-text)" : "var(--red-text)" }}>
@@ -116,7 +131,7 @@ export function PipelineStagesPanel({
           </div>
         )}
 
-        {PIPELINE_OBJECT_KEYS.map((objectKey) => {
+        {shownKeys.map((objectKey) => {
           const all = stagesByObject[objectKey] ?? [];
           const active = orderedStages(all);
           const archived = all.filter((s) => !s.active);
@@ -249,9 +264,13 @@ function StageRow({
             {chip && <span className="tg">{chip}</span>}
             {stage.isQualified && <span className="tg">Qualified</span>}
           </div>
+          {/* How many records are sitting here — the one thing on this line that
+              informs a decision (whether this stage is safe to archive, whether
+              anyone actually uses it). This used to lead with the stored key
+              (`needs_review`), which answers an engineer's question in the
+              customer's settings screen and tells the owner nothing (BSR-655). */}
           <div className="cxm-hint">
-            {stage.key}
-            {occupants > 0 && ` · ${occupants} record${occupants === 1 ? "" : "s"}`}
+            {occupants === 0 ? "No records" : `${occupants} record${occupants === 1 ? "" : "s"}`}
           </div>
         </div>
 
@@ -497,12 +516,15 @@ function ArchivedStageRow({
           <span>{stage.label}</span>
           <span className="tg">Archived</span>
         </div>
-        <div className="cxm-hint">
-          {stage.key}
-          {/* An archived stage should hold nothing. If it does, say so plainly —
-              those records are the ones rendering blank right now. */}
-          {occupants > 0 && ` · ${occupants} record${occupants === 1 ? "" : "s"} still here`}
-        </div>
+        {/* An archived stage should hold nothing. If it does, say so plainly —
+            those records are the ones rendering blank right now. Nothing to say
+            when it is empty, so the line goes away rather than standing there
+            printing the stored key at someone. */}
+        {occupants > 0 && (
+          <div className="cxm-hint">
+            {occupants} record{occupants === 1 ? "" : "s"} still here
+          </div>
+        )}
       </div>
       <button type="button" className="btn sm" disabled={pending} onClick={onRestore}>
         Restore

@@ -518,6 +518,40 @@
 }
 
 /* ============================================================
+   Definitions + explainers (BSR-659).
+
+   The app invents words — Confidence, Lead score, Arc-ready,
+   Trusted — and none of them was defined anywhere. The affordance
+   is deliberately quiet: it must not compete with the number it
+   annotates, and it must never be the loudest thing in a row.
+   ============================================================ */
+.arc-app .define {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  margin-left: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: help;
+  vertical-align: middle;
+  transition: color .14s, border-color .14s;
+}
+.arc-app .define:hover,
+.arc-app .define:focus-visible { color: var(--accent-contrast); border-color: var(--accent-border); outline: none; }
+
+.arc-app .howworks { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); padding: 16px 18px; }
+.arc-app .howworks h2 { font-family: var(--serif); font-size: 15px; font-weight: 500; color: var(--text); margin: 0 0 8px; }
+.arc-app .howworks p { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 0 0 8px; max-width: 68ch; }
+.arc-app .howworks p:last-child { margin-bottom: 0; }
+.arc-app .howworks b { color: var(--text); font-weight: 600; }
+
+/* ============================================================
    KPI strip — ONE implementation, app-wide (BSR-658).
 
    Replaces `.metrics`, `.okpis`, `.kpis`, `.asum`, `.pstats`,
@@ -1581,6 +1615,22 @@
 .arc-app .fmenu-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .arc-app .fmenu-item.on { color: var(--accent); }
 .arc-app .fmenu-c { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* Footer link inside a filter menu — "where do these choices come from?". Ruled
+   off from the choices above it because it navigates away rather than filtering. */
+.arc-app .fmenu-foot {
+  display: block;
+  margin: 6px -6px -6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.arc-app .fmenu-foot:hover { color: var(--accent); background: rgba(255, 255, 255, 0.035); }
+.arc-app .fmenu-foot:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .arc-app .selbar { display: none; align-items: center; gap: 12px; height: 0; overflow: hidden; border: 1px solid var(--accent-border); border-radius: 9px; background: linear-gradient(180deg, var(--accent-soft), transparent); padding: 0 14px; margin-bottom: 0; transition: 0.18s var(--ease); }
 .arc-app .selbar.show { display: flex; height: 46px; margin-bottom: 11px; }

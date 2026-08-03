@@ -20,7 +20,19 @@ import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabas
  * outbound dispatch; launching is a separate step. `persisted: false` is the
  * honest offline/demo signal so the UI can reflect the decision without saving.
  */
-export type CampaignActionResult = { ok: true; persisted: boolean; status?: string } | { ok: false; error: string };
+export type CampaignActionResult =
+  | {
+      ok: true;
+      persisted: boolean;
+      status?: string;
+      /**
+       * Only set by revision requests. `false` means the request was recorded
+       * but Arc has not started on it (the runner did not answer the wake), so
+       * the UI must not tell the operator their revision is under way.
+       */
+      dispatched?: boolean;
+    }
+  | { ok: false; error: string };
 
 export type LaunchCampaignActionResult =
   | { ok: true; persisted: boolean; launchedAssets?: number }
@@ -59,9 +71,9 @@ export async function requestCampaignRevision(campaignId: string, assetId: strin
 
   try {
     const operator = await getOperatorActor();
-    await requestAssetRevision({ campaignId, assetId, instruction: cleaned, operator });
+    const { dispatched } = await requestAssetRevision({ campaignId, assetId, instruction: cleaned, operator });
     revalidatePath(`/campaigns/${campaignId}`);
-    return { ok: true, persisted: true, status: "revision_requested" };
+    return { ok: true, persisted: true, status: "revision_requested", dispatched };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not request the revision." };
   }
