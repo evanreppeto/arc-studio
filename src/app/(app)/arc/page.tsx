@@ -15,7 +15,7 @@ import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
 import { ArcView } from "./_components/arc-view";
 import "./arc.css";
 
-export const metadata = { title: "Arc" };
+export const metadata = { title: "Arc Chat — Arc Studio" };
 
 export default async function ArcPage({
   searchParams,
