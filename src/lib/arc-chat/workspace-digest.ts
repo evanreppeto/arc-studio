@@ -17,7 +17,7 @@
  * Pure: no I/O, no view types, no React.
  */
 
-import type { ArcActionCard, ArcStepKind } from "@/domain";
+import { arcToolLabel, type ArcActionCard, type ArcStepKind } from "@/domain";
 
 import type { ArcMessage } from "./persistence";
 import { formatToolName, getToolKind } from "./tool-labels";
@@ -119,25 +119,17 @@ function pushUnique(items: ArcWorkspaceEvidenceItem[], seen: Set<string>, item: 
 
 const AUDIENCE_ROW = /(audience|persona|segment)/i;
 
-/** Strip the MCP transport prefix a tool name carries on the wire.
- *  `mcp__arc__get_workspace_settings` is plumbing spelled out loud; the operator
- *  wants to know Arc read the workspace settings. */
-const ACRONYMS = /\b(crm|sms|url|api|ai|seo|mcp|csv|pdf|id)\b/gi;
-
-function toolLabel(name: string): string {
-  const bare = name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/^mcp__/, "") || name;
-  // A name that is already camelCase or PascalCase was written by a human to be
-  // read — `ToolSearch` is the tool's actual name. Sentence-casing it produced
-  // "Toolsearch", which is just a typo. Only snake_case and dot.case names, which
-  // are identifiers rather than names, get reformatted.
-  if (/[a-z][A-Z]/.test(bare)) return bare;
-  const spaced = formatToolName(bare);
-  // Sentence case, not Title Case: "Get workspace settings" reads as an action,
-  // "Get Workspace Settings" reads as a menu item. Acronyms are restored after,
-  // because lowercasing turns CRM into "Crm", which reads as a typo.
-  const sentence = spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
-  return sentence.replace(ACRONYMS, (match) => match.toUpperCase());
-}
+/**
+ * Strip the MCP transport prefix a tool name carries on the wire.
+ * `mcp__arc__get_workspace_settings` is plumbing spelled out loud; the operator
+ * wants to know Arc read the workspace settings.
+ *
+ * This was a private copy of logic `arcToolLabel` now owns in the domain layer.
+ * Two copies meant the chat trace and the run page could disagree about the same
+ * tool — and they did: the inline trace rendered `mcp__arc__weather_lookup` raw
+ * while this one already read "Weather lookup" (BSR-709).
+ */
+const toolLabel = arcToolLabel;
 
 /** Two memories are the same memory if they say the same thing. Prod's brain
  *  holds five separate nodes all stating the CRM is empty (BSR-531 is the fix
