@@ -65,7 +65,16 @@ function toSaved(row: SavedRow): SavedItem {
 
 export type SaveItemInput = {
   operator: string;
-  orgId?: string | null;
+  /**
+   * Required, because `arc_saved_items.org_id` is NOT NULL with no default.
+   * This used to be optional and the insert below omitted the column when it
+   * was absent — a guaranteed 23502 for any caller that didn't pass one.
+   * Nothing had ever hit it (the table has zero rows in prod and the one caller
+   * supplies a non-nullable WorkspaceContext.orgId), so the type was free to
+   * promise something the database refuses. Verified against the real schema
+   * with a BEGIN…ROLLBACK probe.
+   */
+  orgId: string;
   workspaceId?: string | null;
   kind: SavedKind;
   title?: string | null;
@@ -87,7 +96,7 @@ export async function saveItem(
     .from("arc_saved_items")
     .insert({
       operator: input.operator,
-      ...(input.orgId != null ? { org_id: input.orgId } : {}),
+      org_id: input.orgId,
       ...(input.workspaceId != null ? { workspace_id: input.workspaceId } : {}),
       kind: input.kind,
       title: input.title ?? null,
