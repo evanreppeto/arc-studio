@@ -2,11 +2,130 @@
 
 Last updated: 2026-07-05
 
-## Product Boundary
+## Product Boundary — DECIDED 2026-08-03 (BSR-637)
 
-Arc should be scoped to a workspace first. A workspace owns shared brand context,
-campaign memory, library assets, CRM references, approvals, and Arc API tokens.
+**An org owns the customer record. A workspace owns everything generated from it.**
 Users own their identity, membership, role, and personal preferences.
+
+This supersedes the previous statement here ("Arc should be scoped to a workspace
+first… a workspace owns … CRM references"). That sentence was aspirational and was
+never implemented: every CRM table has been `org_id`-only since the beginning, and
+because nothing checked, the gap went unnoticed from 2026-07-05 to 2026-08-03. The
+decision below is what the schema will be made to say.
+
+### The rule
+
+> If two workspaces in the same company could legitimately **disagree** about a
+> row, the row is workspace-owned. If disagreeing would just mean one of them is
+> wrong, it is org-owned.
+
+Jane Smith's phone number is the same for every brand in the company — org-owned.
+The campaign drafted for Jane, the asset generated for it, and what Arc learned
+from how she responded are all brand-specific — workspace-owned. The scenario to
+hold in mind is one company running two brands, or an agency running several
+clients' marketing off one customer list.
+
+### Category 1 — Org-owned (the customer record layer)
+
+`org_id NOT NULL`, **no** `workspace_id`. Shared by every workspace in the org.
+
+`companies`, `contacts`, `leads`, `jobs`, `properties`, `outcomes`, `crm_notes`,
+`crm_tasks`, `crm_activities`, `custom_field_definitions`, `pipeline_stages`,
+`personas`, `persona_definitions`, `journey_identities`, `engagement_events`,
+`events`, `integrity_findings`, `routing_decisions`, `connections`,
+`google_drive_connections`, `google_drive_sources`, `app_settings`,
+`org_onboarding_state`, `org_plans`, `organization_memberships`
+
+Already compliant. Nothing in this group moves.
+
+### Category 2 — Workspace-owned (everything generated)
+
+`org_id NOT NULL` **and** `workspace_id NOT NULL`. `org_id` stays so the existing
+`is_org_member(org_id)` RLS predicate keeps working unchanged; `workspace_id` is
+additive and narrows within it.
+
+- **Campaign surface:** `campaigns`, `campaign_assets`, `campaign_events`,
+  `campaign_dispatches`, `campaign_results`
+- **Approval surface:** `approval_items`, `approval_decisions`,
+  `approval_recommendations`, `agent_outputs`
+- **Arc's memory and work:** `knowledge_nodes`, `knowledge_edges`, `vault_notes`,
+  `arc_conversations`, `arc_messages`, `arc_projects`, `arc_saved_items`,
+  `arc_instances`, `arc_generated_skills`, `agents`, `agent_tasks`,
+  `agent_task_inputs`, `agent_task_events`, `agent_run_logs`, `agent_connections`,
+  `agent_api_tokens`
+- **Recommendations and intelligence:** `opportunities`, `next_best_actions`,
+  `persona_snapshots`, `persona_knowledge_entries`, `competitor_campaigns`
+- **Brand and creative:** `business_profiles`, `media_assets`, `media_folders`
+- **Configuration, spend, audit:** `workspace_connectors`, `workspace_media_config`,
+  `connector_spend_budgets`, `connector_usage_events`, `ai_usage_events`,
+  `audit_events`, `support_requests`
+
+### Category 3 — Inherits tenancy through its parent
+
+No scoping column of its own; isolated by a `FOREIGN KEY` to a Category 1 or 2
+row and reached only through it. Legitimate — the contract check must not demand
+columns here.
+
+`custom_field_values` → `custom_field_definitions`, `journey_touchpoints` →
+`journey_identities`, `campaign_shares` / `campaign_audiences` → `campaigns`,
+`arc_conversation_shares` → `arc_conversations`, `arc_project_shares` →
+`arc_projects`, `guardrail_findings` → `agent_tasks` / `approval_items` /
+`campaign_assets`, `partner_health_snapshots` → `companies` / `contacts`,
+`agent_task_label_assignments` → `agent_tasks`
+
+Condition of membership: the FK is `NOT NULL` and every read reaches the row via
+its parent. A Category 3 table that acquires a direct read path has to be
+reclassified into 1 or 2 first.
+
+### Category 4 — Platform, deliberately not tenant-scoped
+
+`organizations`, `workspaces`, `profiles`, `waitlist_signups`, `platform_events`,
+`weather_events` (a storm is a fact about the world, not about a tenant;
+`weather_event_targets` is what maps one to a tenant), `integration_registry`
+
+Listed explicitly so "no tenant column" is a decision on record rather than an
+omission. Platform surfaces built on these gate on `ARC_PLATFORM_ADMIN_EMAILS`.
+
+### Category 5 — Unclassified (dead or unwired)
+
+~27 tables exist in prod with no tenancy column and no reference anywhere in
+`src/` or `apps/` outside the generated `database.types.ts` — including
+`nurture_sequences`, `nurture_enrollments`, `social_accounts`, `social_posts`,
+`personalization_rules`, `tracking_links`, `analytics_snapshots`,
+`score_weight_configs`, `ad_platform_actions`, `ad_spend_decisions`,
+`agent_permissions`, `agent_tool_requests`, `competitor_apps`,
+`competitor_features`, `partner_referral_tokens`, `partner_referral_submissions`,
+`visitor_persona_contexts`, `rejected_intake_events`, `capacity_snapshots`,
+`audits`, `software_research_notes`, `task_labels`, plus the
+`status_backup_20260729_*` leftovers and the import scaffold
+(`external_systems`, `external_object_mappings`, `sync_conflicts`).
+
+**Rule: a Category 5 table cannot be wired until it has been classified into 1–4
+and carries the matching columns.** This is the cheapest moment to enforce that —
+they are all empty. Note `external_systems` / `external_object_mappings` are due
+to be revived by BSR-640, so they get classified as part of that work (Category 2
+— an import run belongs to the workspace that ran it).
+
+### Flagged as close calls
+
+Three landed on judgment rather than an obvious reading. Revisit if the first
+multi-workspace customer disagrees:
+
+1. **`media_assets` / `media_folders` → workspace.** Follows "library assets" in
+   the original boundary statement and matches generated creative. But a photo of
+   a finished job is company proof that every brand should be able to reuse, and
+   the standing rule is to prefer approved real media. If reuse across workspaces
+   becomes a real need, the answer is a shared-library flag on the asset, not
+   moving the whole table back to org.
+2. **`business_profiles` → workspace.** This is the creative brand identity that
+   constrains generation, distinct from `workspaces.logo_url` which is UI chrome.
+   Two brands, two profiles is the whole point of the multi-brand case.
+3. **`guardrail_rules` → org.** Kept org-owned because guardrails encode
+   compliance ("coverage-neutral language, never guarantee a claim outcome"),
+   which is a company-level legal position rather than a brand choice. A workspace
+   should be able to *add* rules, never subtract — if per-workspace additions are
+   wanted, add a nullable `workspace_id` meaning "applies to this workspace only",
+   with `NULL` meaning org-wide.
 
 ## Implemented Boundary
 
@@ -109,6 +228,66 @@ Users own their identity, membership, role, and personal preferences.
   table uses the same `is_org_member(org_id)` predicate);
   `src/lib/supabase/tenant-client.test.ts` covers the client selector. The
   pattern and rollout checklist live in [TENANCY.md](./TENANCY.md).
+
+## Migration plan to reach the decided boundary
+
+Nothing in Category 1 moves — the customer record layer is already org-owned and
+correct. The work is entirely on Category 2.
+
+**Size (prod, 2026-08-03): ~2,260 rows across 33 tables.** The whole migration is
+smaller than a single mid-size CSV import, and it will never be smaller than it is
+today.
+
+### Group A — add `workspace_id` (24 tables, ~2,010 rows)
+
+`approval_items` (42), `approval_decisions` (18), `approval_recommendations` (2),
+`agent_outputs` (9), `campaign_assets` (47), `campaign_events` (76),
+`campaign_dispatches` (9), `campaign_results` (0), `knowledge_nodes` (496),
+`knowledge_edges` (1072), `vault_notes` (0), `arc_generated_skills` (0),
+`agents` (8), `agent_task_inputs` (72), `agent_task_events` (0),
+`agent_run_logs` (9), `opportunities` (134), `next_best_actions` (0),
+`persona_snapshots` (0), `persona_knowledge_entries` (0),
+`competitor_campaigns` (0), `business_profiles` (2), `media_assets` (3),
+`media_folders` (10)
+
+### Group B — tighten existing nullable columns (~250 rows)
+
+`workspace_id` is present but nullable on `campaigns` (21), `arc_conversations`
+(20), `arc_messages` (108), `arc_projects` (4), `arc_saved_items` (0),
+`audit_events` (5), `ai_usage_events` (85), `connector_usage_events` (4),
+`support_requests` (0). `org_id` is *also* nullable on `ai_usage_events`,
+`connector_usage_events`, `connector_spend_budgets`, `workspace_connectors`, and
+`workspace_media_config` — tighten both.
+
+A nullable scoping column is the failure this whole ticket is about: it lets a
+row exist that belongs to nobody, and `campaigns` proves the app then quietly
+stops filtering on it.
+
+### Sequence
+
+1. **Add the columns nullable + index.** No behavior change, no downtime.
+2. **Backfill.** Every org in prod has exactly one workspace, so the backfill is
+   `workspace_id = (select id from workspaces w where w.org_id = t.org_id)` with
+   no ambiguity to resolve and no data loss risk. **This is the step that expires:**
+   the day any customer creates a second workspace, existing rows become rows
+   nobody can place, and the backfill turns into a guess.
+3. **`SET NOT NULL`,** once the backfill verifies zero nulls.
+4. **Then the read paths and RLS.** Extend the `is_org_member(org_id)` policies
+   with the workspace predicate per the rollout checklist in
+   [TENANCY.md](./TENANCY.md), and add the workspace filter to the read models —
+   `src/lib/campaigns/read-model.ts` first, since it is the one that already
+   declares a column it does not filter on (BSR-639).
+
+Steps 1–3 are additive and safe to ship ahead of step 4; a stamped-but-unfiltered
+column changes nothing until the reads use it. Do **not** ship step 4 without the
+CI contract check (BSR-638), or the next table to land will repeat the whole
+thing.
+
+### Standing rule
+
+New tables declare their category before they ship, and the CI check in BSR-638
+enforces it against `information_schema`. A boundary that lives only in this
+document is exactly what produced the gap it is fixing.
 
 ## Current Gaps
 
