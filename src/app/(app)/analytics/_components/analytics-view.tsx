@@ -126,7 +126,7 @@ function CampaignTable({ rows }: { rows: CampaignPerformanceRow[] }) {
       </h2>
       <div className="ctbl">
         <div className="cthead">
-          <span>Campaign</span><span>Leads</span><span>Booked</span><span>Revenue</span><span>Conv.</span><span>Trend</span>
+          <span>Campaign</span><span>Leads</span><span>Booked</span><span>Revenue</span><span>Converted</span><span>Trend</span>
         </div>
         {rows.map((c) => (
           <Link className="ctrow" key={c.id} href={`/campaigns/${encodeURIComponent(c.id)}`}>
@@ -467,12 +467,12 @@ export function AnalyticsView({
                   )}
                   {overview.arcRead.rec && (
                     <div className="recbox">
-                      <div className="rl">Recommended next iteration · Arc estimate</div>
+                      <div className="rl">What to try next · Arc&rsquo;s estimate</div>
                       <div className="rt">{overview.arcRead.rec}</div>
                     </div>
                   )}
                   <div className="abtns">
-                    <button type="button" className="gbtn gold" data-soon="Arc iteration drafting is coming soon"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Draft the iteration</button>
+                    <button type="button" className="gbtn gold" data-soon="Drafting the next round is coming soon"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Draft it</button>
                     <Link className="gbtn" href="/arc"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Ask Arc</Link>
                   </div>
                   <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)", marginTop: 11, lineHeight: 1.5 }}>
