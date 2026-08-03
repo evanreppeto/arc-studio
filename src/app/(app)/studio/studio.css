@@ -299,3 +299,11 @@
   .arc-studio .studio { animation: studioRise 0.5s var(--ease) both; }
 }
 @keyframes studioRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Touch targets — see the note in arc-app.css. `.iconbtn` is declared 32px
+   square but flex-shrinks narrower than that in the toolbar, so it needs the
+   min-width, not just the width. */
+@media (pointer: coarse) {
+  .arc-studio .iconbtn { width: 44px; height: 44px; min-width: 44px; flex-shrink: 0; border-radius: 10px; }
+  .arc-studio .iconbtn svg { width: 18px; height: 18px; }
+}
