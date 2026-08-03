@@ -88,3 +88,57 @@ describe("runArcPartnerCampaign creativeAssets", () => {
     expect(tenantOwnedRows.some((arg) => arg.workspace_id === "workspace-1")).toBe(true);
   });
 });
+
+// BSR-720. `campaigns.workspace_id` became NOT NULL in BSR-639, but this
+// orchestrator still wrote through `withOrg`, which stamps org_id only — so
+// runArcPartnerCampaign could not create a campaign at all, and no test noticed
+// because a mocked insert cannot see a not-null constraint.
+//
+// These assert the columns are present in the payload, which is the only thing a
+// mock CAN prove and the exact thing that was missing.
+describe("runArcPartnerCampaign stamps the workspace on workspace-owned tables", () => {
+  async function insertsByTable() {
+    const supabase = createSupabaseQueryMock({});
+    await runArcPartnerCampaign({}, supabase, TEST_CONTEXT, { org_id: "org-1", workspace_id: "workspace-1" });
+
+    const byTable = new Map<string, InsertArg[]>();
+    let current = "";
+    for (const [method, arg] of supabase.calls as Array<[string, unknown]>) {
+      if (method === "from") current = String(arg);
+      if (method === "insert") {
+        if (!byTable.has(current)) byTable.set(current, []);
+        byTable.get(current)!.push(arg as InsertArg);
+      }
+    }
+    return byTable;
+  }
+
+  it("stamps workspace_id on campaigns — the write that was outright broken", async () => {
+    const byTable = await insertsByTable();
+    const campaigns = byTable.get("campaigns") ?? [];
+    expect(campaigns.length).toBeGreaterThan(0);
+    for (const row of campaigns) {
+      expect(row).toMatchObject({ org_id: "org-1", workspace_id: "workspace-1" });
+    }
+  });
+
+  it("stamps workspace_id on every other migrated table it writes", async () => {
+    const byTable = await insertsByTable();
+    for (const table of ["campaign_assets", "approval_items", "agent_outputs", "campaign_events"]) {
+      for (const row of byTable.get(table) ?? []) {
+        expect({ table, ...row }).toMatchObject({ org_id: "org-1", workspace_id: "workspace-1" });
+      }
+    }
+  });
+
+  it("does NOT stamp a workspace on the org-owned CRM tables", async () => {
+    // companies / contacts / leads are shared across a company's workspaces by
+    // design and have no such column — stamping one would break the insert.
+    const byTable = await insertsByTable();
+    for (const table of ["companies", "contacts", "leads"]) {
+      for (const row of byTable.get(table) ?? []) {
+        expect(row).not.toHaveProperty("workspace_id");
+      }
+    }
+  });
+});

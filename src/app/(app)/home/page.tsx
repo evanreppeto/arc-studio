@@ -157,7 +157,9 @@ export default async function HomePage() {
                 <span className="cites">
                   <span className="cites-label">Evidence</span>
                   {evidenceFacts(focal.evidence).map((f, i) => (
-                    <span className="cite" key={i} title={f}>{i + 1}</span>
+                    <span className="cite" key={i} title={f} tabIndex={0} role="note" aria-label={`Evidence: ${f}`}>
+                      {i + 1}
+                    </span>
                   ))}
                 </span>
               )}
@@ -176,7 +178,7 @@ export default async function HomePage() {
                 className="btn ghost"
                 href={{ pathname: "/arc", query: { new: "1", prompt: promptForOpportunity(focal) } }}
               >
-                Ask Arc to draft it
+                Draft with Arc
               </Link>
             </div>
           </div>
@@ -284,13 +286,11 @@ export default async function HomePage() {
           {signals.length === 0 ? (
             <p className="empty-note">No signals yet. Arc lists the ones it can back up with evidence here.</p>
           ) : (
-            signals.map((s, i) => (
+            signals.map((s) => (
               <Link className="sig" href={`/opportunities?selected=${encodeURIComponent(s.id)}`} key={s.id}>
                 <div className="st">{s.title}</div>
                 <div className="sm">
-                  <span className="src">
-                    <b>[{i + 1}]</b> {s.source}
-                  </span>
+                  <span className="src">{s.source}</span>
                   <span className="sa">{s.time}</span>
                 </div>
               </Link>

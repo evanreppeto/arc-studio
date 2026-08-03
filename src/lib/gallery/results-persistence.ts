@@ -1,6 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type ParsedCampaignResult } from "@/domain";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 export type PersistResultsSummary = { inserted: number; updated: number };
 
@@ -45,7 +46,11 @@ export async function persistCampaignResults(
       if (updateError) throw new Error(`campaign_results update: ${updateError.message}`);
       updated += 1;
     } else {
-      const { error: insertError } = await client.from("campaign_results").insert({ ...row, org_id: orgId });
+      const { error: insertError } = await client.from("campaign_results").insert({
+        ...row,
+        org_id: orgId,
+        ...(await workspaceIdFields(client, orgId, { campaignId: row.campaign_id })),
+      });
       if (insertError) throw new Error(`campaign_results insert: ${insertError.message}`);
       inserted += 1;
     }
