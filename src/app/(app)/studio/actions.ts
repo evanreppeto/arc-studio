@@ -62,6 +62,8 @@ export type GenerateStudioAssetInput = {
   backgroundUrl?: string;
   headline?: string;
   kicker?: string;
+  /** Optional supporting line under the headline (BSR-691). */
+  subhead?: string;
   ctaLabel?: string;
   template?: string;
   /** Accent hex picked in Studio; overrides the brand kit's accent for this render. */
@@ -173,6 +175,7 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const copy: CreativeCopy = {
         headline,
         kicker: (input.kicker ?? "").trim() || undefined,
+        subhead: (input.subhead ?? "").trim() || undefined,
         ctaLabel: (input.ctaLabel ?? "").trim() || undefined,
       };
       const profile = await getBusinessProfile(ctx.orgId);
