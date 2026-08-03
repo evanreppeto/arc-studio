@@ -9,6 +9,7 @@ import { ANALYTICS_WINDOWS } from "@/lib/analytics/overview";
 import type { AnalyticsOverview, AnalyticsWindow, TrendKey, TrendSeries } from "@/lib/analytics/overview";
 import type { OpportunityConversionReadModel } from "@/lib/performance/opportunity-conversion";
 import type { CampaignPerformanceRow, ChannelPerformance, PerformanceAnomaly, PerformanceNextMove } from "@/lib/performance/read-model";
+import { KpiStrip } from "../../_components/kpi-strip";
 
 export type ActivityRowVM = { id: string; dot: string; title: string; detail: string; meta: string[]; time: string };
 export type ActivityDayVM = { label: string; rows: ActivityRowVM[] };
@@ -400,18 +401,17 @@ export function AnalyticsView({
                 </div>
               )}
 
-              <div className="kpis">
-                {overview.kpis.map((k) => (
-                  <div className="kpi" key={k.label}>
-                    <div className="kl">
-                      {k.label}
-                    </div>
-                    <div className="kv">{k.value}</div>
-                    <div className={`kd ${k.dir}`}>{k.dir === "up" ? "▲" : k.dir === "dn" ? "▼" : "—"} {k.deltaLabel}</div>
-                    <div className="kp">{k.prevLabel}</div>
-                  </div>
-                ))}
-              </div>
+              <KpiStrip
+                items={overview.kpis.map((k) => ({
+                  label: k.label,
+                  // An empty metric carries no value and no delta; its prevLabel
+                  // is the sentence saying what to do about that.
+                  value: k.value === "—" ? "" : k.value,
+                  delta: { label: k.deltaLabel, dir: k.dir },
+                  sublabel: k.value === "—" ? undefined : k.prevLabel,
+                  emptyHint: k.value === "—" ? k.prevLabel : undefined,
+                }))}
+              />
 
               <div className="panel">
                 <div className="ph">
@@ -507,11 +507,7 @@ export function AnalyticsView({
           {view === "activity" && (
             <>
               <div className="vhead"><div><h2 className="pt">Activity</h2><div className="psub">The full audit trail — every Arc action, approval, and signal, merged from your workspace.</div></div></div>
-              <div className="asum">
-                {activitySummary.map((s) => (
-                  <div className="kpi" key={s.label}><div className="kl">{s.label}</div><div className="kv">{s.value}</div></div>
-                ))}
-              </div>
+              <KpiStrip items={activitySummary.map((s) => ({ label: s.label, value: String(s.value) }))} />
               {activityDays.length === 0 ? (
                 <div className="blk"><div className="psub">No activity recorded yet. Arc logs its actions here as it works.</div></div>
               ) : (
