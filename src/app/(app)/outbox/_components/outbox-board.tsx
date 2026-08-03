@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import { WORK_STATE_LABEL } from "@/domain";
+
+import { KpiStrip } from "../../_components/kpi-strip";
 import { type DispatchStatus } from "@/lib/dispatch/status";
 
 import { sendDispatchAction, transitionDispatchAction } from "../actions";
@@ -226,15 +228,15 @@ export function OutboxBoard({
         </div>
       </div>
 
-      <div className="okpis">
-        {kpis.map((k, i) => (
-          <div className={`kpi${k.alert ? " alert" : ""}`} key={i}>
-            <div className="kv">{k.value}</div>
-            <div className="kl">{k.label}</div>
-            <div className="ks">{k.sub}</div>
-          </div>
-        ))}
-      </div>
+      <KpiStrip
+        className="okpis"
+        items={kpis.map((k) => ({
+          label: k.label,
+          value: k.value,
+          sublabel: k.sub,
+          tone: k.alert ? ("attention" as const) : undefined,
+        }))}
+      />
 
       <div className="tabbar">
         <div className="ofilters">

@@ -16,6 +16,7 @@ import {
 import type { JourneyWithMeta, JourneysReadModel } from "@/lib/journey/read-model";
 
 import { setJourneyConsentMode } from "../actions";
+import { KpiStrip } from "../../_components/kpi-strip";
 
 // Compact labels for the lens picker — the 320px side panel can't fit the full
 // names. The full label + blurb ride along in each button's title.
@@ -269,13 +270,21 @@ export function JourneysView({
         </div>
       </header>
 
-      <div className="jr-kpis">
-        <Kpi label="Journeys" value={String(kpis.total)} hint="contacts with a path" />
-        <Kpi label="In flight" value={String(kpis.inFlight)} hint="identified, not yet converted" tone="amber" />
-        <Kpi label="Converted" value={String(kpis.converted)} hint={`${Math.round(kpis.conversionRate * 100)}% of identified`} tone="green" />
-        <Kpi label="Realized" value={money(kpis.realizedCents)} hint="from converted journeys" tone="green" />
-        <Kpi label="Avg. time to convert" value={kpis.avgDaysToConvert !== null ? `${kpis.avgDaysToConvert}d` : "—"} hint="first touch → paid" />
-      </div>
+      <KpiStrip
+        className="jr-kpis"
+        items={[
+          { label: "Journeys", value: String(kpis.total), sublabel: "contacts with a path" },
+          { label: "In flight", value: String(kpis.inFlight), sublabel: "identified, not yet converted", tone: "attention" },
+          { label: "Converted", value: String(kpis.converted), sublabel: `${Math.round(kpis.conversionRate * 100)}% of identified`, tone: "ok" },
+          { label: "Revenue earned", value: money(kpis.realizedCents), sublabel: "from converted journeys", tone: "ok" },
+          {
+            label: "Avg. time to convert",
+            value: kpis.avgDaysToConvert !== null ? `${kpis.avgDaysToConvert}d` : "",
+            sublabel: "first touch → paid",
+            emptyHint: "Fills in once a journey completes",
+          },
+        ]}
+      />
 
       <section className="jr-panel jr-funnelpanel">
         <h2>
@@ -413,16 +422,6 @@ export function JourneysView({
           <CollectorInstall origin={origin} consentMode={consentMode} />
         </aside>
       </div>
-    </div>
-  );
-}
-
-function Kpi({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: string }) {
-  return (
-    <div className={`jr-kpi${tone ? ` t-${tone}` : ""}`}>
-      <span className="jr-klab">{label}</span>
-      <span className="jr-kval">{value}</span>
-      <span className="jr-khint">{hint}</span>
     </div>
   );
 }

@@ -17,7 +17,7 @@ import { type OpportunityEvidence } from "@/lib/opportunities/read-model";
 
 import { QuickActions } from "./_components/quick-actions";
 import { SetupChecklist } from "./_components/setup-checklist";
-import { Sparkline } from "../_components/sparkline";
+import { KpiStrip } from "../_components/kpi-strip";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
 
@@ -207,27 +207,17 @@ export default async function HomePage() {
           </Link>
         ) : null}
 
-        <div className="metrics">
-          {metrics.map((m) => {
-            const series = overview.trend[KPI_TREND[m.label]]?.cur ?? [];
-            return (
-              <div className="metric" key={m.label}>
-                <div className="ml">{m.label}</div>
-                <div className="mrow">
-                  <span className="mv">{m.value}</span>
-                  {m.deltaLabel && m.deltaLabel !== "—" ? (
-                    <span className={`delta ${m.dir}`} title={m.prevLabel}>{m.deltaLabel}</span>
-                  ) : null}
-                </div>
-                {series.length > 1 ? (
-                  <div className="spark">
-                    <Sparkline points={series} up={m.dir === "up"} />
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
+        <KpiStrip
+          items={metrics.map((m) => ({
+            label: m.label,
+            value: m.value,
+            delta: { label: m.deltaLabel, dir: m.dir },
+            // The window was only ever a hover title, so the delta read as a
+            // number with no baseline (BSR-659).
+            sublabel: `vs previous 30 days`,
+            spark: { points: overview.trend[KPI_TREND[m.label]]?.cur ?? [], up: m.dir === "up" },
+          }))}
+        />
 
         <div className="sech">
           <h3>Open opportunities</h3>
