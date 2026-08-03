@@ -697,6 +697,10 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   // Full-size media preview: the tiles of one deliverable, and which is open.
   const [lightbox, setLightbox] = useState<{ items: CampaignMediaAsset[]; index: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  /** Set when a revision saved but Arc never picked it up (BSR-695). Not an
+   *  error — the request is recorded — but it has NOT started, and nothing
+   *  retries it, so silence here reads as "under way" when it isn't. */
+  const [notStarted, setNotStarted] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [confirmLaunch, setConfirmLaunch] = useState(false);
   const [launchErr, setLaunchErr] = useState<string | null>(null);
@@ -739,6 +743,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     const instruction = reviseText.trim();
     if (!instruction || pending) return;
     setErr(null);
+    setNotStarted(null);
     const prev = asset.status;
     setAssetStatus(asset.id, "revision_requested");
     setReviseFor(null);
@@ -748,7 +753,13 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       if (!res.ok) {
         setAssetStatus(asset.id, prev);
         setErr(res.error);
+        return;
       }
+      // Saved is not started. The wake is best-effort with a short timeout, and
+      // nothing polls agent_tasks — an unacknowledged wake leaves the request
+      // recorded and permanently unrun. Keep the status flip (it IS recorded)
+      // and say plainly that Arc has not begun (BSR-695).
+      if (res.dispatched === false) setNotStarted(asset.title);
     });
   }
 
@@ -929,6 +940,14 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
         <div className="cscroll">
           {err && (
             <p className="cerr">{err}</p>
+          )}
+
+          {notStarted && (
+            <p className="cwarn" role="status">
+              Your revision to <strong>{notStarted}</strong>{" "}
+              is saved, but Arc hasn&rsquo;t started on it — the agent didn&rsquo;t respond. It won&rsquo;t begin on
+              its own. Try requesting the revision again in a moment.
+            </p>
           )}
 
           {tab === "deliverables" &&

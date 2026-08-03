@@ -101,6 +101,30 @@ export function formatMessageTime(iso: string) {
   return value.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * What to tell the operator after they ask Arc to revise a draft.
+ *
+ * This used to be `persisted ? "Arc is updating it" : "not saved"`, which
+ * asserted a thing the app could not know. The wake that starts the work is
+ * best-effort with a short timeout, and NOTHING polls `agent_tasks` — so an
+ * unacknowledged wake leaves a perfectly recorded request that never runs. For
+ * a week every revision landed in exactly that state while the UI said Arc was
+ * updating it (BSR-695).
+ *
+ * Pure and exported so the three outcomes stay distinguishable in a test:
+ * not saved, saved-and-started, saved-but-not-started.
+ */
+export function revisionNotice(result: { ok: true; persisted: boolean; dispatched?: boolean }): string {
+  if (!result.persisted) return "Preview — revision not saved";
+  // `undefined` means the caller never reported dispatch — treat as started, so
+  // paths that don't carry the flag keep their existing wording. Only an
+  // explicit `false` is a known failure to start.
+  if (result.dispatched === false) {
+    return "Revision saved, but Arc hasn't started — it won't begin on its own. Try again shortly.";
+  }
+  return "Revision requested — Arc is updating it";
+}
+
 const subscribeToHydration = () => () => undefined;
 
 /** Render local wall-clock time only after hydration. Vercel renders in UTC,
@@ -1004,7 +1028,7 @@ export function useDraftDecision({
       onResolved(approval.assetId, "revision");
       setReviseOpen(false);
       setReviseText("");
-      setNotice(result.persisted ? "Revision requested — Arc is updating it" : "Preview — revision not saved");
+      setNotice(revisionNotice(result));
     });
   };
 

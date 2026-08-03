@@ -52,6 +52,12 @@
 
 .arc-campaign .cerr { font-size: 12px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: 9px; padding: 9px 12px; margin-bottom: 14px; }
 
+/* "Saved but not started" — the request landed, the agent never picked it up.
+   Deliberately NOT .cerr: red is reserved for destructive, and nothing here
+   failed or was lost. Warn tone says "this needs you" without saying "broken". */
+.arc-campaign .cwarn { font-size: 12px; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 9px; padding: 9px 12px; margin-bottom: 14px; }
+.arc-campaign .cwarn strong { font-weight: 500; color: var(--text); }
+
 .arc-campaign .csec { margin-bottom: 26px; }
 .arc-campaign .csh { font-family: var(--serif); font-weight: 500; font-size: 14.5px; letter-spacing: -0.01em; margin: 0 0 13px; display: flex; align-items: center; gap: 9px; }
 .arc-campaign .csh .cgc { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: 5px; padding: 1px 6px; font-weight: 400; }
