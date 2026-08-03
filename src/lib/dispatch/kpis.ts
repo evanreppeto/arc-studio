@@ -1,3 +1,5 @@
+import { WORK_STATE_LABEL } from "@/domain";
+
 import { type DispatchStatus, type DispatchView } from "./status";
 
 /**
@@ -31,7 +33,9 @@ export function buildOutboxKpis(rows: DispatchView[]): OutboxKpi[] {
   return [
     {
       value: `${queued}`,
-      label: "Awaiting your confirm",
+      // Was "Awaiting your confirm" — `confirm` used as a noun, and a fourth
+      // wording for the state Home and Campaigns both call "Needs you" (BSR-656).
+      label: WORK_STATE_LABEL.needs_you,
       sub: reachSub(recipients(rows, ["queued"]), "in the send queue"),
       // The only tile that should ever shout: it is the one with a human decision
       // still outstanding.

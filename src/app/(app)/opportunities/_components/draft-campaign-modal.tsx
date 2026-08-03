@@ -28,14 +28,14 @@ const MODE_COPY: Record<
   operator: {
     title: "Draft campaign from opportunity",
     description:
-      "Arc seeds an approval-gated draft from this opportunity's evidence. Everything stays launch-locked — nothing sends until you approve it.",
+      "Arc starts a draft from this opportunity's evidence. It stays locked — nothing sends until you approve it.",
     submit: "Create draft",
     submitting: "Creating draft…",
   },
   arc: {
     title: "Ask Arc to draft a package",
     description:
-      "Arc will draft a full starter package — email, SMS, paid, and landing copy — from this opportunity's evidence. Every piece lands approval-gated and launch-locked; nothing sends until you approve it.",
+      "Arc will draft the whole thing — email, SMS, paid, and landing copy — from this opportunity's evidence. Every asset lands as a locked draft; nothing sends until you approve it.",
     submit: "Ask Arc to draft",
     submitting: "Arc is drafting…",
   },

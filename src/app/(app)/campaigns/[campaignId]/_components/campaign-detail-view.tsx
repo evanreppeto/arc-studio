@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 
-import { humanizePersonaLabel as humanizePersona, type AudienceResolution } from "@/domain";
+import {
+  humanizePersonaLabel as humanizePersona,
+  toWorkState,
+  WORK_STATE_LABEL,
+  type AudienceResolution,
+} from "@/domain";
 import { type AttachableMediaItem } from "@/lib/campaigns/attach-media";
 import {
   type CampaignMediaAsset,
@@ -61,16 +66,17 @@ type Tone = "ok" | "amber" | "red" | "gray" | "blue";
 
 function statusMeta(status: string): { tone: Tone; label: string } {
   const s = (status || "").toLowerCase();
-  if (/approved/.test(s)) return { tone: "ok", label: "Approved" };
-  if (/declined|rejected/.test(s)) return { tone: "red", label: "Declined" };
-  if (/archived/.test(s)) return { tone: "gray", label: "Archived" };
+  if (/approved/.test(s)) return { tone: "ok", label: WORK_STATE_LABEL.approved };
+  if (/declined|rejected/.test(s)) return { tone: "red", label: WORK_STATE_LABEL.declined };
+  if (/archived/.test(s)) return { tone: "gray", label: WORK_STATE_LABEL.archived };
   // A compliance block is not a routine pending item and must not read as one —
-  // it has to be distinguishable at a glance from the amber "Needs review" crowd.
-  if (/compliance|blocked/.test(s)) return { tone: "red", label: "Blocked" };
-  if (/revision/.test(s)) return { tone: "amber", label: "Revision requested" };
-  if (/live|sent|deployed/.test(s)) return { tone: "blue", label: "Live" };
-  if (/pending|review/.test(s)) return { tone: "amber", label: "Needs review" };
-  return { tone: "gray", label: status ? status.replace(/[_-]+/g, " ") : "Draft" };
+  // it has to be distinguishable at a glance from the amber "Needs you" crowd.
+  // It keeps the red tone; only the wording joins the shared vocabulary.
+  if (/compliance|blocked/.test(s)) return { tone: "red", label: "Blocked by a rule" };
+  if (/revision/.test(s)) return { tone: "amber", label: WORK_STATE_LABEL.needs_changes };
+  if (/live|sent|deployed/.test(s)) return { tone: "blue", label: WORK_STATE_LABEL.sending };
+  if (/pending|review/.test(s)) return { tone: "amber", label: WORK_STATE_LABEL.needs_you };
+  return { tone: "gray", label: status ? WORK_STATE_LABEL[toWorkState(status)] : WORK_STATE_LABEL.draft };
 }
 
 // A deliverable still accepts a decision until it's approved, archived, or live.
@@ -607,7 +613,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
 
           {tab === "deliverables" &&
             (grouped.length === 0 ? (
-              <p className="empty-note">No deliverables yet. Arc drafts approval-gated pieces here as it builds the package.</p>
+              <p className="empty-note">Nothing here yet. Arc drafts the assets here as it builds the campaign — each one waits on your approval.</p>
             ) : (
               grouped.map(({ cat, items }) => (
                 <div className="csec" key={cat}>
@@ -741,7 +747,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                               aria-label="Deliverable copy"
                             />
                             <div className="revactions">
-                              <span className="editnote">Edits stay approval-gated — outbound is untouched.</span>
+                              <span className="editnote">Your edits still need approving. Nothing goes out because of them.</span>
                               <button className="cbtn ghost" onClick={() => setEditFor(null)} disabled={pending}>
                                 Cancel
                               </button>

@@ -1,4 +1,10 @@
-import { humanizePersonaLabel as humanizePersona } from "@/domain";
+import {
+  humanizePersonaLabel as humanizePersona,
+  ASSET_NOUN,
+  CAMPAIGN_NOUN,
+  countOf,
+  WORK_STATE_LABEL,
+} from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getCampaignWorkspaceList, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
@@ -32,32 +38,37 @@ function toneFor(status: string): CampaignTone {
   return "draft";
 }
 
+// Status labels come from the one vocabulary (BSR-656) — the board used to say
+// "In review" while its own tab said "Needs approval" and Home said "Needs you"
+// about the same row.
 const TONE_LABEL: Record<CampaignTone, string> = {
-  live: "Live",
-  review: "In review",
-  revise: "Needs revision",
-  approved: "Approved",
-  draft: "Draft",
-  archived: "Archived",
+  live: WORK_STATE_LABEL.sending,
+  review: WORK_STATE_LABEL.needs_you,
+  revise: WORK_STATE_LABEL.needs_changes,
+  approved: WORK_STATE_LABEL.approved,
+  draft: WORK_STATE_LABEL.draft,
+  archived: WORK_STATE_LABEL.archived,
 };
 
+/** The next-action column answers "what happens next", so it never just repeats
+ *  the status pill sitting beside it. */
 function nextActionFor(tone: CampaignTone, pendingCount: number): { next: string; nextTone: "" | "go" | "warn" } {
   if (pendingCount > 0) {
-    return { next: `Approve ${pendingCount} piece${pendingCount === 1 ? "" : "s"}`, nextTone: "go" };
+    return { next: `Approve ${countOf(pendingCount, ASSET_NOUN)}`, nextTone: "go" };
   }
   switch (tone) {
     case "live":
-      return { next: "Sending", nextTone: "" };
+      return { next: "Going out now", nextTone: "" };
     case "approved":
-      return { next: "Scheduled to send", nextTone: "go" };
+      return { next: "Waiting to send", nextTone: "go" };
     case "review":
-      return { next: "In review", nextTone: "go" };
+      return { next: "Waiting on your decision", nextTone: "go" };
     case "revise":
-      return { next: "Revision requested", nextTone: "warn" };
+      return { next: "Arc is reworking it", nextTone: "warn" };
     case "archived":
-      return { next: "Paused", nextTone: "" };
+      return { next: "Put away", nextTone: "" };
     default:
-      return { next: "Draft in progress", nextTone: "" };
+      return { next: "Arc is still building it", nextTone: "" };
   }
 }
 
@@ -89,7 +100,7 @@ function toRow(item: CampaignWorkspaceListItem): CampaignRow {
   return {
     id: item.id,
     name: item.name,
-    brief: item.objective?.trim() || item.whyBuilt?.trim() || "Campaign package",
+    brief: item.objective?.trim() || item.whyBuilt?.trim() || "New campaign",
     tone,
     statusLabel: TONE_LABEL[tone],
     next,
@@ -127,7 +138,7 @@ export default async function CampaignsPage() {
       ? demoPersonaOptions
       : [];
   // Three states, not two. A failed load and an empty workspace used to render
-  // identically — the board showed "0 packages" whether the query returned
+  // identically — the board showed "0 campaigns" whether the query returned
   // nothing or blew up, so a broken campaigns read looked exactly like a new
   // tenant. That is how a real prod failure went unnoticed while the twice-daily
   // guardrail stayed green (BSR-542).
@@ -142,30 +153,32 @@ export default async function CampaignsPage() {
 
   // Two different facts, said as two different things. They used to be one claim
   // with two answers — a tab reading 4 above a footer reading 9 — because the
-  // footer regexed the rendered next-action label to find packages with an
-  // undecided piece. Both numbers were real; only the wording pretended they were
+  // footer regexed the rendered next-action label to find campaigns with an
+  // undecided asset. Both numbers were real; only the wording pretended they were
   // the same number.
   //
-  // - submitted: packages whose STATUS is on your desk. Matches the tab exactly
+  // - submitted: campaigns whose STATUS is on your desk. Matches the tab exactly
   //   (same predicate), because the tab is what it summarises.
-  // - pieces: deliverables with no decision recorded. This is the count the tab
-  //   cannot show: a package can be Approved and still hold an undecided piece,
-  //   so it sits under "Approved" while its row reads "Approve 1 piece".
+  // - assets: deliverables with no decision recorded. This is the count the tab
+  //   cannot show: a campaign can be Approved and still hold an undecided asset,
+  //   so it sits under "Approved" while its row reads "Approve 1 asset".
   //
-  // "Undecided" rather than "awaiting you" on purpose: a revision-requested piece
-  // has no decision but is waiting on ARC to re-draft, not on you.
+  // "Undecided" rather than "needs you" on purpose: an asset sent back for
+  // changes has no decision but is waiting on ARC to re-draft, not on you.
   const submitted = rows.filter((r) => needsOperatorApproval(r.tone)).length;
-  const pendingPieces = rows.reduce((sum, r) => sum + r.pendingCount, 0);
-  const packagesWithPieces = rows.filter((r) => r.pendingCount > 0).length;
+  const pendingAssets = rows.reduce((sum, r) => sum + r.pendingCount, 0);
+  const campaignsWithAssets = rows.filter((r) => r.pendingCount > 0).length;
 
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const parts = [
-    pendingPieces > 0
-      ? `${plural(pendingPieces, "piece")} across ${plural(packagesWithPieces, "package")} undecided`
+    pendingAssets > 0
+      ? `${countOf(pendingAssets, ASSET_NOUN)} across ${countOf(campaignsWithAssets, CAMPAIGN_NOUN)} still undecided`
       : null,
-    submitted > 0 ? `${plural(submitted, "package")} submitted for approval` : null,
+    submitted > 0 ? `${countOf(submitted, CAMPAIGN_NOUN)} need you` : null,
   ].filter(Boolean);
-  const arcNote = parts.length > 0 ? parts.join(" · ") : "Arc drafts approval-gated packages here as opportunities come in";
+  const arcNote =
+    parts.length > 0
+      ? parts.join(" · ")
+      : "Arc drafts campaigns here as opportunities come in — nothing sends until you approve it";
 
   return <CampaignsBoard rows={rows} arcNote={arcNote} personaOptions={personaOptions} loadError={loadError} />;
 }

@@ -31,7 +31,7 @@ export function MediaSpendMeterBar({ meter }: { meter: MediaSpendMeter }) {
         <p className="text-[0.85rem] font-semibold text-[var(--text-primary)]">
           {meter.isOverCap
             ? `Generation paused — ${meter.capLabel} spend cap reached`
-            : `${meter.spentLabel} of ${meter.capLabel} metered spend used`}
+            : `${meter.spentLabel} of your ${meter.capLabel} monthly creative budget used`}
           {!meter.isOverCap && !meter.mediaIsAllSpend && (
             <span className="ml-2 font-normal text-[var(--text-secondary)]">
               ({meter.mediaSpentLabel} on generation)

@@ -33,7 +33,7 @@ describe("buildPerformanceLearning", () => {
     expect(learning!.recommendation).toContain("lead with Email");
     expect(learning!.recommendation).toContain("rework SMS");
     expect(learning!.arcPrompt).toContain("Storm Rapid Response");
-    expect(learning!.arcPrompt).toContain("approval-gated");
+    expect(learning!.arcPrompt).toMatch(/draft for my approval/i);
   });
 
   it("falls back to interest when nothing has booked yet", () => {

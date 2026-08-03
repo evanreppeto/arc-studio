@@ -197,7 +197,7 @@ export const COMPARISONS: Comparison[] = [
       "Email platforms hand you an empty campaign and a template library. An honest look at what changes when the campaign arrives already drafted from your customer records.",
     lede: "These are good products with long track records, and this comparison is not an attempt to take their core job away from them.",
     shortAnswer:
-      "Mailchimp and Constant Contact are built to send email reliably, and they are better at that than most things. The difference is everything that happens before the send. They hand you an empty campaign and a template library, and the hard question — what is worth sending this week, and to whom — is still yours. Arc decides that from your customer records, drafts the whole package, and brings it to you for approval.",
+      "Mailchimp and Constant Contact are built to send email reliably, and they are better at that than most things. The difference is everything that happens before the send. They hand you an empty campaign and a template library, and the hard question — what is worth sending this week, and to whom — is still yours. Arc decides that from your customer records, drafts every asset, and brings it to you for approval.",
     rows: [
       {
         dimension: "Sending email",
