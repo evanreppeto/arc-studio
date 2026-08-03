@@ -4,6 +4,7 @@ import { redactDeep, redactSecrets } from "@/domain";
 import { type ApprovalCard, listApprovalCards } from "@/lib/approvals/read-model";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
 import { type ArcTenantScope } from "./drafts";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 /**
  * Arc Operations API approvals layer.
@@ -155,7 +156,7 @@ export async function addApprovalRecommendation(
   const { data, error } = await client
     .from("approval_recommendations")
     .insert({
-      ...orgTenantFields(scope),
+      ...workspaceScopeFields(scope),
       approval_item_id: input.approvalItemId,
       agent: input.agent ?? "arc",
       recommendation: redactSecrets(input.recommendation),
@@ -177,6 +178,3 @@ function applyOrgScope<Query>(query: Query, scope?: ArcTenantScope): Query {
   return (query as { eq(column: string, value: string): Query }).eq("org_id", scope.orgId);
 }
 
-function orgTenantFields(scope?: ArcTenantScope): Record<string, string> {
-  return scope ? { org_id: scope.orgId } : {};
-}
