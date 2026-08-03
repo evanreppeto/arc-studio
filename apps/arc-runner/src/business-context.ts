@@ -99,6 +99,10 @@ export function fromAppContext(raw: AppBusinessContext): ArcBusinessContext {
     .join(", ");
   const identity = [
     raw.tagline ? `Tagline: ${raw.tagline}.` : null,
+    // The operator's own prose about what the business does. Fetched over the
+    // wire since the Brand Kit shipped, but never read here — so a filled-in
+    // description reached Arc's context and was dropped before the prompt.
+    raw.description ? `About: ${raw.description}.` : null,
     raw.websiteUrl ? `Website: ${raw.websiteUrl}.` : null,
     raw.serviceAreas.length ? `Service areas: ${raw.serviceAreas.join(", ")}.` : null,
     raw.logoUrl ? `Logo: ${raw.logoUrl}.` : null,
