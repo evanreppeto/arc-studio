@@ -5,6 +5,9 @@ import { CSV_IMPORT_CONNECTOR_KEY } from "@/lib/connectors/import";
 import { listWorkspaceConnectors } from "@/lib/connectors/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
+import { listImportRuns } from "@/lib/import-runs/read-model";
+
+import { ImportHistory } from "./_components/import-history";
 import { ImportWizard } from "./_components/import-wizard";
 import "./import.css";
 
@@ -24,9 +27,11 @@ export default async function CrmImportPage() {
   // leads carry a NOT NULL persona. Resolved here so the wizard can say so up
   // front rather than failing at the last step.
   let ready = false;
-  if (ctx?.workspaceId && isSupabaseAdminConfigured()) {
+  let runs: Awaited<ReturnType<typeof listImportRuns>> = [];
+  if (ctx?.workspaceId && ctx.orgId && isSupabaseAdminConfigured()) {
     const connectors = await listWorkspaceConnectors(getSupabaseAdminClient(), ctx.workspaceId).catch(() => []);
     ready = connectors.some((c) => c.key === CSV_IMPORT_CONNECTOR_KEY && c.status === "connected");
+    runs = await listImportRuns({ orgId: ctx.orgId, workspaceId: ctx.workspaceId }).catch(() => []);
   }
 
   return (
@@ -41,6 +46,16 @@ export default async function CrmImportPage() {
       </header>
 
       <ImportWizard ready={ready} />
+
+      <section className="imp-step">
+        <div className="imp-step-h">
+          <span className="imp-step-n">·</span>
+          <h2>Past imports</h2>
+        </div>
+        <div className="imp-step-b">
+          <ImportHistory runs={runs} />
+        </div>
+      </section>
 
       <p className="imp-note">
         Looking for a live connection instead? HubSpot and Mailchimp can sync from{" "}

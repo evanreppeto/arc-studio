@@ -10,7 +10,7 @@ import {
   type OfficialPersonaMapping,
   OFFICIAL_PERSONA_MAPPINGS,
 } from "@/domain";
-import { findExistingLeadByExternalId, type ExistingLeadRefs } from "@/lib/lead-ingestion/idempotency";
+import { findExistingLeadByExternalId, snapshotLeadRow, type ExistingLeadRefs } from "@/lib/lead-ingestion/idempotency";
 import { persistLeadIngestion, type LeadProvenance } from "@/lib/lead-ingestion/persistence";
 
 import { type EnrichmentProvider } from "../enrichment/provider";
@@ -24,6 +24,8 @@ import { type CrmImportSource } from "./source";
 export type ImportPersistDeps = {
   persist?: typeof persistLeadIngestion;
   findExisting?: typeof findExistingLeadByExternalId;
+  /** Reads the row an update is about to overwrite, so a reversal can restore it. */
+  snapshot?: typeof snapshotLeadRow;
 };
 
 /**
@@ -41,6 +43,8 @@ export type ImportProvenanceRecorder = (record: {
   action: "created" | "updated";
   /** Pre-existing row refs when this was an update, so a reversal can restore. */
   existing: ExistingLeadRefs | null;
+  /** The row as it stood BEFORE this run overwrote it. Null for a create. */
+  previous: Record<string, unknown> | null;
 }) => Promise<void>;
 
 // ---------------------------------------------------------------------------
@@ -227,7 +231,16 @@ async function importOneContact(
 
   const findExisting = input.deps?.findExisting ?? findExistingLeadByExternalId;
   const persist = input.deps?.persist ?? persistLeadIngestion;
+  const snapshot = input.deps?.snapshot ?? snapshotLeadRow;
   const existing = await findExisting(input.client, input.orgId, lead.externalLeadId);
+
+  // Capture BEFORE the write, and only when someone is recording and there is
+  // something to overwrite. An undo that can only delete what a run created, and
+  // not put back what it changed, is half an undo.
+  const previous =
+    input.recordProvenance && !input.dryRun && existing?.leadId
+      ? await snapshot(input.client, input.orgId, existing.leadId)
+      : null;
 
   // The whole dry run: everything above has resolved — mapping, enrichment,
   // validation, and the create-vs-update decision, which findExisting has just
@@ -263,6 +276,7 @@ async function importOneContact(
         leadId: persisted.leadId,
         action: persisted.leadCreated ? "created" : "updated",
         existing,
+        previous,
       })
       .catch(() => undefined);
   }

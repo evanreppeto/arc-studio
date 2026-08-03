@@ -68,7 +68,12 @@ async function beginRun(
   const externalSystemId = runId ? await resolveExternalSystemId(tenant, source, client) : null;
 
   const recordProvenance = runId
-    ? async (record: { externalId: string; leadId: string; action: "created" | "updated" }) => {
+    ? async (record: {
+        externalId: string;
+        leadId: string;
+        action: "created" | "updated";
+        previous: Record<string, unknown> | null;
+      }) => {
         await recordImportedRecord(
           tenant,
           {
@@ -77,11 +82,9 @@ async function beginRun(
             localId: record.leadId,
             externalId: record.externalId,
             action: record.action,
-            // BSR-643 owns restoring overwritten values and will populate this from
-            // the pre-update row. Recording the action now is what lets it tell a
-            // created row (delete on undo) from an updated one (restore), which is
-            // the distinction a blanket delete would destroy.
-            previous: null,
+            // The row as it stood before this run touched it (BSR-643). Null for a
+            // create — there is nothing to restore a created row to.
+            previous: record.previous,
           },
           externalSystemId,
           client,
