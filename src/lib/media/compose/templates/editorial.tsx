@@ -1,4 +1,4 @@
-import { CREATIVE_LAYOUTS, creativeScale } from "@/domain";
+import { creativeScale } from "@/domain";
 
 import type { CreativeTemplate } from "../types";
 import { brandColor } from "./tokens";
@@ -6,9 +6,9 @@ import { brandColor } from "./tokens";
 /** Editorial: accent side-rail, kicker + headline up top on a dark band, logo + outline CTA at the foot.
  *
  *  Geometry and type scale come from CREATIVE_LAYOUTS.editorial (BSR-679). */
-export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, backgroundDataUrl, logoDataUrl }) => {
+export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl }) => {
   const u = creativeScale(dims.width);
-  const L = CREATIVE_LAYOUTS.editorial;
+  const L = layout;
   const c = (ref: Parameters<typeof brandColor>[1]) => brandColor(brand, ref);
 
   return (

@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, statusTone } from "@/domain";
+import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, statusTone, personaAccent,} from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
 import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord, searchCrmRecords } from "../actions";
 import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-record-modal";
+import { pageRangeLabel, pageWindow } from "./pagination";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
 import type { CustomFieldDefinition } from "@/domain";
 
@@ -89,6 +90,10 @@ function FilterMenu({
 
 type SortKey = "recent" | "name" | "score";
 const SORT_LABELS: Record<SortKey, string> = { recent: "Recent", name: "Name", score: "Score" };
+
+/** Rows-per-page choices. The largest is the old hard display cap, so the most
+ *  rows we ever render at once is unchanged from before paging existed. */
+const PAGE_SIZES = [25, 50, 100] as const;
 
 function SortMenu({ value, onChange }: { value: SortKey; onChange: (v: SortKey) => void }) {
   const [open, setOpen] = useState(false);
@@ -289,17 +294,6 @@ function bumpTasksLabel(current: string, delta: number): string {
   return total > 0 ? `${total} open` : "";
 }
 
-function personaDotOf(persona: string): string {
-  const p = (persona || "").toLowerCase();
-  if (/emergency|urgent|storm|hail|flood|fire|burst|water\s*damage/.test(p)) return "#cc6a6a";
-  if (/insurance|adjuster|agent/.test(p)) return "#88b6d8";
-  if (/plumb|partner|contractor|referral|vendor|trade|sub/.test(p)) return "#7fb89a";
-  if (/preventative|preventive|maintenance|monitor|inspection/.test(p)) return "#6fae9e";
-  if (/rebuild|restoration|reconstruct|remodel|renov/.test(p)) return "#d8a24a";
-  if (/hoa|board|association|landlord|tenant/.test(p)) return "#9678c8";
-  if (/past|repeat|existing|customer|reactivat/.test(p)) return "#b58fd0";
-  return "#c8a24a";
-}
 function titleCase(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -329,7 +323,7 @@ function buildOptimisticRow(
     statusLabel: label || "—",
     statusTone: statusTone(label),
     persona: personaLabelOf(v.persona || ""),
-    dot: personaDotOf(v.persona || ""),
+    dot: personaAccent(v.persona || ""),
     score: null,
     scoreColor: "var(--muted)",
     owner: "You",
@@ -391,6 +385,8 @@ export function CrmBoard({
    */
   const [serverRows, setServerRows] = useState<CrmRowVM[] | null>(null);
   const [serverCapped, setServerCapped] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -503,7 +499,7 @@ export function CrmBoard({
     setPersonaMenuOpen(false);
     if (ids.length === 0) return;
     setError(null);
-    const dot = personaDotOf(opt.label);
+    const dot = personaAccent(opt.label);
     const prev = personaEdits;
     setPersonaEdits((e) => {
       const next = { ...e };
@@ -614,9 +610,34 @@ export function CrmBoard({
     else if (sortBy === "score") filtered = [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     return filtered;
   }, [allActiveRows, serverRows, q, personaF, statusF, ownerF, sortBy]);
-  // Display caps at 100 rows for perf; Export writes the WHOLE filtered set (never
-  // a silent 100-row slice).
-  const visible = useMemo(() => filteredAll.slice(0, 100), [filteredAll]);
+  // Any change to WHICH rows are in play sends the pager back to page 1, so the
+  // operator never lands on a stale page 4 of a set that now has two pages. Done
+  // as a render-phase adjustment rather than an effect (same pattern as the
+  // Brain fact pager) — it applies before paint, so there is no flash of the
+  // wrong page. `q` is in the key because the debounced search swaps the whole
+  // set from under us; `pageSize` because 25→100 makes the old index meaningless.
+  const pageKey = `${active.key}|${q.trim()}|${personaF}|${statusF}|${ownerF}|${sortBy}|${pageSize}`;
+  const [seenPageKey, setSeenPageKey] = useState(pageKey);
+  if (pageKey !== seenPageKey) {
+    setSeenPageKey(pageKey);
+    setPage(1);
+  }
+
+  // Paged display. This used to be a flat `filteredAll.slice(0, 100)` with a
+  // pager whose buttons had no handler and whose rows-per-page select had no
+  // onChange — so on prod (254 contacts) the footer read "1–100 of 254" and the
+  // remaining 154 could not be reached by browsing at all (BSR-683).
+  //
+  // Paging is client-side because the board already holds the server's whole
+  // bundle for the object (CRM_TABLE_BUNDLE_LIMIT = 1,000 rows). Past that
+  // window a record is not in the browser and the search term goes to the
+  // server instead — that path is untouched here, and `serverCapped` still
+  // says so in the footer. Export writes the WHOLE filtered set, never a page.
+  // `safePage` guards a stale index when the set shrinks under us (a filter
+  // narrowed it, a search returned fewer rows) without needing an extra effect
+  // to chase it. Math lives in ./pagination so it can be unit-tested.
+  const { totalPages, safePage, start: pageStart, end: pageEnd } = pageWindow(filteredAll.length, page, pageSize);
+  const visible = useMemo(() => filteredAll.slice(pageStart, pageEnd), [filteredAll, pageStart, pageEnd]);
 
   const exportCsv = () => {
     if (filteredAll.length === 0) return;
@@ -948,23 +969,42 @@ export function CrmBoard({
         </span>
         <div className="pager">
           <span className="rpp">
-            Rows{" "}
-            <select defaultValue="25">
-              <option>25</option>
-              <option>50</option>
-              <option>100</option>
+            <label htmlFor="crm-rows-per-page">Rows</label>{" "}
+            <select
+              id="crm-rows-per-page"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
             </select>
           </span>
           <span className="pgnum">
-            {visible.length === 0 ? "0" : `1–${visible.length}`} of{" "}
-            {(serverRows ? filteredAll.length : countFor(active)).toLocaleString()}
+            {/* The range is the page's real position in the set, not "1–N" of
+                whatever happens to be on screen. The total stays the object's
+                own COUNT unless a server search replaced the set, in which case
+                the match count IS the total. */}
+            {pageRangeLabel(pageStart, visible.length, serverRows ? filteredAll.length : countFor(active))}
             {searching ? " · searching…" : ""}
             {serverCapped && serverRows ? ` · first ${serverRows.length}, narrow to see more` : ""}
           </span>
-          <button className="pgbtn" type="button" aria-label="Previous page">
+          <button
+            className="pgbtn"
+            type="button"
+            aria-label="Previous page"
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, Math.min(p, totalPages) - 1))}
+          >
             <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" /></svg>
           </button>
-          <button className="pgbtn" type="button" aria-label="Next page">
+          <button
+            className="pgbtn"
+            type="button"
+            aria-label="Next page"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, Math.min(p, totalPages) + 1))}
+          >
             <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg>
           </button>
         </div>

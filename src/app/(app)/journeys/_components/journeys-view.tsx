@@ -28,16 +28,17 @@ const LENS_SHORT: Record<AttributionModel, string> = {
   position_based: "40/20/40",
 };
 
-// Stage → tone token (see the .journeys CSS block). Two anonymous stages read
-// blue; the known-side stages escalate gold → amber → green, with retention its
-// own violet so repeat/expansion is visually distinct from a first conversion.
+// Stage → tone token (see the .journeys CSS block). Three tones, each meaning
+// something a person can state: blue = we don't know who this is yet, gold =
+// known and in progress, green = won. Retention used to have its own violet,
+// which DESIGN.md §8 bans outright and which no legend explained (BSR-661).
 const STAGE_TONE: Record<JourneyStageKey, string> = {
   reached: "blue",
   engaged: "blue",
   identified: "gold",
-  nurtured: "amber",
+  nurtured: "gold",
   converted: "green",
-  retained: "vio",
+  retained: "green",
 };
 
 // Nicer labels for the touch kinds the read-model emits; anything else is titleized.
@@ -291,6 +292,11 @@ export function JourneysView({
           The journey funnel
           <span className="jr-sub2">how many contacts reach each stage</span>
         </h2>
+        <div className="jr-legend">
+          <span><i className="t-blue" />Not identified yet</span>
+          <span><i className="t-gold" />Known, in progress</span>
+          <span><i className="t-green" />Won</span>
+        </div>
         <div className="jr-funnel">
           {funnel.map((f, i) => {
             const meta = JOURNEY_STAGES[i];
@@ -309,7 +315,7 @@ export function JourneysView({
                   {meta?.anonymous && <span className="jr-anon" title="Anonymous / pre-identification stage — full capture arrives in P1">pre-lead</span>}
                 </span>
                 <span className="jr-fbar">
-                  <i className={`t-${STAGE_TONE[f.key]}`} style={{ width: `${width}%` }} />
+                  <i style={{ width: `${width}%`, opacity: 1 - i * 0.12 }} />
                 </span>
                 <span className="jr-fcount">{f.count}</span>
                 <span className="jr-frate">{i === 0 ? "" : `${Math.round(f.rateFromPrev * 100)}%`}</span>

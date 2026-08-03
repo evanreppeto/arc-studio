@@ -3,8 +3,7 @@ import {
   ASSET_NOUN,
   CAMPAIGN_NOUN,
   countOf,
-  WORK_STATE_LABEL,
-} from "@/domain";
+  WORK_STATE_LABEL, personaAccent,} from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getCampaignWorkspaceList, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
@@ -72,14 +71,6 @@ function nextActionFor(tone: CampaignTone, pendingCount: number): { next: string
   }
 }
 
-function personaDot(persona: string): string {
-  const p = (persona || "").toLowerCase();
-  if (/storm|hail|weather|damage/.test(p)) return "#7fb89a";
-  if (/property|manager|realtor|hoa|commercial/.test(p)) return "#c8a24a";
-  if (/insurance|adjuster/.test(p)) return "#88b6d8";
-  if (/past|repeat|existing|customer|reactivation/.test(p)) return "#9678c8";
-  return "#c8a24a";
-}
 
 function formatAbs(iso: string): string {
   const d = new Date(iso);
@@ -107,7 +98,7 @@ function toRow(item: CampaignWorkspaceListItem): CampaignRow {
     nextTone,
     pendingCount: item.pendingCount,
     audience,
-    dot: personaDot(item.persona || audience),
+    dot: personaAccent(item.persona || audience),
     channels: item.channels.join(" · "),
     updatedRel: relativeTime(item.updatedAtIso) || item.updatedAt,
     updatedAbs: formatAbs(item.updatedAtIso),

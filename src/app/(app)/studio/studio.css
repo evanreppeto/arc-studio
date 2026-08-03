@@ -52,7 +52,7 @@
 .arc-studio .mtile .mt .pv { position: absolute; top: 5px; left: 5px; font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 4px; backdrop-filter: blur(3px); }
 .arc-studio .pv.real { color: var(--ok-text); background: rgba(127, 184, 154, 0.22); }
 .arc-studio .pv.ai { color: var(--accent-contrast); background: rgba(200, 162, 74, 0.22); }
-.arc-studio .pv.comp { color: var(--vio-text); background: rgba(150, 120, 200, 0.22); }
+.arc-studio .pv.comp { color: var(--slate-text); background: var(--slate-soft); }
 .arc-studio .pv.upload { color: var(--blue-text); background: rgba(136, 182, 216, 0.22); }
 .arc-studio .pv.stock { color: var(--text-2); background: rgba(120, 120, 130, 0.28); }
 .arc-studio .mtile .ml { font-size: 10px; color: var(--text-2); padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -300,4 +300,23 @@
 @media (pointer: coarse) {
   .arc-studio .iconbtn { width: 44px; height: 44px; min-width: 44px; flex-shrink: 0; border-radius: 10px; }
   .arc-studio .iconbtn svg { width: 18px; height: 18px; }
+}
+
+/* --- Canvas editing (BSR-680) --------------------------------------------
+   Constrained direct manipulation: the copy block moves and the headline
+   scales. Selection chrome is deliberately quiet — this is a review surface
+   first, and a permanent blue outline would read as an error state. */
+.arc-studio .canvas .clayer { position: relative; cursor: pointer; border-radius: 3px; outline: 1px solid transparent; outline-offset: 2px; transition: outline-color 0.12s var(--ease); }
+.arc-studio .canvas .clayer:hover { outline-color: rgba(255, 255, 255, 0.35); }
+.arc-studio .canvas .clayer.sel { outline-color: var(--accent); }
+.arc-studio .canvas .clayer[contenteditable="plaintext-only"] { outline-color: var(--accent); cursor: text; }
+.arc-studio .canvas .cblock { position: relative; }
+.arc-studio .canvas .cblock.armed { touch-action: none; }
+/* The ring shows WHAT will move, which is the block, not the line you clicked. */
+.arc-studio .canvas .cblock-ring { position: absolute; inset: -8px; border: 1px dashed var(--accent-border); border-radius: 6px; pointer-events: none; }
+.arc-studio .canvas .cblock-handle { position: absolute; right: -14px; bottom: -14px; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--canvas-deep, #101013); cursor: ew-resize; touch-action: none; }
+.arc-studio .canvas .cblock-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .arc-studio .canvas .clayer { transition: none; }
 }

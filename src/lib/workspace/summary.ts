@@ -13,6 +13,33 @@ export type WorkspaceSummary = {
   mediaAvailable: number;
   pendingApprovals: number;
   personas: number;
+  /**
+   * Live record counts (BSR-678).
+   *
+   * Arc told an operator the CRM was empty 85 minutes after 243 contacts were
+   * imported, cited `get_workspace_settings` as its live source — a tool that
+   * carries no CRM data — and then wrote the false belief back into the Brain
+   * stamped with that day's date.
+   *
+   * The prompt already forbids quoting a remembered count. The reason that
+   * wasn't enough: this snapshot is injected every turn and carried no record
+   * counts, so when Arc reasoned about the CRM there was no live number in
+   * context and the only figure available WAS the remembered one. Adding the
+   * counts here is the structural fix — the true number now sits in front of
+   * the model on every turn, whether or not it thinks to go looking.
+   *
+   * Counts only. Row content still needs a real CRM read.
+   *
+   * `null` means the count could not be read, and is deliberately NOT 0 — "we
+   * don't know" and "there are none" are different answers, and collapsing them
+   * is the same mistake in miniature.
+   */
+  records: {
+    contacts: number | null;
+    companies: number | null;
+    leads: number | null;
+    campaigns: number | null;
+  };
 };
 
 export type WorkspaceSettingsDetail = WorkspaceSummary & {
@@ -32,7 +59,30 @@ const NEUTRAL_WORKSPACE_SUMMARY: WorkspaceSummary = {
   mediaAvailable: 0,
   pendingApprovals: 0,
   personas: 0,
+  // Unconfigured Supabase means the counts are unknown, not zero.
+  records: { contacts: null, companies: null, leads: null, campaigns: null },
 };
+
+/**
+ * Exact row count for one table, head-only so no rows cross the wire.
+ *
+ * Returns null — not 0 — when the count can't be read. "We don't know" and
+ * "there are none" are different answers, and collapsing them is the exact
+ * mistake this whole snapshot exists to stop (see the `records` doc comment).
+ */
+async function countRows(
+  db: SupabaseClient,
+  table: string,
+  column: "org_id" | "workspace_id",
+  id: string,
+): Promise<number | null> {
+  try {
+    const { count, error } = await db.from(table).select("id", { count: "exact", head: true }).eq(column, id);
+    return error ? null : (count ?? null);
+  } catch {
+    return null;
+  }
+}
 
 /** Resolve a piece of the summary, swallowing its error to a fallback so one
  *  unavailable source never sinks the whole snapshot. */
@@ -51,12 +101,18 @@ export async function getWorkspaceSummary(
 ): Promise<WorkspaceSummary> {
   if (!isSupabaseAdminConfigured()) return { ...NEUTRAL_WORKSPACE_SUMMARY };
   const db = client ?? getSupabaseAdminClient();
-  const [profile, connectors, approvals, personas, media] = await Promise.all([
+  const [profile, connectors, approvals, personas, media, contacts, companies, leads, campaigns] = await Promise.all([
     safe(() => getBusinessProfile(orgId), null),
     safe(() => listWorkspaceConnectors(db, workspaceId), []),
     safe(() => countActiveApprovals(orgId, db), 0),
     safe(() => listPersonaDefinitions(orgId), []),
     safe(() => listAvailableArcMedia(orgId, { limit: MEDIA_SNAPSHOT_LIMIT }, db), []),
+    // Customer records are org-owned; generated work is workspace-owned. Scope
+    // each to the column that actually carries its tenancy rather than assuming.
+    countRows(db, "contacts", "org_id", orgId),
+    countRows(db, "companies", "org_id", orgId),
+    countRows(db, "leads", "org_id", orgId),
+    countRows(db, "campaigns", "workspace_id", workspaceId),
   ]);
 
   return {
@@ -68,6 +124,7 @@ export async function getWorkspaceSummary(
     mediaAvailable: media.length,
     pendingApprovals: approvals,
     personas: personas.length,
+    records: { contacts, companies, leads, campaigns },
   };
 }
 
