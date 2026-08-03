@@ -1008,7 +1008,16 @@ export function useDraftDecision({
       onResolved(approval.assetId, "revision");
       setReviseOpen(false);
       setReviseText("");
-      setNotice(result.persisted ? "Revision requested — Arc is updating it" : "Preview — revision not saved");
+      if (!result.persisted) return setNotice("Preview — revision not saved");
+      // "Arc is updating it" is only true if the runner actually took the wake.
+      // On `dispatched: false` the request is saved but nothing is running, and
+      // nothing will re-surface it — so point at the campaign, where the retry
+      // lives, rather than reporting an update that is not happening.
+      setNotice(
+        result.dispatched === false
+          ? "Saved, but Arc hasn't picked it up — open the campaign to send it again"
+          : "Revision requested — Arc is updating it",
+      );
     });
   };
 
