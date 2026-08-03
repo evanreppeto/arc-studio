@@ -3,7 +3,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
-import { type CsvColumnOverrides, type CsvField, type ImportEntityKind } from "@/domain";
+import { CUSTOM_FIELD_TYPES, type CsvColumnOverrides, type CsvField, type CustomFieldType, type ImportEntityKind } from "@/domain";
+import { type AcceptedCustomField } from "@/lib/import-runs/custom-fields";
 
 import { commitCsvImportAction, importEntityAction, previewCsvImportAction } from "../actions";
 import { MAPPABLE_FIELDS, type ImportPreview } from "./types";
@@ -36,6 +37,8 @@ export function ImportWizard({ ready }: { ready: boolean }) {
   const [dragOver, setDragOver] = useState(false);
   const [overrides, setOverrides] = useState<CsvColumnOverrides>({});
   const [preview, setPreview] = useState<ImportPreview | null>(null);
+  /** Unmapped columns the operator has chosen to keep, by header. */
+  const [keepFields, setKeepFields] = useState<Record<string, CustomFieldType | null>>({});
   const [pending, setPending] = useState<"preview" | "commit" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -49,6 +52,7 @@ export function ImportWizard({ ready }: { ready: boolean }) {
     setFileName(file.name);
     setPreview(null);
     setOverrides({});
+    setKeepFields({});
     setDone(null);
     setError(null);
   }, []);
@@ -77,7 +81,7 @@ export function ImportWizard({ ready }: { ready: boolean }) {
     setError(null);
     const res =
       kind === "contacts"
-        ? await commitCsvImportAction({ csvText, columnOverrides: overrides })
+        ? await commitCsvImportAction({ csvText, columnOverrides: overrides, customFields: acceptedFields() })
         : ((await importEntityAction({ kind, csvText, columnOverrides: overrides })) as
             | { ok: true; message: string }
             | { ok: false; error: string });
@@ -113,6 +117,20 @@ export function ImportWizard({ ready }: { ready: boolean }) {
 
   const dateMapped = Boolean(preview && preview.mappedColumns.lastContactedAt);
 
+  /** The kept columns, in the shape the action provisions from. */
+  function acceptedFields(): AcceptedCustomField[] {
+    if (!preview) return [];
+    return preview.suggestedFields
+      .filter((f) => keepFields[f.label] !== undefined && keepFields[f.label] !== null)
+      .map((f) => ({
+        header: preview.unmappedColumns.find((h) => h === f.label) ?? f.label,
+        key: f.key,
+        label: f.label,
+        fieldType: keepFields[f.label] as CustomFieldType,
+        options: f.options,
+      }));
+  }
+
   return (
     <>
       <section className="imp-step" data-done={hasData}>
@@ -133,7 +151,7 @@ export function ImportWizard({ ready }: { ready: boolean }) {
                 className="imp-kind"
                 data-on={kind === k.kind}
                 title={k.hint}
-                onClick={() => { setKind(k.kind); setPreview(null); setOverrides({}); setDone(null); setError(null); }}
+                onClick={() => { setKind(k.kind); setPreview(null); setOverrides({}); setKeepFields({}); setDone(null); setError(null); }}
               >
                 {k.label}
               </button>
@@ -256,11 +274,54 @@ export function ImportWizard({ ready }: { ready: boolean }) {
                 </div>
               )}
 
-              {preview.unmappedColumns.length > 0 && (
-                <p className="imp-note">
-                  Not importing: {preview.unmappedColumns.join(", ")}. These are dropped for now — map any you
-                  need above.
-                </p>
+              {preview.suggestedFields.length > 0 && (
+                <div className="imp-extra">
+                  <div className="imp-extra-h">
+                    Columns we don&apos;t have a home for
+                    <span>Keep one and it becomes a field on your records. Otherwise it isn&apos;t imported.</span>
+                  </div>
+                  <table className="imp-map">
+                    <tbody>
+                      {preview.suggestedFields.map((f) => {
+                        const chosen = keepFields[f.label] ?? null;
+                        return (
+                          <tr key={f.key}>
+                            <td className="imp-col">
+                              {f.label}
+                              {f.samples.length > 0 && <span className="imp-samples">{f.samples.join(" · ")}</span>}
+                              {/* The guess, visible without opening the dropdown.
+                                  A suggestion nobody can see is not a suggestion —
+                                  but it stays a suggestion: nothing is kept unless
+                                  the operator chooses to keep it. */}
+                              <span className="imp-samples">looks like {f.fieldType.replace("_", " ")}</span>
+                            </td>
+                            <td>
+                              <select
+                                value={chosen ?? ""}
+                                data-dropped={chosen === null}
+                                aria-label={`Keep the ${f.label} column as`}
+                                onChange={(e) =>
+                                  setKeepFields((k) => ({
+                                    ...k,
+                                    [f.label]: e.target.value ? (e.target.value as CustomFieldType) : null,
+                                  }))
+                                }
+                              >
+                                <option value="">Don&apos;t import</option>
+                                {CUSTOM_FIELD_TYPES.map((t) => (
+                                  <option key={t} value={t}>
+                                    Keep as {t.replace("_", " ")}
+                                    {t === f.fieldType ? " (suggested)" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </>
           )}
