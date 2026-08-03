@@ -64,16 +64,18 @@ Some `src/lib/<feature>/` dirs are backend-only on purpose — reached by Arc's 
 
 When wiring approval actions, make them real backend state transitions. Use the ContentEngine-style pattern for campaigns and ads: Arc creates a draft, the item enters approval with prompt inputs/source records/output/risk flags, and the human can approve, decline, request revision, or archive. Approved items unlock the next backend step; declined or blocked items stay unavailable.
 
-## Arc as BSR Lead Marketing Agent
+## Arc as Lead Marketing Agent
 
-Arc is **not** a generic chatbot. Arc operates as Big Shoulders Restoration's (BSR) lead marketing operator/orchestrator. This app is Arc's command center for finding source-backed opportunities, mapping them to personas, generating approval-gated campaign packages, organizing creative assets, and learning from performance. Build BSR-specific marketing workflows over generic SaaS/CRM patterns.
+Arc is **not** a generic chatbot. Arc is a lead marketing operator/orchestrator that acts for **one workspace at a time, defined entirely by that workspace's context** — its industry, brand voice, personas, approved media, connected channels, and compliance rules (`apps/arc-runner/src/prompt.ts`). This app is Arc's command center for finding source-backed opportunities, mapping them to personas, generating approval-gated campaign packages, organizing creative assets, and learning from performance.
+
+**Build tenant-agnostic marketing workflows, not BSR-specific ones.** Big Shoulders Restoration is the first real tenant and the dogfood account, not the product's shape — the ICP is owner-operator local service businesses generally (`docs/POSITIONING.md`), and the vocabulary layer that makes that real is `docs/UNIVERSALITY.md`. Prefer a deep marketing workflow over a generic SaaS/CRM pattern, but never one that only works for a restoration contractor. If a feature needs industry-specific nouns, take them from the workspace's industry template — don't hardcode them.
 
 ### Core operating principle (non-negotiable)
 
 - **Agent does the work. Human approves decisions. Database remembers everything.**
 - **No outbound send/publish/launch/spend/contact action happens without explicit human approval.** Never add automatic outbound behavior. Keep every change approval-safe.
 - Arc may draft, recommend, score, prepare assets, and create approval-ready records — nothing that reaches the outside world without a human gate.
-- Prefer **approved real BSR media** wherever possible. AI creative should enhance/package/resize/test authentic BSR proof, not replace it.
+- Prefer **the workspace's own approved media** wherever possible. AI creative should enhance/package/resize/test that authentic proof, not replace it.
 - **Higgsfield** is active (Ultra plan, 2026-06-24). Arc reaches it through the per-workspace **`higgsfield` remote-MCP connector** (`src/domain/connectors.ts` → hosted MCP at `mcp.higgsfield.ai/mcp`), loaded into the runner by `apps/arc-runner/src/connectors.ts` in **draft/act modes only**. Output is always an approval-gated, provenance-tagged draft asset — never auto-outbound. The connector is **OFF until enabled per workspace with a stored Vault credential**; the runner reads it from `GET /api/v1/arc/connectors`. The curated model roster lives in `src/domain/higgsfield-models.ts`.
 
   **Onboarding is the in-app OAuth button**, not the capture script: Settings → Connections → Higgsfield → "Connect with Higgsfield" (`/api/connectors/higgsfield/authorize`). It needs **no env vars** — Higgsfield supports dynamic client registration, so there is no app id/secret to provision, and the button's `configured` gate only means Supabase is reachable. Verified against the live server: discovery metadata matches our hard-coded endpoints, registration returns 201 for the prod redirect URI, and `offline_access` (which mints the refresh token) is supported.
@@ -90,11 +92,11 @@ The durable architecture is a shared **Persona Revenue Intelligence Layer** that
 
 1. **Arc Marketing Command Center** — surface waiting Arc tasks, blocked tasks, opportunity recommendations, campaign packages needing approval, recent assets, competitor/weather signals, and run logs.
 
-2. **Persona Revenue Intelligence fields** — expose on companies, contacts, leads, campaigns, and approval cards where relevant: primary persona, secondary personas, persona confidence, relationship stage, urgency, service need, lead score, revenue opportunity score, relationship score, next best action, recommended CTA, recommended message angle, recommended proof points, recommended nurture/follow-up. (Note the existing 12-persona contract in `src/domain/personas.ts`.)
+2. **Persona Revenue Intelligence fields** — expose on companies, contacts, leads, campaigns, and approval cards where relevant: primary persona, secondary personas, persona confidence, relationship stage, urgency, service need, lead score, revenue opportunity score, relationship score, next best action, recommended CTA, recommended message angle, recommended proof points, recommended nurture/follow-up. (Personas are **per-org data**, not a fixed list — see Tenant Configurability below.)
 
 3. **Campaign Package Builder** — campaign records support complete packages: campaign brief; target audience; similar/lookalike audiences considered; persona and relationship logic; email draft; SMS draft; paid social/ad copy; landing/one-pager copy; sales/partner handoff note; asset list; approved media references; generated asset IDs/URLs/paths; guardrail result; human approval status.
 
-4. **Asset Review and Provenance** — asset cards clearly show: source type (real BSR media, AI-generated, composite, stock, external); approved-media source ID when available; prompt/job ID/model when generated; format/aspect ratio (1:1, 4:5, 9:16, 16:9, PDF, MP4, etc.); status (draft, needs revision, approved, rejected); risk flags (embedded text/logo issues, unrealistic scene, privacy/redaction, claim risk); reviewer and timestamp.
+4. **Asset Review and Provenance** — asset cards clearly show: source type (the workspace's own real media, AI-generated, composite, stock, external); approved-media source ID when available; prompt/job ID/model when generated; format/aspect ratio (1:1, 4:5, 9:16, 16:9, PDF, MP4, etc.); status (draft, needs revision, approved, rejected); risk flags (embedded text/logo issues, unrealistic scene, privacy/redaction, claim risk); reviewer and timestamp.
 
 5. **Opportunity Intelligence Inbox** — an inbox for source-backed opportunities from CRM inactivity, new lead/company discovery, weather events, competitor activity, newly approved media, performance anomalies, and persona segment gaps. Each opportunity shows: evidence/source links, confidence, recommended action, suggested campaign type, required approval path.
 
@@ -107,10 +109,30 @@ The durable architecture is a shared **Persona Revenue Intelligence Layer** that
 - Before modifying the frontend: inspect existing app structure; reuse the existing components and styling patterns (the `src/app/(app)/_components/` primitives listed under Architecture, the `arc-app.css` classes, `DESIGN.md`).
 - If backend fields/routes are missing, **document the required schema/API additions** (new `supabase/migrations/` file, `src/lib/<feature>/` layer, route) instead of faking frontend-only data. Wire persistence + the `requireOperator()` gate following the vault/campaigns reference shape above.
 
+## Tenant Configurability (what a workspace can change)
+
+The product is **configurable per company, within a fixed object model.** `docs/UNIVERSALITY.md` is the full record; this is the contract to code against.
+
+**Tenant-defined (per-org data — never hardcode against these):**
+
+- **Personas.** The org's `personas.slug` rows are the authority; `getOrgPersonaKeys` / `getOrgPersonaOptions` (`src/lib/personas/read-model.ts`) is how you read them. Migration `20260713120000` converted all 15 persona columns from the `persona_mapping` enum to `text`. Validate with `isAllowedPersona(persona, await getOrgPersonaKeys(orgId))`.
+- **Pipeline stages.** `pipeline_stages` per org (`20260729160000`) + `leads`/`jobs`/`outcomes`.`status` widened to `text` (`20260729170000`, applied to prod by hand — `migrate-prod.yml` refuses `alter column … type`). **Ask a stage what it means (`isWon`/`isLost`/`isTerminal`/`isQualified`), never `status === "won"`** — a tenant can rename it, and a name comparison fails silently into wrong revenue numbers.
+- **Custom fields** on all six CRM objects (`20260728180000`, `src/domain/custom-fields.ts`).
+- **Brand + voice** — palette, fonts, tone, preferred/banned phrases, services, proof points, disallowed claims (`src/domain/brand-kit.ts`). Arc's runner reads all of it into every prompt.
+- **Connectors**, enabled and configured per workspace (`src/domain/connectors.ts`).
+
+**Fixed by decision (don't "fix" these without a product call):**
+
+- **The six CRM objects** — `companies, contacts, properties, leads, jobs, outcomes`. Renameable and extensible, but no self-serve net-new object type (Option B; Option A reopens only on real repeated demand).
+- **Object/section labels come from a 9-key industry map**, not free text (`src/lib/product-language.ts`). A workspace picks its industry at onboarding (editable in Settings → General); that key also seeds its persona pack (`src/lib/personas/industry-templates.ts`). Outside the nine, it gets `general` and neutral nouns.
+- **App-machinery states** — `approval_status`, `agent_task_status`, `campaign_status`. The rule (`src/domain/pipeline-stages.ts`): *per-org if it describes the tenant's process, never if the code branches on it.* Configurable approval states would let a tenant rename their way through the outbound gate.
+
+**`OFFICIAL_PERSONA_MAPPINGS` is demo seed + offline fallback, not the validation authority.** Its remaining non-test imports are all `personaOptions?.length ? … :` fallbacks for the backend-less preview. Don't extend it and don't validate against it. Same for `campaigns.restoration_focus`: superseded by the free-text `campaign_theme`, kept nullable for back-compat only.
+
 ## Lead Ingestion Contract (don't break this)
 
-- 12 official personas live in `OFFICIAL_PERSONA_MAPPINGS` (`src/domain/personas.ts`). They must stay in sync with the `persona_mapping` enum in the Supabase migration.
-- `unassigned_persona` is **internal-only** — the ingest API rejects it, and the DB enforces it via `leads_persona_not_unassigned_check`.
+- Persona validity is **per-org**: the ingest route validates against the org's own persona keys, not a global list. `parseLeadIngestionPayload` takes the allowed keys as an argument — pass `getOrgPersonaKeys(orgId)`.
+- `unassigned_persona` is **internal-only** — the ingest API rejects it, and the DB enforces it via `leads_persona_not_unassigned_check` (now a text check, still live).
 - Ingest response codes are load-bearing: `400` (validation/persona rejection), `202` (accepted but Supabase not configured — no row written), `201` (accepted + persisted), `502` (persistence error).
 - Routing and scoring are intentionally **deterministic and owned by the app layer** (not the DB) so they stay unit-testable. Don't push that logic into Postgres.
 

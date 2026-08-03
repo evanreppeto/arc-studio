@@ -139,7 +139,11 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
   const prevJobs = sum(trend.bookings.prev);
   const curRev = sum(trend.revenue.cur);
   const prevRev = sum(trend.revenue.prev);
-  const curWon = Math.round(curJobs * 0.84);
+  // Demo only. The live path counts real won outcomes (see getAnalyticsOverview);
+  // here Won is derived from bookings so the funnel narrows plausibly. Booked and
+  // Won are DIFFERENT stages — a booked job that never closes stays booked.
+  const DEMO_BOOKED_TO_WON = 0.84;
+  const curWon = Math.round(curJobs * DEMO_BOOKED_TO_WON);
 
   const kpis: OverviewKpi[] = [
     { label: "Leads", value: curLeads.toLocaleString(), ...pct(curLeads, prevLeads), prevLabel: `${prevLeads} prev` },
@@ -160,7 +164,7 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
 
   const personaRev: Array<[string, number]> = [
     ["High-Intent Evaluator", 8_930_000],
-    ["Team Admin", 5_120_000],
+    ["Team admin", 5_120_000],
     ["Proactive Evaluator", 3_960_000],
     ["Feature-Focused Evaluator", 1_840_000],
     ["Procurement", 1_020_000],
@@ -202,7 +206,7 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
     revenueByPersona,
     leadsBySource,
     arcRead: {
-      text: `Won revenue is up ${pct(curRev, prevRev).deltaLabel} on ${curWon} booked demos from ${curLeads.toLocaleString()} leads — you're converting better, not just sourcing more. Revenue is concentrated in the High-Intent Evaluator persona, and Email is your top lead source. Reply and cost-per-demo metrics fill in once campaigns send and an ad platform syncs.`,
+      text: `Won revenue is up ${pct(curRev, prevRev).deltaLabel} on ${curWon} won jobs from ${curLeads.toLocaleString()} leads — you're converting better, not just sourcing more. Revenue is concentrated in the High-Intent Evaluator persona, and Email is your top lead source. Reply rate and cost per job fill in once campaigns send and an ad platform syncs.`,
       cites: [`leads ${curLeads.toLocaleString()}`, `won ${curWon}`, `rev ${money(curRev)}`],
       rec: "Double down on High-Intent Evaluator — your highest-revenue persona this period. Arc can draft a lookalike campaign against it, approval-gated.",
     },
