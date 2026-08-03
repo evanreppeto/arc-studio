@@ -69,7 +69,7 @@ import { visibleStepNarration } from "@/lib/arc-chat/step-narration";
 import { collapseTraceRows } from "@/lib/arc-chat/trace-rows";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import { resolveArcRunViewState } from "@/lib/arc-chat/run-view-state";
-import { formatToolName, getToolKind } from "@/lib/arc-chat/tool-labels";
+import { getToolKind } from "@/lib/arc-chat/tool-labels";
 import {
   buildArcWorkspaceEvidence,
   buildArcWorkspaceRuns,
@@ -96,7 +96,7 @@ import { LiveReasoning, ReasoningMarkdown } from "./arc-markdown";
 import { buildDemoLiveWork, DEMO_STEPS, DEMO_TOOLS, DEMO_WORKSPACE_MESSAGES } from "./arc-demo-data";
 import type { RunKind, RunRow } from "./arc-view.types";
 
-export { formatToolName, getToolKind };
+export { getToolKind };
 
 export function formatMessageTime(iso: string) {
   const value = new Date(iso);
@@ -253,7 +253,7 @@ export function RunTrace({
       // trace — the protocol prefix is how Arc reaches the tool, not what it did.
       // Found by the dev identifier check, not by reading the screen (BSR-709).
       label: arcToolLabel(tool.name),
-      detail: tool.input ?? `Running ${formatToolName(tool.name).toLowerCase()}`,
+      detail: tool.input ?? `Running ${arcToolLabel(tool.name).toLowerCase()}`,
       result: tool.output,
       isTool: true,
       status: tool.status === "complete" ? "done" as const : tool.status === "error" ? "error" as const : "running" as const,
@@ -718,7 +718,7 @@ export function ArcWorkPanel({
         ?? (demoSeed
           ? [
               ...DEMO_STEPS.map((step, index) => ({ id: `demo-panel-step-${index}`, label: step.label, detail: step.detail?.join(" · "), status: "done" as const, kind: step.kind ?? "think" })),
-              ...DEMO_TOOLS.map((tool, index) => ({ id: `demo-panel-tool-${index}`, label: formatToolName(tool.name), detail: tool.output, status: "done" as const, kind: getToolKind(tool.name) })),
+              ...DEMO_TOOLS.map((tool, index) => ({ id: `demo-panel-tool-${index}`, label: arcToolLabel(tool.name), detail: tool.output, status: "done" as const, kind: getToolKind(tool.name) })),
             ]
           : []);
 

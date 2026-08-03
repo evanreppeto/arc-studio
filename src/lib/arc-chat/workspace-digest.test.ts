@@ -77,7 +77,11 @@ describe("buildArcWorkspaceRuns", () => {
 
     expect(runs[0]).toMatchObject({ stepCount: 2, toolCount: 1, durationMs: 38_400, state: "complete" });
     expect(runs[0]!.rows).toHaveLength(3);
-    expect(runs[0]!.rows[2]).toMatchObject({ label: "Crm Lookup", kind: "search", status: "done" });
+    // "CRM lookup", not the "Crm Lookup" this asserted before. Two spellings of
+    // the same tool used to reach this file — the run rows title-cased and read
+    // "Crm", the evidence rows sentence-cased and read "CRM" — so the panel
+    // disagreed with itself about the same call. One mapper now (BSR-709).
+    expect(runs[0]!.rows[2]).toMatchObject({ label: "CRM lookup", kind: "search", status: "done" });
   });
 
   it("settles rows a finished run left running, but never a failed tool", () => {
