@@ -4,9 +4,12 @@ import { ImageResponse } from "next/og";
 
 import {
   CREATIVE_DIMENSIONS,
+  CREATIVE_LAYOUTS,
+  withLayoutOverride,
   type BrandTokens,
   type CreativeCopy,
   type CreativeFormat,
+  type CreativeLayoutOverride,
   type CreativeTemplateId,
 } from "@/domain";
 import { assertPublicHttpUrl } from "@/lib/brand-kit/website";
@@ -40,6 +43,9 @@ export type RenderCreativeInput = {
   brand: BrandTokens;
   copy: CreativeCopy;
   backgroundUrl: string;
+  /** The operator's nudge from the Studio canvas. Clamped here as well as there
+   *  — a value arriving from a client is not trusted to be in range. */
+  layoutOverride?: CreativeLayoutOverride;
 };
 
 /** Render a finished, brand-tokenized creative to a PNG buffer. */
@@ -53,7 +59,11 @@ export async function renderCreative(
     : null;
   const fonts = await loadCreativeFonts(input.brand);
   const template = TEMPLATES[input.template] ?? templateBold;
-  const element = template({ brand: input.brand, copy: input.copy, dims, backgroundDataUrl, logoDataUrl });
+  // Resolve the layout once, here: templates render whatever spec they are
+  // handed, so an override cannot be applied differently by each of them — or
+  // differently from the canvas, which folds it in the same way.
+  const layout = withLayoutOverride(CREATIVE_LAYOUTS[input.template] ?? CREATIVE_LAYOUTS.bold, input.layoutOverride);
+  const element = template({ brand: input.brand, copy: input.copy, dims, layout, backgroundDataUrl, logoDataUrl });
   const response = new ImageResponse(element, { width: dims.width, height: dims.height, fonts });
   const bytes = Buffer.from(await response.arrayBuffer());
   return { bytes, contentType: "image/png" };

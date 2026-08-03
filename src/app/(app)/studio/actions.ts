@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 
 import {
   type CreativeCopy,
+  type CreativeLayoutOverride,
   normalizeCreativeFormat,
   parseArcRoute,
   selectCreativeTemplate,
@@ -65,6 +66,9 @@ export type GenerateStudioAssetInput = {
   template?: string;
   /** Accent hex picked in Studio; overrides the brand kit's accent for this render. */
   accent?: string;
+  /** The operator's canvas nudge (BSR-680). Clamped again in renderCreative —
+   *  this arrives from a client and is not trusted to be in range. */
+  layoutOverride?: CreativeLayoutOverride;
   /** The campaign this draft attaches to — required so it enters the approval gate. */
   campaignId: string;
 };
@@ -179,7 +183,7 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const baseBrand = toBrandTokens(profile);
       const accentOverride = /^#[0-9a-f]{6}$/i.test((input.accent ?? "").trim()) ? input.accent!.trim() : null;
       const brand = accentOverride ? { ...baseBrand, accent: accentOverride } : baseBrand;
-      const { bytes, contentType } = await renderCreative({ template, format, brand, copy, backgroundUrl });
+      const { bytes, contentType } = await renderCreative({ template, format, brand, copy, backgroundUrl, layoutOverride: input.layoutOverride });
       objectPath = `arc-composite/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.png`;
       const url = await storeGeneratedMedia(objectPath, bytes, contentType);
       media = { kind: "image", url, source: "composite", format, riskFlags: [COMPOSITE_RISK] };

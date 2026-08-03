@@ -77,8 +77,9 @@ export type CreativeLayoutSpec = {
   topBand?: { padTop: number; padBottom: number; padLeft: number; padRight: number; solidStop: number };
   /** Editorial's accent rail down the left edge. */
   rail?: { width: number; color: BrandColorRef };
-  /** Minimal's solid side panel. */
-  panel?: { widthRatio: number; pad: number; background: BrandColorRef };
+  /** Minimal's solid side panel. Paddings are per-edge so a nudge can move the
+   *  copy inside it without moving the panel. */
+  panel?: { widthRatio: number; padTop: number; padRight: number; padBottom: number; padLeft: number; background: BrandColorRef };
   /** Minimal's short accent rule between headline and CTA. */
   divider?: { width: number; height: number; marginTop: number; marginBottom: number; color: BrandColorRef };
 };
@@ -123,7 +124,7 @@ export const CREATIVE_LAYOUTS: Record<CreativeTemplateId, CreativeLayoutSpec> = 
     kicker: { size: 24, tracking: 3, uppercase: true, marginBottom: 18, color: "accent" },
     headline: { size: 64, lineHeight: 1.1, clampLines: 3, color: "light" },
     cta: { size: 28, padX: 30, padY: 18, radius: 10, style: "filled", background: "accent", color: "primary" },
-    panel: { widthRatio: 0.5, pad: 64, background: "primary" },
+    panel: { widthRatio: 0.5, padTop: 64, padRight: 64, padBottom: 64, padLeft: 64, background: "primary" },
     divider: { width: 64, height: 4, marginTop: 28, marginBottom: 28, color: "accent" },
   },
 };
@@ -134,4 +135,86 @@ export const CREATIVE_DESIGN_WIDTH = 1080;
 /** Scale factor from design units to a consumer's pixel space. */
 export function creativeScale(targetWidth: number): number {
   return targetWidth / CREATIVE_DESIGN_WIDTH;
+}
+
+
+/**
+ * A per-asset nudge on top of a template's layout.
+ *
+ * Deliberately small. The operator can move the copy block and scale the
+ * headline; they cannot reposition arbitrary layers or break out of the
+ * template, because the templates are what keep a workspace's creative on
+ * brand. Constrained direct manipulation, decided on BSR-680.
+ *
+ * Units match the spec: design units on the 1080-wide reference canvas.
+ */
+export type CreativeLayoutOverride = {
+  /** Horizontal nudge of the copy block. Positive moves right. */
+  copyDx?: number;
+  /** Vertical nudge of the copy block. Positive moves DOWN, screen-style, so a
+   *  drag and its number agree regardless of which edge the template anchors to. */
+  copyDy?: number;
+  /** Headline size multiplier. */
+  headlineScale?: number;
+};
+
+/** How far the copy block may travel, in design units — a quarter of the
+ *  reference width in each direction. Enough to re-balance a composition,
+ *  not enough to push the headline off the artboard. */
+export const COPY_NUDGE_LIMIT = 270;
+export const HEADLINE_SCALE_RANGE = { min: 0.6, max: 1.6 } as const;
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(max, Math.max(min, value));
+}
+
+/** Clamp an override to the bounds above. Exported because the canvas clamps
+ *  while dragging and the renderer clamps again on the way in — a value that
+ *  arrives from a client must not be trusted to already be in range. */
+export function clampLayoutOverride(override: CreativeLayoutOverride | undefined): Required<CreativeLayoutOverride> {
+  return {
+    copyDx: clamp(override?.copyDx ?? 0, -COPY_NUDGE_LIMIT, COPY_NUDGE_LIMIT),
+    copyDy: clamp(override?.copyDy ?? 0, -COPY_NUDGE_LIMIT, COPY_NUDGE_LIMIT),
+    headlineScale: clamp(override?.headlineScale ?? 1, HEADLINE_SCALE_RANGE.min, HEADLINE_SCALE_RANGE.max),
+  };
+}
+
+/**
+ * Fold an override into a layout, so every consumer keeps reading one spec and
+ * neither renderer needs override logic of its own. That is the property BSR-679
+ * bought and this must not spend: the canvas and the exporter apply the nudge by
+ * rendering the same adjusted numbers, not by each interpreting the offset.
+ *
+ * Which edge moves depends on what the template anchors to, so that dragging
+ * down always moves the copy down.
+ */
+export function withLayoutOverride(
+  layout: CreativeLayoutSpec,
+  override?: CreativeLayoutOverride,
+): CreativeLayoutSpec {
+  const { copyDx, copyDy, headlineScale } = clampLayoutOverride(override);
+  if (copyDx === 0 && copyDy === 0 && headlineScale === 1) return layout;
+
+  const next: CreativeLayoutSpec = {
+    ...layout,
+    headline: { ...layout.headline, size: layout.headline.size * headlineScale },
+  };
+
+  if (layout.topBand) {
+    // Top-anchored: the band's own padding positions the copy.
+    next.topBand = { ...layout.topBand, padLeft: layout.topBand.padLeft + copyDx, padTop: layout.topBand.padTop + copyDy };
+  } else if (layout.panel) {
+    // Inside the side panel: bottom-anchored, so down means less bottom padding.
+    next.panel = { ...layout.panel, padLeft: layout.panel.padLeft + copyDx, padBottom: layout.panel.padBottom - copyDy };
+  } else {
+    // Bottom-anchored copy block.
+    next.copyInset = {
+      ...layout.copyInset,
+      left: layout.copyInset.left + copyDx,
+      ...(layout.copyInset.bottom != null ? { bottom: layout.copyInset.bottom - copyDy } : {}),
+    };
+  }
+
+  return next;
 }
