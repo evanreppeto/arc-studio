@@ -50,7 +50,9 @@
 .arc-brand .bsh { display: flex; align-items: center; gap: 9px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .arc-brand .bsh h3 { font-size: 13.5px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
 .arc-brand .bsh .sx { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.arc-brand .editlink { font-size: 11.5px; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: 0.14s; }
+/* Real <button> where it acts: font/background/border are reset so it keeps the
+   quiet inline-link look the surrounding <span> versions have. */
+.arc-brand .editlink { font-size: 11.5px; font-family: inherit; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: 0.14s; background: transparent; border: 0; padding: 0; }
 .arc-brand .editlink:hover { color: var(--accent-contrast); }
 .arc-brand .editlink svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-brand .bsb { padding: 15px 16px; }
@@ -242,6 +244,18 @@
 .arc-brand .resync { border: 0; background: transparent; padding: 0; }
 .arc-brand .ucta:disabled, .arc-brand .resyncall:disabled, .arc-brand .resync:disabled, .arc-brand .gbtn:disabled { opacity: 0.55; cursor: default; pointer-events: none; }
 .arc-brand .ucta.is-busy .upi, .arc-brand .resync.is-busy svg { animation: brandSp 0.9s linear infinite; }
+
+/* Dragging a file over the logo card. Scoped `.isrc .ucta.is-over` on purpose:
+   `.arc-brand .isrc .ucta:hover` is specificity (0,4,0), and a drag always has
+   the pointer over the target — so a (0,3,0) rule here loses the cascade to
+   hover and the drag state never shows. Must also sit after that hover rule. */
+.arc-brand .isrc .ucta.is-over { border-color: var(--accent); border-style: solid; color: var(--text); background: rgba(200, 162, 74, 0.08); }
+.arc-brand .isrc .ucta.is-over .upi { stroke: var(--accent); transform: translateY(-2px); }
+
+/* An upload failure reported inside the intake card rather than in the header,
+   so someone who dropped a file here does not have to scroll up to find out why
+   nothing happened. */
+.arc-brand .isrc .blogoerr { font-size: 10.5px; color: #e0a3a3; line-height: 1.45; }
 
 /* "Brand updated from N files" result banner. Tone follows the summary: ok when
    clean, warn when some files need another try, err on a hard failure. */
