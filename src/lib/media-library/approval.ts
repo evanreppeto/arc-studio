@@ -20,6 +20,25 @@ function assertOk(label: string, error: { message: string } | null) {
   if (error) throw new Error(`${label}: ${error.message}`);
 }
 
+/**
+ * The only values `approval_items_risk_level_check` accepts. Named here because
+ * this column is plain text with a CHECK rather than an enum, so TypeScript
+ * offers no protection — the previous code wrote 'elevated'/'standard', neither
+ * of which is legal, and every asset approval failed at the database (BSR-687).
+ * The mocked client in this module's tests cannot see a check constraint, so the
+ * bug survived a green suite until the button that calls it was finally wired.
+ */
+export const APPROVAL_RISK_LEVELS = ["low", "medium", "high", "blocked"] as const;
+export type ApprovalRiskLevel = (typeof APPROVAL_RISK_LEVELS)[number];
+
+/**
+ * A flagged asset is `high`; an unflagged one takes `medium`, the column's own
+ * default and what the existing campaign rows use.
+ */
+export function assetRiskLevel(riskFlags: string[] | null | undefined): ApprovalRiskLevel {
+  return (riskFlags ?? []).length > 0 ? "high" : "medium";
+}
+
 export type DecideAssetApprovalInput = {
   assetId: string;
   orgId: string;
@@ -116,7 +135,7 @@ export async function decideAssetApproval(
         reviewed_by: operator,
         reviewed_at: now,
         decision_notes: decisionNotes,
-        risk_level: (asset.risk_flags ?? []).length > 0 ? "elevated" : "standard",
+        risk_level: assetRiskLevel(asset.risk_flags),
         reasoning_payload: {},
         audit_payload: {},
       })

@@ -54,9 +54,9 @@ describe("definitions", () => {
     const rendered = files(APP_DIR)
       .map((f) => readFileSync(f, "utf8"))
       .join("\n");
-    // Each of these was called out by name in the audit.
-    for (const term of ["confidence", "signal_strength", "arc_ready"] satisfies DefinitionKey[]) {
-      expect(rendered.includes(`term="${term}"`), `${term} is defined but never rendered`).toBe(true);
+    for (const term of Object.keys(DEFINITIONS) as DefinitionKey[]) {
+      const wired = rendered.includes(`term="${term}"`) || rendered.includes(`definitionText("${term}")`);
+      expect(wired, `${term} is defined but no screen uses it`).toBe(true);
     }
   });
 

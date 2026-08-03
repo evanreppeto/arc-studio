@@ -56,7 +56,7 @@ describe("undoDecision", () => {
       item: { id: "i1", status: "approved", campaign_id: "c1", campaign_asset_id: "a1" },
     });
 
-    const result = await undoDecision({ approvalItemId: "i1", operator: "Evan" }, client);
+    const result = await undoDecision({ approvalItemId: "i1", operator: "Evan", tenant: { org_id: "org-1", workspace_id: "workspace-1" } }, client);
 
     expect(result.restoredStatus).toBe("pending_approval");
 
@@ -97,7 +97,7 @@ describe("decideApprovalItem campaign status mapping", () => {
     }
     const client = { from: (t: string) => builder(t) } as never;
 
-    await decideApprovalItem({ approvalItemId: "i1", decision: "declined", operator: "Evan" }, client);
+    await decideApprovalItem({ approvalItemId: "i1", decision: "declined", operator: "Evan", tenant: { org_id: "org-1", workspace_id: "workspace-1" } }, client);
 
     const campaignUpdate = calls.find((c) => c.table === "campaigns" && c.op === "update");
     const valid = ["draft","briefing","generating","pending_approval","approved","active","paused","archived","blocked"];
@@ -123,7 +123,7 @@ describe("decideApprovalItem campaign status mapping", () => {
         return api;
       }
       const client = { from: (t: string) => builder(t) } as never;
-      await decideApprovalItem({ approvalItemId: "i1", decision, operator: "Evan" }, client);
+      await decideApprovalItem({ approvalItemId: "i1", decision, operator: "Evan", tenant: { org_id: "org-1", workspace_id: "workspace-1" } }, client);
       const campaignUpdate = calls.find((c) => c.table === "campaigns" && c.op === "update");
       expect((campaignUpdate!.payload as { status: string }).status).toBe(expected);
     }
