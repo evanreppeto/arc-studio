@@ -21,7 +21,15 @@ import { reportDegraded } from "@/lib/observability/report-degraded";
 /** How many custom fields become list columns. See the note at the call site. */
 const MAX_CUSTOM_COLUMNS = 2;
 
-export const metadata = { title: "CRM — Arc Studio" };
+export async function generateMetadata() {
+  const ctx = await getCurrentWorkspaceContext();
+  const [appSettings, businessProfile] = await Promise.all([
+    getAppSettings(ctx.orgId).catch(() => null),
+    getBusinessProfile(ctx.orgId).catch(() => null),
+  ]);
+  const { crmLabel } = getProductLanguage(appSettings?.industry || businessProfile?.industry);
+  return { title: `${crmLabel} — Arc Studio` };
+}
 
 const OBJECT_KEYS: CrmObjectKey[] = ["companies", "contacts", "properties", "leads", "jobs", "outcomes"];
 
