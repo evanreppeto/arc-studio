@@ -17,6 +17,16 @@
  *     writing a second wording.
  *   - No internal nouns. `package` and `piece` are retired; a campaign holds
  *     assets. See `ASSET_NOUN`.
+ *   - **A stored value becomes a user-facing string only through a mapper in
+ *     this file, and that mapper must be registered in `STORED_VALUE_LABELLERS`
+ *     at the bottom.** Rendering `{row.status}` directly is the bug that keeps
+ *     recurring (BSR-655, BSR-693, BSR-709); a mapper defined here but left
+ *     unregistered is the same bug with an extra step, so the totality test
+ *     fails the build for it.
+ *   - **A mapper must be total.** For any input — a value nobody predicted, an
+ *     empty string, null — it returns language. Never the stored value, never
+ *     nothing. An exhaustive lookup is a mapping plus a silent hole, and reality
+ *     fills the hole on its own schedule.
  *
  * Pure — no I/O, no React. Display strings only.
  */
@@ -201,7 +211,11 @@ export function humanizeIdentifier(raw: string): string {
 }
 
 function labelled(map: Record<string, string>, value: string | null | undefined): string | null {
-  if (!value) return null;
+  // Whitespace counts as absent. A column holding " " used to survive the `!value`
+  // check, miss the map, and come back out of the humanizer unchanged — so the
+  // surface rendered an invisible gap where a word belongs, which reads as a
+  // layout bug rather than as missing data. Found by the totality test (BSR-709).
+  if (!value?.trim()) return null;
   return map[value] ?? humanizeIdentifier(value);
 }
 
@@ -287,3 +301,56 @@ const TOOL_STATUS_LABEL: Record<string, string> = {
 export function toolStatusLabel(status: string | null | undefined): string {
   return labelled(TOOL_STATUS_LABEL, status) ?? "Unknown";
 }
+
+// ---------------------------------------------------------------------------
+// The registry (BSR-709, option B)
+//
+// Every mapper above turns a value the database stores into something a person
+// reads. The rule this registry exists to enforce is that such a mapper must be
+// TOTAL: for any input at all — a value nobody predicted, an empty string, null —
+// it returns language, never the stored value and never nothing.
+//
+// That property is not theoretical. `route` is typed `"fast" | "standard"` and
+// the demo fixture already carries `"chat"`; `ArcRecall.kind` is typed `string`
+// and prod holds twelve distinct values, four of which post-date the code that
+// reads them. An exhaustive lookup renders `undefined` the first time reality
+// adds a value, which is how the raw key reached the screen in the first place.
+//
+// Registering a mapper here does three things: `vocabulary.test.ts` proves it is
+// total, the same test proves its output would not trip the dev DOM check, and
+// `pnpm census:vocabulary` can ask prod which real values still have no label.
+// ---------------------------------------------------------------------------
+
+export type StoredValueLabeller = {
+  /** The exported function's name, so a failure says which mapper is wrong. */
+  name: string;
+  /** Where the value comes from, for the census script to query. */
+  source: string;
+  /** The explicit labels. Anything outside this falls through to the humanizer. */
+  map: Record<string, string>;
+  /**
+   * Whether the surface may render nothing for this field. `runModeLabel`
+   * returns null on purpose so the run kicker can omit a segment rather than
+   * print an em-dash; the rest must always produce a word.
+   */
+  nullable: boolean;
+  label: (value: string | null | undefined) => string | null;
+};
+
+export const STORED_VALUE_LABELLERS: StoredValueLabeller[] = [
+  { name: "runStatusLabel", source: "arc_messages.status", map: RUN_STATUS_LABEL, nullable: false, label: runStatusLabel },
+  { name: "runModeLabel", source: "arc_messages.metadata->>mode", map: RUN_MODE_LABEL, nullable: true, label: runModeLabel },
+  { name: "runRouteLabel", source: "arc_messages.metadata->>route", map: RUN_ROUTE_LABEL, nullable: true, label: runRouteLabel },
+  { name: "recallKindLabel", source: "arc_messages.metadata->recall[].kind", map: RECALL_KIND_LABEL, nullable: false, label: recallKindLabel },
+  { name: "toolStatusLabel", source: "arc_messages.metadata->toolCalls[].status", map: TOOL_STATUS_LABEL, nullable: false, label: toolStatusLabel },
+  {
+    name: "arcToolLabel",
+    source: "arc_messages.metadata->toolCalls[].name",
+    // No fixed map — tool names are open-ended by design, so every one of them
+    // goes through the humanizer. Registered anyway because the totality and
+    // no-identifier-out properties matter just as much here.
+    map: {},
+    nullable: false,
+    label: (value) => (value?.trim() ? arcToolLabel(value) : "Unknown"),
+  },
+];
