@@ -202,9 +202,7 @@ export async function getRecentActivity(
     const campaignEventsSel = supabase
       .from("campaign_events")
       .select("id,campaign_id,approval_item_id,event_type,actor,detail,payload,occurred_at");
-    const eventsSel = supabase.from("events").select("id,actor,subject_type,subject_id,type,payload,occurred_at");
-
-    const [decisions, runs, outputs, campaignEvents, events] = await Promise.all([
+    const [decisions, runs, outputs, campaignEvents] = await Promise.all([
       (orgId ? decisionsSel.eq("org_id", orgId) : decisionsSel)
         .order("decided_at", { ascending: false })
         .limit(sourceLimit),
@@ -217,23 +215,26 @@ export async function getRecentActivity(
       (orgId ? campaignEventsSel.eq("org_id", orgId) : campaignEventsSel)
         .order("occurred_at", { ascending: false })
         .limit(sourceLimit),
-      (orgId ? eventsSel.eq("org_id", orgId) : eventsSel)
-        .order("occurred_at", { ascending: false })
-        .limit(sourceLimit),
     ]);
 
     // Resolve the campaign behind every referenced approval item / agent task in
     // one batched pass, so entries can link to a page that exists.
-    const links = await resolveActivityLinks(supabase, orgId, [decisions, outputs, campaignEvents, events], [runs, outputs]);
+    const links = await resolveActivityLinks(supabase, orgId, [decisions, outputs, campaignEvents], [runs, outputs]);
 
     const sources = [
       collectSource("approval_decisions", decisions, (row) => mapDecision(row, links)),
       collectSource("agent_run_logs", runs, (row) => mapRun(row, links)),
       collectSource("agent_outputs", outputs, (row) => mapOutput(row, links)),
       collectSource("campaign_events", campaignEvents, (row) => mapCampaignEvent(row, links)),
-      collectSource("events", events, (row) => mapEvent(row, links)),
     ];
 
+    // `public.events` was a fifth source here. Nothing in the app, the scripts,
+    // the runner or a trigger has ever written that table (BSR-671), so it
+    // could only ever contribute zero rows — a query on every feed load and a
+    // claim of coverage the feed did not have. The four sources below are the
+    // ones that carry activity. If a generic event stream is ever built, adding
+    // a mapper back is a smaller cost than keeping a dead one.
+    //
     // One drifted column or failing table must not blank the entire feed: each
     // source degrades to zero rows (logged) while the others still render. Only
     // a total failure (every source errored — e.g. the DB is unreachable) falls
@@ -447,31 +448,6 @@ export function mapCampaignEvent(row: Record<string, unknown>, links: ActivityLi
     relatedLabel: detail ?? "Campaign update",
     occurredAt: str(row.occurred_at) ?? "",
     href: campaignId ? `/campaigns/${campaignId}` : approvalHref(links, approvalId),
-  };
-}
-
-export function mapEvent(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS): ActivityEntry {
-  const subjectType = str(row.subject_type) ?? "record";
-  const subjectId = str(row.subject_id);
-  const eventType = str(row.type) ?? "record.updated";
-  const payload = object(row.payload);
-  const title = str(payload.title) ?? titleize(eventType);
-  const detail = str(payload.detail) ?? `${titleize(subjectType)} activity recorded.`;
-  const actor = displayActor(str(row.actor));
-
-  return {
-    id: `event:${String(row.id)}`,
-    kind: "event",
-    tone: eventTone(eventType),
-    title,
-    detail,
-    actor,
-    actorType: actorTypeFromActor(actor),
-    category: categoryForEvent(subjectType, eventType),
-    insightLabel: insightForEvent(subjectType, eventType),
-    relatedLabel: str(payload.relatedLabel) ?? titleize(subjectType),
-    occurredAt: str(row.occurred_at) ?? "",
-    href: hrefForSubject(subjectType, subjectId, links),
   };
 }
 

@@ -259,6 +259,9 @@ export type AgentTaskDetail =
       acceptanceCriteria: Array<{ id: string; label: string; completed: boolean }>;
       latestOutput: AgentTaskOutput | null;
       timeline: AgentTaskTimelineItem[];
+      /** What the timeline is built from, and what it is missing — so a consumer
+       *  (Arc reads this) can tell "nothing happened" from "nothing records it". */
+      timelineCoverage: { taskEvents: "recorded" | "not_recorded"; note: string | null };
       agent: {
         id: string;
         key: string;
@@ -600,6 +603,21 @@ export async function getAgentTaskDetail(
       // hardening it now would be guessing at how a future screen wants to
       // degrade. Revisit when it is wired.
       timeline: composeTaskTimeline((eventsResult.data ?? []) as AgentTaskEventRow[], outputs, approvalResult.data ?? null),
+      // What the timeline is actually built from, and what it is missing.
+      //
+      // `agent_task_events` has never been written — not by the app, the runner,
+      // the scripts or a trigger (BSR-671). Arc reads this payload, and an agent
+      // takes an empty timeline as a fact about the task ("nothing happened")
+      // rather than as a gap in instrumentation. Saying so, and pointing at the
+      // run history that DOES exist, is the difference between a silence and a
+      // claim.
+      timelineCoverage: {
+        taskEvents: ((eventsResult.data ?? []) as AgentTaskEventRow[]).length > 0 ? "recorded" : "not_recorded",
+        note:
+          ((eventsResult.data ?? []) as AgentTaskEventRow[]).length > 0
+            ? null
+            : "Task state transitions are not recorded in this deployment; `logs` carries the run history.",
+      },
       agent: {
         id: agent?.id ?? task.agent_id ?? "unassigned",
         key: agent?.key ?? "unassigned-agent",
