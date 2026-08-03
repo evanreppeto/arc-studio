@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
-import { type CsvColumnOverrides } from "@/domain";
+import { type CsvColumnOverrides, type ImportEntityKind } from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { runCsvImport } from "@/lib/connectors/import";
 import { reverseImportRun } from "@/lib/import-runs/reverse";
+import { runEntityImport } from "@/lib/import-runs/run-entity-import";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -140,4 +141,71 @@ export async function commitCsvImportAction(input: {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "That import could not run." };
   }
+}
+
+/**
+ * Companies, deals and notes (BSR-644). A sibling of the contacts actions rather
+ * than a branch inside them: these write different tables through a different
+ * engine, and the only thing they share is the surface.
+ */
+export async function importEntityAction(input: {
+  kind: ImportEntityKind;
+  csvText: string;
+  columnOverrides?: CsvColumnOverrides;
+  dryRun?: boolean;
+}): Promise<PreviewResult | CommitResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect this workspace to a database before importing." };
+  if (!input.csvText?.trim()) return { ok: false, error: "Add a file or paste some CSV first." };
+
+  const scope = await tenant();
+  if (!scope) return { ok: false, error: "No active workspace." };
+
+  const personas = await getOrgPersonaKeys(scope.orgId);
+  const outcome = await runEntityImport({
+    ...scope,
+    kind: input.kind,
+    csvText: input.csvText,
+    columnOverrides: input.columnOverrides,
+    // Companies and jobs carry a NOT NULL persona with a DB default, so this is a
+    // nicety rather than a gate — unlike leads, which reject unassigned_persona.
+    defaultPersona: personas[0],
+    dryRun: input.dryRun,
+  });
+  if (!outcome.ok) return { ok: false, error: messageFor(outcome.error) };
+
+  const r = outcome.result;
+  if (input.dryRun) {
+    return {
+      ok: true,
+      preview: {
+        willCreate: r.created,
+        willUpdate: r.updated,
+        willSkip: r.skipped,
+        totalRows: outcome.parse.totalRows,
+        mappedColumns: outcome.parse.mappedColumns as never,
+        unmappedColumns: outcome.parse.unmappedColumns,
+        headers: outcome.parse.headers,
+        // The entity engine reports per-row reasons rather than resolved records:
+        // for a deal or a note, "which company did this attach to" is the thing
+        // worth checking, and an unresolved parent is the only interesting row.
+        sample: r.errors.slice(0, 25).map((e) => ({
+          externalId: e.externalId,
+          action: "skip" as const,
+          name: null, email: null, phone: null, company: null, persona: null, lastContactedAt: null,
+          reason: e.message,
+        })),
+      },
+    };
+  }
+
+  revalidatePath("/crm");
+  revalidatePath("/crm/import");
+  return {
+    ok: true,
+    message:
+      `Imported ${r.created} new and updated ${r.updated}` +
+      (r.skipped ? `, skipping ${r.skipped} that could not be matched` : "") +
+      ".",
+  };
 }
