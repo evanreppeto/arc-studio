@@ -103,11 +103,14 @@ export const TENANCY_CONTRACT = {
   knowledge_nodes: { category: "workspace", pending: GROUP_A },
   knowledge_edges: { category: "workspace", pending: GROUP_A },
   vault_notes: { category: "workspace", pending: GROUP_A },
-  arc_generated_skills: { category: "workspace", pending: GROUP_A },
-  agents: { category: "workspace", pending: GROUP_A },
-  agent_task_inputs: { category: "workspace", pending: GROUP_A },
-  agent_task_events: { category: "workspace", pending: GROUP_A },
-  agent_run_logs: { category: "workspace", pending: GROUP_A },
+  // Wave 2 (BSR-712): column added + backfilled, lock is BSR-713. `hasColumn`
+  // switches the writer audit on now rather than at the lock — waiting is what
+  // let Wave 1 ship an unstamped writer into production.
+  arc_generated_skills: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  agents: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  agent_task_inputs: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  agent_task_events: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  agent_run_logs: { category: "workspace", pending: GROUP_A, hasColumn: true },
   opportunities: { category: "workspace", pending: GROUP_A },
   next_best_actions: { category: "workspace", pending: GROUP_A },
   persona_snapshots: { category: "workspace", pending: GROUP_A },
