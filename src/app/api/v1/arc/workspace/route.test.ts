@@ -51,6 +51,7 @@ beforeEach(() => {
     personas: 5,
     records: { contacts: 243, companies: 12, leads: 0, campaigns: 3 },
     dismissalPatterns: [],
+    recentCorrections: [],
   });
   detailMock.mockResolvedValue({
     brandKit: "active",
@@ -60,6 +61,7 @@ beforeEach(() => {
     personas: 5,
     records: { contacts: 243, companies: 12, leads: 0, campaigns: 3 },
     dismissalPatterns: [],
+    recentCorrections: [],
     connectorList: [],
     personaList: [],
     compliance: { disallowedClaims: ["guarantee"], complianceNotes: "" },
