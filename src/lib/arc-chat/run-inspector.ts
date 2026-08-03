@@ -4,7 +4,7 @@ import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { unavailableRead, type UnavailableResult } from "@/lib/observability/unavailable";
 
-import { type ArcRecall } from "@/domain";
+import { MICROCENTS_PER_CENT, centsFromMicrocents, type ArcRecall } from "@/domain";
 
 import { getArcMessage, type ArcMessage, type ArcStep, type ArcToolCall } from "./persistence";
 
@@ -79,6 +79,7 @@ type UsageRow = {
   input_tokens: number | null;
   output_tokens: number | null;
   cost_estimate_cents: number | null;
+  cost_microcents: number | null;
   model: string | null;
 };
 
@@ -186,7 +187,7 @@ async function loadCost(
 
   const { data, error } = await supabase
     .from("ai_usage_events")
-    .select("input_tokens, output_tokens, cost_estimate_cents, model")
+    .select("input_tokens, output_tokens, cost_estimate_cents, cost_microcents, model")
     .eq("task_id", taskId)
     // Defence in depth: the task id already belongs to a scoped conversation.
     .eq("org_id", orgId);
@@ -202,7 +203,12 @@ async function loadCost(
     cost: {
       inputTokens: rows.reduce((sum, r) => sum + (r.input_tokens ?? 0), 0),
       outputTokens: rows.reduce((sum, r) => sum + (r.output_tokens ?? 0), 0),
-      cents: rows.reduce((sum, r) => sum + (r.cost_estimate_cents ?? 0), 0),
+      // Summed in microcents and rounded once (BSR-502 Finding 5): a conversation
+      // is many small turns, which is precisely where per-event rounding to zero
+      // does the most damage.
+      cents: centsFromMicrocents(
+        rows.reduce((sum, r) => sum + (r.cost_microcents ?? (r.cost_estimate_cents ?? 0) * MICROCENTS_PER_CENT), 0),
+      ),
       models: [...new Set(rows.map((r) => r.model).filter((m): m is string => Boolean(m)))],
       events: rows.length,
     },

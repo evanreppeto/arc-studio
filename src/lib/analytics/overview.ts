@@ -24,16 +24,13 @@ export function normalizeWindow(raw: unknown): AnalyticsWindow {
 }
 
 export type TrendKey = "revenue" | "leads" | "bookings";
-export type KpiTag = "wired" | "partial" | "sync";
 
 export type OverviewKpi = {
   label: string;
   value: string;
-  deltaLabel: string; // e.g. "+12.5%" or "— est."
+  deltaLabel: string; // e.g. "+12.5%"; empty when there is nothing to compare
   dir: "up" | "dn" | "flat";
   prevLabel: string;
-  tag: KpiTag;
-  tagLabel: string;
 };
 export type TrendSeries = { cur: number[]; prev: number[] };
 export type BreakdownRow = { label: string; count: number; width: number; dot: string; valueLabel?: string };
@@ -145,11 +142,11 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
   const curWon = Math.round(curJobs * 0.84);
 
   const kpis: OverviewKpi[] = [
-    { label: "Leads", value: curLeads.toLocaleString(), ...pct(curLeads, prevLeads), prevLabel: `${prevLeads} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Booked jobs", value: curJobs.toLocaleString(), ...pct(curJobs, prevJobs), prevLabel: `${prevJobs} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Won revenue", value: money(curRev), ...pct(curRev, prevRev), prevLabel: `${money(prevRev)} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Reply rate", value: "—", deltaLabel: "needs sends", dir: "flat", prevLabel: "no send denominator", tag: "partial", tagLabel: "partial" },
-    { label: "Cost / job", value: "—", deltaLabel: "— est.", dir: "flat", prevLabel: "needs spend feed", tag: "sync", tagLabel: "needs sync" },
+    { label: "Leads", value: curLeads.toLocaleString(), ...pct(curLeads, prevLeads), prevLabel: `${prevLeads} prev` },
+    { label: "Booked jobs", value: curJobs.toLocaleString(), ...pct(curJobs, prevJobs), prevLabel: `${prevJobs} prev` },
+    { label: "Won revenue", value: money(curRev), ...pct(curRev, prevRev), prevLabel: `${money(prevRev)} prev` },
+    { label: "Reply rate", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Starts once you send your first campaign" },
+    { label: "Cost / job", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Connect an ad account to see this" },
   ];
 
   const funnelMax = Math.max(1, curLeads);
@@ -306,11 +303,11 @@ export async function getAnalyticsOverview(
   const revDelta = pct(curRev, prevRev);
 
   const kpis: OverviewKpi[] = [
-    { label: "Leads", value: curLeads.toLocaleString(), ...leadsDelta, prevLabel: `${prevLeads} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Booked jobs", value: curJobs.toLocaleString(), ...jobsDelta, prevLabel: `${prevJobs} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Won revenue", value: money(curRev), ...revDelta, prevLabel: `${money(prevRev)} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Reply rate", value: "—", deltaLabel: "needs sends", dir: "flat", prevLabel: "no send denominator", tag: "partial", tagLabel: "partial" },
-    { label: "Cost / job", value: "—", deltaLabel: "— est.", dir: "flat", prevLabel: "needs spend feed", tag: "sync", tagLabel: "needs sync" },
+    { label: "Leads", value: curLeads.toLocaleString(), ...leadsDelta, prevLabel: `${prevLeads} prev` },
+    { label: "Booked jobs", value: curJobs.toLocaleString(), ...jobsDelta, prevLabel: `${prevJobs} prev` },
+    { label: "Won revenue", value: money(curRev), ...revDelta, prevLabel: `${money(prevRev)} prev` },
+    { label: "Reply rate", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Starts once you send your first campaign" },
+    { label: "Cost / job", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Connect an ad account to see this" },
   ];
 
   // Funnel (current window): leads -> booked -> won.

@@ -1,5 +1,6 @@
 "use client";
 
+import { WORK_STATE_LABEL } from "@/domain";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { Modal } from "../../_components/modal";
@@ -41,7 +42,7 @@ const IconResync = <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-6.2-8.6" />
 // human is reviewing what Arc learned, not the graph eye-candy).
 const TABS = [
   { key: "facts", label: "What Arc knows", icon: <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10" /></svg> },
-  { key: "review", label: "Needs review", icon: <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8M4 12v7a1 1 0 001 1h14" /></svg> },
+  { key: "review", label: WORK_STATE_LABEL.needs_you, icon: <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8M4 12v7a1 1 0 001 1h14" /></svg> },
   { key: "learned", label: "Recently learned", icon: <svg viewBox="0 0 24 24"><path d="M12 8v4l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
   { key: "web", label: "Knowledge Web", icon: <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4" /><circle cx="18" cy="7" r="2.4" /><circle cx="12" cy="17" r="2.4" /><path d="M8 7l8 1M7.5 8l3.5 7M16.5 9l-3.5 6" /></svg> },
 ];
@@ -50,6 +51,22 @@ function tierClass(t: string): string {
   const s = t.toLowerCase();
   if (s === "trusted" || s === "core" || s === "proposed" || s === "observed") return s;
   return "observed";
+}
+
+/**
+ * Trust tier as a label. The tier is its own axis — how far Arc trusts a fact —
+ * but "proposed" is the same human moment as a draft waiting on you, and the
+ * page said it three ways at once: the tile read "Awaiting review", the pill
+ * read "proposed", and the tab read "Needs review" (BSR-656). The tier VALUE is
+ * untouched; only its wording joins the shared vocabulary.
+ */
+function tierLabel(t: string): string {
+  const s = (t || "").toLowerCase();
+  if (s === "proposed") return WORK_STATE_LABEL.needs_you;
+  if (s === "trusted") return "Trusted";
+  if (s === "core") return "Core";
+  if (s === "observed") return "Watching";
+  return t;
 }
 
 function Confidence({ value }: { value: number | null }) {
@@ -243,9 +260,9 @@ export function BrainView({
     }
   }
 
-  // Keep the header "Awaiting review" stat + coverage banner consistent with the
+  // Keep the header "Needs you" stat + coverage banner consistent with the
   // live review list (they're derived server-side from the proposed count).
-  const stats = data.stats.map((s) => (s.label === "Awaiting review" ? { ...s, value: review.length } : s));
+  const stats = data.stats.map((s) => (s.label === WORK_STATE_LABEL.needs_you ? { ...s, value: review.length } : s));
 
   return (
     <div className={`arc-brain${tab === "web" ? " graph" : ""}`}>
@@ -360,7 +377,7 @@ export function BrainView({
           <div className="inner">
             {tab === "facts" && (
               <>
-                <h3 className="sh">All facts <span className="tg">wired · listNodes</span></h3>
+                <h3 className="sh">All facts</h3>
                 <div className="facttools">
                   <div className="factsearch">
                     <svg viewBox="0 0 24 24" aria-hidden><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
@@ -410,7 +427,7 @@ export function BrainView({
                                 <div className="fact-sum">{corrections[f.id]?.summary ?? f.summary}</div>
                               )}
                             </td>
-                            <td><span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{f.trustTier}</span></td>
+                            <td><span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{tierLabel(f.trustTier)}</span></td>
                             <td><Confidence value={f.confidence} /></td>
                             <td><span className="src">{f.source || "—"}</span></td>
                             <td className="factact">
@@ -464,7 +481,7 @@ export function BrainView({
 
             {tab === "review" && (
               <>
-                <h3 className="sh">Awaiting your approval <span className="tg">wired · trust gate</span></h3>
+                <h3 className="sh">Waiting on your approval</h3>
                 <p className="lead">Arc proposes brand facts, messaging angles, CTAs, proof points, and audience segments — but they stay <b>proposed</b> and out of all outbound copy until you approve them.</p>
                 {error && (
                   <div className="crm-error" role="alert">
@@ -481,7 +498,7 @@ export function BrainView({
                     <div className="qcard" key={f.id}>
                       <div className="qtop">
                         <span className="kindchip"><span className="d" style={{ background: f.kindColor }} />{f.kindLabel}</span>
-                        <span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{f.trustTier}</span>
+                        <span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{tierLabel(f.trustTier)}</span>
                         <Confidence value={f.confidence} />
                       </div>
                       <div className="qlabel">{f.label}</div>
@@ -508,7 +525,7 @@ export function BrainView({
 
             {tab === "learned" && (
               <>
-                <h3 className="sh">Recently learned <span className="tg">wired · node created_at</span></h3>
+                <h3 className="sh">Recently learned</h3>
                 {data.learned.length === 0 ? (
                   <div className="empty">Nothing learned yet. New facts show up here as Arc discovers them.</div>
                 ) : (
@@ -520,7 +537,7 @@ export function BrainView({
                           <div className="tll">{f.label}</div>
                           <div className="tlk">
                             <span className="kindchip"><span className="d" style={{ background: f.kindColor }} />{f.kindLabel}</span>
-                            <span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{f.trustTier}</span>
+                            <span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{tierLabel(f.trustTier)}</span>
                           </div>
                         </div>
                         <span className="tlt">{f.learnedAt}</span>

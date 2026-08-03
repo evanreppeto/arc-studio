@@ -17,7 +17,7 @@ export function promptForOpportunity(opp: OpportunityRecord): string {
   const arcPrompt = opp.evidence?.arcPrompt;
   if (typeof arcPrompt === "string" && arcPrompt.trim()) return arcPrompt.trim();
   // Everything else: ask Arc to act on the surfaced signal, keeping it approval-safe.
-  return `Help me act on this opportunity: “${opp.title}”. What should we draft? Keep it approval-gated.`;
+  return `Help me act on this opportunity: “${opp.title}”. What should we draft? Keep it a draft for my approval.`;
 }
 
 /**

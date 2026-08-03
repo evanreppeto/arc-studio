@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { CAMPAIGN_NOUN, countOf, WORK_STATE_LABEL } from "@/domain";
+
 import { createCampaign, type NewCampaignInput } from "../actions";
 import { NewCampaignModal } from "./new-campaign-modal";
 import { needsOperatorApproval, type CampaignTone } from "./tone";
@@ -18,7 +20,7 @@ export type CampaignRow = {
   statusLabel: string;
   next: string;
   nextTone: "" | "go" | "warn";
-  /** Deliverables on this package with no decision recorded yet. */
+  /** Assets on this campaign with no decision recorded yet. */
   pendingCount: number;
   audience: string;
   dot: string;
@@ -26,6 +28,11 @@ export type CampaignRow = {
   updatedRel: string;
   updatedAbs: string;
   href: string;
+  /** Cover image for the row — first attached image, else a video poster.
+   *  Null when the package has no visual creative. */
+  thumbnailUrl: string | null;
+  /** How many media assets the package carries, thumbnail included. */
+  mediaCount: number;
 };
 
 const CampIcon = (
@@ -35,13 +42,15 @@ const CampIcon = (
   </svg>
 );
 
+// Tab labels and the status pills in the rows below them are the same words now
+// (BSR-656) — the "Needs approval" tab used to sit above rows reading "In review".
 const TABS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "needs", label: "Needs approval" },
-  { key: "live", label: "Live" },
-  { key: "approved", label: "Approved" },
-  { key: "draft", label: "Draft" },
-  { key: "archived", label: "Archived" },
+  { key: "needs", label: WORK_STATE_LABEL.needs_you },
+  { key: "live", label: WORK_STATE_LABEL.sending },
+  { key: "approved", label: WORK_STATE_LABEL.approved },
+  { key: "draft", label: WORK_STATE_LABEL.draft },
+  { key: "archived", label: WORK_STATE_LABEL.archived },
 ];
 
 function inTab(tone: CampaignTone, tab: string): boolean {
@@ -77,13 +86,13 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
   return {
     id,
     name: v.name,
-    brief: v.campaignTheme || "Campaign package",
+    brief: v.campaignTheme || "New campaign",
     tone: "draft",
-    statusLabel: "Draft",
-    // A package created seconds ago has no deliverables yet, so nothing is
+    statusLabel: WORK_STATE_LABEL.draft,
+    // A campaign created seconds ago has no assets yet, so nothing is
     // undecided — Arc drafts them after this row appears.
     pendingCount: 0,
-    next: "Draft in progress",
+    next: "Arc is still building it",
     nextTone: "",
     audience,
     dot: personaDotOf(v.persona || audience),
@@ -91,7 +100,36 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
     updatedRel: "now",
     updatedAbs: "",
     href: `/campaigns/${id}`,
+    // A package created seconds ago carries no creative yet, same reasoning as
+    // pendingCount above.
+    thumbnailUrl: null,
+    mediaCount: 0,
   };
+}
+
+/**
+ * The row's cover: the package's own creative when it has some, the generic
+ * campaign glyph when it doesn't. A campaign carrying three approved images
+ * used to be indistinguishable from an empty one on this board.
+ */
+function CampaignAvatar({ thumbnailUrl, mediaCount }: { thumbnailUrl: string | null; mediaCount: number }) {
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(thumbnailUrl) && !failed;
+  return (
+    <span className={`pav${showImage ? " hasthumb" : ""}`}>
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+        <img className="pavimg" src={thumbnailUrl as string} alt="" loading="lazy" onError={() => setFailed(true)} />
+      ) : (
+        CampIcon
+      )}
+      {mediaCount > 1 && (
+        <span className="pavn" title={`${mediaCount} creative assets`}>
+          {mediaCount}
+        </span>
+      )}
+    </span>
+  );
 }
 
 export function CampaignsBoard({
@@ -175,7 +213,7 @@ export function CampaignsBoard({
         <div>
           <h2 className="ct">Campaigns</h2>
           <div className="csub">
-            {allRows.length} {allRows.length === 1 ? "package" : "packages"} · approval-gated · drafted by Arc
+            {countOf(allRows.length, CAMPAIGN_NOUN)} drafted by Arc · nothing sends until you approve it
           </div>
         </div>
         <div className="sp">
@@ -308,13 +346,13 @@ export function CampaignsBoard({
                 >
                   <td>
                     {r.id.startsWith("local-") ? <div className="pcell">
-                      <span className="pav">{CampIcon}</span>
+                      <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
                       <div style={{ minWidth: 0 }}>
                         <div className="pnm">{r.name}</div>
                         <div className="psub">{r.brief}</div>
                       </div>
                     </div> : <Link className="pcell campaign-link" href={r.href} aria-label={`Open ${r.name}`}>
-                      <span className="pav">{CampIcon}</span>
+                      <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
                       <div style={{ minWidth: 0 }}>
                         <div className="pnm">{r.name}</div>
                         <div className="psub">{r.brief}</div>

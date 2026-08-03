@@ -79,7 +79,7 @@ export function buildDemoDispatches(): DispatchView[] {
       dispatchedAt: "Today 7:30 AM",
       recipientSummary: "recently onboarded accounts",
       audienceCount: 41,
-      resultNote: "Sent via Resend",
+      resultNote: "Sent by email",
       updatedAt: "Today 7:30 AM",
       preview: null,
     },

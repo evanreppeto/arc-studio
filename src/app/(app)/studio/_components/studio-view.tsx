@@ -409,7 +409,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             ) : (
               <div className="cn">No campaigns yet</div>
             )}
-            <div className="cmeta">{campaigns.length ? "attaches on generate · approval-gated" : "create one in Campaigns first"}</div>
+            <div className="cmeta">{campaigns.length ? "Anything you make here gets attached for approval" : "Make one in Campaigns first"}</div>
           </div>
         </div>
         <span className="proj"><span className="dot" />Untitled creative · autosaved</span>
@@ -655,7 +655,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     <span className="pxchip">{FORMATS[fmt].dim}</span>
                   </div>
                   <div className="scapt">
-                    Performance scoring isn&rsquo;t available — Arc has no virality model wired up. These are the
+                    Arc can&rsquo;t predict how this will perform yet. These are the
                     dimensions this creative will render at.
                   </div>
                 </div>

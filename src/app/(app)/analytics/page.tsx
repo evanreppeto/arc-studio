@@ -1,3 +1,4 @@
+import { WORK_STATE_LABEL } from "@/domain";
 import { getRecentActivity, type ActivityEntry, type ActivityTone } from "@/lib/activity/read-model";
 import { getAnalyticsOverview, normalizeWindow } from "@/lib/analytics/overview";
 import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
@@ -65,7 +66,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const activitySummary =
     activity.status === "live"
       ? [
-          { label: "Needs review", value: activity.summary.needsReview },
+          { label: WORK_STATE_LABEL.needs_you, value: activity.summary.needsReview },
           { label: "Arc actions", value: activity.summary.arcActions },
           { label: "Campaign progress", value: activity.summary.campaignProgress },
           { label: "Blocked / risky", value: activity.summary.blockedOrRisky },

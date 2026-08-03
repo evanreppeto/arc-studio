@@ -201,13 +201,12 @@ export function BrandView({ view }: { view: BrandProfileView }) {
         <div className="intakehead">
           <div>
             <div className="ih-title"><span className="sp"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg></span>Teach Arc your brand</div>
-            <div className="ih-sub">Add your website, documents, and logo — Arc parses, reads, and analyzes them with Gemini, then proposes brand details for you to approve. Extracted facts land in your <b>Brain</b> and your Brand profile, gated by review — <b>nothing is auto-applied</b>.</div>
+            <div className="ih-sub">Add your website, documents, and logo. Arc reads them and suggests brand details for you to approve — what it learns lands in your <b>Brain</b> and your Brand profile, and <b>nothing is applied until you say so</b>.</div>
           </div>
           <div className="ih-prog">{sources.length} {sources.length === 1 ? "source" : "sources"} connected</div>
         </div>
         <div className="sources">
           <div className="isrc">
-            <span className="tg ok">wired</span>
             <div className="si"><span className="ic bl"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" /></svg></span><div><div className="nm">Website</div><div className="ds">Reads the page — title, description, icon, and copy for Arc</div></div></div>
             <div className="urow">
               <input
@@ -236,7 +235,6 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             )}
           </div>
           <div className="isrc">
-            <span className="tg ok">wired · Brain</span>
             <div className="si"><span className="ic gd">{DOC}</span><div><div className="nm">Documents</div><div className="ds">.docx · .pdf · .md · .csv · txt — up to 50&nbsp;MB</div></div></div>
             <input
               ref={fileInput}
@@ -257,12 +255,12 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             </button>
           </div>
           <div className="isrc">
-            <span className="tg est">vision · partial</span>
-            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logo &amp; images</div><div className="ds">Arc reads them with Gemini vision</div></div></div>
+            <span className="tg est">Coming soon</span>
+            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logo &amp; images</div><div className="ds">Arc looks at them and learns your look</div></div></div>
             <div className="ucta drop" data-soon="Logo & image upload is coming soon"><svg className="upi" viewBox="0 0 24 24"><path d="M12 16V6M8 10l4-4 4 4" /><path d="M5 16v3a1 1 0 001 1h12a1 1 0 001-1v-3" /></svg><span><b>Drop logo / photos</b></span></div>
           </div>
           <div className="isrc">
-            <span className="tg est">preview</span>
+            <span className="tg est">Coming soon</span>
             <div className="si"><span className="ic mu"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg></span><div><div className="nm">Manual</div><div className="ds">Type a note, or edit any field below</div></div></div>
             <div className="ucta" data-soon="Brand notes are coming soon">Add a brand note</div>
           </div>
@@ -274,7 +272,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
         <div className="bcol">
           {/* PALETTE */}
           <div className="bsec">
-            <div className="bsh"><h3>Brand palette</h3><span className="tg ok">wired</span><div className="sx"><span className="editlink" data-soon="Editing the palette is coming soon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add color</span></div></div>
+            <div className="bsh"><h3>Brand palette</h3><div className="sx"><span className="editlink" data-soon="Editing the palette is coming soon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add color</span></div></div>
             <div className="bsb">
               {palette.length === 0 ? (
                 <div className="bsnote" style={{ margin: 0 }}>No palette yet — add colors, or let Arc extract them from your website and logo.</div>
@@ -295,13 +293,13 @@ export function BrandView({ view }: { view: BrandProfileView }) {
               )}
             </div>
             {palette.length > 0 && (
-              <div className="bsnote">Click a color to preview it as the active accent on the generated ad → Arc uses these tokens across every generated ad, landing page, and email render.</div>
+              <div className="bsnote">Click a color to preview it on the ad above. Arc uses these colors on every ad, landing page, and email it makes.</div>
             )}
           </div>
 
           {/* TYPOGRAPHY */}
           <div className="bsec">
-            <div className="bsh"><h3>Typography</h3><span className="tg ok">wired</span><div className="sx"><span className="editlink" data-soon="Editing typography is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Change</span></div></div>
+            <div className="bsh"><h3>Typography</h3><div className="sx"><span className="editlink" data-soon="Editing typography is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Change</span></div></div>
             <div className="bsb"><div className="typ">
               <div className="tspec serif"><div className="glyph">Aa</div><div className="ti"><div className="role">Display</div><div className="fam">{headingFont}</div><div className="sample">{tagline || "Your headline, set in the display face."}</div></div></div>
               <div className="tspec"><div className="glyph">Aa</div><div className="ti"><div className="role">UI / Body</div><div className="fam">{bodyFont}</div><div className="sample">{proofPoints.slice(0, 2).join(". ") || "Body copy for everyday UI and paragraphs."}</div></div></div>
@@ -312,7 +310,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           {/* VOICE */}
           {(tone.length > 0 || voiceGuidance || preferredPhrases.length > 0 || bannedPhrases.length > 0) && (
             <div className="bsec">
-              <div className="bsh"><h3>Voice &amp; tone</h3><span className="tg ok">wired · tone · voice_guidance</span><div className="sx"><span className="editlink" data-soon="Editing voice & tone is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Edit</span></div></div>
+              <div className="bsh"><h3>Voice &amp; tone</h3><div className="sx"><span className="editlink" data-soon="Editing voice & tone is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Edit</span></div></div>
               <div className="bsb">
                 {tone.length > 0 && <div className="tone">{tone.map((t) => <span className="tchip" key={t}>{t}</span>)}</div>}
                 {voiceGuidance && <p className="guide">{voiceGuidance}</p>}
@@ -336,7 +334,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
 
           {/* PROOF / GUARDRAILS / SERVICES */}
           <div className="bsec">
-            <div className="bsh"><h3>Proof, guardrails &amp; offering</h3><span className="tg ok">wired · proof_points · guardrails · services</span></div>
+            <div className="bsh"><h3>Proof, guardrails &amp; offering</h3></div>
             <div className="bsb">
               <div className="twocol">
                 <div>
@@ -377,7 +375,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
 
           {/* BRAND SOURCES */}
           <div className="bsec">
-            <div className="bsh"><h3>Brand sources</h3><span className="tg ok">wired · media_assets</span><div className="sx">
+            <div className="bsh"><h3>Brand sources</h3><div className="sx">
               <button type="button" className="resyncall" disabled={intake || sources.length === 0} onClick={() => runIntake("resync", () => resyncBrandSources())}>{RESYNC}{busy === "resync" ? "Re-syncing…" : "Re-sync all"}</button>
               <button type="button" className="gbtn gold sm" disabled={intake} onClick={() => fileInput.current?.click()}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>Upload</button>
             </div></div>
@@ -412,7 +410,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
                 ))
               )}
             </div>
-            <div className="bsnote">Upload a deck, brief, or guidelines — Arc parses it (docx/pdf/md/csv) and writes what it learns into the <b>Brain</b> as proposed facts you approve. <b>Re-sync</b> re-learns a source when your docs change. Click a source to see its facts.</div>
+            <div className="bsnote">Upload a deck, brief, or guidelines (Word, PDF, Markdown or CSV). Arc reads it and adds what it learns to the <b>Brain</b> as facts waiting on your approval. <b>Re-sync</b> re-reads a source when your documents change. Click a source to see what it learned.</div>
           </div>
 
           {/* ARC USES THIS */}

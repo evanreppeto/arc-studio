@@ -16,6 +16,31 @@ const SUPPORTED_ASPECT_RATIOS = new Set(["1:1", "3:4", "4:3", "9:16", "16:9"]);
 const DEFAULT_VIDEO_MODEL = "veo-3.1-fast-generate-preview";
 const SUPPORTED_VIDEO_ASPECT = new Set(["16:9", "9:16"]);
 
+/**
+ * Person generation policy for Veo.
+ *
+ * This used to be hardcoded to ALLOW_ADULT, which made EVERY video call fail
+ * with a 400 — Veo 3.1 gates person generation behind a per-project allowlist
+ * for projects created after 2026-07-22, and ours is not on it:
+ *
+ *   "allow_adult for personGeneration is currently not supported."
+ *
+ * Omitting the field does NOT help: the API default is itself allow_adult, so
+ * it fails identically. DONT_ALLOW is the only value an un-allowlisted project
+ * can use, so that is the default here — a video without people beats a video
+ * that never renders. Once the project is allowlisted, set
+ * GEMINI_VIDEO_PERSON_GENERATION=ALLOW_ADULT to lift it with no code change.
+ */
+const DEFAULT_PERSON_GENERATION = "DONT_ALLOW";
+const PERSON_GENERATION_VALUES = new Set(Object.values(PersonGeneration) as string[]);
+
+/** Normalize a person-generation policy to a value the SDK enum accepts. */
+export function resolvePersonGeneration(stored: string | undefined, env: string | undefined): PersonGeneration {
+  const candidate = (stored?.trim() || env?.trim() || DEFAULT_PERSON_GENERATION).toUpperCase();
+  const value = PERSON_GENERATION_VALUES.has(candidate) ? candidate : DEFAULT_PERSON_GENERATION;
+  return value as PersonGeneration;
+}
+
 /** Pick a model: stored pref (if non-empty) -> env -> built-in default. Pure + testable. */
 export function resolveModel(stored: string | undefined, env: string | undefined, fallback: string): string {
   return (stored && stored.trim()) || (env && env.trim()) || fallback;
@@ -88,7 +113,10 @@ export function createGeminiMediaProvider(
         prompt: input.prompt,
         config: {
           numberOfVideos: 1,
-          personGeneration: PersonGeneration.ALLOW_ADULT,
+          personGeneration: resolvePersonGeneration(
+            input.personGeneration,
+            process.env.GEMINI_VIDEO_PERSON_GENERATION,
+          ),
           ...(aspectRatio ? { aspectRatio } : {}),
           ...(input.durationSeconds ? { durationSeconds: input.durationSeconds } : {}),
         },

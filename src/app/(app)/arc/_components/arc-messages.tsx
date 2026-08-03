@@ -46,6 +46,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import {
   summarizeSteps,
+  WORK_STATE_LABEL,
   type ArcActionCard,
   type ArcAssetStatus,
   type ArcMention,
@@ -1097,11 +1098,11 @@ export function AssetReviewPanel({ cards, statuses, onStatus, onClose }: { cards
 }
 
 export const DRAFT_STATUS_META: Record<ArcAssetStatus | "review", { label: string; tone: string }> = {
-  review: { label: "Needs review", tone: "muted" },
-  draft: { label: "Needs review", tone: "muted" },
-  revision: { label: "Revising", tone: "accent" },
-  approved: { label: "Approved", tone: "ok" },
-  rejected: { label: "Declined", tone: "red" },
+  review: { label: WORK_STATE_LABEL.needs_you, tone: "muted" },
+  draft: { label: WORK_STATE_LABEL.needs_you, tone: "muted" },
+  revision: { label: WORK_STATE_LABEL.needs_changes, tone: "accent" },
+  approved: { label: WORK_STATE_LABEL.approved, tone: "ok" },
+  rejected: { label: WORK_STATE_LABEL.declined, tone: "red" },
 };
 
 /**

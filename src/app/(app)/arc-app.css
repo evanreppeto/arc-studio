@@ -77,6 +77,21 @@
   .arc-app .page-enter { animation: none; }
 }
 
+/* The single <main> landmark (app-shell.tsx) sits between .main and .page-enter.
+   It has to be the same transparent flex passthrough they are: with no rule it
+   is a block box that sizes to its content, which breaks the chain of bounded
+   heights .app depends on. Every page taller than the viewport was then clipped
+   by .app's `overflow: hidden` with no way to scroll to the rest — a page root
+   measured 7450px inside a 100vh box. Height must stay bounded from .app all
+   the way down to each page's own scroll container. */
+.arc-app #main-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .arc-app {
   /* mockup var names → app tokens / fonts */
   --canvas: #16161a; --canvas-deep: #101013; --panel: #1c1c21; --inset: #202027; --raised: #26262d; --sidebar: #121316;
@@ -93,7 +108,12 @@
   background: var(--canvas); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 
-  & .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100vh; overflow: hidden; }
+  /* 100dvh, not 100vh: on a mobile browser 100vh is the viewport with the
+     address bar *retracted*, so the box is taller than what you can see. Paired
+     with `overflow: hidden` that clips the bottom strip with no way to reach it
+     — the same failure the <main> passthrough rule above fixes, phone-only. The
+     100vh line stays as the fallback for anything without dvh support. */
+  & .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
 
   /* Embedded in the mockup gallery's crossfade iframe: the host already renders
      the sidebar, so drop ours (otherwise the two rails stack — the double
@@ -581,6 +601,18 @@
 .arc-app .arc-grid .pav { width: 32px; height: 32px; border-radius: 8px; background: var(--inset); border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; font-family: var(--serif); font-weight: 600; font-size: 12.5px; }
 .arc-app .arc-grid .pav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-app .arc-grid .pav.co { font-size: 11px; color: var(--text-2); }
+/* Campaign rows carry the package's own creative in the avatar slot. Scoped to
+   this board on purpose — the other .arc-grid tables have no media to show. */
+.arc-app .arc-campaigns .pav { position: relative; width: 40px; height: 40px; border-radius: 9px; overflow: visible; }
+.arc-app .arc-campaigns .pav.hasthumb { background: var(--canvas-deep, #101013); }
+.arc-app .arc-campaigns .pavimg { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+/* Not a notification count — it says "this package has more creative than the
+   one frame you can see". */
+.arc-app .arc-campaigns .pavn {
+  position: absolute; right: -5px; bottom: -5px; min-width: 16px; height: 16px; padding: 0 4px;
+  display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line-2);
+  background: var(--panel); color: var(--text-2); font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+}
 .arc-app .arc-grid .pnm { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; max-width: 210px; }
 .arc-app .arc-grid .psub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; max-width: 210px; }
 .arc-app .arc-grid .dt td:first-child { width: 34%; }
@@ -660,8 +692,98 @@
 
 @media (max-width: 900px) {
   .arc-app .arc-grid { padding: 18px 16px 0; }
-  .arc-app .arc-grid .dt td:nth-child(5),
-  .arc-app .arc-grid .dt th:nth-child(5) { display: none; }
+  .arc-app .arc-campaigns .dt td:nth-child(5),
+  .arc-app .arc-campaigns .dt th:nth-child(5) { display: none; }
+}
+
+/* ---- Phone: the data tables become stacked cards (BSR-662) ----------------
+   Below this width the desktop table shipped unchanged and scrolled sideways,
+   so STATUS clipped mid-word ("In reviev") and NEXT ACTION — the column that
+   says what to do — sat entirely off-screen behind a horizontal gesture with a
+   hairline scrollbar as its only affordance. Approving from a phone between
+   jobs is the core loop for an owner-operator, so the answer to "what needs me"
+   cannot be the one thing you have to swipe to find.
+
+   Done in CSS alone, deliberately: adding a wrapper element to group the meta
+   cells would be a DOM change, and an unstyled wrapper from the a11y pass is
+   exactly what broke scrolling on every screen for two weeks. `tr::after` gives
+   us the line break with no new elements.
+
+   Column order is the contract here. Campaigns is a fixed six (name, status,
+   next action, audience, channels, updated) so it keys off nth-child; CRM's
+   columns vary per object, so it keys off the stable positions (select first,
+   primary second, actions last) and lets everything else flow into the meta
+   line. Changing either column order means revisiting this block. */
+@media (max-width: 640px) {
+  /* The page stops being a fixed-height flex column and becomes one scrolling
+     column. `.tablewrap` flexes to fill leftover height, and on a phone the
+     chrome above it (KPI strip, object tabs, two rows of filters) eats the whole
+     viewport — CRM's table computed to SEVEN pixels tall with all seven rows
+     rendered inside it. The rows were there the whole time; there was simply no
+     room. `.app` is still the 100dvh/overflow-hidden ancestor, so this moves the
+     scroll to `.arc-grid` rather than adding a second scrolling box. */
+  .arc-app .arc-grid { overflow-y: auto; padding-bottom: 16px; }
+  /* Every child keeps its natural height and the page scrolls. Without this the
+     column is still a fixed height and flex-shrink just picks a different victim
+     — first the table (7px tall, all rows inside it), then, once the table was
+     pinned, the KPI strip (2px: its two borders, nothing else). Whoever is last
+     to be given `flex: none` is the one that survives, which is not a layout
+     rule, it is a race. */
+  .arc-app .arc-grid > * { flex-shrink: 0; }
+  .arc-app .arc-grid .tablewrap { flex: none; min-height: 0; overflow: visible; }
+  .arc-app .arc-grid .tablewrap { overflow-x: hidden; }
+  .arc-app .arc-grid .dt,
+  .arc-app .arc-grid .dt tbody,
+  .arc-app .arc-grid .dt tr,
+  .arc-app .arc-grid .dt td { display: block; }
+
+  /* The header row has nowhere to go once cells stack; each card carries its
+     own meaning instead. Hidden, not removed, so it stays in the a11y tree. */
+  .arc-app .arc-grid .dt thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  .arc-app .arc-grid .dt tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px 10px;
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .arc-app .arc-grid .dt tbody td { padding: 0; border-bottom: none; }
+  /* Line break between the card's headline row and its meta row. */
+  .arc-app .arc-grid .dt tbody tr::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+  .arc-app .arc-grid .dt tbody td { order: 5; flex: 0 0 auto; }
+
+  /* Names stop truncating at a desktop column width they no longer sit in. */
+  .arc-app .arc-grid .dt td:first-child { width: auto; }
+  .arc-app .arc-grid .pnm,
+  .arc-app .arc-grid .psub { max-width: none; white-space: normal; }
+  .arc-app .arc-grid .psub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* Campaigns, three lines:
+       [avatar  name                        ]
+       [Approve 2 assets        · Needs you ]
+       [New lead                    13d ago ]
+     The title owns its own line rather than splitting ~100px with the status
+     pill, and the second line pairs what to do with what state — the two things
+     a phone-sized glance is actually for. */
+  .arc-app .arc-campaigns .dt tbody td:nth-child(1) { order: 1; flex: 1 1 100%; min-width: 0; }
+  .arc-app .arc-campaigns .dt tbody td:nth-child(3) { order: 2; flex: 1 1 0; min-width: 0; }
+  .arc-app .arc-campaigns .dt tbody td:nth-child(2) { order: 3; margin-left: auto; }
+  .arc-app .arc-campaigns .dt tbody td:nth-child(4) { order: 5; }
+  .arc-app .arc-campaigns .dt tbody td:nth-child(6) { order: 6; margin-left: auto; }
+  .arc-app .arc-campaigns .dt tbody .nx { font-weight: 600; color: var(--text); }
+  .arc-app .arc-campaigns .dt td:nth-child(5) { display: none; }
+
+  /* CRM: [✓ name ........ ›] / [persona · status · last activity · …] */
+  .arc-app .arc-crm .dt tbody td.cselect { order: 1; width: auto; padding-left: 0; }
+  .arc-app .arc-crm .dt tbody td:nth-child(2) { order: 2; flex: 1 1 0; min-width: 0; }
+  .arc-app .arc-crm .dt tbody td.cact { order: 2; margin-left: auto; }
+
+  /* The empty / error row is one message, not a card. */
+  .arc-app .arc-grid .dt .emptyrow { display: block; padding: 0; }
+  .arc-app .arc-grid .dt .emptyrow td { order: 0; padding: 30px 16px; }
+  .arc-app .arc-grid .dt .emptyrow::after { content: none; }
 }
 
 /* ============================================================
@@ -815,8 +937,11 @@
 .arc-app .arc-outbox .card button.caction.ghost:hover { border-color: var(--accent-border); color: var(--text); }
 
 @media (max-width: 900px) {
-  .arc-app .arc-outbox .okpis { grid-template-columns: repeat(4, minmax(146px, 1fr)); overflow-x: auto; scrollbar-width: none; }
-  .arc-app .arc-outbox .okpis::-webkit-scrollbar { display: none; }
+  /* Two rows of two, not four in a hidden side-scroll. This used to be
+     `overflow-x: auto` with `scrollbar-width: none`, so on a phone two of the
+     four counts — including anything failed — were off-screen with no visual
+     cue they existed at all (BSR-662). */
+  .arc-app .arc-outbox .okpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .arc-app .arc-outbox .tabbar { flex-wrap: nowrap; }
   .arc-app .arc-outbox .ofilters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .arc-app .arc-outbox .ofilters::-webkit-scrollbar { display: none; }
@@ -1239,8 +1364,15 @@
 .arc-app .arc-brain .ft tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 /* per-fact archive control — revealed on row hover, sits in a trailing cell */
 .arc-app .arc-brain .ft td.factact { width: 34px; text-align: right; padding-left: 0; }
-.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity 0.14s, color 0.14s, border-color 0.14s; }
-.arc-app .arc-brain .ft tbody tr:hover .farch { opacity: 1; }
+.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: opacity 0.14s, color 0.14s, border-color 0.14s; }
+/* Reveal-on-hover, but only where hovering exists. A touch screen never hovers,
+   so hiding it there left an invisible control that still accepted taps — worse
+   than a visible one. Guarding the *hide* (rather than overriding it back to 1
+   later) keeps the desktop behaviour identical and needs no source-order luck. */
+@media (hover: hover) {
+  .arc-app .arc-brain .ft .farch { opacity: 0; }
+  .arc-app .arc-brain .ft tbody tr:hover .farch { opacity: 1; }
+}
 .arc-app .arc-brain .ft .farch:hover { color: var(--text); border-color: var(--line-2); background: var(--inset); }
 .arc-app .arc-brain .ft .farch:focus-visible { opacity: 1; }
 .arc-app .arc-brain .ft .farch:disabled { opacity: 0.4; cursor: default; }
@@ -2012,4 +2144,37 @@
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11.5px;
+}
+
+/* ---------------------------------------------------------------------------
+   Touch targets.
+
+   The icon buttons are sized for a mouse — 26–32px squares. On a phone that is
+   a miss-tap, and they are dense enough that the wrong one is easy to hit. This
+   raises them to the 44px WCAG 2.5.5 target size for COARSE POINTERS ONLY, so
+   the desktop density the layouts are built around is untouched. The wide-but-
+   short controls (tabs, chips, ~30-40px tall but 60px+ wide) are left alone:
+   they clear the 24px WCAG 2.5.8 floor and inflating them would wreck the
+   layouts they sit in.
+
+   Brain's archive button needed one more fix — it was invisible on touch, not
+   just small — but that lives with its own rule above, under `(hover: hover)`.
+   ------------------------------------------------------------------------ */
+@media (pointer: coarse) {
+  .arc-app .iconf,
+  .arc-app .pager .pgbtn,
+  .arc-app .arc-brain .ft .farch {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
+    border-radius: 10px;
+  }
+
+  .arc-app .iconf svg,
+  .arc-app .pager .pgbtn svg,
+  .arc-app .arc-brain .ft .farch svg {
+    width: 18px;
+    height: 18px;
+  }
 }

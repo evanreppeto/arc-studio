@@ -61,7 +61,7 @@ export function NewCampaignModal({
       open={open}
       onClose={onClose}
       title="New campaign"
-      description="Creates a draft package. Arc builds out the pieces and everything stays approval-gated — nothing sends until you approve it."
+      description="Creates a draft campaign. Arc builds out the assets — the email, the copy, the creative — and nothing sends until you approve it."
       footer={
         <>
           <button type="button" className="mbtn" onClick={onClose} disabled={pending}>
