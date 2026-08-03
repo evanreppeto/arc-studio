@@ -2390,7 +2390,10 @@ a.arc-work-evidence-item:hover > svg { color: var(--accent); }
 }
 .arc-share-dialog {
   width: min(470px, 100%);
+  /* dvh for the same reason as .app: with 100vh the dialog can extend past the
+     visible area on a phone, hiding its own footer actions. */
   max-height: min(760px, calc(100vh - 44px));
+  max-height: min(760px, calc(100dvh - 44px));
   overflow: auto;
   border: 1px solid var(--line-2);
   border-radius: 14px;
