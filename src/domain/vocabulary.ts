@@ -255,9 +255,18 @@ export function recallKindLabel(kind: string | null | undefined): string {
   return labelled(RECALL_KIND_LABEL, kind) ?? "Memory";
 }
 
-/** `mcp__arc__search_contacts` → "Search contacts"; `ToolSearch` → "Tool search". */
+/**
+ * `mcp__arc__search_contacts` → "Search contacts". `ToolSearch` stays as it is.
+ *
+ * A name already in camelCase or PascalCase was written by a person to be read —
+ * `ToolSearch` is the tool's actual name, and sentence-casing it yields
+ * "Toolsearch", which just looks like a typo. Only snake_case and dot.case names
+ * are identifiers rather than names, and only those get rewritten.
+ */
 export function arcToolLabel(name: string): string {
-  return humanizeIdentifier(name);
+  const bare = name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/^mcp__/, "") || name;
+  if (/[a-z][A-Z]/.test(bare)) return bare;
+  return humanizeIdentifier(bare);
 }
 
 /** Tool outcome, in the same words as the run's own status. */
