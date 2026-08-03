@@ -7,6 +7,7 @@ import { type ChangeEvent, useMemo, useRef, useState, useTransition } from "reac
 import { decideArcDraftAction, requestArcDraftRevisionAction, sendArcMessageAction } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
 import { generateStudioAsset } from "../actions";
+import { StudioCanvas, type CanvasBrand } from "./studio-canvas";
 
 const HOUSE = '<svg viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4654"/><stop offset="1" stop-color="#27303a"/></linearGradient></defs><rect width="600" height="300" fill="url(#sky)"/><path d="M0 210 L150 120 L300 200 L450 110 L600 190 V300 H0 Z" fill="#2b343d"/><path d="M120 230 L300 130 L480 230 Z" fill="#4a5663"/><path d="M120 230 L300 130 L300 250 L120 250 Z" fill="#3d4854"/><rect x="180" y="230" width="240" height="70" fill="#323b45"/><rect x="210" y="248" width="34" height="34" fill="#566270"/><rect x="356" y="248" width="34" height="34" fill="#566270"/></svg>';
 const SC: Record<string, string> = {
@@ -145,12 +146,11 @@ type StudioDraft = { campaignId: string; assetId: string; url: string; source: s
 const SAMPLE_COPY = {
   kicker: "Storm season",
   headline: "Your roof, ready before the next storm.",
-  sub: "Free assessment · same-week scheduling",
   cta: "Get my free quote",
 };
-const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
+const EMPTY_COPY = { kicker: "", headline: "", cta: "" };
 
-export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, brandPalette = [] }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; brandPalette?: string[] }) {
+export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, brandPalette = [], brandTokens = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; brandPalette?: string[]; brandTokens?: CanvasBrand | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
   // The "Approved media" source shows the workspace's real media_assets. Live, it
   // shows ONLY those — never the built-in samples, which would present stock art as
@@ -189,7 +189,6 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [accent, setAccent] = useState(swatches[0] ?? "#c8a24a");
   const [kicker, setKicker] = useState(startingCopy.kicker);
   const [headline, setHeadline] = useState(startingCopy.headline);
-  const [sub, setSub] = useState(startingCopy.sub);
   const [cta, setCta] = useState(startingCopy.cta);
   const [safe, setSafe] = useState(false);
   // Per-layer visibility for the canvas. The Layers panel eye toggles drive this;
@@ -387,6 +386,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     setTab(t.target === "arc" ? "arc" : "design");
   };
   const logoInitial = (brandName || "S").trim().charAt(0).toUpperCase();
+  // What the canvas paints with. The accent is the swatch the operator picked
+  // (the same value sent to the renderer); everything else comes from the Brand
+  // Kit so the preview's colours are the export's colours. Without a kit we fall
+  // back to the renderer's own neutral tokens rather than inventing a palette.
+  const canvasBrand: CanvasBrand = {
+    primary: brandTokens?.primary ?? "#16161a",
+    secondary: brandTokens?.secondary ?? "#2a2a32",
+    accent,
+    dark: brandTokens?.dark ?? "#0f1115",
+    light: brandTokens?.light ?? "#f1ede2",
+    displayName: brandTokens?.displayName ?? brandName,
+    shortMark: brandTokens?.shortMark ?? logoInitial,
+  };
 
   const Tile = ({ item, i }: { item: Item; i: number }) => (
     <div className={`mtile${selTile === i ? " on" : ""}`} onClick={() => { setSelTile(i); setBg(item); }}>
@@ -485,31 +497,25 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           <div className="stagewrap">
             <div className="artboard">
               <div className={`canvas${safe ? " szon" : ""}${mode === "video" ? " video" : ""}`} style={{ aspectRatio: FORMATS[fmt].ar }}>
-                <div className="cbg">
-                  {!bg ? (
-                    <div className="cbg-empty">No approved media yet — pick a source, upload, or generate to set a background.</div>
-                  ) : shown("Background") ? (
-                    <ItemMedia item={bg} />
-                  ) : null}
-                </div>
+                {/* Laid out from CREATIVE_LAYOUTS — the same numbers the exporter
+                    uses — so switching template changes what you see, and what
+                    you see is the shape that ships (BSR-679). */}
+                <StudioCanvas
+                  template={(TEMPLATES[tmpl]?.id ?? "bold") as "bold" | "editorial" | "minimal"}
+                  brand={canvasBrand}
+                  copy={{ kicker, headline, cta }}
+                  shown={shown}
+                  background={
+                    !bg ? (
+                      <div className="cbg-empty">No approved media yet — pick a source, upload, or generate to set a background.</div>
+                    ) : shown("Background") ? (
+                      <ItemMedia item={bg} />
+                    ) : null
+                  }
+                />
                 <div className="cveil" />
                 <div className="cplay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div>
-                {shown("Logo") && <div className="clogo"><span className="lm" style={{ background: accent }}>{logoInitial}</span> {brandName}</div>}
                 {bg && <div className="cprov">{PVLABEL[bg.p]}</div>}
-                {/* Empty text layers render as muted placeholders rather than
-                    collapsed nothing, so a workspace starting from scratch still
-                    sees where the copy lands. The CTA is a filled pill — an empty
-                    one is just a coloured smudge, so it sits out entirely. */}
-                <div className="ctext">
-                  {shown("Kicker") && (kicker
-                    ? <div className="ckick" style={{ color: accent === "#f1ede2" ? "#f1ede2" : accent }}>{kicker}</div>
-                    : <div className="ckick cplace">Kicker</div>)}
-                  {shown("Headline") && (headline
-                    ? <div className="chead">{headline}</div>
-                    : <div className="chead cplace">Your headline goes here.</div>)}
-                  <div className={`csub${sub ? "" : " cplace"}`}>{sub || "Supporting line"}</div>
-                  {shown("CTA button") && cta && <div className="ccta" style={{ background: accent, color: accent === "#f1ede2" ? "#201808" : "#1a1505" }}>{cta}</div>}
-                </div>
                 <div className="safez"><div className="szb szt"><span className="szl">caption / UI safe area</span></div><div className="szb szbo" /></div>
               </div>
               <div className="cspec">
@@ -593,7 +599,6 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   <h3 className="ph2">Edit copy</h3>
                   <div className="fieldl"><span>Kicker</span><span>eyebrow</span></div><input className="input" placeholder="Short eyebrow" value={kicker} onChange={(e) => setKicker(e.target.value)} />
                   <div className="field"><div className="fieldl"><span>Headline</span></div><input className="input" placeholder="The one line that has to land" value={headline} onChange={(e) => setHeadline(e.target.value)} /></div>
-                  <div className="field"><div className="fieldl"><span>Subhead</span></div><input className="input" placeholder="Supporting detail or offer" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
                   <div className="field"><div className="fieldl"><span>CTA</span></div><input className="input" placeholder="Button text" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
                 </div>
 
