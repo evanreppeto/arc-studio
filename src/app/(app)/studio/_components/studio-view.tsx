@@ -521,7 +521,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
               <div className="cspec">
                 <span>Rendered by <b>Arc</b></span><span className="dotsep" />
                 <span><b>{FORMATS[fmt].dim}</b> px</span><span className="dotsep" />
-                <span>{brandName} brand kit</span><span className="dotsep" />
+                <span title="Colours and type come from your Brand page, not from Arc">{brandName}&rsquo;s own colours</span><span className="dotsep" />
                 <span className="draftpill">Draft · not approved</span>
               </div>
             </div>

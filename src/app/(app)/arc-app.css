@@ -858,7 +858,6 @@
    ============================================================ */
 .arc-app .arc-outbox {
   --blue-soft: rgba(136, 182, 216, .14);
-  --vio-text: #cdbbe6;
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -920,7 +919,7 @@
 .arc-app .arc-outbox .chip-ch svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-app .arc-outbox .ch-email { background: var(--accent-soft); color: var(--accent); }
 .arc-app .arc-outbox .ch-sms { background: var(--blue-soft); color: var(--blue-text); }
-.arc-app .arc-outbox .ch-social { background: rgba(150, 120, 200, .16); color: var(--vio-text); }
+.arc-app .arc-outbox .ch-social { background: var(--slate-soft); color: var(--slate-text); }
 .arc-app .arc-outbox .own-agent { background: var(--accent-soft); color: var(--accent); }
 .arc-app .arc-outbox .own-human { background: var(--blue-soft); color: var(--blue-text); }
 .arc-app .arc-outbox .own-system { background: var(--inset); color: var(--muted); }
@@ -1912,10 +1911,10 @@
 
 /* ============================================================================
    Customer Journeys (/journeys) — P0 journey layer. Self-contained, namespaced
-   .jr-* classes on the global theme vars. --blue/--vio aren't global, so the
+   .jr-* classes on the global theme vars. --blue isn't global, so the
    scope defines local fallbacks; --ok/--warn/--accent are inherited.
    ============================================================================ */
-.arc-app .journeys { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px clamp(16px, 3vw, 30px) 48px; --jr-blue: #88b6d8; --jr-blue-soft: rgba(136, 182, 216, 0.14); --jr-vio: #cdbbe6; --jr-vio-soft: rgba(205, 187, 230, 0.14); }
+.arc-app .journeys { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px clamp(16px, 3vw, 30px) 48px; --jr-blue: #88b6d8; --jr-blue-soft: rgba(136, 182, 216, 0.14); }
 .arc-app .journeys .jr-head h2 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 10px; }
 .arc-app .journeys h2 { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 .arc-app .journeys .jr-sub2 { font-size: 11.5px; font-weight: 400; color: var(--muted); }
@@ -1943,7 +1942,10 @@
 .arc-app .journeys .jr-flabel { font-size: 12.5px; font-weight: 500; color: var(--text-2); display: flex; align-items: center; gap: 7px; }
 .arc-app .journeys .jr-anon { font-size: 9px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 4px; }
 .arc-app .journeys .jr-fbar { height: 22px; border-radius: 6px; background: var(--inset); overflow: hidden; }
-.arc-app .journeys .jr-fbar i { display: block; height: 100%; border-radius: 6px; min-width: 3px; transition: width 0.4s var(--ease); }
+.arc-app .journeys .jr-fbar i { display: block; height: 100%; border-radius: 6px; min-width: 3px; background: var(--accent); transition: width 0.4s var(--ease); }
+.arc-app .journeys .jr-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; font-size: 10.5px; color: var(--muted); }
+.arc-app .journeys .jr-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.arc-app .journeys .jr-legend i { width: 8px; height: 8px; border-radius: 2px; }
 .arc-app .journeys .jr-fcount { font-size: 14px; font-weight: 600; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
 .arc-app .journeys .jr-frate { font-size: 11px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 .arc-app .journeys .jr-filternote { margin-top: 10px; font-size: 12px; color: var(--text-2); }
@@ -2036,16 +2038,14 @@
 .arc-app .journeys .jr-empty p { font-size: 12.5px; color: var(--muted); max-width: 48ch; line-height: 1.5; }
 
 /* Tone tokens — solid fills (dots, bars) + soft pills */
-.arc-app .journeys .jr-dot.t-blue, .arc-app .journeys .jr-fbar i.t-blue, .arc-app .journeys .jr-tldot.t-blue { background: var(--jr-blue); }
-.arc-app .journeys .jr-dot.t-gold, .arc-app .journeys .jr-fbar i.t-gold, .arc-app .journeys .jr-tldot.t-gold { background: var(--accent); }
+.arc-app .journeys .jr-legend i.t-blue, .arc-app .journeys .jr-dot.t-blue, .arc-app .journeys .jr-tldot.t-blue { background: var(--jr-blue); }
+.arc-app .journeys .jr-legend i.t-gold, .arc-app .journeys .jr-dot.t-gold, .arc-app .journeys .jr-tldot.t-gold { background: var(--accent); }
 .arc-app .journeys .jr-dot.t-amber, .arc-app .journeys .jr-fbar i.t-amber, .arc-app .journeys .jr-tldot.t-amber { background: var(--warn); }
-.arc-app .journeys .jr-dot.t-green, .arc-app .journeys .jr-fbar i.t-green, .arc-app .journeys .jr-tldot.t-green { background: var(--ok); }
-.arc-app .journeys .jr-dot.t-vio, .arc-app .journeys .jr-fbar i.t-vio, .arc-app .journeys .jr-tldot.t-vio { background: var(--jr-vio); }
+.arc-app .journeys .jr-legend i.t-green, .arc-app .journeys .jr-dot.t-green, .arc-app .journeys .jr-tldot.t-green { background: var(--ok); }
 .arc-app .journeys .jr-pill.t-blue { background: var(--jr-blue-soft); color: var(--jr-blue); }
 .arc-app .journeys .jr-pill.t-gold { background: var(--accent-soft); color: var(--accent); }
 .arc-app .journeys .jr-pill.t-amber { background: var(--warn-soft); color: var(--warn-text); }
 .arc-app .journeys .jr-pill.t-green { background: var(--ok-soft); color: var(--ok-text); }
-.arc-app .journeys .jr-pill.t-vio { background: var(--jr-vio-soft); color: var(--jr-vio); }
 
 @media (max-width: 900px) {
   .arc-app .journeys .jr-grid { grid-template-columns: 1fr; }

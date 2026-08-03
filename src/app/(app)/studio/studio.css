@@ -52,7 +52,7 @@
 .arc-studio .mtile .mt .pv { position: absolute; top: 5px; left: 5px; font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 4px; backdrop-filter: blur(3px); }
 .arc-studio .pv.real { color: var(--ok-text); background: rgba(127, 184, 154, 0.22); }
 .arc-studio .pv.ai { color: var(--accent-contrast); background: rgba(200, 162, 74, 0.22); }
-.arc-studio .pv.comp { color: var(--vio-text); background: rgba(150, 120, 200, 0.22); }
+.arc-studio .pv.comp { color: var(--slate-text); background: var(--slate-soft); }
 .arc-studio .pv.upload { color: var(--blue-text); background: rgba(136, 182, 216, 0.22); }
 .arc-studio .pv.stock { color: var(--text-2); background: rgba(120, 120, 130, 0.28); }
 .arc-studio .mtile .ml { font-size: 10px; color: var(--text-2); padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

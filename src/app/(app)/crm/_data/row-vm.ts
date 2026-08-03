@@ -6,7 +6,7 @@
  * 1,000-row window never loaded. A second copy of this mapping is how search
  * results start looking subtly different from the rows beside them.
  */
-import { humanizePersonaLabel } from "@/domain";
+import { humanizePersonaLabel, personaAccent,} from "@/domain";
 import { type CrmObjectRow } from "@/lib/crm/read-model";
 
 import { type CrmRowVM } from "../_components/crm-board";
@@ -27,18 +27,6 @@ function humanizePersona(persona: string): string {
   return /^unassigned/i.test(label) ? "" : label;
 }
 
-function personaDot(persona: string): string {
-  const p = (persona || "").toLowerCase();
-  if (/emergency|urgent|storm|hail|flood|fire|burst|water\s*damage/.test(p)) return "#cc6a6a"; // red — urgent
-  if (/insurance|adjuster|agent/.test(p)) return "#88b6d8"; // blue
-  if (/plumb|partner|contractor|referral|vendor|trade|sub/.test(p)) return "#7fb89a"; // green
-  if (/preventative|preventive|maintenance|monitor|inspection/.test(p)) return "#6fae9e"; // teal
-  if (/rebuild|restoration|reconstruct|remodel|renov/.test(p)) return "#d8a24a"; // amber
-  if (/hoa|board|association|landlord|tenant/.test(p)) return "#9678c8"; // purple
-  if (/past|repeat|existing|customer|reactivat/.test(p)) return "#b58fd0"; // light purple
-  if (/property|manager|realtor|commercial|reit/.test(p)) return "#c8a24a"; // gold
-  return "#c8a24a"; // gold default
-}
 
 function scoreColor(score: number): string {
   if (score >= 70) return "var(--ok)";
@@ -88,7 +76,7 @@ export function toRow(row: CrmObjectRow): CrmRowVM {
     statusLabel: row.status || "—",
     statusTone: row.statusTone,
     persona,
-    dot: personaDot(row.personaTag),
+    dot: personaAccent(row.personaTag),
     score: typeof row.score === "number" ? Math.round(row.score) : null,
     scoreColor: typeof row.score === "number" ? scoreColor(row.score) : "var(--muted)",
     owner: row.owner || "—",
