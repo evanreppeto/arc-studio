@@ -77,6 +77,21 @@
   .arc-app .page-enter { animation: none; }
 }
 
+/* The single <main> landmark (app-shell.tsx) sits between .main and .page-enter.
+   It has to be the same transparent flex passthrough they are: with no rule it
+   is a block box that sizes to its content, which breaks the chain of bounded
+   heights .app depends on. Every page taller than the viewport was then clipped
+   by .app's `overflow: hidden` with no way to scroll to the rest — a page root
+   measured 7450px inside a 100vh box. Height must stay bounded from .app all
+   the way down to each page's own scroll container. */
+.arc-app #main-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .arc-app {
   /* mockup var names → app tokens / fonts */
   --canvas: #16161a; --canvas-deep: #101013; --panel: #1c1c21; --inset: #202027; --raised: #26262d; --sidebar: #121316;
