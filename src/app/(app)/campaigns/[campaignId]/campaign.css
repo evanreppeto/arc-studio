@@ -471,6 +471,14 @@
   .arc-campaign .perflearn-cta:hover { transform: none; }
 }
 
+/* The queue is portaled into the shell (overlay-portal.tsx), which takes it out
+   from under `.arc-campaign` — and every rule below, plus the `.cbtn`, `.pill`
+   and `.review` rules it reuses, is scoped to that ancestor. So the scope
+   travels with it as a class on a wrapper, and `display: contents` keeps that
+   wrapper from becoming a flex item of the shell: `.arc-campaign` itself is
+   `flex: 1`, and a second one contributing a box would push the app around. */
+.arc-app .rq-scope { display: contents; }
+
 /* The review queue — one deliverable at a time.
    A full overlay rather than a route: it is the same state as the list, shown
    at a different density, and nothing about it should survive a reload. */

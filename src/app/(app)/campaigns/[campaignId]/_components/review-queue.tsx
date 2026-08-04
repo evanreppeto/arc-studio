@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { type CampaignWorkspaceAsset } from "@/lib/campaigns/read-model";
 
+import { OverlayPortal } from "../../../_components/overlay-portal";
+
 import { DeliverableCopy, markId, ReviewBlock, statusMeta, svg } from "./deliverable-review";
 import { isTypingTarget, keyToQueueAction, stepQueueIndex } from "./queue-keys";
 import { summarizeReview } from "./review-summary";
@@ -108,14 +110,27 @@ export function ReviewQueue({
     setIndex((current) => stepQueueIndex(current, "next", queue.length));
   }, [asset, onRevise, pending, queue.length, reviseText]);
 
-  // Focus moves in so the shortcuts work without clicking first. No scroll lock
-  // and no aria-modal: this covers the page pane, not the viewport — the rail
-  // and the top bar stay usable, and claiming otherwise would lie to a screen
-  // reader about what is reachable. (It is scoped to the pane because
-  // `.page-enter` carries a transform, which makes it the containing block for
-  // anything position:fixed inside it. Deliberate here; worth knowing.)
+  // Focus moves in so the shortcuts work without clicking first, and the page
+  // behind stops scrolling, because this covers the shell rather than sitting
+  // inside it.
+  //
+  // It is portaled for the same reason every other modal here is: `position:
+  // fixed` inside a page is scoped to the CONTENT PANE, not the viewport,
+  // because `.page-enter` carries a transform (see overlay-portal.tsx). This
+  // component originally shipped rendering in place, with a comment calling
+  // that a deliberate pane framing. It was not deliberate and it was not even
+  // stable — the transform comes only from the entrance animation, and
+  // `prefers-reduced-motion: reduce` sets `animation: none`, so the same
+  // overlay covered the whole viewport for anyone who had asked for less
+  // motion. A framing that flips on a motion preference is a bug wearing a
+  // rationale.
   useEffect(() => {
     wrapRef.current?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, []);
 
   useEffect(() => {
@@ -155,22 +170,26 @@ export function ReviewQueue({
 
   if (!asset) {
     return (
-      <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-label={`Review ${campaignName}`}>
-        <div className="rqdone">
-          <span className="rqtick" aria-hidden="true">
-            {svg('<path d="M5 12l4 4L19 6"/>')}
-          </span>
-          <b>Everything here has a decision.</b>
-          <p>
-            {startedWith > 0
-              ? `You worked through ${startedWith} deliverable${startedWith === 1 ? "" : "s"}. Nothing has gone out — approved work stays locked until you launch the campaign.`
-              : "Nothing on this campaign is waiting on you."}
-          </p>
-          <button type="button" className="cbtn gold" onClick={onClose}>
-            Back to the campaign
-          </button>
+      <OverlayPortal>
+        <div className="arc-campaign rq-scope">
+        <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${campaignName}`}>
+          <div className="rqdone">
+            <span className="rqtick" aria-hidden="true">
+              {svg('<path d="M5 12l4 4L19 6"/>')}
+            </span>
+            <b>Everything here has a decision.</b>
+            <p>
+              {startedWith > 0
+                ? `You worked through ${startedWith} deliverable${startedWith === 1 ? "" : "s"}. Nothing has gone out — approved work stays locked until you launch the campaign.`
+                : "Nothing on this campaign is waiting on you."}
+            </p>
+            <button type="button" className="cbtn gold" onClick={onClose}>
+              Back to the campaign
+            </button>
+          </div>
         </div>
-      </div>
+        </div>
+      </OverlayPortal>
     );
   }
 
@@ -181,127 +200,131 @@ export function ReviewQueue({
   const decided = Math.max(startedWith - queue.length, 0);
 
   return (
-    <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-label={`Review ${campaignName}`}>
-      <div className="rqbar">
-        <div className="rqcount">
-          <b>{clamped + 1}</b> of {queue.length}
-          <span className="rqname">{campaignName}</span>
-        </div>
-        <div
-          className="rqtrack"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={startedWith}
-          aria-valuenow={decided}
-          aria-label={`${decided} of ${startedWith} decided`}
-        >
-          <i style={{ width: `${startedWith ? Math.round((decided / startedWith) * 100) : 0}%` }} />
-        </div>
-        <button type="button" className="rqclose" onClick={onClose} aria-label="Close the review queue">
-          {svg('<path d="M6 6l12 12M18 6L6 18"/>')}
-        </button>
-      </div>
-
-      <div className="rqbody">
-        <div className="rqcard">
-          <div className="rqhead">
-            <h2>{asset.title}</h2>
-            <span className="rqchannel">{asset.channel}</span>
-            {/* Without this, requesting a revision on the last deliverable in the
-                queue changes nothing on screen — there is nowhere to advance to,
-                and the state that did change was invisible. */}
-            <span className={`pill ${statusMeta(asset.status).tone}`}>
-              <span className="pd" />
-              {statusMeta(asset.status).label}
-            </span>
+    <OverlayPortal>
+      <div className="arc-campaign rq-scope">
+      <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${campaignName}`}>
+        <div className="rqbar">
+          <div className="rqcount">
+            <b>{clamped + 1}</b> of {queue.length}
+            <span className="rqname">{campaignName}</span>
           </div>
-          <ReviewBlock
-            asset={asset}
-            summary={summary}
-            awaitingReview={!asset.claimsReviewed && Boolean(asset.body.trim())}
-            openFindings={openFindings}
-            onFocusFinding={focusFinding}
-            onEditCopy={() => onEdit(asset)}
-            canEdit
-          />
-          <DeliverableCopy
-            asset={asset}
-            expanded={expandedCopy.has(asset.id)}
-            onToggle={() =>
-              setExpandedCopy((current) => {
-                const next = new Set(current);
-                if (!next.delete(asset.id)) next.add(asset.id);
-                return next;
-              })
-            }
-          />
-        </div>
-      </div>
-
-      {error && <p className="rqerr">{error}</p>}
-
-      <div className="rqfoot">
-        {revising ? (
-          <div className="rqrevise">
-            <textarea
-              ref={reviseRef}
-              value={reviseText}
-              onChange={(e) => setReviseText(e.target.value)}
-              placeholder="Tell Arc what to change…"
-              rows={2}
-              disabled={pending}
-            />
-            <button className="cbtn ghost" onClick={() => { setRevising(false); setReviseText(""); }} disabled={pending}>
-              Cancel
-            </button>
-            <button className="cbtn gold" onClick={submitRevision} disabled={pending || !reviseText.trim()}>
-              Send to Arc
-            </button>
+          <div
+            className="rqtrack"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={startedWith}
+            aria-valuenow={decided}
+            aria-label={`${decided} of ${startedWith} decided`}
+          >
+            <i style={{ width: `${startedWith ? Math.round((decided / startedWith) * 100) : 0}%` }} />
           </div>
-        ) : (
-          <>
-            <div className="rqacts">
-              <button className="cbtn gold" onClick={() => onDecide(asset, "approved")} disabled={pending}>
-                {svg('<path d="M5 12l4 4L19 6"/>')}
-                Approve <kbd>A</kbd>
-              </button>
-              <button className="cbtn ghost" onClick={() => onEdit(asset)} disabled={pending}>
-                Edit <kbd>E</kbd>
-              </button>
-              <button className="cbtn ghost" onClick={() => setRevising(true)} disabled={pending}>
-                Request revision <kbd>R</kbd>
-              </button>
-              <button className="cbtn danger" onClick={() => onDecide(asset, "declined")} disabled={pending}>
-                Decline <kbd>D</kbd>
-              </button>
-            </div>
-            <div className="rqnav">
-              <button
-                type="button"
-                className="rqstep"
-                onClick={() => move("prev")}
-                disabled={clamped === 0}
-                aria-label="Previous deliverable"
-              >
-                {svg('<path d="M15 6l-6 6 6 6"/>')}
-              </button>
-              <span className="rqhint">
-                <kbd>J</kbd>
-                <kbd>K</kbd> move · <kbd>Esc</kbd> close
+          <button type="button" className="rqclose" onClick={onClose} aria-label="Close the review queue">
+            {svg('<path d="M6 6l12 12M18 6L6 18"/>')}
+          </button>
+        </div>
+
+        <div className="rqbody">
+          <div className="rqcard">
+            <div className="rqhead">
+              <h2>{asset.title}</h2>
+              <span className="rqchannel">{asset.channel}</span>
+              {/* Without this, requesting a revision on the last deliverable in the
+                  queue changes nothing on screen — there is nowhere to advance to,
+                  and the state that did change was invisible. */}
+              <span className={`pill ${statusMeta(asset.status).tone}`}>
+                <span className="pd" />
+                {statusMeta(asset.status).label}
               </span>
-              <button
-                type="button"
-                className="rqstep"
-                onClick={() => move("next")}
-                disabled={clamped >= queue.length - 1}
-                aria-label="Next deliverable"
-              >
-                {svg('<path d="M9 6l6 6-6 6"/>')}
+            </div>
+            <ReviewBlock
+              asset={asset}
+              summary={summary}
+              awaitingReview={!asset.claimsReviewed && Boolean(asset.body.trim())}
+              openFindings={openFindings}
+              onFocusFinding={focusFinding}
+              onEditCopy={() => onEdit(asset)}
+              canEdit
+            />
+            <DeliverableCopy
+              asset={asset}
+              expanded={expandedCopy.has(asset.id)}
+              onToggle={() =>
+                setExpandedCopy((current) => {
+                  const next = new Set(current);
+                  if (!next.delete(asset.id)) next.add(asset.id);
+                  return next;
+                })
+              }
+            />
+          </div>
+        </div>
+
+        {error && <p className="rqerr">{error}</p>}
+
+        <div className="rqfoot">
+          {revising ? (
+            <div className="rqrevise">
+              <textarea
+                ref={reviseRef}
+                value={reviseText}
+                onChange={(e) => setReviseText(e.target.value)}
+                placeholder="Tell Arc what to change…"
+                rows={2}
+                disabled={pending}
+              />
+              <button className="cbtn ghost" onClick={() => { setRevising(false); setReviseText(""); }} disabled={pending}>
+                Cancel
+              </button>
+              <button className="cbtn gold" onClick={submitRevision} disabled={pending || !reviseText.trim()}>
+                Send to Arc
               </button>
             </div>
-          </>
-        )}
+          ) : (
+            <>
+              <div className="rqacts">
+                <button className="cbtn gold" onClick={() => onDecide(asset, "approved")} disabled={pending}>
+                  {svg('<path d="M5 12l4 4L19 6"/>')}
+                  Approve <kbd>A</kbd>
+                </button>
+                <button className="cbtn ghost" onClick={() => onEdit(asset)} disabled={pending}>
+                  Edit <kbd>E</kbd>
+                </button>
+                <button className="cbtn ghost" onClick={() => setRevising(true)} disabled={pending}>
+                  Request revision <kbd>R</kbd>
+                </button>
+                <button className="cbtn danger" onClick={() => onDecide(asset, "declined")} disabled={pending}>
+                  Decline <kbd>D</kbd>
+                </button>
+              </div>
+              <div className="rqnav">
+                <button
+                  type="button"
+                  className="rqstep"
+                  onClick={() => move("prev")}
+                  disabled={clamped === 0}
+                  aria-label="Previous deliverable"
+                >
+                  {svg('<path d="M15 6l-6 6 6 6"/>')}
+                </button>
+                <span className="rqhint">
+                  <kbd>J</kbd>
+                  <kbd>K</kbd> move · <kbd>Esc</kbd> close
+                </span>
+                <button
+                  type="button"
+                  className="rqstep"
+                  onClick={() => move("next")}
+                  disabled={clamped >= queue.length - 1}
+                  aria-label="Next deliverable"
+                >
+                  {svg('<path d="M9 6l6 6-6 6"/>')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+      </div>
+    </OverlayPortal>
   );
 }

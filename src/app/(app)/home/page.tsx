@@ -97,8 +97,12 @@ export default async function HomePage() {
     // sees this.
     getActivationState(ctx.orgId, ctx.workspaceId ?? null),
   ]);
-  const approvalCount = summary.approvals.length;
-  const approvals = summary.approvals.slice(0, 3);
+  // Both the phrase and the list are headed "Needs you", so both read the
+  // operator-blocked subset — a card Arc is reworking under that heading is the
+  // same category error the count had (BSR-753). The count is a real total; the
+  // list is the first three of it.
+  const approvalCount = summary.approvalsNeedingYouCount;
+  const approvals = summary.approvalsNeedingYou.slice(0, 3);
   const campaigns = summary.campaigns.slice(0, 4);
   const openOppCount = summary.opportunities.length;
   const opps = summary.opportunities.slice(0, 3);

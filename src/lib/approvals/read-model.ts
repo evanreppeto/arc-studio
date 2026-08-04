@@ -14,6 +14,30 @@ const ACTIVE_APPROVAL_STATUSES = [
   "revision_requested",
 ] as const;
 
+/**
+ * The subset of the above that is genuinely waiting on the OPERATOR (BSR-753).
+ *
+ * `revision_requested` is active but not blocked on a human: the vocabulary
+ * defines that state as "You asked for changes. Arc is reworking it." Counting
+ * it in a badge headed "needs you" overstates the queue — on the live workspace
+ * it was 3 of 7.
+ *
+ * `needs_compliance` is deliberately absent, and it is the ambiguous one. The
+ * campaign screen renders it "Blocked by a rule" and Home describes it as "work
+ * coming back to you", while `toWorkState` maps it to `draft` — three readings,
+ * no agreement. Prod has never produced a row, so excluding it changes nothing
+ * today; resolving what it means is BSR-755 rather than a guess made here.
+ *
+ * A literal list because the query needs enum values. `approvals-desk.test.ts`
+ * pins it against `toWorkState` so it cannot drift from the vocabulary.
+ */
+export const OPERATOR_BLOCKED_APPROVAL_STATUSES = ["pending_approval", "pending_owner_approval"] as const;
+
+/** Is this approval item waiting on a person, as opposed to on Arc? */
+export function isWaitingOnOperator(status: string | null | undefined): boolean {
+  return (OPERATOR_BLOCKED_APPROVAL_STATUSES as readonly string[]).includes((status ?? "").trim());
+}
+
 export type ApprovalQueueFilter = {
   statuses?: string[];
   limit?: number;
@@ -206,13 +230,44 @@ export async function countActiveApprovals(
   orgId?: string,
   client: SupabaseClient = getSupabaseAdminClient(),
 ): Promise<number> {
+  return countApprovalsByStatus([...ACTIVE_APPROVAL_STATUSES], orgId, client, "countActiveApprovals");
+}
+
+/**
+ * Count of approvals genuinely waiting on the operator — what a "needs you"
+ * badge should show (BSR-753).
+ *
+ * A COUNT, not a list length. The nav badge previously read
+ * `summary.approvals.length`, and that list is fetched with `limit: 5` — so the
+ * badge was structurally incapable of exceeding 5 however much work was
+ * waiting. On the live workspace it read 5 beside 7 active items, which looked
+ * like a table mismatch and was really a page size.
+ */
+export async function countApprovalsWaitingOnOperator(
+  orgId?: string,
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<number> {
+  return countApprovalsByStatus(
+    [...OPERATOR_BLOCKED_APPROVAL_STATUSES],
+    orgId,
+    client,
+    "countApprovalsWaitingOnOperator",
+  );
+}
+
+async function countApprovalsByStatus(
+  statuses: string[],
+  orgId: string | undefined,
+  client: SupabaseClient,
+  label: string,
+): Promise<number> {
   const { count, error } = await applyOrgScope(
     client.from("approval_items").select("id", { count: "exact", head: true }),
     orgId,
-  ).in("status", [...ACTIVE_APPROVAL_STATUSES]);
+  ).in("status", statuses);
 
   if (error) {
-    throw new Error(`countActiveApprovals failed: ${error.message}`);
+    throw new Error(`${label} failed: ${error.message}`);
   }
 
   // null count = missing/inaccessible relation, not zero rows (BSR-575).
