@@ -83,6 +83,24 @@ create unique index if not exists brand_logos_org_role_key
 create index if not exists brand_logos_org_id_idx
   on public.brand_logos (org_id);
 
+-- RLS. Omitting this is what `pnpm db:check-rls` caught on the first run of this
+-- migration: a table carrying org_id with row level security DISABLED is
+-- readable across tenants by any role that can reach it, and nothing in the
+-- application layer would have shown it — every read here goes through the
+-- service-role client, which bypasses RLS entirely. The guard is the only thing
+-- between that mistake and production.
+--
+-- Same shape as pipeline_stages and the rest of the org-scoped tables: members
+-- of the org may read, and only service_role writes, because every write path
+-- runs through an operator-gated server action.
+alter table public.brand_logos enable row level security;
+
+create policy brand_logos_org_member_select on public.brand_logos
+  as permissive for select to authenticated
+  using ((select app_private.is_org_member(brand_logos.org_id)));
+
+grant select, insert, update, delete on public.brand_logos to service_role;
+
 comment on table public.brand_logos is
   'Named logo variants per org. Read by pickLogoForBackground so generated creative uses a mark that is actually visible on the background it lands on. business_profiles.logo_url mirrors the primary role for the nav rail and other single-image consumers.';
 
