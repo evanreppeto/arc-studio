@@ -54,7 +54,7 @@ const IDENTIFIER_SHAPES: { name: string; pattern: RegExp }[] = [
   // Home hero card read `"Suburban Home Background Asset" (campaign 0bd41cb3-
   // ff30-4548-92e6-4ba431b61c8d)`, and the Opportunities evidence panel — the
   // one surface whose whole job is proving a claim to a human — answered
-  // "Active flood advisories" with two bare UUIDs (BSR-732).
+  // "Active flood advisories" with two bare UUIDs (BSR-740).
   //
   // The existing shapes could not catch these: a UUID is neither snake_case nor
   // CONSTANT_CASE, so every check here passed while the ids shipped.

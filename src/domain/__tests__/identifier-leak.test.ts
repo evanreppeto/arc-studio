@@ -111,7 +111,7 @@ describe("shape boundaries", () => {
 });
 
 /**
- * BSR-732. A live audit found primary keys on the front page — the Home hero
+ * BSR-740. A live audit found primary keys on the front page — the Home hero
  * card cited two campaigns by UUID, and the Opportunities evidence panel
  * answered "Active flood advisories" with two bare UUIDs.
  *

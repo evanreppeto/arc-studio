@@ -41,7 +41,7 @@ function relativeTime(iso: string): string {
 // Home renders the SAME Arc-written opportunity prose the inbox does — the hero
 // card read `"Suburban Home Background Asset" (campaign 0bd41cb3-…)` — so it
 // goes through the same sanitizer rather than a second one that would drift
-// (#908, BSR-732). Cleaned before truncating, so removing a token can win back
+// (#908, BSR-740). Cleaned before truncating, so removing a token can win back
 // room for words.
 function concise(value: string, maxLength: number): string {
   const normalized = humanizeArcProse(value).replace(/\s+/g, " ").trim();
