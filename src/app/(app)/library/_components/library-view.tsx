@@ -11,6 +11,7 @@ import { addLibraryAssetsToCampaign } from "../actions";
 import { ImportUrlModal } from "./import-url-modal";
 import { NewFolderModal } from "./new-folder-modal";
 import { Define } from "../../_components/define";
+import { OverlayPortal } from "../../_components/overlay-portal";
 
 type Kind = "image" | "video" | "logo" | "document";
 type Prov = "real" | "ai" | "comp" | "upload" | "logo" | "doc";
@@ -1301,13 +1302,19 @@ export function LibraryView({
         </aside>
       </div>
 
+      {/* Portaled for the same reason the modals are: `.lib-notice` is
+          `position: fixed; left: 50%`, which inside `.page-enter` centers it on
+          the content pane rather than the window — 118px off-centre at a 1080px
+          viewport. See overlay-portal.tsx. */}
       {notice && (
-        <div className="lib-notice" role="status">
-          <span>{notice}</span>
-          <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>
-            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
-        </div>
+        <OverlayPortal>
+          <div className="lib-notice" role="status">
+            <span>{notice}</span>
+            <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>
+              <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+        </OverlayPortal>
       )}
 
       <NewFolderModal

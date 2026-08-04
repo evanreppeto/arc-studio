@@ -15,6 +15,7 @@ import { ComingSoonToasts } from "./coming-soon";
 import { CommandPalette, type CommandItem } from "./command-palette";
 import { IdentifierLeakCheck } from "./identifier-leak-check";
 import { NavProgress } from "./nav-progress";
+import { OVERLAY_ROOT_ID } from "./overlay-portal";
 import { RailRecents } from "./rail-recents";
 import { RoutePrewarm } from "./route-prewarm";
 import { WorkspaceSwitcher, type WorkspaceOption } from "./workspace-switcher";
@@ -512,6 +513,11 @@ export function AppShell({
         </div>
       </div>
       <ComingSoonToasts />
+      {/* Host for every overlay that means to cover the whole shell (see
+          overlay-portal.tsx). It has to live here — inside `.arc-app` for the
+          design tokens, outside `.app` and `.page-enter` so no transformed
+          ancestor turns `position: fixed` into "fixed to the content pane". */}
+      <div id={OVERLAY_ROOT_ID} />
     </div>
   );
 }
