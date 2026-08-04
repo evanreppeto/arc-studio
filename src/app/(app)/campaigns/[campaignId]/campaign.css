@@ -229,7 +229,7 @@
 .arc-campaign .mpitem { display: flex; flex-direction: column; gap: 5px; padding: 0; border: none; background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
 .arc-campaign .mpitem:disabled { opacity: 0.5; cursor: default; }
 .arc-campaign .mpitem .mpthumb { aspect-ratio: 4 / 3; border-radius: 8px; border: 1px solid var(--line-2); background-color: var(--panel); background-size: cover; background-position: center; transition: 0.14s; }
-.arc-campaign .mpitem:hover:not(:disabled) .mpthumb { border-color: var(--accent-border); transform: translateY(-1px); }
+.arc-campaign .mpitem:hover:not(:disabled) .mpthumb { border-color: var(--accent-border); }
 .arc-campaign .mpitem .mpname { font-size: 9.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Overview */
