@@ -1774,6 +1774,16 @@
 .arc-app .arc-opps .olisthd .c { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .arc-app .arc-opps .scanmsg { margin: 8px 4px 0; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--inset); font-size: 10.5px; line-height: 1.45; color: var(--text-2); }
 .arc-app .arc-opps .scanmsg.bad { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
+/* What Arc's own background scan last did. Quiet by default — this is ambient
+   reassurance, not a call to action — and only takes a border when something
+   actually needs a person (a stalled or failed scan). */
+.arc-app .arc-opps .scanstat { margin: 9px 4px 0; font-size: 10.5px; line-height: 1.5; color: var(--muted); }
+.arc-app .arc-opps .scanstat .l { display: flex; align-items: baseline; gap: 6px; }
+.arc-app .arc-opps .scanstat .l i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .55; flex: none; transform: translateY(-1px); }
+.arc-app .arc-opps .scanstat .d { display: block; margin-top: 4px; padding-left: 11px; color: var(--text-2); opacity: .85; }
+.arc-app .arc-opps .scanstat.ok { color: var(--ok); }
+.arc-app .arc-opps .scanstat.warn { padding: 7px 9px; border-radius: 7px; border: 1px solid var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
+.arc-app .arc-opps .scanstat.warn .l i { opacity: 1; }
 .arc-app .arc-opps .ofilter { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 4px 10px; }
 .arc-app .arc-opps .ochip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); font: inherit; font-size: 10.5px; cursor: pointer; transition: background .15s var(--ease), border-color .15s, color .15s; }
 .arc-app .arc-opps .ochip:hover { background: rgba(255, 255, 255, .04); }
