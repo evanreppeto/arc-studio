@@ -154,3 +154,6 @@ export * from "./correction-feedback";
 // What a tool call's input/output looks like on screen: redacted, and summarised
 // with the raw text behind a disclosure (BSR-724).
 export * from "./tool-payload";
+
+// How long a message keeps its payload (BSR-741).
+export * from "./metadata-retention";
