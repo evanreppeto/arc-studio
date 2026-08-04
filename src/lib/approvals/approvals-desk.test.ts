@@ -44,17 +44,28 @@ describe("what counts as waiting on the operator", () => {
   });
 
   /**
-   * `needs_compliance` has three readings in this codebase and no agreement:
-   * the campaign screen renders it "Blocked by a rule", Home's pill comment
-   * calls it "work coming back to you", and `toWorkState` maps it to `draft`.
+   * `needs_compliance` counts (BSR-755). It read three ways across the codebase
+   * — "Blocked by a rule", "work coming back to you", and `draft` — but the
+   * state machine settles it rather than taste:
    *
-   * Prod has never produced one, so excluding it changes no number today. This
-   * pins the CURRENT behaviour so that resolving it (BSR-755) is a deliberate
-   * edit with a failing test, not a silent drift.
+   *   - the guardrail that sets it raises "Human review required"
+   *   - Arc "may READ approvals and ADD a recommendation, but never decides"
+   *   - nothing redrafts the item
+   *
+   * So it sits untouched until a person approves, revises or declines it. That
+   * is what blocked-on-the-operator means, and `draft` — "Arc is still building
+   * this" — was the one reading that could not be true.
    */
-  it("leaves needs_compliance out, pending a decision on what it means", () => {
-    expect(isWaitingOnOperator("needs_compliance")).toBe(false);
-    expect(toWorkState("needs_compliance")).toBe("draft");
+  it("counts a compliance hold, because nothing clears it but a person", () => {
+    expect(isWaitingOnOperator("needs_compliance")).toBe(true);
+    expect(toWorkState("needs_compliance")).toBe("needs_you");
+  });
+
+  it("does not let the compliance branch swallow a genuine block", () => {
+    // `blocked` sits next to `compliance` in toWorkState's ordering, and the
+    // compliance check runs first. It must not capture its neighbour.
+    expect(toWorkState("blocked")).toBe("needs_changes");
+    expect(isWaitingOnOperator("blocked")).toBe(false);
   });
 
   it("is total over every active status, and over nonsense", () => {

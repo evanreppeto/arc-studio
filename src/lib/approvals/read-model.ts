@@ -22,16 +22,21 @@ const ACTIVE_APPROVAL_STATUSES = [
  * it in a badge headed "needs you" overstates the queue — on the live workspace
  * it was 3 of 7.
  *
- * `needs_compliance` is deliberately absent, and it is the ambiguous one. The
- * campaign screen renders it "Blocked by a rule" and Home describes it as "work
- * coming back to you", while `toWorkState` maps it to `draft` — three readings,
- * no agreement. Prod has never produced a row, so excluding it changes nothing
- * today; resolving what it means is BSR-755 rather than a guess made here.
+ * `needs_compliance` IS one of them (BSR-755). It looked ambiguous — three
+ * surfaces read it three ways — but the state machine settles it rather than
+ * taste: the guardrail that sets it raises "Human review required", Arc "may
+ * READ approvals and ADD a recommendation, but never decides", and nothing
+ * redrafts the item. It sits untouched until a person approves, revises or
+ * declines it, which is what blocked-on-the-operator means.
  *
  * A literal list because the query needs enum values. `approvals-desk.test.ts`
  * pins it against `toWorkState` so it cannot drift from the vocabulary.
  */
-export const OPERATOR_BLOCKED_APPROVAL_STATUSES = ["pending_approval", "pending_owner_approval"] as const;
+export const OPERATOR_BLOCKED_APPROVAL_STATUSES = [
+  "needs_compliance",
+  "pending_approval",
+  "pending_owner_approval",
+] as const;
 
 /** Is this approval item waiting on a person, as opposed to on Arc? */
 export function isWaitingOnOperator(status: string | null | undefined): boolean {
