@@ -59,62 +59,70 @@ describe("vaultNoteToRow", () => {
   });
 });
 
+// Both columns, always: vault reads go through the service-role client, which
+// bypasses RLS, so org alone would return every workspace in the org (BSR-729).
+const TENANT = { orgId: "org-1", workspaceId: "ws-1" };
+
 const NOTE: VaultNote = {
   slug: "x", title: "X", folder: "Playbooks", tags: ["a"], author: "Arc",
   status: "Draft", updated: "", body: "# X",
 };
 
 describe("listVaultNotes", () => {
-  it("scopes the note list to the given org", async () => {
+  it("scopes the note list to the org AND workspace", async () => {
     const supabase = createSupabaseQueryMock({ vault_notes: { data: [ROW], error: null } });
 
-    await listVaultNotes(supabase, "org-1");
+    await listVaultNotes(supabase, TENANT);
 
     expect(supabase.calls).toContainEqual(["eq", "org_id", "org-1"]);
+    expect(supabase.calls).toContainEqual(["eq", "workspace_id", "ws-1"]);
   });
 });
 
 describe("getVaultNoteBySlug", () => {
-  it("scopes the lookup to org and slug", async () => {
+  it("scopes the lookup to org, workspace and slug", async () => {
     const supabase = createSupabaseQueryMock({ vault_notes: { data: ROW, error: null } });
 
-    await getVaultNoteBySlug(supabase, "x", "org-1");
+    await getVaultNoteBySlug(supabase, "x", TENANT);
 
     expect(supabase.calls).toContainEqual(["eq", "org_id", "org-1"]);
+    expect(supabase.calls).toContainEqual(["eq", "workspace_id", "ws-1"]);
     expect(supabase.calls).toContainEqual(["eq", "slug", "x"]);
   });
 });
 
 describe("upsertVaultNote", () => {
-  it("stamps org_id on the row and conflicts on (org_id, slug)", async () => {
+  it("stamps org_id AND workspace_id, conflicting on (org_id, slug)", async () => {
     const supabase = createSupabaseQueryMock({ vault_notes: { data: null, error: null } });
 
-    await upsertVaultNote(supabase, NOTE, "org-1");
+    await upsertVaultNote(supabase, NOTE, TENANT);
 
     const upsertCall = supabase.calls.find((call) => call[0] === "upsert");
-    expect(upsertCall?.[1]).toMatchObject({ slug: "x", org_id: "org-1" });
+    expect(upsertCall?.[1]).toMatchObject({ slug: "x", org_id: "org-1", workspace_id: "ws-1" });
     expect(upsertCall?.[2]).toEqual({ onConflict: "org_id,slug" });
   });
 });
 
 describe("setVaultNoteStatus", () => {
-  it("scopes the status update to org and slug", async () => {
+  it("scopes the status update to org, workspace and slug", async () => {
     const supabase = createSupabaseQueryMock({ vault_notes: { data: null, error: null } });
 
-    await setVaultNoteStatus(supabase, "x", "Published", "org-1");
+    await setVaultNoteStatus(supabase, "x", "Published", TENANT);
 
     expect(supabase.calls).toContainEqual(["eq", "org_id", "org-1"]);
+    expect(supabase.calls).toContainEqual(["eq", "workspace_id", "ws-1"]);
     expect(supabase.calls).toContainEqual(["eq", "slug", "x"]);
   });
 });
 
 describe("archiveVaultNote", () => {
-  it("scopes the archive to org and slug", async () => {
+  it("scopes the archive to org, workspace and slug", async () => {
     const supabase = createSupabaseQueryMock({ vault_notes: { data: null, error: null } });
 
-    await archiveVaultNote(supabase, "x", "org-1");
+    await archiveVaultNote(supabase, "x", TENANT);
 
     expect(supabase.calls).toContainEqual(["eq", "org_id", "org-1"]);
+    expect(supabase.calls).toContainEqual(["eq", "workspace_id", "ws-1"]);
     expect(supabase.calls).toContainEqual(["eq", "slug", "x"]);
   });
 });
