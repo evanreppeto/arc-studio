@@ -782,6 +782,11 @@ type DemoPiece = {
   compliance?: string;
   /** Original draft vs current copy, drives the "What changed" diff. */
   revision?: { draft: string; current: string };
+  /** The claims review sitting on this piece. Prod writes one on every copy
+   *  draft, so a fixture without one leaves the review block — the first thing
+   *  the deliverable card shows — invisible in the backend-less preview. */
+  recommendation?: CampaignAssetRecommendation;
+  findings?: CampaignAssetFinding[];
 };
 
 /** A source-backed record the detail page lists under "Sources" / "Linked
@@ -956,9 +961,11 @@ function demoDetailAsset(piece: DemoPiece): CampaignWorkspaceAsset {
     complianceNotes: piece.compliance ?? "No asset-level compliance notes captured.",
     guardrailFlags: [],
     blockedPhrases: [],
-    recommendation: null,
-    findings: [],
-    claimsReviewed: false,
+    recommendation: piece.recommendation ?? null,
+    findings: piece.findings ?? [],
+    // Only a claims review counts as reviewed, and in the fixtures that is
+    // exactly the pieces carrying one — same rule the live read applies.
+    claimsReviewed: piece.recommendation?.agent === "draft-critic",
     // Approved demo pieces in a Live campaign are deployable; everything else
     // stays dispatch-locked so the gold "outbound locked" gate shows.
     dispatchLocked: !/approved/i.test(piece.rawStatus),
@@ -1204,6 +1211,25 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
     // `statusMeta` as "Draft", because "Needs you" is not a status.
     const pieceStatusValue = pending ? "pending_approval" : "approved";
     const action = target.cta || "Take the next step";
+    // Full email copy, not a one-line summary: the deliverable card renders this
+    // as the draft under review, and a single sentence there shows none of what
+    // reviewing an actual email is like.
+    const emailCopy = [
+      target.angle,
+      "",
+      offer,
+      "",
+      "You don't have to work out which piece to sort first. That's our job — we take it from the first",
+      "conversation through to the part where it's done, and you hear from one team the whole way.",
+      "",
+      "We answer within the hour, every time — no exceptions.",
+      "",
+      `${action} →`,
+      "",
+      "Or reply to this email and someone will call you back.",
+      "",
+      "[Unsubscribe] · You're receiving this because you asked us to keep you posted.",
+    ].join("\n");
     return {
       id,
       name,
@@ -1267,11 +1293,36 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
           status: pieceStatusValue,
           rawStatus: pieceStatus,
           needsReview: pending,
-          preview: `${target.angle} ${action}.`,
-          body: `${target.angle}\n\n${offer}\n\n${action} →`,
+          preview: emailCopy,
+          body: emailCopy,
           compliance: "Audience, offer, and CTA require human review before dispatch.",
+          recommendation: {
+            agent: "draft-critic",
+            verdict: "request revision",
+            rationale: `The offer and the audience fit are well grounded — both trace back to records in this workspace, and the ${target.name} match is the reason this draft exists. Two things stop it from going out as written. The response-time line commits the business to something no document in this workspace backs up, and the reply-to-callback line describes a handoff no process note covers. Neither needs a rewrite; both are single-line fixes.`,
+            riskFlags: ["unsupported_claim"],
+            suggestedEdits:
+              "1) Point the response-time line at a documented commitment, or soften it to \"we'll come back to you the same day\". 2) Confirm that replying to this email actually reaches someone who can call back — if not, change it to \"reply and we'll follow up\".",
+          },
+          findings: [
+            {
+              claim: "We answer within the hour, every time — no exceptions.",
+              severity: "blocker",
+              message:
+                "Nothing in this workspace's evidence sets a response-time commitment, and \"no exceptions\" turns it into a promise the business has to keep on every single inbound. Point it at a documented commitment or soften it before this goes out.",
+            },
+            {
+              claim: "Or reply to this email and someone will call you back.",
+              severity: "warning",
+              message:
+                "No proof point or process note describes a reply-to-callback workflow. Plausible operationally, but unsubstantiated here — worth confirming with whoever owns the inbox.",
+            },
+          ],
           media: [{ id: `${id}-hero`, type: "image", title: `${name} campaign creative`, seed: id, lineage: [["ai", "Made in Higgsfield · seedream"], ["ai", "Source job · hf_20260722_0917"]], prompt: "Campaign hero creative in the workspace brand style, photoreal, no embedded text." }],
         },
+        // Two pieces the review passed with nothing raised. Kept clean on
+        // purpose: a package where every deliverable is flagged never exercises
+        // the "reviewed and clear" state, and that is the common one.
         {
           id: `${id}-social`,
           title: `${name} — social post`,
@@ -1282,6 +1333,35 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
           needsReview: pending,
           preview: `${target.angle} ${action}.`,
           compliance: "No automatic publishing. Human approval is required.",
+          recommendation: {
+            agent: "draft-critic",
+            verdict: "approve",
+            rationale:
+              "Every claim here traces to something in this workspace — the audience fit, the offer, and the next step all match records the campaign was built from. Nothing overstates what the business does, and there is no commitment in the copy that would need a document behind it.",
+            riskFlags: [],
+            suggestedEdits: "",
+          },
+          findings: [],
+        },
+        {
+          id: `${id}-sms`,
+          title: `${name} — SMS`,
+          kind: "SMS",
+          channel: "SMS",
+          status: pieceStatusValue,
+          rawStatus: pieceStatus,
+          needsReview: pending,
+          preview: `${target.angle} ${action} — reply STOP to opt out.`,
+          compliance: "Opt-out language is required on every message. Human approval before dispatch.",
+          recommendation: {
+            agent: "draft-critic",
+            verdict: "approve",
+            rationale:
+              "Short enough for one segment, carries the opt-out, and makes no claim beyond the offer already approved elsewhere in this package.",
+            riskFlags: [],
+            suggestedEdits: "",
+          },
+          findings: [],
         },
       ],
     };
