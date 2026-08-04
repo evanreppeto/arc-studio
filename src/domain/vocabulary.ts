@@ -122,6 +122,18 @@ export function toWorkState(status: string | null | undefined): WorkState {
   if (!s) return "draft";
   if (/archiv|paused/.test(s)) return "archived";
   if (/declin|reject/.test(s)) return "declined";
+  // A compliance hold is on the OPERATOR's desk, not Arc's (BSR-755). The
+  // guardrail that sets it flags "Human review required", Arc "may READ
+  // approvals and ADD a recommendation, but never decides", and nothing
+  // redrafts the item — it sits untouched until a person approves, revises or
+  // declines it. Checked before the `blocked` branch below, which would
+  // otherwise claim it.
+  //
+  // It stays visually distinct where a screen has room: the campaign detail
+  // renders it red as "Blocked by a rule", because a compliance block is not a
+  // routine pending item. That is a more specific rendering of a needs_you
+  // item, not a different state.
+  if (/compliance/.test(s)) return "needs_you";
   if (/revis|changes.request|blocked/.test(s)) return "needs_changes";
   if (/sent|delivered/.test(s)) return "sent";
   if (/live|active|sending|running|dispatch/.test(s)) return "sending";

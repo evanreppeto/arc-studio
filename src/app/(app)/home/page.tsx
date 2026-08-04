@@ -58,11 +58,16 @@ function pillTone(a: { status: string; statusLabel: string; riskLevel: string })
 }
 
 // Task-pill labels, resolved through the one vocabulary (BSR-656) rather than
-// spelled out here. "Blocked" used to sit in the red slot; a compliance hold is
-// work coming back to you, so it reads as "Needs changes" now.
+// spelled out here.
+//
+// The red slot is a compliance hold, and it says so (BSR-755). It read "Needs
+// changes" — the state that means Arc is reworking it — when in fact nothing
+// happens until a person rules on it. The tone stays red because a rule-blocked
+// item must not read as one of the routine amber crowd; only the words change,
+// from a state Arc owns to the one thing the operator can act on.
 const PILL_LABEL: Record<"warn" | "red" | "ok", string> = {
   warn: WORK_STATE_LABEL.needs_you,
-  red: WORK_STATE_LABEL.needs_changes,
+  red: "Blocked by a rule",
   ok: WORK_STATE_LABEL.approved,
 };
 
