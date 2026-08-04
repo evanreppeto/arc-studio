@@ -10,6 +10,7 @@ import { getProductLanguage, type ObjectLabelSettings } from "@/lib/product-lang
 
 import { AccountMenu } from "./account-menu";
 import { BillingNoticeBar } from "./billing-notice";
+import { DemoDataBar } from "./demo-data-bar";
 import { ComingSoonToasts } from "./coming-soon";
 import { CommandPalette, type CommandItem } from "./command-palette";
 import { IdentifierLeakCheck } from "./identifier-leak-check";
@@ -160,6 +161,7 @@ export function AppShell({
   navBadges = {},
   recentConversations = [],
   billingNotice = null,
+  demoData = false,
   children,
 }: {
   workspaceName: string;
@@ -179,6 +181,8 @@ export function AppShell({
   navBadges?: Record<string, number>;
   recentConversations?: ArcRecentConversationVM[];
   billingNotice?: BillingNotice | null;
+  /** Console-wide: the numbers on screen are illustrative, not the viewer's. */
+  demoData?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -495,6 +499,7 @@ export function AppShell({
           </header>
           <CommandPalette items={commandItems} />
           <BillingNoticeBar banner={billingNotice} />
+          <DemoDataBar show={demoData} />
           {/* Dev/preview only — no-op in production. Warns when a stored value
               reaches the screen as text (BSR-709). */}
           <IdentifierLeakCheck />

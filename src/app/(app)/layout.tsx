@@ -109,6 +109,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppShell
+      demoData={isDemoDataEnabled()}
       workspaceName={identity.name}
       orgName={ctx.orgName}
       workspaceSubtitle={identity.subtitle}
