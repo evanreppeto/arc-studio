@@ -118,11 +118,16 @@
    the canvas has no background to render. Keeps Studio usable (text/logo layers
    still compose) instead of crashing on an undefined background. */
 .arc-studio .canvas .cbg-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 12%; text-align: center; font-size: 12.5px; line-height: 1.5; color: var(--muted); background: var(--inset); }
-.arc-studio .canvas .cveil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 10, 12, 0.15), rgba(10, 10, 12, 0.78)); }
+/* pointer-events: none is load-bearing, not decoration. This scrim is rendered
+   AFTER the canvas and covers it edge to edge, so without this it swallowed every
+   pointer event aimed at the text layers underneath — the drag-to-reposition the
+   renderer honours (BSR-680) could not be started at all. Its sibling .safez
+   already had it; this one was missed. */
+.arc-studio .canvas .cveil { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(10, 10, 12, 0.15), rgba(10, 10, 12, 0.78)); }
 .arc-studio .cplay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 54px; height: 54px; border-radius: 50%; background: rgba(16, 16, 19, 0.5); border: 1px solid rgba(255, 255, 255, 0.32); backdrop-filter: blur(4px); display: none; place-items: center; cursor: pointer; transition: 0.15s; z-index: 3; }
 .arc-studio .canvas.video .cplay { display: grid; }
 .arc-studio .cplay svg { width: 22px; height: 22px; fill: #fff; margin-left: 3px; }
-.arc-studio .canvas .cprov { position: absolute; top: 16px; right: 16px; font-size: 9.5px; font-weight: 600; color: var(--ok-text); background: rgba(16, 16, 19, 0.7); border: 1px solid var(--ok-border); border-radius: 6px; padding: 3px 8px; backdrop-filter: blur(4px); }
+.arc-studio .canvas .cprov { position: absolute; pointer-events: none; top: 16px; right: 16px; font-size: 9.5px; font-weight: 600; color: var(--ok-text); background: rgba(16, 16, 19, 0.7); border: 1px solid var(--ok-border); border-radius: 6px; padding: 3px 8px; backdrop-filter: blur(4px); }
 /* An unwritten text layer: shows where the copy will sit without pretending
    it exists. Muted and italic so it never reads as real creative. */
 .arc-studio .canvas .safez { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.2s; }

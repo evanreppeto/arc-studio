@@ -21,7 +21,7 @@
   text-decoration: none;
 }
 .arc-run .back:hover {
-  color: var(--ink);
+  color: var(--text);
 }
 .arc-run .back svg {
   width: 16px;

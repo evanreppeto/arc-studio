@@ -195,7 +195,14 @@ function EditableText({
       aria-label={`${layer} — click to select, double-click to edit`}
       suppressContentEditableWarning
       onPointerDown={(e) => {
-        e.stopPropagation();
+        // Stop propagation ONLY on the press that selects. Once this layer is
+        // selected the copy block is armed, and the drag handler lives on that
+        // block — so swallowing the event here meant grabbing the words, the
+        // obvious way to move them, did nothing at all, and the layer could only
+        // be dragged by the blank space around it. Letting the event through
+        // once selected is safe: startDrag stops it before the canvas
+        // background's deselect handler sees it.
+        if (!selected) e.stopPropagation();
         onSelect?.(layer);
       }}
       onDoubleClick={(e) => {
