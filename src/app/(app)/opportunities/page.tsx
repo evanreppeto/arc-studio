@@ -1,4 +1,4 @@
-import { buildCampaignSeedFromOpportunity, humanizePersonaLabel, definitionText,} from "@/domain";
+import { buildCampaignSeedFromOpportunity, humanizePersonaLabel, definitionText, stripIdentifiers,} from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { crmRecordHref, listOpenOpportunities, type OpportunityRecord } from "@/lib/opportunities/read-model";
@@ -7,7 +7,8 @@ import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { canonicalIndustryKey } from "@/lib/product-language";
 
 import { classify } from "./classify";
-import { extraEvidenceRows } from "./evidence";
+import { extraEvidenceRows, formatEvidenceValue } from "./evidence";
+import { shortName } from "./short-name";
 import { OpportunityInbox, type OpportunityVM } from "./_components/opportunity-inbox";
 
 export const metadata = { title: "Opportunities — Arc Studio" };
@@ -22,11 +23,6 @@ function humanizePersona(persona: string): string {
   return /^unassigned/i.test(label) ? "" : label;
 }
 
-
-function shortName(title: string): string {
-  const first = title.split(/\s+[—–-]\s+/)[0].trim() || title.trim();
-  return first.length > 46 ? `${first.slice(0, 44).trim()}…` : first;
-}
 
 function urgencyTone(urgency: OpportunityRecord["urgency"]): OpportunityVM["urgencyTone"] {
   return urgency === "high" ? "red" : urgency === "medium" ? "amber" : "info";
@@ -80,7 +76,12 @@ function buildRouting(status: string): OpportunityVM["routing"] {
   ];
 }
 
-function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): OpportunityVM {
+function toVM(
+  rec: OpportunityRecord,
+  allowedPersonaKeys?: readonly string[],
+  /** Every other open title, so a row name can tell it needs its qualifier. */
+  siblingTitles: readonly string[] = [],
+): OpportunityVM {
   const ev = rec.evidence ?? {};
   const persona = humanizePersona(ev.persona ?? "");
   const { icon, typeLabel } = classify(`${rec.title} ${rec.summary}`, rec.subject_type);
@@ -121,8 +122,14 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
     evidence.push({ label: "Active creatives", value: `${ev.creativeCount}${ev.activityLevel ? ` (${humanize(ev.activityLevel)} activity)` : ""}` });
   }
   if (Array.isArray(ev.keywords) && ev.keywords.length) evidence.push({ label: "Keywords", value: ev.keywords.slice(0, 4).join(", ") });
-  // Feed/news signals (kind='news_signal').
-  if (ev.source) evidence.push({ label: "Source", value: ev.source });
+  // Feed/news signals (kind='news_signal'). Routed through the shared formatter
+  // rather than rendered raw: this row was written for a publication name, and
+  // Arc's generative scan reuses the same key for its own tool-call trace
+  // (BSR-732).
+  if (ev.source) {
+    const source = formatEvidenceValue(ev.source);
+    if (source) evidence.push({ label: "Source", value: source });
+  }
   if (Array.isArray(ev.matchedKeywords) && ev.matchedKeywords.length) {
     evidence.push({ label: "Matched terms", value: ev.matchedKeywords.slice(0, 4).join(", ") });
   }
@@ -169,7 +176,7 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
 
   return {
     id: rec.id,
-    name: shortName(rec.title),
+    name: shortName(rec.title, siblingTitles),
     title: rec.title,
     confidence,
     urgencyTone: urgencyTone(rec.urgency),
@@ -178,7 +185,8 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
     icon,
     sourceLabel,
     staleLabel,
-    summary: rec.summary,
+    // Arc cites the records it reasoned over by id; those never belong on screen.
+    summary: stripIdentifiers(rec.summary),
     recommendedAction: rec.recommended_action,
     persona,
     personaHref: persona ? "/personas" : null,
@@ -214,7 +222,9 @@ export default async function OpportunitiesPage({
     : isDemoDataEnabled()
       ? demoPersonaOptions
       : [];
-  const opps = records.map((record) => toVM(record, personaOptions.map((persona) => persona.key)));
+  const titles = records.map((record) => record.title);
+  const personaKeys = personaOptions.map((persona) => persona.key);
+  const opps = records.map((record) => toVM(record, personaKeys, titles));
 
   return <OpportunityInbox opps={opps} personaOptions={personaOptions} selectedId={params.selected} />;
 }

@@ -37,12 +37,28 @@
  */
 
 /**
+ * A UUID, anywhere in a string. Exported because two different questions need
+ * it: "does this text contain one" (the leak check) and "is this whole value
+ * one" (a renderer deciding whether a value is worth showing).
+ */
+export const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
+
+/**
  * Shapes that are identifiers in any codebase, and that a person writing UI copy
  * would never produce.
  */
 const IDENTIFIER_SHAPES: { name: string; pattern: RegExp }[] = [
   // Protocol-prefixed tool names: mcp__arc__search_contacts.
   { name: "MCP tool name", pattern: /\bmcp__\w+/ },
+  // Primary keys. Added after a live audit found them on the front page: the
+  // Home hero card read `"Suburban Home Background Asset" (campaign 0bd41cb3-
+  // ff30-4548-92e6-4ba431b61c8d)`, and the Opportunities evidence panel — the
+  // one surface whose whole job is proving a claim to a human — answered
+  // "Active flood advisories" with two bare UUIDs (BSR-732).
+  //
+  // The existing shapes could not catch these: a UUID is neither snake_case nor
+  // CONSTANT_CASE, so every check here passed while the ids shipped.
+  { name: "UUID", pattern: UUID_PATTERN },
   // snake_case with at least two segments: needs_review, crm_lead, proof_point.
   // Requires lowercase both sides so CONSTANT_CASE and Mixed_Case fall to the
   // rules below rather than matching here twice.
@@ -102,4 +118,31 @@ export function findIdentifierLeak(text: string): IdentifierLeak | null {
     if (found) return { match: found[0], shape: name };
   }
   return null;
+}
+
+/**
+ * Remove primary keys from prose that is otherwise fine to show.
+ *
+ * Arc writes an opportunity's `summary` as free text and cites the records it
+ * reasoned over by id — `"Suburban Home Background Asset" (campaign 0bd41cb3-…)`.
+ * The campaign is already named in the same breath, so the parenthetical adds
+ * nothing a person can use and is the first thing they see on Home.
+ *
+ * A display-boundary transform, not a repair: the stored summary keeps its ids
+ * for Arc to read back. Tightening what Arc emits is the other half (the
+ * `propose_opportunity` tool description now says so), but a prompt is advice
+ * and this is the guarantee.
+ */
+export function stripIdentifiers(text: string): string {
+  const uuid = UUID_PATTERN.source;
+  return text
+    // A whole parenthetical whose payload is an id: "(campaign <uuid>)", "(<uuid>)".
+    .replace(new RegExp(String.raw`\s*\((?:[\w ]{0,24}\s)?${uuid}\)`, "gi"), "")
+    // Any id left loose in the sentence.
+    .replace(new RegExp(String.raw`\s*${uuid}`, "gi"), "")
+    // Tidy the seams the removals leave behind.
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }

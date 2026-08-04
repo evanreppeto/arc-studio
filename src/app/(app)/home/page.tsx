@@ -7,6 +7,7 @@ import {
   countOf,
   DAY_NOUN,
   needsYouPhrase,
+  stripIdentifiers,
   toWorkState,
   WORK_STATE_LABEL,
 } from "@/domain";
@@ -37,8 +38,12 @@ function relativeTime(iso: string): string {
   return `${Math.round(hr / 24)}d ago`;
 }
 
+// Arc cites the records it reasoned over by id, and this is the front page —
+// the hero card read `"Suburban Home Background Asset" (campaign 0bd41cb3-…)`
+// before this (BSR-732). Stripped before truncating, so removing an id can win
+// back room for words.
 function concise(value: string, maxLength: number): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
+  const normalized = stripIdentifiers(value).replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
   const clipped = normalized.slice(0, maxLength + 1);
   const lastSpace = clipped.lastIndexOf(" ");

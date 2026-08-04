@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { extraEvidenceRows, formatEvidenceValue, humanizeEvidenceKey } from "./evidence";
+import { findIdentifierLeak } from "@/domain";
+
+import {
+  extraEvidenceRows,
+  formatEvidenceValue,
+  humanizeEvidenceKey,
+  humanizeToolTrace,
+  isToolTrace,
+  looksLikeIdentifier,
+} from "./evidence";
 
 describe("humanizeEvidenceKey", () => {
   it("handles the three casings Arc mixes", () => {
@@ -65,6 +74,54 @@ describe("formatEvidenceValue", () => {
   });
 });
 
+describe("looksLikeIdentifier", () => {
+  it("catches the shapes that reached the live panel", () => {
+    expect(looksLikeIdentifier("062c799e-6359-454d-a6a6-40f330b0f9f0")).toBe(true);
+    expect(looksLikeIdentifier("a3f9c2e1b7d84f6a0c5e2b91")).toBe(true);
+  });
+
+  it("leaves real evidence alone", () => {
+    // Every false positive here deletes proof from the one panel whose job is
+    // proving a claim. These are all real values from the live inbox.
+    for (const value of [
+      "Cook, DuPage, Will — IL",
+      "emergency-homeowner",
+      "Suburban Home Background Asset",
+      "Service Van — Driveway Morning",
+      "moderate",
+      "2026-07-31",
+      "60613, 60614",
+    ]) {
+      expect(looksLikeIdentifier(value), value).toBe(false);
+    }
+  });
+});
+
+describe("tool traces", () => {
+  it("recognises the trace the live panel rendered under 'Source'", () => {
+    expect(isToolTrace("read_recent_activity + query_brain(campaign_ref) + list_opportunities")).toBe(true);
+    expect(isToolTrace("mcp__arc__search_contacts")).toBe(true);
+  });
+
+  it("does not mistake ordinary evidence for a trace", () => {
+    for (const value of ["Chicago Tribune", "moderate", "Cook, DuPage, Will — IL", "storm damage"]) {
+      expect(isToolTrace(value), value).toBe(false);
+    }
+  });
+
+  it("keeps the fact and drops the spelling", () => {
+    expect(humanizeToolTrace("read_recent_activity + query_brain(campaign_ref) + list_opportunities")).toBe(
+      "Read recent activity · Query brain · List opportunities",
+    );
+  });
+
+  it("routes a trace through the formatter rather than printing it", () => {
+    const out = formatEvidenceValue("read_recent_activity + query_brain(campaign_ref)");
+    expect(out).toBe("Read recent activity · Query brain");
+    expect(findIdentifierLeak(out!)).toBeNull();
+  });
+});
+
 describe("extraEvidenceRows", () => {
   it("skips keys the bespoke rows already render", () => {
     const rows = extraEvidenceRows({ persona: "emergency-homeowner", area: "Cook", severity: "moderate" });
@@ -76,12 +133,19 @@ describe("extraEvidenceRows", () => {
   });
 
   it("surfaces the generative scan's own keys, which used to be dropped", () => {
-    // Verbatim evidence from the 2026-08-03 prod scan (opportunity 7865e1f7).
+    // Verbatim evidence from the 2026-08-03 prod scan (opportunity 7865e1f7) —
+    // including the FULL uuids. This fixture previously abbreviated them to
+    // "062c799e", which is why it asserted the identifiers rendered and nobody
+    // noticed: the shortened form is not a uuid, so the case the panel actually
+    // ships was never exercised (BSR-732).
     const rows = extraEvidenceRows({
       source: "read_recent_activity + query_brain(campaign_ref)",
       persona: "emergency-homeowner",
       advisory_area: "Cook, DuPage, Will — IL",
-      active_flood_advisories: ["062c799e", "dba405db"],
+      active_flood_advisories: [
+        "062c799e-6359-454d-a6a6-40f330b0f9f0",
+        "dba405db-915e-4288-9abd-716c4e7e2b4b",
+      ],
       mediaAvailable_approved: 0,
       serviceAreas_configured: [],
       draft_assets: [{ campaign: "Suburban Home Background Asset" }],
@@ -89,11 +153,25 @@ describe("extraEvidenceRows", () => {
 
     expect(rows).toEqual([
       { label: "Advisory area", value: "Cook, DuPage, Will — IL" },
-      { label: "Active flood advisories", value: "062c799e, dba405db" },
+      // The count survives; the primary keys do not.
+      { label: "Active flood advisories", value: "2 items" },
       { label: "Media available approved", value: "0" },
       { label: "Service areas configured", value: "None" },
       { label: "Draft assets", value: "Suburban Home Background Asset" },
     ]);
+  });
+
+  it("never emits an identifier, whatever Arc put in the payload", () => {
+    const rows = extraEvidenceRows({
+      campaign_ref: "0bd41cb3-ff30-4548-92e6-4ba431b61c8d",
+      digest: "a3f9c2e1b7d84f6a0c5e2b91",
+      linked_records: [{ id: "02a05c97-5f0d-4ab7-8440-8d1c213fa847" }],
+    });
+
+    // A row whose only content was an id is dropped outright; a LIST of them
+    // keeps its count, because "how many" is a fact and the ids are not.
+    expect(rows).toEqual([{ label: "Linked records", value: "1 item" }]);
+    for (const row of rows) expect(findIdentifierLeak(row.value)).toBeNull();
   });
 
   it("preserves the order Arc wrote the keys in", () => {

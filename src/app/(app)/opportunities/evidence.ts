@@ -1,3 +1,5 @@
+import { arcToolLabel } from "@/domain";
+
 import type { OpportunityVM } from "./_components/opportunity-inbox";
 
 /**
@@ -70,9 +72,62 @@ const MAX_VALUE_CHARS = 160;
 /** How many array entries to name before collapsing the tail into "+N more". */
 const MAX_ITEMS = 4;
 
-/** Pull a human label out of an object entry, e.g. one element of `draft_assets`. */
+/** A UUID, the only identifier shape that has actually reached this panel. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A long unbroken hex run — row ids, digests, opaque keys. */
+const LONG_HEX_RE = /^[0-9a-f]{24,}$/i;
+
+/**
+ * Is this value a machine identifier rather than something a person reads?
+ *
+ * Deliberately narrow. This panel is the one place the product PROVES its
+ * reasoning to a human, so a false positive here deletes real evidence — worse
+ * than the noise it removes. Only shapes with no plausible human reading
+ * qualify; "Cook, DuPage, Will — IL" and "emergency-homeowner" are values, not
+ * identifiers, and must survive.
+ */
+export function looksLikeIdentifier(value: string): boolean {
+  const s = value.trim();
+  return UUID_RE.test(s) || LONG_HEX_RE.test(s);
+}
+
+/**
+ * Is this the trace of Arc's own tool calls?
+ *
+ * The live inbox rendered `Source: read_recent_activity + query_brain(campaign_ref)
+ * + list_opportunities` — the agent's internal call log, under a heading that
+ * promises a customer where a claim came from. The FACT is worth keeping (Arc
+ * did look at those things); the spelling is not.
+ */
+const TOOL_TRACE_RE = /^[a-z][a-z0-9_]*(\([^)]*\))?(\s*[+,·]\s*[a-z][a-z0-9_]*(\([^)]*\))?)*$/;
+
+export function isToolTrace(value: string): boolean {
+  const s = value.trim();
+  // A single lowercase word is just a word; a trace names at least two calls, or
+  // carries an argument list, or a protocol prefix.
+  if (s.startsWith("mcp__")) return true;
+  if (!TOOL_TRACE_RE.test(s)) return false;
+  return /[+,·]/.test(s) || /\(/.test(s);
+}
+
+/** `read_recent_activity + query_brain(campaign_ref)` → "Read recent activity · Query brain". */
+export function humanizeToolTrace(value: string): string {
+  return value
+    .split(/\s*[+,·]\s*/)
+    .map((token) => arcToolLabel(token.replace(/\(.*$/, "").trim()))
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * Pull a human label out of an object entry, e.g. one element of `draft_assets`.
+ *
+ * `id` is NOT a fallback. An entry whose only string is its primary key has no
+ * human label, and saying so (the caller counts it instead) beats printing a
+ * UUID at a customer.
+ */
 function labelOf(value: Record<string, unknown>): string | null {
-  for (const key of ["label", "name", "title", "campaign", "summary", "id"]) {
+  for (const key of ["label", "name", "title", "campaign", "summary"]) {
     const candidate = value[key];
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
@@ -94,6 +149,12 @@ export function formatEvidenceValue(value: unknown): string | null {
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
+    // An identifier is not evidence to anyone who could read this page.
+    if (looksLikeIdentifier(trimmed)) return null;
+    if (isToolTrace(trimmed)) {
+      const humanized = humanizeToolTrace(trimmed);
+      return humanized || null;
+    }
     return trimmed.length > MAX_VALUE_CHARS ? `${trimmed.slice(0, MAX_VALUE_CHARS - 1).trim()}…` : trimmed;
   }
   if (Array.isArray(value)) {
@@ -105,6 +166,9 @@ export function formatEvidenceValue(value: unknown): string | null {
           : formatEvidenceValue(item),
       )
       .filter((part): part is string => Boolean(part));
+    // Nothing nameable survived — an array of bare ids, or of objects carrying
+    // only keys. The COUNT is still a real fact ("Active flood advisories: 2
+    // items"), and it is the whole fact statable without printing identifiers.
     if (!parts.length) return `${value.length} item${value.length === 1 ? "" : "s"}`;
     const shown = parts.slice(0, MAX_ITEMS).join(", ");
     return parts.length > MAX_ITEMS ? `${shown} +${parts.length - MAX_ITEMS} more` : shown;

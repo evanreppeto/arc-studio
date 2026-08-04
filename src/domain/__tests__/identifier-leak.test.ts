@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findIdentifierLeak } from "../identifier-leak";
+import { findIdentifierLeak, stripIdentifiers } from "../identifier-leak";
 
 /**
  * BSR-709. The cases below are not invented — the "catches" are the exact
@@ -107,5 +107,60 @@ describe("shape boundaries", () => {
 
   it("finds an identifier embedded mid-sentence", () => {
     expect(leak("Records still in needs_review will move")).toBe("needs_review");
+  });
+});
+
+/**
+ * BSR-732. A live audit found primary keys on the front page — the Home hero
+ * card cited two campaigns by UUID, and the Opportunities evidence panel
+ * answered "Active flood advisories" with two bare UUIDs.
+ *
+ * None of the shapes above could see them: a UUID is neither snake_case nor
+ * CONSTANT_CASE, so this check passed on every one of those screens while the
+ * ids shipped.
+ */
+describe("primary keys", () => {
+  const UUID = "0bd41cb3-ff30-4548-92e6-4ba431b61c8d";
+
+  it("catches a uuid alone and mid-sentence", () => {
+    expect(leak(UUID)).toBe(UUID);
+    expect(leak(`"Suburban Home Background Asset" (campaign ${UUID})`)).toBe(UUID);
+  });
+
+  it("does not claim ordinary hyphenated or hex-ish copy", () => {
+    // The false-positive half again: these must all read as language.
+    expect(leak("high-intent accounts")).toBeNull();
+    expect(leak("Cook, DuPage, Will — IL")).toBeNull();
+    expect(leak("2026-08-04")).toBeNull();
+    expect(leak("60613-1204")).toBeNull();
+    expect(leak("#c8a24a")).toBeNull();
+  });
+});
+
+describe("stripIdentifiers", () => {
+  it("removes the parenthetical citation Arc writes, and nothing else", () => {
+    const summary =
+      'Arc generated two reusable homeowner-facing background creatives on Jul 31 that are still sitting in draft, unused: ' +
+      '"Suburban Home Background Asset" (campaign 0bd41cb3-ff30-4548-92e6-4ba431b61c8d) and ' +
+      '"Service Van — Driveway Morning" (campaign 02a05c97-5f0d-4ab7-8440-8d1c213fa847), both tagged persona emergency-homeowner.';
+
+    expect(stripIdentifiers(summary)).toBe(
+      'Arc generated two reusable homeowner-facing background creatives on Jul 31 that are still sitting in draft, unused: ' +
+        '"Suburban Home Background Asset" and "Service Van — Driveway Morning", both tagged persona emergency-homeowner.',
+    );
+  });
+
+  it("removes a loose id and tidies the seam", () => {
+    expect(stripIdentifiers("See 0bd41cb3-ff30-4548-92e6-4ba431b61c8d for details.")).toBe("See for details.");
+  });
+
+  it("leaves prose with no identifiers untouched", () => {
+    const clean = "Flood Advisory in effect for Cook, IL / Will, IL. Damage-response demand typically spikes within days.";
+    expect(stripIdentifiers(clean)).toBe(clean);
+  });
+
+  it("leaves nothing a leak check would still flag", () => {
+    const out = stripIdentifiers("Asset (campaign 0bd41cb3-ff30-4548-92e6-4ba431b61c8d) is ready.");
+    expect(findIdentifierLeak(out)).toBeNull();
   });
 });

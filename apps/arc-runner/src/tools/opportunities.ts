@@ -58,10 +58,19 @@ export function proposeOpportunityTool(client: ArcClient, step: StepFn) {
       subject_type: z.enum(OPPORTUNITY_SUBJECT_TYPES),
       subject_id: z.string().describe("Stable id for the subject — used for dedup"),
       title: z.string(),
-      summary: z.string().describe("Why this is an opportunity now"),
+      summary: z
+        .string()
+        .describe(
+          "Why this is an opportunity now, written for the business owner who will read it on their home page. Name records the way they would ('Suburban Home Background Asset'), never by id — a UUID in this text renders on their front page. Do not name the tools you used; the operator wants the finding, not the trace.",
+        ),
       confidence: z.number().min(0).max(100).optional(),
       urgency: z.enum(["low", "medium", "high"]).optional(),
-      evidence: z.record(z.string(), z.unknown()).optional().describe("Source links / refs / signals backing it"),
+      evidence: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe(
+          "Source links / refs / signals backing it. EVERY key and value here is rendered verbatim to a non-technical operator as the proof for this card, so write values a person can read: names, counts, places, dates. Never a bare row id, and never a list of tool calls — 'active_flood_advisories: [<uuid>, <uuid>]' tells them nothing, 'active_flood_advisories: 2' or the advisory names tell them everything.",
+        ),
       persona: z
         .string()
         .optional()
