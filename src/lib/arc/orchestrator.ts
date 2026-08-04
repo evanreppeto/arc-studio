@@ -135,7 +135,7 @@ export async function runArcPartnerCampaign(
     },
   }, tenant));
 
-  const personaSnapshotId = await insertOne(client, "persona_snapshots", withOrg({
+  const personaSnapshotId = await insertOne(client, "persona_snapshots", withWorkspace({
     persona: request.persona,
     company_id: companyId,
     contact_id: contactId,

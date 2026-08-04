@@ -3,6 +3,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { syncMediaRecordToBrain } from "@/lib/brain-ingestion/sync";
 import { getSupabaseAdminClient, type TypedSupabaseClient } from "@/lib/supabase/server";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 const BUCKET = "campaign-media";
 
@@ -55,7 +56,8 @@ export function defaultUploader(client: SupabaseClient): ImageUploader {
 
 export type CreateFolderInput = { orgId: string; name: string; parentId?: string | null; description?: string | null; client?: SupabaseClient };
 export async function createFolder({ orgId, name, parentId = null, description = null, client = getSupabaseAdminClient() }: CreateFolderInput): Promise<string> {
-  return insertGetId(client, "media_folders", { org_id: orgId, name, parent_id: parentId, description });
+  const workspaceFields = await workspaceIdFields(client, orgId);
+  return insertGetId(client, "media_folders", { org_id: orgId, ...workspaceFields, name, parent_id: parentId, description });
 }
 
 /** Generic starter folders seeded for a new workspace. Names/descriptions are
@@ -81,8 +83,10 @@ export async function seedDefaultMediaFolders(
   // Fail closed — see personas/persistence: a null count would re-seed (BSR-575).
   if (requireCount("media_folders", { count, error: countError }) > 0) return 0;
 
+  const workspaceFields = await workspaceIdFields(client, orgId);
   const rows = DEFAULT_MEDIA_FOLDERS.map((folder, index) => ({
     org_id: orgId,
+    ...workspaceFields,
     name: folder.name,
     description: folder.description,
     sort_order: index,
@@ -150,7 +154,7 @@ export async function insertAssetWithUrl(input: InsertAssetInput): Promise<Inser
   const client = input.client ?? getSupabaseAdminClient();
   const upload = input.uploader ?? defaultUploader(client);
   const id = await insertGetId(client, "media_assets", {
-    org_id: input.orgId, folder_id: input.folderId, file_name: input.fileName,
+    org_id: input.orgId, ...(await workspaceIdFields(client, input.orgId)), folder_id: input.folderId, file_name: input.fileName,
     storage_path: "pending", public_url: "pending", content_type: input.contentType, kind: input.kind,
     width: input.width ?? null, height: input.height ?? null, byte_size: input.byteSize,
     source: input.source ?? "uploaded", provenance: input.provenance ?? {},
@@ -230,6 +234,7 @@ export async function recordStoredAsset(input: RecordStoredAssetInput): Promise<
   const client = input.client ?? getSupabaseAdminClient();
   const id = await insertGetId(client, "media_assets", {
     org_id: input.orgId,
+    ...(await workspaceIdFields(client, input.orgId)),
     folder_id: input.folderId ?? null,
     file_name: input.fileName,
     storage_path: input.storagePath,
