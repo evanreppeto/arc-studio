@@ -26,6 +26,7 @@ import {
   DEFAULT_APP_SETTINGS,
   isValidSupportEmail,
   normalizeDisplayLabel,
+  normalizeObjectLabels,
   saveAppSettings,
 } from "@/lib/settings/store";
 import { saveWorkspaceMediaConfig } from "@/lib/media-config/persistence";
@@ -499,6 +500,41 @@ export async function saveGeneralSettings(input: {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save general settings." };
   }
 
+  revalidatePath("/", "layout");
+  return { ok: true, persisted: true, message: "Saved." };
+}
+
+/**
+ * The workspace's own CRM object names.
+ *
+ * Industry templates cover nine trades; everyone else gets `general`'s neutral
+ * nouns. This is the escape hatch for a workspace whose words are close but
+ * wrong — a law firm calling `properties` "Matters".
+ *
+ * Both forms per object are required, and `normalizeObjectLabels` drops any
+ * entry missing one: a half-filled row would render a "Matters" tab above an
+ * "Add site" button. Clearing both fields removes the override and returns that
+ * object to its industry label, which is how a workspace undoes a rename.
+ */
+export async function saveObjectLabelSettings(input: {
+  section: string;
+  objects: Record<string, { plural: string; singular: string }>;
+}): Promise<SettingsWriteResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const org = await resolveOrgForSave();
+  if (!org.ok) return org;
+
+  const normalized = normalizeObjectLabels({ section: input.section, objects: input.objects });
+
+  try {
+    await saveAppSettings(getSupabaseAdminClient(), org.orgId, { crm_object_labels: normalized });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save object names." };
+  }
+
+  // Layout-wide: the CRM section name is in the nav rail on every screen.
   revalidatePath("/", "layout");
   return { ok: true, persisted: true, message: "Saved." };
 }

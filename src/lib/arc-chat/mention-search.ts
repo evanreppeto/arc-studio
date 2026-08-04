@@ -90,7 +90,7 @@ export async function getMentionables(): Promise<MentionGroup[]> {
   // the screen it links to is named. Falls back to `general`'s neutral nouns
   // (Organizations / People / Sites …) when no industry is set — never to the
   // restoration set that used to be hardcoded here.
-  const language = getProductLanguage(appSettings?.industry || businessProfile?.industry);
+  const language = getProductLanguage(appSettings?.industry || businessProfile?.industry, appSettings?.objectLabels);
 
   // The org's own personas, or nothing. This used to fall back to the BSR 12
   // whenever `listPersonas()` came back empty — but with Supabase configured that

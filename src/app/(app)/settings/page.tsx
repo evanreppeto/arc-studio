@@ -175,12 +175,19 @@ export default async function SettingsPage() {
         >,
       ] as [Record<PipelineObjectKey, PipelineStage[]>, Record<PipelineObjectKey, Record<string, number>>]);
 
-  const language = getProductLanguage(settings.industry || businessProfile?.industry);
+  const industryValue = settings.industry || businessProfile?.industry;
+  // Two resolutions on purpose. `language` is what this workspace calls things —
+  // it labels the fields and stages panels. `industryLanguage` is what its
+  // industry would call them, and it is what the rename panel shows as
+  // placeholders: an operator needs to see the default they'd fall back to, not
+  // their own override echoed at them.
+  const language = getProductLanguage(industryValue, settings.objectLabels);
+  const industryLanguage = getProductLanguage(industryValue);
   const crmObjectLabels = Object.fromEntries(
     CUSTOM_FIELD_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<CustomFieldObjectKey, string>;
   const pipelineObjectLabels = Object.fromEntries(
     PIPELINE_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<PipelineObjectKey, string>;
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} />;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
 }
