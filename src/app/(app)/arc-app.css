@@ -1667,6 +1667,11 @@
 .arc-app .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 5px 9px; border-radius: 7px; transition: 0.14s; border: none; background: none; font-family: inherit; }
 .arc-app .selbar .sa:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .arc-app .selbar .sa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+/* Not "coming soon" — "not applicable to what you have selected". This used
+   data-soon, so bulk-adding a COMPANY to a campaign popped a clock icon saying
+   a shipped feature was unbuilt. The capability exists; it just belongs to the
+   People tab (BSR-688). */
+.arc-app .selbar .sa.is-inapplicable { opacity: 0.45; cursor: default; }
 .arc-app .selbar .sa-wrap { position: relative; display: inline-flex; }
 .arc-app .selbar .sa-backdrop { position: fixed; inset: 0; z-index: 40; background: none; border: none; cursor: default; }
 .arc-app .selbar .sa-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; min-width: 200px; max-height: 300px; overflow-y: auto; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; gap: 1px; }
@@ -2289,4 +2294,104 @@
     width: 18px;
     height: 18px;
   }
+}
+
+/* ============================================================
+   Not-yet-built controls, and the toast that explains them (BSR-688)
+   ============================================================
+
+   `ComingSoonToasts` has shipped since the mockup port with NO stylesheet at
+   all. The wrapper defaulted to `position: static`, so it appended itself after
+   `.app` inside `.arc-app`: measured on /brand at 1440x900 it rendered at
+   y=900 — below the fold, invisible — 1450px tall, growing the document from
+   900px to 2350px. Clicking a "coming soon" control therefore did nothing a
+   person could see and quietly added a screenful of blank space.
+
+   Which is the exact state the toast exists to prevent. A dead control that
+   silently does nothing reads as broken; that was the whole argument for the
+   mechanism, and the mechanism was doing it too.
+
+   Two rules here, and they are separate concerns:
+     1. The toast must be a toast — fixed, on top, visible, self-dismissing.
+     2. An unbuilt control must not look identical to a working one. */
+
+.arc-app .soon-toasts {
+  position: fixed;
+  /* Above the rail and any page chrome, below modals (which sit at 100+). */
+  z-index: 60;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  /* Never intercept a click meant for the page underneath. */
+  pointer-events: none;
+}
+
+.arc-app .soon-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(92vw, 420px);
+  padding: 10px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.9);
+  animation: soonToastIn 0.22s var(--ease) both;
+}
+
+.arc-app .soon-toast svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  stroke: var(--muted);
+  fill: none;
+  stroke-width: 1.8;
+}
+
+@keyframes soonToastIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arc-app .soon-toast { animation: none; }
+}
+
+/* Rule 2. Attribute-scoped rather than class-scoped on purpose: these controls
+   wear five different classes (.gbtn, .iconbtn, .editlink, .sa, .iconf) and the
+   thing they have in common is the attribute, not the styling. Muted rather
+   than greyed-out-disabled — the control is real and will work later, it just
+   is not offering to do anything today. */
+/* Doubled attribute selector on purpose. Per-screen stylesheets (brand.css,
+   studio.css, library.css…) load AFTER arc-app.css and set `cursor: pointer` on
+   these same controls at equal specificity, so a single `[data-soon]` loses on
+   source order alone — `.arc-brand .editlink` beat it and the palette link kept
+   a pointer cursor. `[data-soon][data-soon]` outranks every per-screen rule
+   without reaching for !important. */
+.arc-app [data-soon][data-soon] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* No hover affordance: a lift or a border-brighten promises a response the
+   control cannot give. The gold gradient is dropped for the same reason —
+   nothing unbuilt should carry the one accent per screen (DESIGN.md §4). */
+.arc-app [data-soon][data-soon]:hover {
+  opacity: 0.72;
+  transform: none;
+  filter: none;
+}
+
+.arc-app [data-soon][data-soon].gold,
+.arc-app .arc-grid [data-soon][data-soon].gbtn.gold {
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
 }

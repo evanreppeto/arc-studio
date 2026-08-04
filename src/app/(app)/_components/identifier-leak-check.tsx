@@ -101,6 +101,14 @@ export function IdentifierLeakCheck() {
         for (const added of record.addedNodes) {
           if (added.nodeType === Node.ELEMENT_NODE) scan(added as Element);
           else if (added.nodeType === Node.TEXT_NODE) {
+            // Same exemptions the TreeWalker applies. This branch used to skip
+            // the check entirely, so a text node appended into a <pre>, a <code>,
+            // or a `data-identifiers-ok` region warned anyway — and React appends
+            // text nodes constantly while streaming a reply, which is exactly
+            // where the payloads live. An opt-out that only holds on first paint
+            // is not an opt-out.
+            const parent = (added as Text).parentElement;
+            if (parent?.closest(SKIP_SELECTOR)) continue;
             const text = added.textContent ?? "";
             const leak = findIdentifierLeak(text);
             const seen = seenSet();
