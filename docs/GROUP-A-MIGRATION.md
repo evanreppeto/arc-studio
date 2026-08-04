@@ -173,11 +173,15 @@ up as a wrong-but-recoverable value rather than an arbitrary assignment.
 (which already carries `workspace_id NOT NULL`). Then `agents` and
 `arc_generated_skills`, which have no FK and take the fallback.
 
-Writers: `arc-api/tasks.ts`, `agent-operations/*`, the runner's callbacks.
-⚠️ The **runner** writes some of these over `/api/v1` — its token already carries
-`org_id` + `workspace_id` (`arcGuard`), so the scope is available, but the runner
-deploys separately (Cloud Run, on merge). Phase B for this wave must wait for a
-runner deploy, not just a Vercel one.
+Writers: `arc-api/tasks.ts`, `agent-operations/*`, `arc-chat/{enqueue,inbox}.ts`,
+`arc/orchestrator.ts`, `campaigns/{queue,revisions}.ts`,
+`competitor-intel/persistence.ts`, `auth/workspace-onboarding.ts`,
+`exemplar-skills/persistence.ts` — **10 sites, 3 of which a by-table grep missed
+because they read as selects.** Enumerate with the audit, not by eye.
+
+~~The runner writes some of these over `/api/v1`, so Phase B must wait for a Cloud
+Run deploy.~~ **Struck: verified false (see Status).** `apps/arc-runner` has no
+database access at all; it calls our API and the insert runs on Vercel.
 
 ### Wave 3 — the fallback set (10 tables, ~1,630 rows)
 
@@ -228,8 +232,11 @@ Every wave, in order:
    failure rather than something to remember. Expect it to fail the first time —
    that is it doing its job, and it is far cheaper here than in production.
 3. **Phase A merged** — confirm zero NULLs from the backfill on prod, and record
-   the deploy timestamp. For a wave the runner writes, record the **runner's**
-   deploy too.
+   the deploy timestamp. Only the **Vercel** deploy matters: every write to these
+   tables happens in Next.js code, including the ones Arc triggers over `/api/v1`.
+   Check row counts against the pre-migration numbers too — rows that arrive in
+   the gap are written by the OLD code, and it is the backfill, not the new
+   writers, that has to catch them.
 4. **Between phases** — re-run the NULL check. Treat a clean result as weak
    evidence unless real traffic actually occurred: on an idle prod this returns 0
    because nothing was written. Step 2 is the gate that means something; this one
@@ -271,9 +278,38 @@ and nothing here is urgent — see finding (1).
   missed and the production break one of them had already caused.
 - **The writer audit is automated** — `src/lib/db/workspace-writers.test.ts`,
   every PR, keyed on `hasColumn`. Currently enforcing 31 tables / 78 insert sites.
-- **Wave 1 Phase B** — unblocked (BSR-711). Its static gate is green and
-  automated; the traffic-based half remains weak evidence on an idle prod.
-- **Waves 2-4** — not started (BSR-712 through BSR-717).
+- **Wave 1 Phase B** — done (BSR-711, PR #885), prod-verified 2026-08-04: 8/8
+  `NOT NULL`, 32 workspace policies, 0 stale org policies, 228 rows / 0 nulls,
+  and a read *as a real workspace member* returned rows (a schema query cannot
+  tell you nobody was locked out).
+- **Wave 2 Phase A** — done (BSR-712, PR #891), prod-verified 2026-08-04: 5
+  columns live, nullable, indexed, FK'd, **0 NULLs across 103 rows**.
+  Two things worth carrying forward:
+  - The writer audit found **3 insert sites the by-table grep missed**
+    (`upsertArcAgent`/`ensureArcAgentId` in three files — they read as selects).
+    Wave 1's lesson held on its first re-test.
+  - `agent_task_inputs` grew 83 → 85 between measurement and migration, and the
+    backfill caught both. That is evidence the backfill handles the gap, **not**
+    evidence the writers stamp — those rows predate the deploy. Still no
+    post-deploy traffic, so the static audit remains the only real gate.
+- **Wave 2 Phase B** — BSR-713. One open decision: `agents` is workspace-owned but
+  still unique on `(org_id, key)` — equivalent today, wrong the day an org holds
+  two workspaces. A Phase A deliberately did not rewrite it.
+
+  ⚠️ **"Phase B needs a Cloud Run runner deploy" was WRONG, and this plan said it
+  twice.** Checked instead of assumed: `apps/arc-runner` has **no database access
+  at all** — no Supabase client, no postgres driver, no such import; its only
+  dependencies are the Agent SDK, Sentry, dotenv and zod. The runner reaches
+  `agent_run_logs` by calling `POST /api/v1/arc/tasks/:id/log`, and the insert
+  happens in `appendAgentRunLog` — **our Next.js code, on Vercel**. So a runner
+  revision cannot write an unstamped row no matter how stale it is, and the
+  runner's deploy cadence is irrelevant to every wave of this migration.
+
+  The general lesson, which is the same one as the OAuth claim in
+  `docs/` and the notes it came from: **a stated blocker gets verified before
+  anything is sequenced around it.** This one would have parked Phase B behind an
+  unrelated deploy nobody could check.
+- **Waves 3-4** — not started (BSR-714 through BSR-717).
 
 One known gap is recorded in the audit test rather than hidden: three
 `arc_messages` writes in `arc-chat/persistence.ts` do not stamp yet, tied to
