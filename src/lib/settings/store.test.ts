@@ -10,6 +10,7 @@ import {
   normalizeDisplayLabel,
   isValidSupportEmail,
   mergeAppSettingsRows,
+  normalizeObjectLabels,
   normalizeWorkspaceName,
 } from "./store";
 
@@ -86,6 +87,8 @@ describe("settings store helpers", () => {
       emailSenderName: "",
       emailPostalAddress: "",
       emailPermissionReminder: "",
+      // No stored override → empty, and the workspace keeps its industry vocabulary.
+      objectLabels: {},
     });
     expect(settings).not.toHaveProperty("markWebhookEnabled");
   });
@@ -214,5 +217,54 @@ describe("settings store helpers", () => {
 
     await expect(getAppSettings(null, client as never)).resolves.toEqual(DEFAULT_APP_SETTINGS);
     expect(queried).toBe(false);
+  });
+});
+
+describe("normalizeObjectLabels", () => {
+  it("keeps a complete override", () => {
+    expect(normalizeObjectLabels({ objects: { properties: { plural: "Matters", singular: "matter" } } })).toEqual({
+      objects: { properties: { plural: "Matters", singular: "matter" } },
+    });
+  });
+
+  it("keeps a section rename", () => {
+    expect(normalizeObjectLabels({ section: "  Matters " })).toEqual({ section: "Matters" });
+  });
+
+  // Validating on the way OUT as well as in: this is a jsonb row, so a
+  // hand-edited value must not reach the UI.
+  it("drops a half-filled override rather than rendering a mixed screen", () => {
+    expect(normalizeObjectLabels({ objects: { properties: { plural: "Matters", singular: "" } } })).toEqual({});
+  });
+
+  it("drops unknown object keys instead of letting them accumulate", () => {
+    const result = normalizeObjectLabels({
+      objects: {
+        properties: { plural: "Matters", singular: "matter" },
+        invoices: { plural: "Invoices", singular: "invoice" },
+      },
+    });
+    expect(result.objects).toEqual({ properties: { plural: "Matters", singular: "matter" } });
+  });
+
+  it.each([
+    ["null", null],
+    ["a string", "Matters"],
+    ["an array", []],
+  ])("returns empty for malformed input (%s)", (_label, input) => {
+    expect(normalizeObjectLabels(input)).toEqual({});
+  });
+
+  it("round-trips through the merge as an app setting", () => {
+    const settings = mergeAppSettingsRows([
+      { key: "crm_object_labels", value: { section: "Matters", objects: { properties: { plural: "Matters", singular: "matter" } } } },
+    ]);
+    expect(settings.objectLabels.section).toBe("Matters");
+    expect(settings.objectLabels.objects?.properties).toEqual({ plural: "Matters", singular: "matter" });
+  });
+
+  it("survives a garbage stored row without breaking settings", () => {
+    const settings = mergeAppSettingsRows([{ key: "crm_object_labels", value: "not an object" }]);
+    expect(settings.objectLabels).toEqual({});
   });
 });

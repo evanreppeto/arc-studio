@@ -937,8 +937,12 @@ export function CrmBoard({
                       <strong>No {active.noun} yet.</strong> Arc works from these — it scans them for opportunities
                       worth acting on.
                       <div style={{ marginTop: 8 }}>
+                        {/* addLabel carries the workspace's own singular. Stripping a
+                            trailing "s" off the plural instead produced "Add peopl"
+                            for any irregular noun, and free-text object names make
+                            irregulars reachable rather than hypothetical. */}
                         <button type="button" className="gbtn gold" onClick={() => setAddOpen(true)}>
-                          Add {active.noun.replace(/s$/, "")}
+                          {active.addLabel}
                         </button>
                       </div>
                     </>

@@ -2,8 +2,16 @@ import { cache } from "react";
 
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { normalizeConsentMode, type ArcMode, type ArcRoute, type JourneyConsentMode } from "@/domain";
+import {
+  normalizeConsentMode,
+  parseObjectLabelOverride,
+  type ArcMode,
+  type ArcRoute,
+  type JourneyConsentMode,
+  type ObjectLabelOverride,
+} from "@/domain";
 
+import { type ObjectLabelSettings, type ProductLanguageObjectKey } from "../product-language";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 
 // Operator-editable app settings. Persisted in the `app_settings` key/value table;
@@ -41,6 +49,8 @@ export type AppSettings = {
   emailSenderName: string;
   emailPostalAddress: string;
   emailPermissionReminder: string;
+  /** The workspace's own CRM object names, overriding its industry vocabulary. */
+  objectLabels: ObjectLabelSettings;
 };
 
 export type AppearanceAccent = "gold" | "blue" | "red" | "steel" | "emerald";
@@ -75,6 +85,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   emailSenderName: "",
   emailPostalAddress: "",
   emailPermissionReminder: "",
+  objectLabels: {},
 };
 
 export const DEFAULT_SUPPORT_EMAIL = "support@bigshouldersmp.com";
@@ -221,7 +232,42 @@ export function mergeAppSettingsRows(rows: SettingRow[]): AppSettings {
     // Multi-line on purpose — a postal address renders as written.
     emailPostalAddress: str("email_postal_address", "").trim(),
     emailPermissionReminder: str("email_permission_reminder", "").trim(),
+    objectLabels: normalizeObjectLabels(map.get("crm_object_labels")),
   };
+}
+
+const OBJECT_LABEL_KEYS: ProductLanguageObjectKey[] = [
+  "companies",
+  "contacts",
+  "properties",
+  "leads",
+  "jobs",
+  "outcomes",
+];
+
+/**
+ * Read the stored object-label overrides, dropping anything malformed.
+ *
+ * Validation happens on the way OUT as well as the way in: this row is jsonb, so
+ * a hand-edited or half-migrated value must not reach the UI. An unrecognised
+ * object key is dropped rather than passed through — `getProductLanguage` only
+ * reads the six it knows, but leaving strays in the object would let them
+ * survive a save-round-trip and accumulate.
+ */
+export function normalizeObjectLabels(raw: unknown): ObjectLabelSettings {
+  if (!raw || typeof raw !== "object") return {};
+  const record = raw as Record<string, unknown>;
+  const section = typeof record.section === "string" ? normalizeDisplayLabel(record.section, "", 40) : "";
+  const rawObjects = (record.objects ?? {}) as Record<string, unknown>;
+  const objects: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> = {};
+  for (const key of OBJECT_LABEL_KEYS) {
+    const parsed = parseObjectLabelOverride(rawObjects[key]);
+    if (parsed) objects[key] = parsed;
+  }
+  const result: ObjectLabelSettings = {};
+  if (section) result.section = section;
+  if (Object.keys(objects).length) result.objects = objects;
+  return result;
 }
 
 export function getSupportContactEmail(
