@@ -96,3 +96,47 @@ describe("apiPost resilience", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * The two 409s. `arcGuard` refuses a request with the same status code the claim
+ * route uses for a genuine conflict, so the body's `status` is the only thing
+ * that tells them apart — and getting it wrong dropped real work on prod under a
+ * log line reading "skipping duplicate run" (BSR-695 follow-up).
+ */
+describe("claimTask tells a conflict apart from a refusal", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function respondWith(status: number, body: Record<string, unknown>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, json: async () => body }),
+    );
+  }
+
+  it("claims when the app says so", async () => {
+    respondWith(201, { ok: true, status: "claimed" });
+    await expect(createArcClient(config).claimTask("task-1")).resolves.toEqual({ claimed: true });
+  });
+
+  it("reports a real conflict as already-claimed — the only case a caller may skip", async () => {
+    respondWith(409, { ok: false, status: "rejected", message: "Task is not claimable (status=running)." });
+    const result = await createArcClient(config).claimTask("task-1");
+    expect(result).toMatchObject({ claimed: false, reason: "already-claimed" });
+  });
+
+  it.each(["workspace_required", "workspace_mismatch"])(
+    "reports a %s 409 as refused, NOT as already-claimed",
+    async (guardStatus) => {
+      respondWith(409, { ok: false, status: guardStatus, message: "No active workspace is available." });
+      const result = await createArcClient(config).claimTask("task-1");
+      expect(result).toMatchObject({ claimed: false, reason: "refused" });
+    },
+  );
+
+  it("reports any other failure as refused, carrying the reason", async () => {
+    respondWith(502, { ok: false, status: "failed", message: "Failed to claim task." });
+    const result = await createArcClient(config).claimTask("task-1");
+    expect(result).toMatchObject({ claimed: false, reason: "refused" });
+    if (result.claimed === false) expect(result.detail).toContain("502");
+  });
+});
