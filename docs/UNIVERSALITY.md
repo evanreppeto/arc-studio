@@ -23,7 +23,7 @@ company types; BSR/Summit are demo tenants. Keep every change tenant-agnostic.
 | --- | --- | --- |
 | Tenancy & isolation | **Universal** | `org_id` + RLS on every table |
 | Persona taxonomy | **Tenant-defined** | enum → `text` (`20260713120000`); the org's `personas.slug` rows are the authority |
-| Pipeline stages | **Tenant-defined** | `pipeline_stages` per org (`20260729160000`) + status enum → `text` (`20260729170000`) |
+| Pipeline stages | **Tenant-defined** | `pipeline_stages` per org (`20260729160000`) + status enum → `text` (`20260729170000`); seeded per industry at workspace creation |
 | Custom fields | **Tenant-defined** | `custom_field_definitions` / `custom_field_values` on all six objects (`20260728180000`) |
 | Object + section labels | **Tenant-defined** | free text per workspace (`app_settings.crm_object_labels`), falling back to the 9-key industry map in `src/lib/product-language.ts` |
 | CRM objects | **Fixed by decision** | 6 typed tables; no self-serve net-new object type (Option B, below) |
@@ -235,7 +235,7 @@ spa, SaaS, home services…). The choice seeds:
 - starter message angles + CTAs (baked into the persona pack) — **shipped**,
 - object **labels** (rename "properties" → "matters"/"projects"/"accounts") —
   **shipped as industry-derived labels**, see Problem 2's status,
-- default pipeline stages — **not shipped, and not planned.**
+- default pipeline stages — **shipped**, see below.
 
 **Shipped.** An Industry picker on the onboarding form
 (`src/app/onboarding/page.tsx`) drives a code-side catalog
@@ -252,13 +252,31 @@ The industry key also drives vocabulary through `src/lib/product-language.ts`
 settings into one of nine stable keys), and connector recommendations in
 Settings.
 
-**Per-industry pipeline stages were deliberately not built.**
-`DEFAULT_PIPELINE_STAGES` is ONE general set for every industry. A tenant renames
-and reorders them in the stage manager; they do not arrive pre-configured per
-trade. The `/industries` pages state this plainly for exactly this reason — see
-the header comment in `src/app/industries/_data/industries.ts`, which is also the
-rule for anything else claimed on those pages: *if a page shows a vertical's
-vocabulary, a workspace configured that way must actually render it.*
+**Per-industry pipeline stages — shipped.**
+`src/lib/pipeline-stages/industry-templates.ts` gives each of the eight verticals
+a starter set for `leads` and `jobs`; `stagesForIndustry()` falls back to
+`DEFAULT_PIPELINE_STAGES` for `general` and anything unrecognised.
+`seedDefaultPipelineStages({ orgId, client, industry })` writes them at workspace
+creation, mirroring `seedDefaultPersonas`.
+
+Three rules that file follows, worth keeping:
+
+- **`outcomes` is deliberately NOT varied.** It is the revenue ledger — won,
+  lost, paid, written off — and it means the same thing in every trade.
+  Splintering it would fragment revenue reporting across tenants for no gain.
+- **Every set keeps an `isWon` and an `isLost` terminal.** Reporting reads the
+  flags, not the names, so a set missing either would silently report zero
+  conversion — no error, just wrong numbers. Enforced by a test over every
+  template rather than left to review, alongside checks that the keys and labels
+  satisfy the migration's own check constraints.
+- **Seeding is a no-op when the org already has stages.** No existing tenant's
+  stages or reporting can move; this only reaches new workspaces.
+
+The `/industries` pages used to apologise for this being the one un-configured
+thing; that note now says what genuinely is still manual (records, brand,
+channels). The header comment in `src/app/industries/_data/industries.ts` keeps
+the rule that made it worth writing down: *if a page claims a vertical gets
+something configured, onboarding must actually deliver it.*
 
 ---
 

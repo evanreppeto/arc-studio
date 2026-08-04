@@ -10,6 +10,8 @@ import {
 
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
 
+import { stagesForIndustry } from "./industry-templates";
+
 // Untyped SupabaseClient: `pipeline_stages` isn't in the generated
 // database.types yet (that regenerates against a DB with the migration
 // applied), matching how the custom-fields/support/vault layers handle theirs.
@@ -219,13 +221,15 @@ export async function moveRecordsToStage(
 }
 
 /**
- * Seed a new workspace with the default stages.
+ * Seed a new workspace with its industry's starter stages.
  *
- * Mirrors `seedDefaultPersonas`: a no-op when the org already has stages, so it
- * is safe to call on every workspace creation and safe to re-run.
+ * Mirrors `seedDefaultPersonas` in both shape and guarantee: the industry picks
+ * the set (`stagesForIndustry`), and this is a no-op when the org already has
+ * stages — so it is safe to call on every workspace creation, safe to re-run,
+ * and CANNOT move an existing tenant's stages or the reporting built on them.
  */
 export async function seedDefaultPipelineStages(
-  { orgId, client }: { orgId: string; client?: SupabaseClient },
+  { orgId, client, industry }: { orgId: string; client?: SupabaseClient; industry?: string | null },
 ): Promise<number> {
   const supabase = client ?? getSupabaseAdminClient();
 
@@ -236,8 +240,11 @@ export async function seedDefaultPipelineStages(
   // Fail closed: a null count read as 0 would re-seed the default stages.
   if (requireCount("pipeline_stages", { count, error: countError }) > 0) return 0;
 
-  const rows = (Object.keys(DEFAULT_PIPELINE_STAGES) as PipelineObjectKey[]).flatMap((objectKey) =>
-    DEFAULT_PIPELINE_STAGES[objectKey].map((s) => ({
+  // The workspace's industry picks the starter set; `general` and anything
+  // unrecognised fall back to DEFAULT_PIPELINE_STAGES, so this is never empty.
+  const starter = stagesForIndustry(industry);
+  const rows = (Object.keys(starter) as PipelineObjectKey[]).flatMap((objectKey) =>
+    starter[objectKey].map((s) => ({
       org_id: orgId,
       object_key: objectKey,
       key: s.key,

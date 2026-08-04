@@ -378,7 +378,7 @@ async function createWorkspaceDefaults(
   // identically — it just can't be edited in Settings until the first save
   // materialises the set. Failing workspace creation over that trades a working
   // workspace for a cosmetic one.
-  await seedDefaultPipelineStages({ orgId: org.id, client }).catch((error) => {
+  await seedDefaultPipelineStages({ orgId: org.id, client, industry }).catch((error) => {
     reportDegraded(error, { scope: "workspace-onboarding.seedDefaultPipelineStages", surface: "secondary" });
     return 0;
   });
