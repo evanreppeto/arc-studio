@@ -177,7 +177,7 @@ describe("POST /api/v1/arc/campaigns/submit-variants", () => {
     expect(promoteMock).not.toHaveBeenCalled();
   });
 
-  it("returns 401 when the bearer token is rejected", async () => {
+  it("refuses the write when the bearer token cannot be verified", async () => {
     configure();
     const bad = new Request("http://localhost/api/v1/arc/campaigns/submit-variants", {
       method: "POST",
@@ -185,7 +185,13 @@ describe("POST /api/v1/arc/campaigns/submit-variants", () => {
       body: JSON.stringify({ campaign_id: "c", asset_type: "video_ad", variants: [] }),
     });
     const res = await POST(bad);
-    expect(res.status).toBe(401);
+    // These tests point at an unreachable Supabase, so the token store cannot
+    // answer — and "I could not verify this" is now 503, distinct from the 401
+    // that means "this token is not ours". The security property under test is
+    // unchanged: the request is refused and nothing is read or written. The 401
+    // path is covered where the store can be made to answer (see the
+    // token-store test below, and src/lib/auth/check-agent-bearer.test.ts).
+    expect(res.status).toBe(503);
     expect(promoteMock).not.toHaveBeenCalled();
   });
 });

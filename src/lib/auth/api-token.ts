@@ -14,7 +14,7 @@ import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabas
 
 export type BearerTokenResult =
   | { ok: true; orgId?: string; workspaceId?: string; tokenSource: "env" | "database" }
-  | { ok: false; status: 401 | 503; reason: "unauthorized" | "not_configured" };
+  | { ok: false; status: 401 | 503; reason: "unauthorized" | "not_configured" | "unavailable" };
 
 type HeaderCarrier = { headers: { get(name: string): string | null } };
 
@@ -79,6 +79,7 @@ export async function checkWorkspaceBearer(
       }
       return { ok: true, tokenSource: "database", orgId: verified.orgId, workspaceId: verified.workspaceId };
     }
+    if (verified.reason === "unavailable") return { ok: false, status: 503, reason: "unavailable" };
     return { ok: false, status: 401, reason: "unauthorized" };
   }
 
@@ -111,11 +112,15 @@ async function anyAgentTokenConfigured(): Promise<boolean> {
 }
 
 async function verifyConfiguredAgentToken(plaintext: string): Promise<VerifyAgentTokenResult> {
-  if (!isSupabaseAdminConfigured()) return { ok: false };
+  // No Supabase is a CONFIGURATION state, not an outage: there is no token store
+  // on this deployment, so this token is simply not one of ours and the caller's
+  // `anyConfigured` check decides between 401 and 503. Only a throw means the
+  // store exists and we failed to reach it — that one is retryable.
+  if (!isSupabaseAdminConfigured()) return { ok: false, reason: "not_found" };
   try {
     return await verifyAgentToken(plaintext, getSupabaseAdminClient());
   } catch {
-    return { ok: false };
+    return { ok: false, reason: "unavailable" };
   }
 }
 
@@ -153,6 +158,12 @@ export async function checkAgentBearer(request: HeaderCarrier, deps: AgentBearer
       }
       deferAfterResponse(recordSeen);
       return { ok: true, tokenSource: "database", orgId: verified.orgId, workspaceId: verified.workspaceId };
+    }
+    // The lookup failed rather than answering. Saying 401 here tells a caller
+    // holding a perfectly good credential to give up — this is what stranded a
+    // completed opportunity scan as `queued` on 2026-08-04. 503 is retryable.
+    if (verified.reason === "unavailable") {
+      return { ok: false, status: 503, reason: "unavailable" };
     }
   }
 
