@@ -21,6 +21,12 @@ export type RunRow = {
   /** A line of Arc's own prose rather than an action — rendered as text, with no
    *  label and no status tick. */
   isNarration?: boolean;
+  /**
+   * The tool's own input/output, verbatim, for the disclosure under a tool row.
+   * `detail` carries the one-line summary of it; this is the text behind the
+   * "Show raw" toggle. Redacted before it gets here (BSR-724).
+   */
+  payload?: string;
 };
 
 /** One turn in the backend-less demo conversation (no persistence). */
