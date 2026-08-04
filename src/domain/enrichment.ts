@@ -5,19 +5,23 @@
  * translation, with no I/O. The live vendor lookup lives behind an injectable
  * provider in `src/lib/integrations/enrichment/`; here we only map a fetched
  * `EnrichmentFields` object onto:
- *   1. `PartnerScoreSignals` — so firmographic size feeds `calculateScores`'s
- *      partnerScore (the note in the ticket: firmographics ≈ partner tier).
- *   2. a normalized firmographics record persisted as lead/company metadata.
- *   3. an enriched `LeadIngestionInput` (tier stamped on the company block) so an
+ *   1. a normalized firmographics record persisted as lead/company metadata.
+ *   2. an enriched `LeadIngestionInput` (tier stamped on the company block) so an
  *      enrichment pass augments an imported lead through the SAME gated ingest
  *      path — never a separate outbound or auto-write path.
+ *
+ * There was a third: `mapEnrichmentToPartnerSignals`, which turned firmographics
+ * into `PartnerScoreSignals` for `calculateScores`. Nothing ever called it —
+ * `applyEnrichmentToLead` stamps the tier on the company block directly, and
+ * scoring reads it from there. Removed rather than left as a second, unused way
+ * to say the same thing (BSR-751).
  *
  * Kept pure so it's unit-testable against fixtures with no network. Enrichment is
  * read-IN only: it augments records, it never contacts anyone.
  */
 
 import { type LeadIngestionInput } from "./lead-ingestion";
-import { type PartnerScoreSignals, type PartnerTier } from "./scoring";
+import { type PartnerTier } from "./scoring";
 
 export type EnrichmentFields = {
   /** Canonical company name from the vendor (may differ from CRM). */
@@ -69,17 +73,6 @@ export function deriveTierFromEnrichment(fields: EnrichmentFields): PartnerTier 
   if (meets(ENRICHMENT_TIER_THRESHOLDS.a)) return "A";
   if (meets(ENRICHMENT_TIER_THRESHOLDS.b)) return "B";
   return "C";
-}
-
-/**
- * Map enrichment firmographics onto the partner-scoring signals the app already
- * consumes. Only the tier is derivable from firmographics; the relationship
- * signal (warm intro vs cold) is a CRM/relationship fact, not a firmographic one,
- * so it is intentionally left unset here.
- */
-export function mapEnrichmentToPartnerSignals(fields: EnrichmentFields): PartnerScoreSignals {
-  const tier = deriveTierFromEnrichment(fields);
-  return tier ? { tier } : {};
 }
 
 /** The normalized, snake_case firmographics record stored as metadata. */
