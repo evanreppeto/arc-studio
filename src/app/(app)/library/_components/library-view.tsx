@@ -546,6 +546,22 @@ export function LibraryView({
   const toggleSel = (id: number) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const selmode = sel.size > 0;
 
+  // Select-all acts on what's on screen — the current folder, filter chips and
+  // search — never the whole library. Selecting 400 hidden assets from a view
+  // showing 6 is how someone makes 400 of them Arc-available by accident.
+  const shownIds = useMemo(() => list.map((a) => a.id), [list]);
+  const allShownSelected = shownIds.length > 0 && shownIds.every((id) => sel.has(id));
+  const someShownSelected = !allShownSelected && shownIds.some((id) => sel.has(id));
+  const toggleSelectAllShown = () =>
+    setSel((prev) => {
+      const next = new Set(prev);
+      // Clearing drops only what's shown, so a selection made under a different
+      // filter survives — the count in the bar would otherwise lie.
+      if (shownIds.every((id) => next.has(id))) shownIds.forEach((id) => next.delete(id));
+      else shownIds.forEach((id) => next.add(id));
+      return next;
+    });
+
   const sortLabel = sortBy === "recent" ? "Recent" : sortBy === "name" ? "Name" : "Most used";
   const cycleSort = () => setSortBy((s) => (s === "recent" ? "name" : s === "name" ? "used" : "recent"));
 
@@ -910,6 +926,24 @@ export function LibraryView({
               <span key={k} className={`chip${curKind === k ? " on" : ""}`} onClick={() => setCurKind((c) => (c === k ? "all" : k))}>{label}</span>
             ))}
             <span className="gspacer" />
+            {/* Selecting many assets at once was already wired end to end — bulk
+                Arc-availability, add-to-campaign, move-to-folder — but the only
+                way in was a checkbox that appears on hover, so on a trackpad you
+                had to find it by accident and on a touch screen not at all.
+                This states the capability, and acts on exactly what's filtered
+                rather than the whole library. */}
+            <button
+              type="button"
+              className={`selall${allShownSelected ? " on" : ""}`}
+              disabled={list.length === 0}
+              onClick={toggleSelectAllShown}
+              title={allShownSelected ? "Clear the selection" : `Select all ${list.length} assets shown`}
+            >
+              <span className={`selall-box${allShownSelected ? " on" : someShownSelected ? " some" : ""}`} aria-hidden="true">
+                {allShownSelected ? CHECK : someShownSelected ? <span className="selall-dash" /> : null}
+              </span>
+              {allShownSelected ? "Clear" : `Select all${list.length ? ` (${list.length})` : ""}`}
+            </button>
             <span className="sortbtn" onClick={cycleSort}><svg viewBox="0 0 24 24"><path d="M7 4v16M7 20l-3-3M7 4l3 3M17 20V4M17 4l3 3M17 20l-3-3" /></svg>{sortLabel}</span>
             <span className="selwrap">
               <button type="button" className={`sb${viewMode === "grid" ? " on" : ""}`} aria-label="Grid view" aria-pressed={viewMode === "grid"} title="Grid" onClick={() => setViewMode("grid")}><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></button>
@@ -1013,7 +1047,17 @@ export function LibraryView({
                       {a.kind === "video" && <span className="vbadge"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></span>}
                       {a.risk && <span className="risk" title="Risk flag"><Ico d='<path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z"/>' /></span>}
                       <div className="ov">
-                        <span className={`ck${sel.has(a.id) ? " on" : ""}`} onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}>{CHECK}</span>
+                        {/* A button, not a span: this was the only way to select
+                            an asset and it was unreachable by keyboard and
+                            invisible to a screen reader. */}
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={sel.has(a.id)}
+                          aria-label={`Select ${a.nm}`}
+                          className={`ck${sel.has(a.id) ? " on" : ""}`}
+                          onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}
+                        >{CHECK}</button>
                         <div className="qa">
                           <button title="Add to campaign" onClick={(e) => { e.stopPropagation(); window.location.href = NEW_CAMPAIGN; }}><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /></button>
                           <button title="Edit in Studio" onClick={(e) => { e.stopPropagation(); window.location.href = STUDIO; }}><Ico d='<path d="M4 5h16v14H4z"/><path d="M4 14l5-4 4 3 3-2 4 3"/>' /></button>
@@ -1041,7 +1085,14 @@ export function LibraryView({
                     <tr key={a.id} className={sel.has(a.id) ? "sel" : ""} onClick={() => openDetail(a)}>
                       <td>
                         <div className="lname">
-                          <span className={`ck-l${sel.has(a.id) ? " on" : ""}`} onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}>{sel.has(a.id) ? CHECK : null}</span>
+                          <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={sel.has(a.id)}
+                            aria-label={`Select ${a.nm}`}
+                            className={`ck-l${sel.has(a.id) ? " on" : ""}`}
+                            onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}
+                          >{sel.has(a.id) ? CHECK : null}</button>
                           <span className="lthumb"><ThumbMedia a={a} /></span>
                           <span className="ln">{a.nm}</span>
                         </div>

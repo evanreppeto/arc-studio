@@ -5,6 +5,7 @@ import { ImageResponse } from "next/og";
 import {
   CREATIVE_DIMENSIONS,
   CREATIVE_LAYOUTS,
+  pickLogoForBackground,
   withLayoutOverride,
   type BrandTokens,
   type CreativeCopy,
@@ -19,6 +20,13 @@ import type { CreativeTemplate } from "./types";
 import { templateBold } from "./templates/bold";
 import { templateEditorial } from "./templates/editorial";
 import { templateMinimal } from "./templates/minimal";
+
+/** The background each template's logo area actually sits on. See renderCreative. */
+const LOGO_BACKGROUND: Record<CreativeTemplateId, "light" | "dark"> = {
+  bold: "dark",
+  editorial: "dark",
+  minimal: "dark",
+};
 
 const TEMPLATES: Record<CreativeTemplateId, CreativeTemplate> = {
   bold: templateBold,
@@ -54,8 +62,20 @@ export async function renderCreative(
 ): Promise<{ bytes: Buffer; contentType: "image/png" }> {
   const dims = CREATIVE_DIMENSIONS[input.format];
   const backgroundDataUrl = await toDataUrl(input.backgroundUrl);
-  const logoDataUrl = input.brand.logoUrl
-    ? await toDataUrl(input.brand.logoUrl).catch(() => null) // a broken logo must not kill the render
+  // Which logo variant actually suits this template's logo area. Every template
+  // today draws the mark over the background photo or a charcoal scrim — their
+  // short-mark fallbacks are all set in `c("light")`, i.e. light-on-dark — so
+  // all three resolve "dark". Stated per template rather than assumed, because
+  // the day one puts the logo on a paper panel this is the line that has to
+  // change, and a template drawing a white knocked-out mark on white paper
+  // produces an image that looks fine to every check except a human eye.
+  const logoBackground = LOGO_BACKGROUND[input.template] ?? "dark";
+  const chosenLogo = pickLogoForBackground(input.brand.logos ?? [], logoBackground);
+  // No variants uploaded → the single mirror logo, which is what every
+  // workspace had before the set existed.
+  const logoUrl = chosenLogo?.url ?? input.brand.logoUrl;
+  const logoDataUrl = logoUrl
+    ? await toDataUrl(logoUrl).catch(() => null) // a broken logo must not kill the render
     : null;
   const fonts = await loadCreativeFonts(input.brand);
   const template = TEMPLATES[input.template] ?? templateBold;
