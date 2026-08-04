@@ -89,11 +89,29 @@ describe("extraEvidenceRows", () => {
 
     expect(rows).toEqual([
       { label: "Advisory area", value: "Cook, DuPage, Will — IL" },
-      { label: "Active flood advisories", value: "062c799e, dba405db" },
+      // The ids themselves are unreadable and unlookupable; the count is the fact.
+      { label: "Active flood advisories", value: "2" },
       { label: "Media available approved", value: "0" },
       { label: "Service areas configured", value: "None" },
       { label: "Draft assets", value: "Suburban Home Background Asset" },
     ]);
+  });
+
+  it("withholds plumbing: a tool-call string is not evidence", () => {
+    // Both verbatim from the live inbox, 2026-08-04. These rendered as
+    // "Source — read_recent_activity + query_brain(campaign_ref)…" on the card.
+    expect(extraEvidenceRows({ tools: "read_recent_activity + query_brain(campaign_ref)" })).toEqual([]);
+    expect(extraEvidenceRows({ method: "mcp__arc__search_companies (total=10, full roster read)" })).toEqual([]);
+  });
+
+  it("withholds a key that names Arc's own lookup rather than the business", () => {
+    expect(extraEvidenceRows({ read_performance_persona_slices: "empty (0 slices returned)" })).toEqual([]);
+    expect(extraEvidenceRows({ list_campaigns: 4 })).toEqual([]);
+  });
+
+  it("keeps business keys that merely start with a verb Arc also uses", () => {
+    expect(extraEvidenceRows({ record_count: 12 })).toEqual([{ label: "Record count", value: "12" }]);
+    expect(extraEvidenceRows({ won_revenue_usd: 24800 })).toEqual([{ label: "Won revenue USD", value: "24800" }]);
   });
 
   it("preserves the order Arc wrote the keys in", () => {
