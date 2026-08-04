@@ -74,16 +74,36 @@
 
 /* stage */
 .arc-studio .stage { min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--canvas); }
-.arc-studio .toolbar { display: flex; align-items: center; flex-wrap: wrap; row-gap: 7px; gap: 5px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
-.arc-studio .tgrp { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.arc-studio .tglabel { font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; padding: 0 5px 0 2px; flex-shrink: 0; }
-.arc-studio .tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 54px; height: 46px; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; color: var(--text-2); cursor: pointer; transition: 0.13s; flex-shrink: 0; position: relative; }
-.arc-studio .tool:hover { background: rgba(255, 255, 255, 0.04); color: var(--text); }
+/* One row, scrolled — not wrapped.
+   Thirteen 46px stacked tiles plus standalone dividers wrapped into FOUR rows in
+   the 476px stage a 1280px window leaves, 225px of chrome above the artboard,
+   with a floating 30px rule stranded at the start of every wrapped row. Nothing
+   fits thirteen labelled controls across 476px, so this stops pretending: the
+   tools are compact inline pills on a single non-wrapping row that scrolls when
+   the stage is narrow and simply fits when it isn't. Groups stay atomic so a
+   label never separates from its tools. */
+.arc-studio .toolbar { display: flex; align-items: center; flex-wrap: nowrap; column-gap: 16px; padding: 7px 14px; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.arc-studio .toolbar::-webkit-scrollbar { display: none; }
+/* Scroll shadows, the pure-CSS way: the two `local` layers are painted in the
+   canvas colour and travel with the content, so they cover the `scroll` shadows
+   underneath them except where there is more toolbar in that direction. No JS,
+   and no permanent fade on a wide screen where nothing is cut off. */
+.arc-studio .toolbar {
+  background:
+    linear-gradient(90deg, var(--canvas) 40%, transparent) left center / 34px 100% no-repeat local,
+    linear-gradient(270deg, var(--canvas) 40%, transparent) right center / 34px 100% no-repeat local,
+    linear-gradient(90deg, rgba(0, 0, 0, 0.42), transparent) left center / 18px 100% no-repeat scroll,
+    linear-gradient(270deg, rgba(0, 0, 0, 0.42), transparent) right center / 18px 100% no-repeat scroll;
+}
+.arc-studio .tgrp { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.arc-studio .tgrpt { display: flex; align-items: center; gap: 2px; }
+.arc-studio .tglabel { font-size: 8.5px; font-weight: 700; letter-spacing: 0.11em; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
+.arc-studio .tool { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-2); font-family: inherit; cursor: pointer; transition: 0.13s; flex-shrink: 0; position: relative; }
+.arc-studio .tool:hover { background: rgba(255, 255, 255, 0.045); color: var(--text); }
 .arc-studio .tool.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--text); }
-.arc-studio .tool svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.7; }
-.arc-studio .tool .tlbl { font-size: 9.5px; font-weight: 600; white-space: nowrap; }
-.arc-studio .tool.ai .tdot { position: absolute; top: 5px; right: 7px; width: 4px; height: 4px; border-radius: 50%; background: var(--warn); }
-.arc-studio .tdiv { width: 1px; height: 30px; background: var(--line-2); margin: 0 5px; flex-shrink: 0; }
+.arc-studio .tool svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; flex-shrink: 0; }
+.arc-studio .tool .tlbl { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.arc-studio .tool.ai .tdot { width: 4px; height: 4px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
 .arc-studio .formats { display: flex; align-items: center; gap: 7px; padding: 11px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .arc-studio .modeseg { display: flex; gap: 2px; background: var(--inset); border: 1px solid var(--line-2); border-radius: 8px; padding: 2px; }
 .arc-studio .modeseg span { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--muted); padding: 5px 10px; border-radius: 6px; cursor: pointer; transition: 0.14s; }
@@ -103,15 +123,64 @@
 .arc-studio .szbtn.on { color: var(--accent-contrast); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-studio .szbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-studio .zoom { font-family: var(--mono); font-size: 10px; color: var(--muted); padding: 0 4px; }
-.arc-studio .stagewrap { flex: 1; min-height: 0; display: grid; place-items: center; padding: 22px; overflow: auto; background: radial-gradient(120% 90% at 50% 0, rgba(200, 162, 74, 0.05), transparent 60%); }
-.arc-studio .artboard { display: flex; flex-direction: column; align-items: center; gap: 13px; max-width: 100%; }
+/* The artboard STRETCHES to the stage rather than hugging its content — the
+   canvas measures itself against that height (see .canvasfit), so it has to be
+   real, not derived from the canvas it is about to size. */
+.arc-studio .stagewrap { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr; padding: 22px; overflow: auto; background: radial-gradient(120% 90% at 50% 0, rgba(200, 162, 74, 0.05), transparent 60%); }
+/* min-content, not 0: it lets the artboard grow past the stage when the fit box
+   hits its floor, which is what gives .stagewrap something to scroll. Safe
+   against the circularity `container-type: size` exists to prevent — the fit
+   box's min-content contribution is its own min-height, not the canvas's. */
+.arc-studio .artboard { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; min-width: 0; min-height: min-content; }
+/* `container-type: size` (which implies `contain: size`) is what makes this
+   work and what it costs: the box no longer contributes its contents' height to
+   the artboard, so flex hands it exactly the space left after .cspec — and only
+   then do its children read that height back as 100cqh. Without the
+   containment the canvas would be sizing itself from a height it had just
+   determined.
+
+   The 200px min-height is the floor: on a stage too short to be worth scaling
+   into, the artboard stops shrinking and the stage scrolls instead of serving a
+   thumbnail nobody can work in. */
+.arc-studio .canvasfit { flex: 1 1 auto; min-height: 200px; width: 100%; container-type: size; display: grid; place-items: center; }
 .arc-studio .cspec { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; justify-content: center; font-family: var(--mono); font-size: 10px; color: var(--muted); }
 .arc-studio .cspec b { color: var(--text-2); font-weight: 600; }
 .arc-studio .cspec .dotsep { width: 3px; height: 3px; border-radius: 50%; background: var(--line-3); }
 .arc-studio .cspec .draftpill { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 5px; padding: 1px 7px; font-weight: 600; letter-spacing: 0.02em; }
 /* container-type makes 100cqw the artboard's own width, so a design unit
    (n / 1080 * 100cqw) is exactly the n * u the renderer computes. */
-.arc-studio .canvas { container-type: inline-size; position: relative; aspect-ratio: 1 / 1; width: min(100%, 440px); height: auto; border-radius: 13px; overflow: hidden; box-shadow: 0 30px 80px -36px rgba(0, 0, 0, 0.95); background: #222a30; border: 1px solid var(--line-2); transition: aspect-ratio 0.3s var(--ease); }
+/* Bounded BOTH ways. `aspect-ratio` on its own cannot fit a height: a
+   max-height clamps the used height and leaves the width alone, which squashes
+   the ratio instead of scaling the box. So the height constraint is expressed
+   as a width instead — `100cqh × --ar-num` is the widest this box may be and
+   still fit the space .canvasfit gave it — and `min()` picks whichever of the
+   three limits binds. A 1:1 artboard used to render 421px tall in a 313px
+   stage and scroll; now it shrinks to fit.
+   No min-width here on purpose: a floor on the WIDTH fights the fit rather than
+   bounding it — at 9:16 it forced a 320px-tall canvas into a 213px box, which
+   `contain: size` on .canvasfit then let paint straight over the spec line.
+   The floor belongs on .canvasfit, where overflowing it means scrolling.
+   Width is in the transition alongside aspect-ratio, not left to snap: with
+   only the ratio easing, switching 9:16 → 16:9 took the new width instantly
+   against the old ratio and the box ballooned to ~630px mid-flight, over the
+   spec line and off the top of the stage. Eased together, the height holds
+   steady across the change. */
+.arc-studio .canvas { container-type: inline-size; position: relative; aspect-ratio: 1 / 1; width: min(100%, 440px, calc(100cqh * var(--ar-num, 1))); height: auto; border-radius: 13px; overflow: hidden; box-shadow: 0 30px 80px -36px rgba(0, 0, 0, 0.95); background: #222a30; border: 1px solid var(--line-2); transition: aspect-ratio 0.3s var(--ease), width 0.3s var(--ease); }
+/* The finished render, on the artboard. Until this existed a generated creative
+   never appeared at size anywhere — the canvas kept showing the live composite
+   of the SOURCE photo, and the output was a 42px thumbnail in a list. */
+.arc-studio .prevbar { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 9px 18px; border-bottom: 1px solid var(--ok-border); background: var(--ok-soft); }
+.arc-studio .prevbar .pvi { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; background: rgba(127, 184, 154, 0.22); color: var(--ok-text); flex-shrink: 0; }
+.arc-studio .prevbar .pvi svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.4; }
+.arc-studio .prevbar .pvt { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.arc-studio .prevbar .pvt b { font-size: 11.5px; font-weight: 600; color: var(--text); }
+.arc-studio .prevbar .pvt span { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-studio .pvback { margin-left: auto; flex-shrink: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; height: 27px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--panel); color: var(--text-2); font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer; transition: 0.14s; }
+.arc-studio .pvback:hover { border-color: var(--accent-border); color: var(--text); }
+.arc-studio .pvback svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; }
+/* object-fit: contain, not the canvas's cover — this IS the artifact, so it is
+   shown whole even when the draft's ratio differs from the format chip. */
+.arc-studio .canvas.prev { background: var(--canvas-deep); display: grid; place-items: center; }
 .arc-studio .canvas .cbg { position: absolute; inset: 0; }
 .arc-studio .canvas .cbg > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* Shown when a live workspace has no approved media and nothing uploaded yet —
@@ -144,31 +213,74 @@
 .arc-studio .vidtl .tk .pl { position: absolute; left: 0; top: 0; bottom: 0; width: 34%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); }
 .arc-studio .vidtl .tk .ph { position: absolute; left: 34%; top: 50%; transform: translate(-50%, -50%); width: 12px; height: 12px; border-radius: 50%; background: var(--accent-contrast); box-shadow: 0 0 0 3px rgba(200, 162, 74, 0.25); }
 .arc-studio .vidtl .tm { font-family: var(--mono); font-size: 10px; color: var(--muted); flex-shrink: 0; }
-.arc-studio .strip { display: flex; align-items: center; gap: 9px; padding: 11px 18px; border-top: 1px solid var(--line); min-height: 78px; }
-.arc-studio .strip .sl { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+/* Scrolls rather than overflows: the thumbs plus the label plus the button run
+   past 476px in a 1280px window, and the strip has no wrap to fall back on —
+   "Ask Arc for variations" was rendering 149px inside the inspector column. */
+.arc-studio .strip { display: flex; align-items: center; flex-wrap: nowrap; gap: 9px; padding: 11px 18px; border-top: 1px solid var(--line); min-height: 78px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.arc-studio .strip::-webkit-scrollbar { display: none; }
+.arc-studio .strip .sl { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .arc-studio .vthumb { width: 52px; height: 52px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line-2); position: relative; cursor: pointer; flex-shrink: 0; transition: border-color 0.15s, transform 0.15s var(--ease); }
 .arc-studio .vthumb:hover { border-color: var(--accent-border); transform: translateY(-2px); }
 .arc-studio .vthumb.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.arc-studio .vthumb > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.arc-studio .vthumb > svg, .arc-studio .vthumb > img, .arc-studio .vthumb > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .arc-studio .vthumb .vtag { position: absolute; bottom: 0; left: 0; right: 0; font-size: 7.5px; font-weight: 600; text-align: center; padding: 1px 0; background: rgba(16, 16, 19, 0.74); color: var(--text-2); }
 .arc-studio .vsdiv { width: 1px; height: 38px; background: var(--line-2); }
-.arc-studio .vgen { margin-left: auto; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: 0.14s; }
+/* white-space: nowrap — squeezed by the thumbs this wrapped onto three lines
+   and blew the strip's height out. */
+.arc-studio .vgen { margin-left: auto; flex-shrink: 0; white-space: nowrap; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: 0.14s; }
 .arc-studio .vgen:hover { background: rgba(200, 162, 74, 0.2); }
 .arc-studio .vgen svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
 /* inspector */
 .arc-studio .insp { border-left: 1px solid var(--line); min-height: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--canvas-deep) 18%, transparent); }
 .arc-studio .itabs { display: flex; gap: 4px; padding: 11px 14px 0; flex-shrink: 0; }
-.arc-studio .itab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--muted); padding: 9px 6px; border-radius: 9px 9px 0 0; cursor: pointer; transition: 0.14s; border-bottom: 2px solid transparent; }
+.arc-studio .itab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--muted); padding: 9px 6px; border: 0; background: transparent; font-family: inherit; border-radius: 9px 9px 0 0; cursor: pointer; transition: 0.14s; border-bottom: 2px solid transparent; }
 .arc-studio .itab svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-studio .itab:hover { color: var(--text-2); }
 .arc-studio .itab.on { color: var(--text); border-bottom-color: var(--accent); }
 .arc-studio .itab .ibadge { font-family: var(--mono); font-size: 9px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 5px; padding: 0 5px; line-height: 15px; }
-.arc-studio .ipane { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--line); }
-.arc-studio .dwrap { padding: 16px 16px 38px; }
-.arc-studio .psec { margin-bottom: 20px; }
-.arc-studio .ph2 { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin: 0 0 11px; display: flex; align-items: center; gap: 8px; }
+
+/* The pane is a COLUMN, not a scroll box. It used to be `overflow: auto` with
+   no flex context, which quietly made `.arc { flex: 1 }` a no-op: the Arc
+   composer laid out directly under the intro text, mid-panel, with the rest of
+   the pane empty below it. Scrolling now belongs to .iscroll/.arcscroll, so
+   both tabs can pin a footer to the bottom of the inspector. */
+.arc-studio .ipane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-top: 1px solid var(--line); }
+.arc-studio .iscroll { flex: 1; min-height: 0; overflow: auto; }
+.arc-studio .ifoot { flex-shrink: 0; border-top: 1px solid var(--line); padding: 11px 14px 13px; background: color-mix(in srgb, var(--canvas-deep) 30%, transparent); }
+.arc-studio .ifoot .exrow:last-of-type { margin-bottom: 0; }
+.arc-studio .ifoot .scapt { margin-top: 8px; }
+.arc-studio .ifooterr { margin: 0 2px 8px; font-size: 11px; color: var(--red-text); line-height: 1.45; }
+.arc-studio .ifootwarn { margin: 0 2px 8px; font-size: 11px; color: var(--warn-text); line-height: 1.45; }
+.arc-studio .dwrap { padding: 16px 16px 24px; }
+
+/* Sections are <details>: nine stacked headers meant everything below the third
+   was a scroll away, whichever one you actually wanted. */
+.arc-studio .psec { margin-bottom: 6px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.arc-studio .psec:last-child { border-bottom: none; }
+.arc-studio .ph2 { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin: 0; padding: 10px 2px; display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; transition: color 0.14s; }
+.arc-studio .ph2::-webkit-details-marker { display: none; }
+.arc-studio .ph2:hover { color: var(--text-2); }
+.arc-studio .psec[open] > .ph2 { color: var(--text-2); }
+.arc-studio .phchev { display: grid; place-items: center; width: 12px; height: 12px; color: var(--line-3); transition: transform 0.18s var(--ease); }
+.arc-studio .phchev svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+.arc-studio .psec[open] > .ph2 .phchev { transform: rotate(90deg); color: var(--accent); }
+.arc-studio .psecb { padding: 3px 2px 12px; }
 .arc-studio .ph2 .tagv { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.04em; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 4px; padding: 1px 5px; text-transform: none; }
+
+/* Draft review: the render is the thing being judged, so it gets a thumbnail
+   you can actually see, and clicking it puts it on the artboard at full size. */
+.arc-studio .draftrow { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.arc-studio .draftrow:last-of-type { border-bottom: none; }
+.arc-studio .draftthumb { width: 66px; height: 66px; flex-shrink: 0; padding: 0; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; background: var(--inset); cursor: pointer; transition: border-color 0.15s, transform 0.15s var(--ease); }
+.arc-studio .draftthumb:hover { border-color: var(--accent-border); transform: translateY(-1px); }
+.arc-studio .draftthumb.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.arc-studio .draftthumb img, .arc-studio .draftthumb video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.arc-studio .draftmeta { min-width: 0; flex: 1; }
+.arc-studio .draftmeta .actl { margin-top: 7px; padding: 0; }
+/* Permanently true, never derived — a footnote, not a second finding competing
+   with the one computed above it. */
+.arc-studio .gnote { margin-top: 9px; font-size: 10px; line-height: 1.5; color: var(--muted); border-left: 2px solid var(--line-2); padding-left: 9px; }
 .arc-studio .brief { border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, var(--accent-soft), transparent 70%); padding: 13px; margin-bottom: 20px; }
 .arc-studio .brief .bh { display: flex; align-items: center; gap: 8px; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: var(--accent-contrast); text-transform: uppercase; }
 .arc-studio .brief .bn { font-family: var(--serif); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 7px 0 3px; }
@@ -241,14 +353,31 @@
 .arc-studio .archead .am { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
 .arc-studio .archead .at { font-size: 12.5px; font-weight: 600; }
 .arc-studio .archead .ad { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
-.arc-studio .archead .ad i { width: 4px; height: 4px; border-radius: 50%; background: var(--ok); animation: studioBreathe 3s var(--ease) infinite; }
+.arc-studio .archead .ad i { width: 4px; height: 4px; border-radius: 50%; background: var(--ok); animation: studioBreathe 3s var(--ease) infinite; flex-shrink: 0; }
+/* A long campaign name wrapped this line onto two rows and pushed the head out
+   of alignment; one line, clipped, is enough — the picker above holds the full name. */
+.arc-studio .archead .ad span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* What askArc() actually appends to every message, made visible. */
+.arc-studio .arcctxbar { display: flex; align-items: center; gap: 5px; padding: 8px 16px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.arc-studio .arcctxbar .acx { font-family: var(--mono); font-size: 9px; letter-spacing: 0.04em; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: 5px; padding: 2px 6px; }
+.arc-studio .arcctxbar .acxn { margin-left: auto; font-size: 9.5px; color: var(--muted); }
 .arc-studio .arcscroll { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px; }
 /* Honest empty state for the Arc pane: the composer below starts a real Arc
    conversation and routes to /arc, so no transcript is ever rendered here. */
 .arc-studio .arcempty { padding: 6px 2px; }
-.arc-studio .arcempty-t { font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
-.arc-studio .arcempty-d { font-size: 11.5px; line-height: 1.65; color: var(--muted); margin: 0 0 10px; }
+.arc-studio .arcempty-t { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 7px; }
+.arc-studio .arcempty-d { font-size: 11.5px; line-height: 1.6; color: var(--muted); margin: 0 0 16px; }
 .arc-studio .arcempty-d b { color: var(--text-2); font-weight: 600; }
+/* Two paragraphs of prose was the whole empty state. Openers give the pane
+   something to do; they only fill the box — nothing is sent. */
+.arc-studio .arcstart-l { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.arc-studio .arcstart { display: flex; flex-direction: column; gap: 6px; }
+.arc-studio .starter { text-align: left; font-family: inherit; font-size: 11.5px; line-height: 1.45; color: var(--text-2); background: var(--panel); border: 1px solid var(--line-2); border-radius: 9px; padding: 8px 11px; cursor: pointer; transition: 0.14s; }
+.arc-studio .starter:hover:not(:disabled) { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
+.arc-studio .starter:disabled { opacity: 0.5; cursor: default; }
+.arc-studio .arcempty-f { font-size: 10.5px; line-height: 1.6; color: var(--muted); margin: 16px 0 0; }
+.arc-studio .arcempty-f b { color: var(--text-2); font-weight: 600; }
 .arc-studio .amsg { margin-bottom: 14px; }
 .arc-studio .amsg.op { display: flex; justify-content: flex-end; }
 .arc-studio .amsg.op .bub { background: var(--inset); border: 1px solid var(--line-2); border-radius: 12px 12px 4px 12px; padding: 9px 12px; font-size: 12px; max-width: 88%; color: var(--text); }
@@ -286,10 +415,11 @@
 .arc-studio .achip:hover { border-color: var(--accent-border); color: var(--text); background: var(--accent-soft); }
 .arc-studio .achip svg { width: 12px; height: 12px; stroke: var(--accent); fill: none; stroke-width: 1.8; }
 .arc-studio .composer { border-top: 1px solid var(--line); padding: 11px 14px 13px; flex-shrink: 0; background: color-mix(in srgb, var(--canvas-deep) 30%, transparent); }
-.arc-studio .modes { display: flex; gap: 5px; margin-bottom: 9px; }
-.arc-studio .mode { font-size: 10.5px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 11px; cursor: pointer; transition: 0.14s; }
+.arc-studio .modes { display: flex; gap: 5px; }
+.arc-studio .mode { font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--muted); background: transparent; border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 11px; cursor: pointer; transition: 0.14s; }
 .arc-studio .mode:hover { color: var(--text-2); }
 .arc-studio .mode.on { color: var(--accent-contrast); border-color: var(--accent-border); background: var(--accent-soft); }
+.arc-studio .modehint { font-size: 10px; color: var(--muted); margin: 7px 2px 9px; line-height: 1.4; }
 .arc-studio .cbox { border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); padding: 9px 11px; display: flex; align-items: flex-end; gap: 9px; transition: border-color 0.14s; }
 .arc-studio .cbox:focus-within { border-color: var(--accent-border); }
 .arc-studio .cbox textarea { flex: 1; border: none; background: transparent; color: var(--text); font-family: inherit; font-size: 12px; resize: none; outline: none; line-height: 1.5; max-height: 80px; }
@@ -359,4 +489,7 @@
 @media (max-width: 820px) {
   .arc-studio .insp { min-height: 78vh; }
   .arc-studio .arcscroll { min-height: 42vh; }
+  /* Same reason as .arcscroll: the Design pane now pins its Generate footer, so
+     its scroller needs a floor too or the sections collapse behind the footer. */
+  .arc-studio .iscroll { min-height: 42vh; }
 }
