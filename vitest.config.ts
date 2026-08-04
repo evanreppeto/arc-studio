@@ -27,6 +27,12 @@ export default defineConfig({
     // value. The tests were right; the budget was measuring the bundler.
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    // The JSON report is what `scripts/check-test-timing.mjs` measures. Emitted
+    // from the normal run so the numbers come from wherever the suite actually
+    // ran — CI's contended runner included — rather than from a second, idle
+    // pass that would understate the cost this budget exists to absorb
+    // (BSR-739).
+    reporters: ["default", ["json", { outputFile: "test-results.json" }]],
   },
   resolve: {
     alias: {
