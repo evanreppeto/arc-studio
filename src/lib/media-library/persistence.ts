@@ -318,8 +318,38 @@ export async function loadAssetForLearning(
   };
 }
 
-export async function moveAsset(id: string, folderId: string | null, client: SupabaseClient = getSupabaseAdminClient()) {
-  await updateRow(client, "media_assets", { folder_id: folderId }, id);
+/**
+ * File an asset into a folder, or to the Library root when `folderId` is null.
+ *
+ * Org-scoped like every other mutator here, and it was the one that wasn't
+ * (BSR-707). It used to take no orgId and update on `id` alone. That was safe
+ * only because its single caller — Arc's `arcFileAsset` — checks the asset's
+ * and the target folder's owner before calling. Safe by external convention is
+ * not the same as safe, and the second caller is where that runs out; this
+ * function now refuses a row it does not own on its own terms.
+ *
+ * Note the ORDER of the two conditions on the target folder: the caller must
+ * still verify the folder belongs to the org. Scoping the UPDATE to the asset's
+ * org stops you writing another tenant's asset, not writing YOUR asset into
+ * their folder.
+ *
+ * Returns false when nothing matched, so a caller can tell "not yours" from
+ * "done" rather than reporting a silent no-op as success.
+ */
+export async function moveAsset(
+  id: string,
+  folderId: string | null,
+  orgId: string,
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<boolean> {
+  const { data, error } = await client
+    .from("media_assets" as string)
+    .update({ folder_id: folderId })
+    .eq("id", id)
+    .eq("org_id", orgId)
+    .select("id");
+  if (error) throw new Error(`media_assets update failed: ${error.message}`);
+  return ((data ?? []) as unknown[]).length > 0;
 }
 
 export async function setAssetTags(id: string, tags: string[], orgId: string, client: SupabaseClient = getSupabaseAdminClient()): Promise<boolean> {
