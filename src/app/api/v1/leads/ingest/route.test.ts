@@ -56,7 +56,13 @@ describe("POST /api/v1/leads/ingest auth", () => {
 
     const response = await POST(req("{", "wrong"));
 
-    expect(response.status).toBe(401);
+    // These tests point at an unreachable Supabase, so the token store cannot
+    // answer — and "I could not verify this" is now 503, distinct from the 401
+    // that means "this token is not ours". The security property under test is
+    // unchanged: the request is refused and nothing is read or written. The 401
+    // path is covered where the store can be made to answer (see the
+    // token-store test below, and src/lib/auth/check-agent-bearer.test.ts).
+    expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({
       ok: false,
       status: "unauthorized",
