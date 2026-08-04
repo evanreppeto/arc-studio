@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 
 import { derivedShortLabel, type BillingNotice } from "@/domain";
 import type { ArcRecentConversationVM } from "@/lib/arc-chat/read-model";
-import { getProductLanguage } from "@/lib/product-language";
+import { getProductLanguage, type ObjectLabelSettings } from "@/lib/product-language";
 
 import { AccountMenu } from "./account-menu";
 import { BillingNoticeBar } from "./billing-notice";
@@ -155,6 +155,7 @@ export function AppShell({
   logoUrl = null,
   avatarUrl = null,
   industry = "general",
+  objectLabels = null,
   workspaces = [],
   navBadges = {},
   recentConversations = [],
@@ -172,6 +173,8 @@ export function AppShell({
   logoUrl?: string | null;
   avatarUrl?: string | null;
   industry?: string | null;
+  /** The workspace's own object names. Renames the CRM section in the rail. */
+  objectLabels?: ObjectLabelSettings | null;
   workspaces?: WorkspaceOption[];
   navBadges?: Record<string, number>;
   recentConversations?: ArcRecentConversationVM[];
@@ -179,7 +182,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const language = getProductLanguage(industry);
+  const language = getProductLanguage(industry, objectLabels);
   const navGroups = navGroupsFor(language.crmLabel);
   // Mobile nav drawer. Below the shell breakpoint the rail is an off-canvas
   // drawer toggled from the top bar; on desktop `navOpen` is inert (the rail is
