@@ -6,11 +6,11 @@ enforced, and cross-tenant isolation is proven live (see `docs/TENANCY.md`,
 product's hardwired *vocabulary* (a restoration contractor's personas, nouns,
 fields, and stages) into tenant-defined data.
 
-**That work has shipped.** Tracks 1, 3 and 4 are complete and Track 2 shipped as
-the decided Option B. What remains is deliberate scope, not backlog: the six CRM
-objects are fixed by decision, and the vocabulary space is nine industry
-templates rather than free text. Both are recorded below with the reasoning, so
-nobody re-opens them by accident — or assumes they're already open.
+**That work has shipped.** Tracks 1, 3 and 4 are complete, Track 2 shipped as
+the decided Option B, and object labels are now free text per workspace on top of
+the industry templates. What remains is deliberate scope, not backlog: the six
+CRM objects are fixed by decision. That is recorded below with the reasoning, so
+nobody re-opens it by accident — or assumes it's already open.
 
 Product direction is settled: Arc is a broad marketing product for **all**
 company types; BSR/Summit are demo tenants. Keep every change tenant-agnostic.
@@ -25,7 +25,7 @@ company types; BSR/Summit are demo tenants. Keep every change tenant-agnostic.
 | Persona taxonomy | **Tenant-defined** | enum → `text` (`20260713120000`); the org's `personas.slug` rows are the authority |
 | Pipeline stages | **Tenant-defined** | `pipeline_stages` per org (`20260729160000`) + status enum → `text` (`20260729170000`) |
 | Custom fields | **Tenant-defined** | `custom_field_definitions` / `custom_field_values` on all six objects (`20260728180000`) |
-| Object + section labels | **Industry-derived** | `src/lib/product-language.ts` renames the six objects per industry key — a fixed map of 9, not free text |
+| Object + section labels | **Tenant-defined** | free text per workspace (`app_settings.crm_object_labels`), falling back to the 9-key industry map in `src/lib/product-language.ts` |
 | CRM objects | **Fixed by decision** | 6 typed tables; no self-serve net-new object type (Option B, below) |
 
 Verified against prod (`qqbecyrhnowmooyjiztz`) on 2026-08-03: `leads.persona`,
@@ -175,11 +175,15 @@ pipeline-stage panels, and the `/industries` marketing pages (which derive their
 vocabulary blocks from this same module at build time, so a page cannot promise
 a vocabulary onboarding won't deliver).
 
-The deviation from BSR-494 worth knowing: a tenant picks one of **nine** industry
-keys, it does not type its own noun. A law firm gets "Organizations", not
-"Matters", unless `professional_services` is edited in code. Roofing, HVAC and
-commercial cleaning all resolve to the same `home_services` label set. Free-text
-per-org labels were not built and are not scheduled.
+**Free text on top — shipped.** The industry map is now the *default*, not the
+ceiling: Settings → Records → Names lets a workspace type its own plural and
+singular per object, plus a name for the CRM section. See "What's left" below for
+the two design points (both forms required; a partial pair is refused).
+
+Note the industry map still matters — it is what a workspace that never opens
+that panel gets, and it is what the `/industries` marketing pages render (they
+call `getProductLanguage(industryKey)` with no overrides, deliberately: those
+pages must show what an industry gives you, not what one tenant renamed).
 
 **Still true, by decision:** a tenant cannot self-serve a net-new object type.
 
@@ -260,19 +264,33 @@ vocabulary, a workspace configured that way must actually render it.*
 
 ## What's left
 
-Nothing in tracks 1–4 is outstanding. Two things are open **by decision**, and
-both need real repeated tenant demand — not speculation — before they reopen:
+Nothing in tracks 1–4 is outstanding. One thing is open **by decision**, and it
+needs real repeated tenant demand — not speculation — before it reopens:
 
 1. **Net-new object types** (Option A, the metadata/JSONB engine). Its own epic.
    Every read-model, board, filter and Arc tool path is built on typed columns.
-2. **Free-text per-org object labels.** Today a tenant picks one of nine industry
-   templates. Adding a real per-org label override is small next to Option A, and
-   it is the cheaper answer if the complaint is "these nouns are close but wrong."
 
-If a tenant lands outside the nine templates, they get `general` — neutral nouns
-(Organizations / People / Sites / Leads / Projects / Outcomes) and a neutral
-persona pack. That is a working fallback, not a gap to fix with a tenth template
-each time; add a template only when a vertical is worth its own landing page too.
+**Free-text object labels — shipped.** Settings → Records → Names lets a
+workspace type its own plural and singular for each of the six objects, plus a
+name for the CRM section itself. Stored as one `app_settings` jsonb row
+(`crm_object_labels`) — no migration, following the journey-settings precedent.
+`getProductLanguage(industry, overrides)` resolves workspace words → industry
+template → `general`, per object, so renaming one thing doesn't drop the other
+five to neutral nouns.
+
+Two design points worth not re-litigating. **A workspace types both forms**: the
+singular is not derived, because "Matters" → "Matter" works and "People" →
+"Peopl" does not, and the failure lands in a button an operator reads daily.
+**A half-filled pair is refused** (`parseObjectLabelOverride` returns null),
+because a plural without a singular renders a "Matters" tab above an "Add site"
+button — one screen speaking two vocabularies is worse than either alone. The
+panel flags the incomplete row inline rather than letting a save silently drop it.
+
+If a tenant sets no override and lands outside the nine templates, they still get
+`general` — neutral nouns (Organizations / People / Sites / Leads / Projects /
+Outcomes) and a neutral persona pack. That is a working fallback, not a gap to
+fix with a tenth template each time; add a template only when a vertical is worth
+its own landing page too.
 
 ---
 

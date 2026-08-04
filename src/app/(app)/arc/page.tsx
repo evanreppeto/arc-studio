@@ -56,9 +56,11 @@ export default async function ArcPage({
   ]);
 
   // `live` = a real backend is present (conversations may still be empty on a
-  // fresh workspace — the composer works either way). Only "unavailable" (no
-  // Supabase, e.g. the local backend-less preview) falls back to the mock.
-  const live = chat.status !== "unavailable";
+  // fresh workspace — the composer works either way). Only "not_configured"
+  // (no Supabase, e.g. the local backend-less preview) falls back to the mock.
+  // A genuine failure is "error", which keeps the real composer rather than
+  // quietly showing mock data in place of a broken workspace.
+  const live = chat.status !== "not_configured";
   const waiting = summary
     ? {
         approvals: summary.approvals.length,

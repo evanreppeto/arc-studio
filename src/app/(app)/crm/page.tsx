@@ -27,7 +27,7 @@ export async function generateMetadata() {
     getAppSettings(ctx.orgId).catch(() => null),
     getBusinessProfile(ctx.orgId).catch(() => null),
   ]);
-  const { crmLabel } = getProductLanguage(appSettings?.industry || businessProfile?.industry);
+  const { crmLabel } = getProductLanguage(appSettings?.industry || businessProfile?.industry, appSettings?.objectLabels);
   return { title: `${crmLabel} — Arc Studio` };
 }
 
@@ -76,7 +76,7 @@ export default async function CrmPage() {
       ]),
     ),
   ) as Record<PipelineObjectKey, { key: string; label: string }[]>;
-  const productLanguage = getProductLanguage(appSettings?.industry || businessProfile?.industry);
+  const productLanguage = getProductLanguage(appSettings?.industry || businessProfile?.industry, appSettings?.objectLabels);
 
   // A failed counts read is NOT an empty CRM. Without this the object tiles
   // render 0 across the board, indistinguishable from a workspace with no
