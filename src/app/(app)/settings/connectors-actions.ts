@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
-import { connectorIsAvailable, findConnector, isWeatherServiceAreaConfigured, parseConnectorCredential, parseWeatherServiceArea } from "@/domain";
+import { cityFromPostalAddress, connectorIsAvailable, findConnector, isWeatherServiceAreaConfigured, parseConnectorCredential, parseWeatherServiceArea } from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
+import { getBusinessProfile } from "@/lib/brand-kit/persistence";
+import { getAppSettings } from "@/lib/settings/store";
 import { getConnectorConfig, setConnectorConfig } from "@/lib/connectors/config";
 import { platformCredentialFor, readConnectorCredential, writeConnectorCredential } from "@/lib/connectors/credentials";
 import { listWorkspaceConnectors, resolveConnectorCredentialRef } from "@/lib/connectors/read-model";
@@ -181,7 +183,20 @@ export async function testConnector(input: { connectorKey: string }): Promise<Se
       if (!isWeatherServiceAreaConfigured(area)) {
         return { ok: false, error: "Set a service area first (e.g. IL, WI) — NWS needs to know where to watch." };
       }
-      const result = await checkNwsConnection(area);
+      // What the workspace says it covers, so the probe can report points that
+      // sit outside it (BSR-756). Best-effort: an unreadable Brand Kit just
+      // means no coverage note, never a failed test.
+      const [profile, settings] = await Promise.all([
+        getBusinessProfile(ctx.orgId).catch(() => null),
+        getAppSettings(ctx.orgId).catch(() => null),
+      ]);
+      const result = await checkNwsConnection(area, {
+        serviceAreas: profile?.serviceAreas ?? null,
+        // Service areas say where the business SERVES, not where it IS. A point
+        // in the home city is the one unambiguously-covered case, and without it
+        // a workspace listing neighbourhoods would flag its own correct points.
+        homeCity: cityFromPostalAddress(settings?.emailPostalAddress),
+      });
       await recordConnectorTest(client, {
         workspaceId,
         connectorKey: connector.key,
@@ -191,10 +206,14 @@ export async function testConnector(input: { connectorKey: string }): Promise<Se
       if (!result.ok) return { ok: false, error: `Test failed: ${result.error ?? "NWS unreachable"}` };
       const areaLabel = area.states.length ? area.states.join(", ") : `${area.points.length} point(s)`;
       const forecastNote = result.forecast ? ` · ${result.forecast}` : "";
+      // A passing connectivity test that is watching the wrong place is exactly
+      // the state BSR was in, so the warning rides on the success message rather
+      // than being filed somewhere nobody looks.
+      const coverageNote = result.coverage?.warning ? ` ⚠ ${result.coverage.warning}` : "";
       return {
         ok: true,
         persisted: true,
-        message: `NWS reachable — ${result.count ?? 0} active alert(s) for ${areaLabel}${forecastNote}.`,
+        message: `NWS reachable — ${result.count ?? 0} active alert(s) for ${areaLabel}${forecastNote}.${coverageNote}`,
       };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : "Could not run the test." };
