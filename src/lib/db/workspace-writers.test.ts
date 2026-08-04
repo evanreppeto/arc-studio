@@ -54,6 +54,11 @@ const STAMPED = [
   /workspace_id/,
   /\.\.\.\s*[\w.]*[Tt]enant\b/,
   /\.\.\.\s*[\w.]*[Ss]cope\b/,
+  // `...workspaceFields` — the shape `workspaceIdFields()` results get spread as
+  // when one org-scoped call resolves the workspace once and reuses it across
+  // several inserts. Added alongside the tenant/scope spreads it belongs with;
+  // without it the check demands the variable be renamed to please a regex.
+  /\.\.\.\s*[\w.]*[Ww]orkspace[\w.]*\b/,
 ];
 
 /**
@@ -72,6 +77,12 @@ const OPAQUE_PAYLOADS: Record<string, string> = {
   // payload carries workspace_id — proved by the legacy retry a few lines down,
   // which reads `workspace_id: payload.workspace_id` off it.
   "src/lib/agent/tokens.ts:agent_api_tokens": "payload/legacyPayload both carry workspace_id",
+  // `row` is assembled ~30 lines above the upsert and opens with
+  // `org_id, ...(await workspaceIdFields(supabase, orgId))` (BSR-714).
+  "src/lib/brand-kit/persistence.ts:business_profiles": "row built above with workspaceIdFields",
+  // `rows` is mapped just above from DEFAULT_MEDIA_FOLDERS, spreading
+  // `workspaceFields` resolved once for the org (BSR-714).
+  "src/lib/media-library/persistence.ts:media_folders": "rows built above with workspaceFields",
 };
 
 /**

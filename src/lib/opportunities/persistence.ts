@@ -10,6 +10,7 @@ import {
 } from "@/domain";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { type Database } from "@/lib/supabase/database.types";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 /**
@@ -138,7 +139,11 @@ export async function upsertOpportunities(
     status: "pending",
     detected_by: "arc",
   }));
-  const { error: insErr } = await db.from("opportunities").insert(rows);
+  // Every row in this batch shares one org, so the workspace resolves once.
+  const workspaceFields = await workspaceIdFields(db, orgId);
+  const { error: insErr } = await db
+    .from("opportunities")
+    .insert(rows.map((row) => ({ ...row, ...workspaceFields })));
   if (insErr) return { ok: false, error: insErr.message };
   return persisted(rows.length, filtered);
 }
