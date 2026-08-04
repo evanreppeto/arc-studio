@@ -1,6 +1,6 @@
 import { isWonStatus, matchPersonaSlug } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
-import { listPersonas, type Persona } from "@/lib/personas/console";
+import { readPersonas, type Persona } from "@/lib/personas/console";
 import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -136,13 +136,17 @@ function toVM(p: Persona, perf: Map<string, PerfRow>, perfFailed: boolean): Pers
 
 export default async function PersonasPage({ searchParams }: { searchParams: Promise<{ inspect?: string }> }) {
   const [sp, ctx] = await Promise.all([searchParams, getCurrentWorkspaceContext().catch(() => null)]);
-  const [personas, perf] = await Promise.all([
-    listPersonas().catch(() => [] as Persona[]),
+  const [personaRead, perf] = await Promise.all([
+    // Backstop only — readPersonas already reports and describes its own failure.
+    readPersonas().catch(() => ({
+      personas: [] as Persona[],
+      failed: "We couldn't load your personas. Nothing was changed; refresh to try again.",
+    })),
     ctx
       ? personaPerf(ctx.orgId).catch(() => ({ rows: new Map<string, PerfRow>(), failed: true }))
       : Promise.resolve({ rows: new Map<string, PerfRow>(), failed: false }),
   ]);
-  const vms = personas.map((p) => toVM(p, perf.rows, perf.failed));
+  const vms = personaRead.personas.map((p) => toVM(p, perf.rows, perf.failed));
   // `?inspect=` (Arc's @-mentions link here) opens the roster on that persona.
-  return <PersonasView personas={vms} initialSlug={matchPersonaSlug(sp.inspect, vms.map((p) => p.slug))} />;
+  return <PersonasView personas={vms} failed={personaRead.failed} initialSlug={matchPersonaSlug(sp.inspect, vms.map((p) => p.slug))} />;
 }

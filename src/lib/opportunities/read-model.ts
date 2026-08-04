@@ -1,4 +1,5 @@
 import { requireCount } from "@/lib/supabase/count";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { getCurrentOrgId } from "@/lib/auth/org";
@@ -128,17 +129,34 @@ function stillOpen<T extends { evidence?: OpportunityEvidence | null }>(rows: T[
  * Open opportunities for the inbox — pending/drafting/drafted, plus any snoozed
  * card whose snooze has expired, minus any whose signal window has closed.
  * Empty when unconfigured.
+ *
+ * `failed` separates "Arc found nothing for you" from "we could not ask".
+ * Those are opposite messages and this inbox rendered them identically: an
+ * errored query returned [] and the screen said the workspace had no
+ * opportunities — the most load-bearing empty state in the product, because a
+ * quiet inbox is exactly what a working Arc looks like on a slow week. Same
+ * failure BSR-563 fixed for this page's sibling persona numbers, and BSR-544 /
+ * BSR-578 for Arc chat and the brand kit.
  */
 export async function listOpenOpportunities(
   client?: SupabaseClient,
   orgId?: string,
 ): Promise<OpportunityRecord[]> {
+  return (await readOpenOpportunities(client, orgId)).records;
+}
+
+/** As `listOpenOpportunities`, but says whether the read actually succeeded. */
+export async function readOpenOpportunities(
+  client?: SupabaseClient,
+  orgId?: string,
+): Promise<{ records: OpportunityRecord[]; failed: string | null }> {
   // Guard BEFORE touching the admin client — a default arg of
   // `getSupabaseAdminClient()` would throw during arg evaluation, before this
   // guard could run, crashing the page in demo/unconfigured mode.
   if (!client && !isSupabaseAdminConfigured()) {
     const nowIso = new Date().toISOString();
-    return isDemoDataEnabled() ? stillOpen(buildDemoOpportunities(), nowIso) : [];
+    // Not configured is an ANSWER, not an outage (BSR-546) — `failed` stays null.
+    return { records: isDemoDataEnabled() ? stillOpen(buildDemoOpportunities(), nowIso) : [], failed: null };
   }
   const nowIso = new Date().toISOString();
   const { client: db, orgId: handleOrgId } = client ? { client, orgId: null } : await resolveTenantReadHandle();
@@ -150,8 +168,11 @@ export async function listOpenOpportunities(
     .or(openOrWokenFilter(OPEN_STATUSES, nowIso))
     .order("created_at", { ascending: false })
     .limit(INBOX_LIMIT);
-  if (error) return [];
-  return stillOpen((data ?? []) as OpportunityRecord[], nowIso);
+  if (error) {
+    reportDegraded(error, { scope: "opportunities.listOpenOpportunities", surface: "primary" });
+    return { records: [], failed: "We couldn't load your opportunities. Nothing was changed; refresh to try again." };
+  }
+  return { records: stillOpen((data ?? []) as OpportunityRecord[], nowIso), failed: null };
 }
 
 /**
