@@ -11,20 +11,33 @@ import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabas
  * { ok:false, status, message }. Secrets are never echoed back.
  */
 
+/**
+ * The body for a refused bearer check.
+ *
+ * `unavailable` is deliberately NOT phrased as an auth failure: the caller's
+ * token may be perfectly valid and we simply could not verify it. Telling a
+ * healthy runner its credential is bad is what made a transient blip look like a
+ * permanent outage.
+ */
+function bearerRefusal(auth: Extract<Awaited<ReturnType<typeof checkAgentBearer>>, { ok: false }>) {
+  if (auth.reason === "not_configured") {
+    return { ok: false, status: "not_configured", message: "Set ARC_AGENT_API_TOKEN before using the Arc Operations API." };
+  }
+  if (auth.reason === "unavailable") {
+    return {
+      ok: false,
+      status: "unavailable",
+      message: "Could not verify the bearer token right now — the token store was unreachable. Retry shortly.",
+    };
+  }
+  return { ok: false, status: "unauthorized", message: "The Arc Operations API requires a valid bearer token." };
+}
+
 /** Bearer-token gate. Returns an error response, or null when authorized. */
 export async function bearerGuard(request: Request): Promise<NextResponse | null> {
   const auth = await checkAgentBearer(request);
   if (auth.ok) return null;
-  return NextResponse.json(
-    auth.reason === "not_configured"
-      ? {
-          ok: false,
-          status: "not_configured",
-          message: "Set ARC_AGENT_API_TOKEN before using the Arc Operations API.",
-        }
-      : { ok: false, status: "unauthorized", message: "The Arc Operations API requires a valid bearer token." },
-    { status: auth.status },
-  );
+  return NextResponse.json(bearerRefusal(auth), { status: auth.status });
 }
 
 /** Supabase-configured gate. Returns a 503 response, or null when configured. */
@@ -83,19 +96,7 @@ async function resolveWorkspaceIdForToken(orgId: string, workspaceIdOrKey: strin
 export async function arcGuard(request: Request): Promise<ArcGuardResult> {
   const auth = await checkAgentBearer(request);
   if (!auth.ok) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        auth.reason === "not_configured"
-          ? {
-              ok: false,
-              status: "not_configured",
-              message: "Set ARC_AGENT_API_TOKEN before using the Arc Operations API.",
-            }
-          : { ok: false, status: "unauthorized", message: "The Arc Operations API requires a valid bearer token." },
-        { status: auth.status },
-      ),
-    };
+    return { ok: false, response: NextResponse.json(bearerRefusal(auth), { status: auth.status }) };
   }
 
   const supabaseDenied = supabaseGuard();

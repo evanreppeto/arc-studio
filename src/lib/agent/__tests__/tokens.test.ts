@@ -88,7 +88,31 @@ describe("verifyAgentToken", () => {
   it("returns not-ok for an unknown token", async () => {
     const result = await verifyAgentToken("sk_live_nope", fakeClient(null));
 
-    expect(result.ok).toBe(false);
+    expect(result).toEqual({ ok: false, reason: "not_found" });
+  });
+
+  /**
+   * A failed lookup is not a verdict on the token. Both the scoped select and the
+   * legacy fallback have to fail before we say so — the fallback exists for a
+   * pre-scopes database and must not be mistaken for the outage case.
+   */
+  it("says unavailable, not not-found, when the lookup itself fails", async () => {
+    const failing = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            is: () => ({
+              maybeSingle: async () => ({ data: null, error: { message: "timeout" } }),
+            }),
+          }),
+        }),
+        update: vi.fn(),
+      }),
+    } as never;
+
+    const result = await verifyAgentToken("sk_live_valid_but_unverifiable", failing);
+
+    expect(result).toEqual({ ok: false, reason: "unavailable" });
   });
 });
 
