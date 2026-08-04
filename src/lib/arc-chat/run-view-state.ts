@@ -3,7 +3,7 @@ import type { ArcMessageStatus } from "./persistence";
 export type ArcRunViewState = "idle" | "working" | "complete" | "failed" | "canceled";
 
 export type ArcRunViewRow = {
-  status: "queued" | "running" | "done" | "error";
+  status: "queued" | "running" | "done" | "retried" | "error";
 };
 
 export function resolveArcRunViewState(input: {
@@ -20,7 +20,11 @@ export function resolveArcRunViewState(input: {
   hasWarnings: boolean;
 } {
   const rows = input.rows ?? [];
-  const completed = rows.filter((row) => row.status === "done").length;
+  // A `retried` row is a call that errored and that Arc then got right, so it is
+  // finished work and counts as such. Counting it as neither left prod reading
+  // "Completed with limitations · 19/22" on a run where all 22 activities had in
+  // fact resolved — the same false claim the run-level fix removed, one layer up.
+  const completed = rows.filter((row) => row.status === "done" || row.status === "retried").length;
   const failed = rows.filter((row) => row.status === "error").length;
   const progressLabel = rows.length > 0 ? `${completed}/${rows.length} activities` : null;
 
