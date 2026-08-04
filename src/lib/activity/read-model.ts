@@ -190,7 +190,7 @@ export async function getRecentActivity(
     // a direct filter, because task_id is nullable: a parentless run log is
     // excluded by this in() and would be included by .eq("org_id"). That is a
     // behaviour change, not a cleanup, and it does not belong in a lock migration.
-    // Tracked with the wider read-path sweep (BSR-721).
+    // Tracked with the wider read-path sweep (BSR-729).
     let scopedTaskIds: string[] = [];
     if (orgId) {
       const { data: taskRows } = await supabase.from("agent_tasks").select("id").eq("org_id", orgId);
