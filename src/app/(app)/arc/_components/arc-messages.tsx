@@ -331,7 +331,13 @@ export function RunTrace({
             {sourceRows.map((row) => (
               <div className={`arc-run-row is-${row.status}`} key={row.id}>
                 <span className="arc-run-kind"><RunIcon kind={row.kind} /></span>
-                <span className="arc-run-copy"><b>{row.label}</b>{row.detail || row.result ? <small>{[row.detail, row.result].filter(Boolean).join(" · ")}</small> : null}</span>
+                {/* `detail`/`result` are a tool's own input and output, passed
+                    through verbatim — JSON payloads, ids, and the tool's own
+                    argument names. That is payload, not vocabulary we chose, so
+                    the dev identifier check skips it the same way it skips the
+                    <pre> the run page renders the same content into. The label
+                    beside it is ours and stays checked (BSR-709). */}
+                <span className="arc-run-copy"><b>{row.label}</b>{row.detail || row.result ? <small data-identifiers-ok>{[row.detail, row.result].filter(Boolean).join(" · ")}</small> : null}</span>
                 {row.status === "error" ? <X size={14} className="arc-run-state" aria-label="Failed" /> : <Check size={14} className="arc-run-state" aria-label="Complete" />}
               </div>
             ))}
