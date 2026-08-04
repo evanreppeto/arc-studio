@@ -109,3 +109,30 @@ describe("shape boundaries", () => {
     expect(leak("Records still in needs_review will move")).toBe("needs_review");
   });
 });
+
+/**
+ * BSR-740. A live audit found primary keys on the front page — the Home hero
+ * card cited two campaigns by UUID, and the Opportunities evidence panel
+ * answered "Active flood advisories" with two bare UUIDs.
+ *
+ * None of the shapes above could see them: a UUID is neither snake_case nor
+ * CONSTANT_CASE, so this check passed on every one of those screens while the
+ * ids shipped.
+ */
+describe("primary keys", () => {
+  const UUID = "0bd41cb3-ff30-4548-92e6-4ba431b61c8d";
+
+  it("catches a uuid alone and mid-sentence", () => {
+    expect(leak(UUID)).toBe(UUID);
+    expect(leak(`"Suburban Home Background Asset" (campaign ${UUID})`)).toBe(UUID);
+  });
+
+  it("does not claim ordinary hyphenated or hex-ish copy", () => {
+    // The false-positive half again: these must all read as language.
+    expect(leak("high-intent accounts")).toBeNull();
+    expect(leak("Cook, DuPage, Will — IL")).toBeNull();
+    expect(leak("2026-08-04")).toBeNull();
+    expect(leak("60613-1204")).toBeNull();
+    expect(leak("#c8a24a")).toBeNull();
+  });
+});

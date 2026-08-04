@@ -118,12 +118,20 @@ export const TENANCY_CONTRACT = {
   // workspaces.logo_url, which is UI chrome. Two brands, two profiles.
   business_profiles: "workspace",
   // The named logo variants of that same profile — same category, same lock.
-  // Created after Wave 3 Phase B and therefore born locked: workspace_id NOT
-  // NULL, is_workspace_member RLS, and UNIQUE (workspace_id, role) rather than
-  // (org_id, role). That last one matters for the reason Phase B gives for
-  // moving business_profiles' own unique: keyed on org_id it would not merely
-  // fail to express workspace ownership, it would FORBID it — two workspaces in
-  // one org could never each have their own primary logo.
+  //
+  // NOT `pending`. An earlier resolution of this same conflict kept it as a
+  // GROUP_A straggler, correctly, because at that point the migration created
+  // the column nullable with an org_member policy and claiming "workspace"
+  // would have asserted a lock no migration had applied — the precise failure
+  // this file exists to prevent. That is no longer the tree: the migration now
+  // lands AFTER Wave 3 Phase B with workspace_id NOT NULL, an
+  // is_workspace_member policy, and UNIQUE (workspace_id, role), so a plain
+  // "workspace" is what it actually applies.
+  //
+  // The unique matters as much as the lock. Keyed on (org_id, role) it would
+  // not merely fail to express workspace ownership, it would FORBID it — two
+  // workspaces in one org could never each have their own primary logo, which
+  // is the same trap Phase B fixed on business_profiles.
   brand_logos: "workspace",
   media_assets: "workspace",
   media_folders: "workspace",
