@@ -18,6 +18,17 @@ export type OpportunitySeedInput = {
   persona?: string | null;
   /** DB `recommended_campaign_type`, if the detector set one. */
   recommendedCampaignType?: string | null;
+  /**
+   * The signal's own geography (e.g. `evidence.area` on a weather opportunity).
+   * Recorded alongside the service areas, never treated as the target.
+   */
+  signalArea?: string | null;
+  /**
+   * `business_profiles.service_areas`. Optional so existing callers keep
+   * compiling, but its absence is visible in the summary rather than silent —
+   * an unscoped campaign says so.
+   */
+  serviceAreas?: readonly string[] | null;
 };
 
 export type CampaignSeed = {
@@ -36,6 +47,56 @@ export type CampaignSeed = {
   /** Suggested campaign type label for display + provenance. */
   campaignType: string;
 };
+
+/** How many service areas to name before collapsing the rest into a count. */
+const MAX_NAMED_SERVICE_AREAS = 6;
+
+/**
+ * State the geography a campaign actually targets (BSR-756).
+ *
+ * A signal-driven campaign used to inherit the SIGNAL's geography. On prod a
+ * flood campaign was scoped to "Chicagoland" off an advisory covering Cook,
+ * DuPage and Will, while every one of the workspace's 18 service areas is a City
+ * of Chicago neighbourhood — so a geo-targeted spend would have bought
+ * impressions in two counties the business does not serve. Nothing on the path
+ * read `business_profiles.service_areas`, which had held the answer for a day.
+ *
+ * ── Why this does not compute an intersection ────────────────────────────────
+ * It cannot, honestly. NWS publishes by county ("Cook, IL"); a workspace lists
+ * whatever it calls its patch ("Lakeview", "the North Shore", "SE Portland").
+ * There is no containment data relating the two, and no reliable way to derive
+ * it from strings. Code that claimed "Lakeview ⊂ Cook, IL" would be inventing
+ * geography, which is the failure this ticket exists to stop, one level up.
+ *
+ * So: name what we serve, name what the signal covered, and state the rule that
+ * decides between them. The operator can see both and judge; nothing is asserted
+ * that was not read from a record.
+ */
+export function describeServiceAreaScope(input: {
+  /** The signal's own geography, e.g. an NWS alert area. */
+  signalArea?: string | null;
+  /** `business_profiles.service_areas` — whatever the workspace calls its patch. */
+  serviceAreas?: readonly string[] | null;
+}): string {
+  const areas = (input.serviceAreas ?? []).map((a) => (typeof a === "string" ? a.trim() : "")).filter(Boolean);
+  const signal = (input.signalArea ?? "").trim();
+
+  if (areas.length === 0) {
+    // Silence here is how the original bug read as fine. An unset service area
+    // is a real gap and the campaign should say so rather than imply coverage.
+    return signal
+      ? `Service area is not set on the Brand Kit, so targeting scope is unverified. The signal covered ${signal} — confirm what is actually serviceable before spending against it.`
+      : "Service area is not set on the Brand Kit, so targeting scope is unverified.";
+  }
+
+  const named = areas.slice(0, MAX_NAMED_SERVICE_AREAS).join(", ");
+  const rest = areas.length - MAX_NAMED_SERVICE_AREAS;
+  const coverage = `Targeting our service areas only: ${named}${rest > 0 ? ` +${rest} more` : ""}.`;
+
+  return signal
+    ? `${coverage} The signal covered ${signal}; anything outside our service areas is excluded.`
+    : coverage;
+}
 
 // Specific → generic. First match wins, so "storm surge" beats bare "storm",
 // and "water backup" beats the generic "water" fallback.
@@ -160,9 +221,15 @@ export function buildCampaignSeedFromOpportunity(
       ? humanize(restorationFocus)
       : suggestCampaignType(input.urgency, null);
   const label = persona ? personaLabel(persona) : "";
-  const audienceSummary = label
+  const who = label
     ? `${label} — matched by Arc from this opportunity signal.`
     : "Audience sourced from an Arc opportunity signal.";
+  // WHO, then WHERE. The persona half was always here; the geography half is
+  // what a signal-driven campaign silently inherited from the signal (BSR-756).
+  const audienceSummary = `${who} ${describeServiceAreaScope({
+    signalArea: input.signalArea,
+    serviceAreas: input.serviceAreas,
+  })}`.trim();
 
   return {
     name: suggestCampaignName(input.title, campaignTheme),

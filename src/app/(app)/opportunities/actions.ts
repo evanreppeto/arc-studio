@@ -12,6 +12,7 @@ import {
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { createCampaignFromOpportunity } from "@/lib/campaigns/create";
+import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
 import { runDeterministicOpportunityScan } from "@/lib/opportunities/scan";
 import { executeOpportunityDraftTask } from "@/lib/opportunities/draft-package";
@@ -194,6 +195,12 @@ async function createDraftCampaign(input: DraftCampaignFromOpportunityInput): Pr
   if (opp.campaignId) return { status: "existing", campaignId: opp.campaignId };
 
   try {
+    // The Brand Kit is what says where this business operates. Read it here so a
+    // signal-driven campaign is scoped by the workspace rather than by whatever
+    // geography the alert happened to cover (BSR-756). Best-effort: an
+    // unreadable profile must not block the draft — the summary says the scope
+    // is unverified instead of quietly implying coverage.
+    const profile = await getBusinessProfile(ctx.orgId).catch(() => null);
     const seed = buildCampaignSeedFromOpportunity(
       {
         title: opp.title,
@@ -202,6 +209,8 @@ async function createDraftCampaign(input: DraftCampaignFromOpportunityInput): Pr
         urgency: opp.urgency,
         persona: opp.persona,
         recommendedCampaignType: opp.recommendedCampaignType,
+        signalArea: typeof opp.evidence?.area === "string" ? opp.evidence.area : null,
+        serviceAreas: profile?.serviceAreas ?? null,
       },
       allowedPersonaKeys,
     );
