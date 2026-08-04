@@ -27,6 +27,7 @@ import {
   DEFAULT_AUTO_DRAFT_CONFIDENCE_FLOOR,
   DEFAULT_AUTO_DRAFT_LIMIT,
   DEFAULT_AUTO_DRAFT_MAX_PER_KIND,
+  hasSignalWindowClosed,
   humanizePersonaLabel,
   isAllowedPersona,
   selectOpportunitiesForAutoDraft,
@@ -112,6 +113,13 @@ function personaFromEvidence(evidence: unknown): string {
   if (!evidence || typeof evidence !== "object") return "";
   const value = (evidence as Record<string, unknown>).persona;
   return typeof value === "string" ? value.trim() : "";
+}
+
+/** The signal's own end-of-window, when it has one. Same JSONB shape as above. */
+function endsAtOf(evidence: unknown): string | null {
+  if (!evidence || typeof evidence !== "object") return null;
+  const value = (evidence as Record<string, unknown>).endsAt;
+  return typeof value === "string" ? value : null;
 }
 
 function toCandidate(row: PendingRow, allowedPersonaKeys: string[]): AutoDraftCandidate {
@@ -213,7 +221,14 @@ export async function runScheduledAutoDraft(
   // downstream, where a skip would already have cost a slot.
   const allowedPersonaKeys = await getOrgPersonaKeys(orgId);
 
-  const candidates = ((data ?? []) as PendingRow[]).map((row) => toCandidate(row, allowedPersonaKeys));
+  // An opportunity whose signal window has closed is not a candidate for
+  // anything (BSR-727). The inbox hides these; without the same test here the
+  // scheduled pass would go on drafting campaigns off weather alerts that ended
+  // days ago — the one place this bug spends money rather than pixels.
+  const open = ((data ?? []) as PendingRow[]).filter(
+    (row) => !hasSignalWindowClosed(endsAtOf(row.evidence), now.toISOString()),
+  );
+  const candidates = open.map((row) => toCandidate(row, allowedPersonaKeys));
   if (candidates.length === 0) return { ...empty, ran: true, skipped: "no_candidates" };
 
   const selection = selectOpportunitiesForAutoDraft({
