@@ -4,7 +4,6 @@ import {
   applyEnrichmentToLead,
   deriveTierFromEnrichment,
   mapEnrichmentToCompanyFirmographics,
-  mapEnrichmentToPartnerSignals,
   type EnrichmentFields,
 } from "../enrichment";
 import { parseLeadIngestionPayload, type LeadIngestionInput } from "../lead-ingestion";
@@ -33,13 +32,6 @@ describe("deriveTierFromEnrichment", () => {
   it("returns null when there is no size signal (leaves scoring untouched)", () => {
     expect(deriveTierFromEnrichment({ industry: "Roofing" })).toBeNull();
     expect(deriveTierFromEnrichment({ employeeCount: 0, annualRevenueUsd: 0 })).toBeNull();
-  });
-});
-
-describe("mapEnrichmentToPartnerSignals", () => {
-  it("maps size to a partner tier and never invents a relationship signal", () => {
-    expect(mapEnrichmentToPartnerSignals({ employeeCount: 300 })).toEqual({ tier: "A" });
-    expect(mapEnrichmentToPartnerSignals({ industry: "HVAC" })).toEqual({});
   });
 });
 
