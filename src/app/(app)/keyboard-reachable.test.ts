@@ -38,7 +38,7 @@ const APP_DIR = new URL(".", import.meta.url).pathname;
  * A file absent from this map must have zero.
  */
 const BASELINE: Record<string, number> = {
-  "library/_components/library-view.tsx": 20,
+  "library/_components/library-view.tsx": 19,
   "studio/_components/studio-view.tsx": 18,
   "crm/[objectKey]/[recordId]/_components/record-view.tsx": 2,
   "crm/_components/crm-board.tsx": 2,

@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatByteSize, WORK_STATE_LABEL } from "@/domain";
 
-import { createLibraryFolder, decideLibraryAsset, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, renameLibraryAsset, renameLibraryFolder, setLibraryAssetArcAvailability, setLibraryAssetTags, uploadLibraryAsset } from "../actions";
+import { createLibraryFolder, decideLibraryAsset, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, moveLibraryAssets, renameLibraryAsset, renameLibraryFolder, setLibraryAssetArcAvailability, setLibraryAssetTags, uploadLibraryAsset } from "../actions";
 import { addLibraryAssetsToCampaign } from "../actions";
 import { ImportUrlModal } from "./import-url-modal";
 import { NewFolderModal } from "./new-folder-modal";
@@ -232,7 +232,9 @@ export function LibraryView({
   const [approvedIds, setApprovedIds] = useState<Set<number>>(new Set());
   const [downloading, setDownloading] = useState(false);
   // In-session name/tag edits, overlaid on the immutable base assets.
-  const [edits, setEdits] = useState<Record<number, { nm?: string; tags?: string[] }>>({});
+  // Optimistic per-asset overlay. `folder` joined nm/tags for BSR-707 so a moved
+  // asset re-files in the grid immediately instead of after the refetch.
+  const [edits, setEdits] = useState<Record<number, { nm?: string; tags?: string[]; folder?: string }>>({});
   const [renaming, setRenaming] = useState(false);
   const [tagEditing, setTagEditing] = useState(false);
   // Folder management: which folder is being renamed / pending a delete confirm.
@@ -250,6 +252,9 @@ export function LibraryView({
   // "Add to campaign" picker. The control used to be a bare link to /campaigns,
   // which navigated away and silently discarded the selection.
   const [campaignPickOpen, setCampaignPickOpen] = useState(false);
+  const [movePickOpen, setMovePickOpen] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const selbarRef = useRef<HTMLDivElement>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -259,7 +264,7 @@ export function LibraryView({
   const allAssets = useMemo(
     () => [...uploaded, ...baseAssets]
       .filter((a) => !deletedIds.has(a.id))
-      .map((a) => (edits[a.id] ? { ...a, ...(edits[a.id].nm !== undefined ? { nm: edits[a.id].nm! } : {}), ...(edits[a.id].tags !== undefined ? { tags: edits[a.id].tags! } : {}) } : a)),
+      .map((a) => (edits[a.id] ? { ...a, ...(edits[a.id].nm !== undefined ? { nm: edits[a.id].nm! } : {}), ...(edits[a.id].tags !== undefined ? { tags: edits[a.id].tags! } : {}), ...(edits[a.id].folder !== undefined ? { folder: edits[a.id].folder! } : {}) } : a)),
     [uploaded, baseAssets, deletedIds, edits],
   );
 
@@ -288,6 +293,89 @@ export function LibraryView({
     );
     if (res.persisted) setSel(new Set());
   };
+
+  /**
+   * File the selection into a folder, or back out to the root (BSR-707).
+   *
+   * `folderId: null` is the root and a real destination — an asset that could
+   * only ever move deeper would make the tree a one-way trip.
+   *
+   * Session-only rows have no `rid` and so no database row to move; they are
+   * counted out and reported rather than silently dropped from the total.
+   */
+  const moveSelectionToFolder = async (folderId: string | null, folderName: string) => {
+    const chosen = allAssets.filter((a) => sel.has(a.id));
+    const ids = chosen.map((a) => a.rid).filter(Boolean) as string[];
+    setMovePickOpen(false);
+    if (ids.length === 0) {
+      setNotice("Those items aren't saved assets yet, so they can't be moved.");
+      return;
+    }
+    setMoving(true);
+    const res = await moveLibraryAssets({ assetIds: ids, folderId }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    setMoving(false);
+    if (!res.ok) { setNotice(res.error); return; }
+    // Reflect the move locally so the grid re-files without waiting for the
+    // refetch; the folder counts read from the same overlay.
+    for (const a of chosen) if (a.rid) applyEdit(a.id, { folder: folderId ?? "" });
+    const skipped = chosen.length - ids.length;
+    setNotice(
+      !res.persisted
+        ? "Connect a workspace to move assets between folders."
+        : `Moved ${res.moved} ${res.moved === 1 ? "asset" : "assets"} to ${res.folderName ?? folderName}.${skipped > 0 ? ` ${skipped} skipped (not saved assets).` : ""}`,
+    );
+    if (res.persisted) setSel(new Set());
+  };
+
+  /**
+   * Close either selection-bar picker on an outside click or Escape.
+   *
+   * Replaces a pair of click-catching scrim overlays. A scrim span cannot be
+   * tabbed to and ignored Escape, so a keyboard user who opened a picker was
+   * stuck with it — and BSR-664's ratchet counts each one. Covering both
+   * pickers here removes the existing scrim as well as the one this change
+   * would have added, so the file's baseline drops rather than holds.
+   *
+   * (Prose avoids naming the old markup literally: that ratchet greps raw
+   * source without stripping comments.)
+   */
+  useEffect(() => {
+    if (!campaignPickOpen && !movePickOpen) return;
+    const close = () => { setCampaignPickOpen(false); setMovePickOpen(false); };
+    function onDown(e: MouseEvent) {
+      if (selbarRef.current && !selbarRef.current.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [campaignPickOpen, movePickOpen]);
+
+  /**
+   * Folder choices for the move picker, flattened depth-first so nesting reads
+   * as indentation rather than being lost. "All assets" is the root and maps to
+   * a null folder_id — moving OUT has to be reachable or the tree is one-way.
+   */
+  const moveTargets = useMemo(() => {
+    const out: Array<{ id: string | null; name: string }> = [];
+    const walk = (nodes: Folder[], depth: number) => {
+      for (const n of nodes) {
+        if (n.f === "all") out.push({ id: null, name: "All assets (no folder)" });
+        else out.push({ id: n.f, name: `${"— ".repeat(depth)}${n.name}` });
+        if (n.children?.length) walk(n.children, depth + 1);
+      }
+    };
+    walk(tree, 0);
+    return out;
+  }, [tree]);
 
   // Folder counts over the live asset set (base assets + this session's uploads).
   const rcountLive = (f: string): number => {
@@ -466,7 +554,7 @@ export function LibraryView({
   const openDetail = (a: Asset) => { setConfirmDelete(false); setRenaming(false); setTagEditing(false); setAckOpen(false); setAckText(""); setDetail(a); };
 
   // Apply a name/tag edit to the overlay (for the grid) and the open inspector.
-  const applyEdit = (id: number, patch: { nm?: string; tags?: string[] }) => {
+  const applyEdit = (id: number, patch: { nm?: string; tags?: string[]; folder?: string }) => {
     setEdits((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
     setDetail((cur) => (cur && cur.id === id ? { ...cur, ...patch } : cur));
   };
@@ -829,7 +917,12 @@ export function LibraryView({
             </span>
           </div>
 
-          <div className={`selbar${selmode ? " show" : ""}`}>
+          {/* `menuopen` lifts the bar's `overflow: hidden` so a picker can escape
+              it. The rule has existed since the port and was never applied, so
+              "Add to campaign" opened a menu that was clipped out of sight —
+              verified by hit-testing its centre, which returned a different
+              element (BSR-707). It affects both pickers, so both drive it. */}
+          <div className={`selbar${selmode ? " show" : ""}${campaignPickOpen || movePickOpen ? " menuopen" : ""}`} ref={selbarRef}>
             <span className="sc">{sel.size} selected</span>
             <span className="sa" onClick={() => { applyArc(allAssets.filter((a) => sel.has(a.id)), true); setSel(new Set()); }}><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" /></svg>Make available to Arc</span>
             <span className="sa sa-pick" style={{ position: "relative" }}>
@@ -842,7 +935,6 @@ export function LibraryView({
               </span>
               {campaignPickOpen && campaigns.length > 0 && (
                 <>
-                  <span className="pickscrim" onClick={() => setCampaignPickOpen(false)} />
                   <span className="pickmenu" role="menu">
                     <span className="pickhd">Add {sel.size} to…</span>
                     {campaigns.map((c) => (
@@ -852,7 +944,41 @@ export function LibraryView({
                 </>
               )}
             </span>
-            <span className="sa"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>Move to folder</span>
+            {/* Real <button>s, unlike the campaign picker beside it: this file is
+                already baselined at 23 keyboard-unreachable click-spans
+                (keyboard-reachable.test.ts) and a new control should not add
+                the 24th. */}
+            <span className="sa sa-pick" style={{ position: "relative" }}>
+              <button
+                type="button"
+                className="sa-pick-trigger"
+                aria-haspopup="menu"
+                aria-expanded={movePickOpen}
+                disabled={moving}
+                onClick={() => { setMovePickOpen((o) => !o); setCampaignPickOpen(false); }}
+              >
+                <svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>
+                {moving ? "Moving…" : "Move to folder"}
+              </button>
+              {movePickOpen && (
+                <>
+                  <span className="pickmenu" role="menu">
+                    <span className="pickhd">Move {sel.size} to…</span>
+                    {moveTargets.map((f) => (
+                      <button
+                        key={f.id ?? "root"}
+                        type="button"
+                        className="pickopt"
+                        role="menuitem"
+                        onClick={() => moveSelectionToFolder(f.id, f.name)}
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                  </span>
+                </>
+              )}
+            </span>
             <button type="button" className="sa" onClick={handleDownloadSelection} disabled={downloading}>
               <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>{downloading ? "Downloading…" : "Download"}
             </button>
