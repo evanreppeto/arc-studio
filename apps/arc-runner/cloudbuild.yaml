@@ -8,6 +8,15 @@
 # secrets, and scaling flags set by deploy-cloud-run.sh are preserved (gcloud run
 # deploy merges; unspecified settings are retained). Config changes (new secrets,
 # flag changes) still go through deploy-cloud-run.sh / `gcloud run services update`.
+#
+# ⚠️ The trigger stores the GitHub repo as a literal {owner, name} — NOT a repo id.
+# Renaming the repo therefore stops this deploying, silently: the webhook starts
+# carrying the new name, the trigger's filter no longer matches, and nothing
+# errors. No `gcloud` command can repoint it (update/import/create all refuse,
+# and there is no 2nd-gen connection); the fix is to edit the existing trigger in
+# the Cloud Build console. Full procedure + the failure table in
+# docs/arc-runner-cloud-run-runbook.md → "Renaming the GitHub repo breaks this
+# trigger". Repo is `evanreppeto/arc-studio` as of 2026-08-04.
 substitutions:
   _REGION: us-central1
   _SERVICE: arc-runner
