@@ -162,7 +162,7 @@ import type {
   DemoTurn,
   ThreadItem,
 } from "./arc-view.types";
-import { DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING } from "./arc-demo-data";
+import { DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING, DEMO_WORKSPACE_CARDS } from "./arc-demo-data";
 import { ArcWorkPanel, AssetReviewPanel, ChipThumb, QuestionPrompt } from "./arc-messages";
 import { ArcLauncher, DemoConversation, LiveConversation, type OptimisticArcTurn } from "./arc-conversation";
 import { useBottomPin } from "./use-bottom-pin";
@@ -2144,7 +2144,7 @@ export function ArcView({
   const latestDemoRequest = [...demoTurns].reverse().find((turn) => turn.role === "operator")?.body;
   const latestDemoArcTurn = [...demoTurns].reverse().find((turn) => turn.role === "arc");
   const demoSeed = shouldUseDemoSeedWorkspace({ live, selectedDemoId, turnCount: demoTurns.length });
-  const workCards = live ? latestArcMessage?.actions ?? [] : demoSeed ? DEMO_PACKAGE_CARDS : [];
+  const workCards = live ? latestArcMessage?.actions ?? [] : demoSeed ? DEMO_WORKSPACE_CARDS : [];
   const reviewableWorkCards = (live || selectedDemoId === "new" ? workCards : DEMO_PACKAGE_CARDS).filter((card) => card.approval);
   // Stable key for EVERY asset this conversation references — not just the latest
   // turn's. Receipt cards render per message throughout the thread and all read
