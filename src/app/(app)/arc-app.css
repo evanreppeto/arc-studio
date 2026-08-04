@@ -2497,3 +2497,13 @@
   border: 1px solid var(--line-2);
   color: var(--text-2);
 }
+
+/* The record name is a link now, not a div — the row's click handler was the
+   only way in, and no keyboard can reach a <tr>. Inherits the name styling so
+   the table looks unchanged; underlines only on hover/focus so the column does
+   not turn into a wall of blue. */
+.arc-app .arc-grid .pnmlink { display: block; color: inherit; text-decoration: none; }
+.arc-app .arc-grid .pnmlink:hover { text-decoration: underline; text-underline-offset: 2px; }
+.arc-app .arc-grid .pnmlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+/* Was a <span onClick>. Same look, now tabbable and Enter-activated. */
+.arc-app .selbar .clr { border: 0; background: none; font: inherit; cursor: pointer; }

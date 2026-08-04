@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatByteSize, WORK_STATE_LABEL } from "@/domain";
@@ -199,8 +201,18 @@ function descKeys(key: string): string[] {
 
 // The campaigns board is the real create surface (New campaign opens a modal);
 // the old /campaigns/new static builder is no longer linked.
-const NEW_CAMPAIGN = "/campaigns";
 const STUDIO = "/studio";
+/** The campaigns LIST. Named for what it is — it was called NEW_CAMPAIGN while
+ *  pointing here, which is how a button came to say "Add to campaign" and add
+ *  nothing. `used` carries campaign NAMES only (and the live read leaves it
+ *  empty), so a usage row has no id to deep-link to. */
+const CAMPAIGNS = "/campaigns";
+
+/** Studio, opened on a specific asset when it is a real stored one. Session/demo
+ *  rows have no `rid`, so they fall back to Studio's own default selection. */
+function a_studioHref(asset: { rid?: string | null } | null): string {
+  return asset?.rid ? `${STUDIO}?asset=${encodeURIComponent(asset.rid)}` : STUDIO;
+}
 
 export function LibraryView({
   assets,
@@ -251,6 +263,7 @@ export function LibraryView({
   const [notice, setNotice] = useState<string | null>(null);
   // "Add to campaign" picker. The control used to be a bare link to /campaigns,
   // which navigated away and silently discarded the selection.
+  const router = useRouter();
   const [campaignPickOpen, setCampaignPickOpen] = useState(false);
   const [movePickOpen, setMovePickOpen] = useState(false);
   const [moving, setMoving] = useState(false);
@@ -1065,8 +1078,27 @@ export function LibraryView({
                           onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}
                         >{CHECK}</button>
                         <div className="qa">
-                          <button title="Add to campaign" onClick={(e) => { e.stopPropagation(); window.location.href = NEW_CAMPAIGN; }}><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /></button>
-                          <button title="Edit in Studio" onClick={(e) => { e.stopPropagation(); window.location.href = STUDIO; }}><Ico d='<path d="M4 5h16v14H4z"/><path d="M4 14l5-4 4 3 3-2 4 3"/>' /></button>
+                          {/* Was `window.location.href = "/campaigns"`. The button
+                              said "Add to campaign" and added nothing — it
+                              full-reloaded to the campaigns LIST, discarding the
+                              selection on the way, while addLibraryAssetsToCampaign
+                              sat wired to the bulk bar a few lines below. It now
+                              selects this asset and opens that same picker. */}
+                          <button
+                            title="Add to campaign"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (campaigns.length === 0) { setNotice("Create a campaign first, then you can add media to it."); return; }
+                              setSel(new Set([a.id]));
+                              setCampaignPickOpen(true);
+                            }}
+                          ><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /></button>
+                          {/* Was a full reload to /studio that dropped the asset.
+                              Studio now takes ?asset=<id> and opens on it. */}
+                          <button
+                            title="Edit in Studio"
+                            onClick={(e) => { e.stopPropagation(); router.push(a.rid ? `${STUDIO}?asset=${encodeURIComponent(a.rid)}` : STUDIO); }}
+                          ><Ico d='<path d="M4 5h16v14H4z"/><path d="M4 14l5-4 4 3 3-2 4 3"/>' /></button>
                           <button title="Open" onClick={(e) => { e.stopPropagation(); openDetail(a); }}><Ico d='<path d="M7 17L17 7M9 7h8v8"/>' /></button>
                         </div>
                       </div>
@@ -1215,7 +1247,7 @@ export function LibraryView({
                 {detail.used.length ? (
                   <>
                     <div className="isec">Used in {detail.used.length}</div>
-                    {detail.used.map((u, i) => <a key={i} className="usedrow" href={NEW_CAMPAIGN}><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /><span>{u}</span><span className="go">→</span></a>)}
+                    {detail.used.map((u, i) => <Link key={i} className="usedrow" href={CAMPAIGNS}><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /><span>{u}</span><span className="go">→</span></Link>)}
                   </>
                 ) : (
                   <>
@@ -1224,9 +1256,18 @@ export function LibraryView({
                   </>
                 )}
                 <div className="iacts">
-                  <a className="gbtn gold full" href={STUDIO}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>Generate a variation</a>
-                  <a className="gbtn" href={STUDIO}><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M4 14l5-4 4 3 3-2 4 3" /></svg>Edit in Studio</a>
-                  <a className="gbtn" href={NEW_CAMPAIGN}><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add to campaign</a>
+                  <Link className="gbtn gold full" href={a_studioHref(detail)}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /><path d="M19 15l.9 2.6L22 18.5l-2.1.9L19 22l-.9-2.6L16 18.5l2.1-.9z" /></svg>Make an ad from this</Link>
+                  <Link className="gbtn" href={a_studioHref(detail)}><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M4 14l5-4 4 3 3-2 4 3" /></svg>Edit in Studio</Link>
+                  <button
+                    type="button"
+                    className="gbtn"
+                    onClick={() => {
+                      if (campaigns.length === 0) { setNotice("Create a campaign first, then you can add media to it."); return; }
+                      setSel(new Set([detail.id]));
+                      setDetail(null);
+                      setCampaignPickOpen(true);
+                    }}
+                  ><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add to campaign</button>
                   <button
                     type="button"
                     className="gbtn full"

@@ -41,7 +41,17 @@ const BASELINE: Record<string, number> = {
   "library/_components/library-view.tsx": 19,
   "studio/_components/studio-view.tsx": 18,
   "crm/[objectKey]/[recordId]/_components/record-view.tsx": 2,
-  "crm/_components/crm-board.tsx": 2,
+  // Was 2, now 1. "Clear" became a <button>, and the record name became a real
+  // <Link> — previously the row's <tr onClick> was the ONLY way to open a
+  // record, so it was unreachable by keyboard, unannounced as a link, and
+  // impossible to cmd-click into a new tab.
+  //
+  // The <tr onClick> itself remains and still counts here, correctly: this
+  // check cannot tell that it is now a redundant convenience target sitting
+  // over a real link. Removing it would cost mouse users the whole-row click
+  // they expect, and adding a role= to quieten the count would be marking the
+  // problem instead of fixing it. One is the honest number.
+  "crm/_components/crm-board.tsx": 1,
   "_components/share-dialog.tsx": 1,
   "brand/_components/brand-view.tsx": 1,
   "campaigns/[campaignId]/_components/campaign-detail-view.tsx": 1,
