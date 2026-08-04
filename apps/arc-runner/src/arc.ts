@@ -69,6 +69,48 @@ export type ArcTurnResult = {
  * add CRM-interaction + brain writes). Each tool reports a running -> done step
  * to the chat bubble, producing the live trace. Outbound has no tool in any mode.
  */
+/**
+ * The runaway rails we set ourselves (`maxTurns`, `maxBudgetUsd`), as the SDK
+ * reports them: it raises the non-success result as an error, e.g. "Claude Code
+ * returned an error result: Reached maximum number of turns (12)".
+ *
+ * Hitting one is not the same as crashing. On 2026-08-04 a Studio question
+ * ("put our logo on the side of the car") ran 2.5 minutes on the fast tier,
+ * spent all 12 turns reading the workspace, and the operator got "Arc hit an
+ * error generating a reply. Check the runner logs." — every word Arc had already
+ * written was thrown away with the exception.
+ */
+const RAIL_STOP_RE = /maximum number of turns|max(?:imum)? budget/i;
+
+/** Told to the operator when a turn stops on a rail with an answer in hand. */
+const RAIL_STOP_NOTE =
+  "_Arc stopped here — this turn ran out of steps before it finished. Ask again to pick up where it left off._";
+
+/**
+ * Iterate a query stream, ending it cleanly when the run trips one of our own
+ * rails instead of letting the exception unwind the turn.
+ *
+ * A generator rather than a try/catch around the loop body: the caller's loop is
+ * long, and wrapping it would re-indent ~130 lines of unrelated code for a
+ * three-line behaviour change. Anything that isn't a rail stop still throws.
+ */
+async function* untilRailStop<T>(source: AsyncIterable<T>, onStop: (message: string) => void): AsyncGenerator<T> {
+  const iterator = source[Symbol.asyncIterator]();
+  for (;;) {
+    let next: IteratorResult<T>;
+    try {
+      next = await iterator.next();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!RAIL_STOP_RE.test(message)) throw error;
+      onStop(message);
+      return;
+    }
+    if (next.done) return;
+    yield next.value;
+  }
+}
+
 const REPLY_STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "in", "is", "it", "of", "on", "or", "that", "the", "this", "to", "was", "were", "with",
 ]);
@@ -396,15 +438,21 @@ async function runArcQuery(opts: {
 
   await step(STEP_REASONING, "running");
 
-  for await (const message of query({
-    prompt: promptInput(opts.content, opts.ctx.scope.conversationId ?? "arc-turn"),
-    options: buildQueryOptions({
-      inference: opts.inference,
-      systemPrompt: system,
-      mcpServers: { arc: arcServer, ...remoteServers },
-      allowedTools: [...allowedToolNames(opts.mode, opts.skill), ...remoteAllowed],
+  let railStop: string | null = null;
+  for await (const message of untilRailStop(
+    query({
+      prompt: promptInput(opts.content, opts.ctx.scope.conversationId ?? "arc-turn"),
+      options: buildQueryOptions({
+        inference: opts.inference,
+        systemPrompt: system,
+        mcpServers: { arc: arcServer, ...remoteServers },
+        allowedTools: [...allowedToolNames(opts.mode, opts.skill), ...remoteAllowed],
+      }),
     }),
-  })) {
+    (message) => {
+      railStop = message;
+    },
+  )) {
     if (message.type === "stream_event") {
       const event = message.event;
       seenEventShapes.add(
@@ -539,7 +587,19 @@ async function runArcQuery(opts: {
   // commentary on work in progress. Narration lives in the trace instead, shown
   // above the answer in the order Arc wrote it.
   const replyChunks = assistantChunks.filter((_, index) => !narrationChunks.has(index));
-  const body = assembleReplyBody(replyChunks, resultText);
+  // A rail stop with nothing written is a failed turn and still reads as one —
+  // there is no answer to salvage, so let the caller record the error. With an
+  // answer in hand, ship it and say it was cut short. Note the usage numbers:
+  // they only arrive on the success result, so a salvaged turn meters as zero
+  // tokens. That is an undercount, logged rather than hidden.
+  if (railStop) {
+    console.warn(
+      `[arc-runner] run stopped on a rail (${railStop}) — ${replyChunks.some((chunk) => chunk.trim()) ? "returning the partial answer; usage for this turn is NOT metered" : "nothing written, failing the turn"}`,
+    );
+    if (!replyChunks.some((chunk) => chunk.trim())) throw new Error(railStop);
+  }
+  const assembled = assembleReplyBody(replyChunks, resultText);
+  const body = railStop ? `${assembled}\n\n${RAIL_STOP_NOTE}` : assembled;
   const reasoning = thinkingStream.value().trim() || null;
   console.log(
     `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars} | narration chunks: ${narrationChunks.size}/${assistantChunks.length} | tool calls: ${toolLog.value().length}${toolLog.dropped() ? ` (+${toolLog.dropped()} over cap, not recorded)` : ""} | timeline: ${timeline.join(" ")}`,

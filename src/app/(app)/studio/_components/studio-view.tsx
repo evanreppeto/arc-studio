@@ -1252,7 +1252,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     None of it came from Arc. Replaced with an honest description of what
                     the composer below actually does. */}
                 <div className="archead">
-                  <span className="am">A</span>
+                  {/* Arc's own mark, not a serif "A" in a box — the monogram read as a
+                      stray letter next to the name it was already spelling out. */}
+                  <span className="am"><img src="/brand/arc-mark.png" alt="" /></span>
                   <div style={{ minWidth: 0 }}>
                     <div className="at">Arc</div>
                     <div className="ad"><i /><span>{selectedCampaignLabel ? `Working in ${selectedCampaignLabel}` : "No campaign selected"}</span></div>
@@ -1322,12 +1324,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       )}
                       {logoHint ? (
                         <div className="arcnote" role="note">
-                          <b>Your logo goes on top of the picture, not into it.</b> Arc strips text and
-                          branding out of every generated image on purpose, then composites your real Brand
-                          kit logo as a corner lockup. It can&rsquo;t paint the logo onto an object in the
-                          scene — a door, a van panel, a sign — because that would mean inventing branded
-                          property you don&rsquo;t have. For a branded vehicle in shot, upload a real photo
-                          of it to the <b>Library</b> and use that as the background.
+                          {/* The lead-in is its own line, not a bold run-on: it ran straight
+                              into the body ("…not into it.Arc strips text…") and read as a
+                              typo in the one place the operator is being told why the thing
+                              they asked for isn't going to happen. */}
+                          <b className="arcnote-h">Your logo goes on top of the picture, not into it.</b>
+                          <span>
+                            Arc strips text and branding out of every generated image on purpose, then
+                            composites your real Brand kit logo as a corner lockup. It can&rsquo;t paint the
+                            logo onto an object in the scene — a door, a van panel, a sign — because that
+                            would mean inventing branded property you don&rsquo;t have. For a branded vehicle
+                            in shot, upload a real photo of it to the <b>Library</b> and use that as the
+                            background.
+                          </span>
                         </div>
                       ) : null}
                       {convId && (
