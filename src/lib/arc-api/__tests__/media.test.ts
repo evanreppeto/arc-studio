@@ -70,7 +70,9 @@ describe("arcFileAsset", () => {
     const supabase = createSupabaseQueryMock({
       media_assets: [
         { data: { org_id: ORG }, error: null }, // asset ownership lookup
-        { data: null, error: null }, // move (update)
+        // The move is org-scoped now and returns the updated row (BSR-707);
+        // `null` here meant "nothing matched", i.e. not this org's asset.
+        { data: [{ id: "a-1" }], error: null }, // move (update ... select)
       ],
       media_folders: { data: { org_id: ORG }, error: null }, // target folder lookup
     });
@@ -84,7 +86,7 @@ describe("arcFileAsset", () => {
     const supabase = createSupabaseQueryMock({
       media_assets: [
         { data: { org_id: ORG }, error: null },
-        { data: null, error: null },
+        { data: [{ id: "a-1" }], error: null },
       ],
     });
     const result = await arcFileAsset({ asset_id: "a-1", folder_id: null }, { client: supabase as never, orgId: ORG });

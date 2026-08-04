@@ -37,10 +37,13 @@ export const DEMO_THREADS: ArcThreadGroupVM[] = [
   },
 ];
 
+// Carries `running`/`active` straight off the thread fixtures so the offline
+// preview shows the same rail states a live workspace does — a fixture that
+// flattened them would make the preview lie about a field prod really sets.
 export const DEMO_RECENT_CONVERSATIONS: ArcRecentConversationVM[] = DEMO_THREADS
   .flatMap((group) => group.items)
-  .slice(0, 3)
-  .map(({ id, title, when }) => ({ id, title, when }));
+  .slice(0, 5)
+  .map(({ id, title, when, running, active }) => ({ id, title, when, running, defaultActive: active }));
 
 export const DEMO_STEPS: ArcStep[] = [
   { label: "Read the pricing-intent brief", status: "done", at: "9:38 AM", kind: "think" },

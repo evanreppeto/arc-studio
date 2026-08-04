@@ -141,7 +141,8 @@ describe("POST /api/v1/arc/media", () => {
     const supabase = createSupabaseQueryMock({
       media_assets: [
         { data: { org_id: "org-2" }, error: null },
-        { data: null, error: null },
+        // Org-scoped move returns the updated row (BSR-707).
+        { data: [{ id: "a-1" }], error: null },
       ],
       media_folders: { data: { org_id: "org-2" }, error: null },
     });
