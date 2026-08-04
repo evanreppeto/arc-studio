@@ -1,6 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type NoteStatus, type VaultNote } from "@/domain";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 export type VaultNoteRow = {
   slug: string;
@@ -81,7 +82,10 @@ export async function getVaultNoteBySlug(supabase: SupabaseClient, slug: string,
 export async function upsertVaultNote(supabase: SupabaseClient, note: VaultNote, orgId: string): Promise<void> {
   const { error } = await supabase
     .from("vault_notes")
-    .upsert({ ...vaultNoteToRow(note), org_id: orgId }, { onConflict: "org_id,slug" });
+    .upsert(
+      { ...vaultNoteToRow(note), org_id: orgId, ...(await workspaceIdFields(supabase, orgId)) },
+      { onConflict: "org_id,slug" },
+    );
   if (error) throw new Error(`vault_notes upsert failed: ${error.message}`);
 }
 
