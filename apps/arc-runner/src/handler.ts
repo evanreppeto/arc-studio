@@ -95,6 +95,35 @@ export async function handleOpportunityDraft(
   }
 }
 
+/** Longest of Arc's own words to inline in the task summary; the full text is kept in outputs. */
+const SCAN_REASON_CHARS = 400;
+
+/**
+ * One line describing what a scan did, for the task record.
+ *
+ * A scan that proposes nothing is the case this exists for. On 2026-08-04 Arc
+ * read the CRM, personas, activity, companies and settings, proposed nothing,
+ * and wrote 1,471 characters explaining why — which the runner then discarded,
+ * because only `actions.length` was ever recorded. From the outside that is
+ * indistinguishable from a scan that crashed, and working out which took an hour
+ * of log archaeology. Arc's reason belongs on the record.
+ *
+ * Pure and exported so the wording is assertable.
+ */
+export function scanCompletionSummary(cardCount: number, body: string | null | undefined): string {
+  const count = `Opportunity scan complete — proposed ${cardCount} opportunity(ies).`;
+  if (cardCount > 0) return count;
+
+  const reason = (body ?? "").trim().replace(/\s+/g, " ");
+  if (!reason) {
+    // Silence here is itself the finding: nothing was proposed AND nothing was
+    // said, which is a different problem from a considered "nothing to add".
+    return `${count} Arc gave no reason.`;
+  }
+  const clipped = reason.length > SCAN_REASON_CHARS ? `${reason.slice(0, SCAN_REASON_CHARS - 1).trim()}…` : reason;
+  return `${count} Arc's reason: ${clipped}`;
+}
+
 /**
  * Handle an `arc_opportunity_scan` wake: run Arc in SCAN mode to survey CRM /
  * personas / brand / activity and propose pending opportunities. Everything stays
@@ -124,15 +153,23 @@ export async function handleOpportunityScan(
     // `/complete` never unlocks outbound. Mirrors handleCampaignTask's background
     // (no-conversation) branch.
     await client.apiPost(`/api/v1/arc/tasks/${payload.agentTaskId}/complete`, {
-      summary: `Opportunity scan complete — proposed ${result.actions.length} opportunity(ies).`,
-      outputs: { actions: result.actions },
+      summary: scanCompletionSummary(result.actions.length, result.body),
+      // `reply` is Arc's full account of the pass — the part that used to be
+      // thrown away. `toolCalls` says what it actually looked at, which is how
+      // you tell "read everything, judged there was nothing new" apart from
+      // "barely looked".
+      outputs: { actions: result.actions, reply: result.body ?? "", toolCalls: result.toolCalls },
     });
   } catch (error) {
     console.error(`[arc-runner] opportunity-scan run failed (task ${payload.agentTaskId}):`, error);
     captureRunnerError(error, { run: "opportunity-scan", agentTaskId: payload.agentTaskId });
+    // Name the error on the record. "Check the runner logs" is what this said
+    // before, and on 2026-08-04 that sent the diagnosis to Cloud Logging for an
+    // hour to recover one line that was already in hand here.
+    const detail = error instanceof Error ? error.message : String(error);
     await client
       .apiPost(`/api/v1/arc/tasks/${payload.agentTaskId}/block`, {
-        reason: "Arc hit an error running the opportunity scan. Check the runner logs.",
+        reason: `Arc hit an error running the opportunity scan: ${detail}`,
       })
       .catch(() => undefined);
   }
