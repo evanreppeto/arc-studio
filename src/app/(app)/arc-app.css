@@ -77,6 +77,34 @@
   .arc-app .page-enter { animation: none; }
 }
 
+/* ⚠ This animation carries a `transform`, which makes .page-enter the
+   containing block for every `position: fixed` DESCENDANT (CSS Transforms 1
+   §3). So inside a page, `position: fixed` means "fixed to the content pane",
+   not "fixed to the viewport". Measured at 1080x820, a .modal-overlay rendered
+   at top=91 left=236 width=844 — below the top bar, right of the rail, both
+   still clickable behind an aria-modal dialog.
+
+   Note the animation is the only transform here, so under the reduced-motion
+   rule above the computed transform is `none` and the SAME overlay covers the
+   full viewport. Anything relying on the pane-scoped behavior is relying on the
+   user not having asked for less motion.
+
+   Overlays that mean to cover the shell therefore portal out of here, into
+   #arc-overlay-root (see _components/overlay-portal.tsx). Deliberately
+   pane-scoped things stay put and must not claim `aria-modal`:
+   `.arc-history` (an absolutely-positioned drawer over the Arc pane), and the
+   dropdown dismiss-scrims — `.sortscrim`, `.ctl-backdrop`, `.sa-backdrop`,
+   `.triage-scrim`. Do NOT portal those four: each is a click-catcher paired
+   with an absolutely-positioned menu one z-index above it, and .page-enter's
+   transform also makes this a stacking context, so moving only the scrim to
+   the shell would paint it over its own menu. */
+
+/* Portal host for shell-wide overlays, rendered by app-shell.tsx as a child of
+   .arc-app — inside it for the design tokens, outside .app and .page-enter so
+   nothing establishes a containing block. `display: contents` so the host can
+   never contribute a box of its own to the shell's layout. */
+.arc-app #arc-overlay-root { display: contents; }
+
 /* The single <main> landmark (app-shell.tsx) sits between .main and .page-enter.
    It has to be the same transparent flex passthrough they are: with no rule it
    is a block box that sizes to its content, which breaks the chain of bounded
