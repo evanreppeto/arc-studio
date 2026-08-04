@@ -24,7 +24,11 @@ const SRC = join(new URL("../../", import.meta.url).pathname);
 /** Files that sanitise or detect identifiers for DISPLAY. Not input validation. */
 const DISPLAY_MODULES = [
   "domain/identifier-leak.ts",
-  "app/(app)/opportunities/prose.ts",
+  // Was `app/(app)/opportunities/prose.ts` until the sanitiser moved into the
+  // domain, so the campaign claims review could use it too — `src/lib` must not
+  // import from `src/app`. This guard caught its own list going stale, which is
+  // the point of listing the files rather than globbing for them.
+  "domain/arc-prose.ts",
 ];
 
 describe("the uuid shape has one definition", () => {

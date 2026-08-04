@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
   parseConsideredAudiences,
+  humanizeArcProse,
   normalizeHandoffNote,
   toWorkState,
   WORK_STATE_LABEL,
@@ -2721,7 +2722,12 @@ function groupFindingsByAsset(rows: GuardrailFindingRow[]): Map<string, Campaign
     const finding: CampaignAssetFinding = {
       claim: row.matched_text ?? "",
       severity: row.severity,
-      message: row.finding_message,
+      // The claims reviewer had been narrating its own lookups into this field —
+      // "searches for 'reply' returned nothing", learning ids, tool names. The
+      // runner's tool contract stops new ones; this reaches the rows already
+      // written, which no prompt change ever can. Removes plumbing only: every
+      // claim, number and caveat survives.
+      message: humanizeArcProse(row.finding_message) || row.finding_message,
     };
     const group = byAsset.get(row.campaign_asset_id);
     if (group) group.push(finding);
@@ -2738,9 +2744,13 @@ function pickRecommendation(rows: ApprovalRecommendationRow[] | undefined): Camp
   return {
     agent: row.agent,
     verdict: row.recommendation,
-    rationale: row.rationale ?? "",
+    // Same treatment as the findings: strip the plumbing, keep the judgement.
+    // Falling back to the raw value matters — a passage that is ENTIRELY machine
+    // text would otherwise clean to an empty string, and a blank rationale reads
+    // as "the reviewer said nothing" rather than "the reviewer said it badly".
+    rationale: humanizeArcProse(row.rationale) || row.rationale || "",
     riskFlags: asStringArray(row.risk_flags),
-    suggestedEdits: row.suggested_edits ?? "",
+    suggestedEdits: humanizeArcProse(row.suggested_edits) || row.suggested_edits || "",
   };
 }
 

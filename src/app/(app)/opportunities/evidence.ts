@@ -1,4 +1,4 @@
-import { isMachineText, isProcessKey } from "./prose";
+import { isMachineText, isProcessKey } from "@/domain";
 import type { OpportunityVM } from "./_components/opportunity-inbox";
 
 /**
