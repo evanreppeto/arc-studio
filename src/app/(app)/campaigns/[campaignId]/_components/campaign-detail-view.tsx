@@ -30,10 +30,10 @@ import { buildPerformanceLearning, type CampaignPerformancePanel, type Performan
 
 import { Modal } from "../../../_components/modal";
 import { ShareDialog } from "../../../_components/share-dialog";
+import { DeliverableCopy, markId, ReviewBlock, statusMeta, svg, type Tone } from "./deliverable-review";
 import { ExternalSendModal } from "./external-send-modal";
+import { ReviewQueue } from "./review-queue";
 import {
-  highlightClaims,
-  isBlocker,
   isCleanForBulkApproval,
   splitSuggestedEdits,
   summarizeReview,
@@ -47,7 +47,6 @@ import {
   unshareCampaignMemberAction,
 } from "../../sharing-actions";
 
-const svg = (d: string, cls?: string) => <svg viewBox="0 0 24 24" className={cls} dangerouslySetInnerHTML={{ __html: d }} />;
 
 const CATEGORY_LABEL: Record<CampaignWorkspaceAssetCategory, string> = {
   physical: "Direct & physical",
@@ -78,22 +77,6 @@ function downloadMarkdown(filename: string, content: string): void {
   URL.revokeObjectURL(url);
 }
 
-type Tone = "ok" | "amber" | "red" | "gray" | "blue";
-
-function statusMeta(status: string): { tone: Tone; label: string } {
-  const s = (status || "").toLowerCase();
-  if (/approved/.test(s)) return { tone: "ok", label: WORK_STATE_LABEL.approved };
-  if (/declined|rejected/.test(s)) return { tone: "red", label: WORK_STATE_LABEL.declined };
-  if (/archived/.test(s)) return { tone: "gray", label: WORK_STATE_LABEL.archived };
-  // A compliance block is not a routine pending item and must not read as one —
-  // it has to be distinguishable at a glance from the amber "Needs you" crowd.
-  // It keeps the red tone; only the wording joins the shared vocabulary.
-  if (/compliance|blocked/.test(s)) return { tone: "red", label: "Blocked by a rule" };
-  if (/revision/.test(s)) return { tone: "amber", label: WORK_STATE_LABEL.needs_changes };
-  if (/live|sent|deployed/.test(s)) return { tone: "blue", label: WORK_STATE_LABEL.sending };
-  if (/pending|review/.test(s)) return { tone: "amber", label: WORK_STATE_LABEL.needs_you };
-  return { tone: "gray", label: status ? WORK_STATE_LABEL[toWorkState(status)] : WORK_STATE_LABEL.draft };
-}
 
 // A deliverable still accepts a decision until it's approved, archived, or live.
 function isActionable(status: string): boolean {
@@ -511,149 +494,6 @@ function RevisionDiff({ revision }: { revision: { draft: string; current: string
   );
 }
 
-/** DOM id of the span a finding points at, so clicking the finding can jump to it. */
-function markId(assetId: string, findingIndex: number): string {
-  return `mark-${assetId}-${findingIndex}`;
-}
-
-/**
- * Everything the reviewer needs to decide, above the draft rather than below it.
- *
- * This used to be four separate boxes stacked under the full copy — a banned-
- * phrase notice, a guardrail line, an unreviewed warning and a recommendation
- * card carrying a rationale paragraph, the findings, the risk flags and a
- * numbered edits paragraph. Reaching the verdict meant reading all of it. Now
- * the count of blocking problems comes first, each finding is one clickable
- * line that jumps to the words it quotes, and the reasoning stays folded until
- * someone wants it.
- */
-function ReviewBlock({
-  asset,
-  summary,
-  awaitingReview,
-  openFindings,
-  onFocusFinding,
-  onEditCopy,
-  canEdit,
-}: {
-  asset: CampaignWorkspaceAsset;
-  summary: ReviewSummary;
-  awaitingReview: boolean;
-  openFindings: Set<string>;
-  onFocusFinding: (assetId: string, index: number) => void;
-  onEditCopy: () => void;
-  canEdit: boolean;
-}) {
-  const rec = asset.recommendation;
-  const edits = splitSuggestedEdits(rec?.suggestedEdits ?? "");
-  const hasAnything =
-    Boolean(rec) || asset.findings.length > 0 || asset.blockedPhrases.length > 0 || asset.complianceNotes || awaitingReview;
-  if (!hasAnything) return null;
-
-  // Blockers first: the reviewer works top-down and should hit the hard stops
-  // before the notes.
-  const ordered = asset.findings
-    .map((finding, index) => ({ finding, index }))
-    .sort((a, a2) => Number(isBlocker(a2.finding)) - Number(isBlocker(a.finding)));
-
-  return (
-    <div className={`review tone-${summary.tone}`}>
-      {/* Nothing to head the block with on a decided piece that carries only a
-          guardrail note — better silent than captioned "Reviewed" when nothing was. */}
-      {summary.headline && (
-        <div className="rvhead">
-          <span className="rvdot" aria-hidden="true" />
-          <b className="rvline">{summary.headline}</b>
-          {rec && (
-            <span className="rvverdict">
-              {reviewAgentLabel(rec.agent)} recommends {reviewVerdictLabel(rec.verdict)}
-            </span>
-          )}
-        </div>
-      )}
-
-      {asset.blockedPhrases.length > 0 && (
-        <div className="rvbanned">
-          Your Brand Kit bans {asset.blockedPhrases.map((p) => `“${p}”`).join(", ")} — rewrite before approving.
-        </div>
-      )}
-
-      {ordered.length > 0 && (
-        <ul className="rvlist">
-          {ordered.map(({ finding, index }) => {
-            const open = openFindings.has(`${asset.id}:${index}`);
-            return (
-              <li key={index} className={isBlocker(finding) ? "rvrow blk" : "rvrow"}>
-                <button
-                  type="button"
-                  className="rvbtn"
-                  onClick={() => onFocusFinding(asset.id, index)}
-                  aria-expanded={open}
-                >
-                  {finding.claim && <q className="rvq">{finding.claim}</q>}
-                  <span className={open ? "rvwhy open" : "rvwhy"}>{finding.message}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {awaitingReview && (
-        <p className="rvpending">
-          Nothing has checked these claims against your evidence yet. On a fresh draft that usually lands
-          within a minute — until then, an empty review is not a clean one.
-        </p>
-      )}
-
-      {rec?.riskFlags && rec.riskFlags.length > 0 && (
-        <div className="flags rvflags">
-          {rec.riskFlags.map((f) => (
-            <span className="flag" key={f}>
-              {riskFlagLabel(f)}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {edits.length > 0 && (
-        <details className="rvfold">
-          <summary>
-            What to change <span className="rvcount">{edits.length}</span>
-          </summary>
-          <ol className="rvedits">
-            {edits.map((edit, i) => (
-              <li key={i}>{edit}</li>
-            ))}
-          </ol>
-          {canEdit && (
-            <button type="button" className="cbtn ghost rvedit" onClick={onEditCopy}>
-              {svg('<path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z"/>')}
-              Make these edits
-            </button>
-          )}
-        </details>
-      )}
-
-      {rec?.rationale && (
-        <details className="rvfold">
-          <summary>Why Arc says this</summary>
-          <p className="rvbody">{rec.rationale}</p>
-        </details>
-      )}
-
-      {asset.complianceNotes && (
-        <details className="rvfold">
-          <summary>Guardrail for this deliverable</summary>
-          <p className="rvbody">{asset.complianceNotes}</p>
-        </details>
-      )}
-
-      {rec && <p className="rvfoot">Advisory only — you decide.</p>}
-    </div>
-  );
-}
-
 const NUM = new Intl.NumberFormat("en-US");
 const USD0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
@@ -904,6 +744,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     detail.assets.length === 1 ? new Set([detail.assets[0].id]) : new Set(),
   );
   const [confirmBulk, setConfirmBulk] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   // The mark to jump to once the copy above it has finished un-clamping. A ref,
   // not state: it is a one-shot instruction to the effect below, and nothing
   // renders from it.
@@ -928,6 +769,9 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   const grouped = CATEGORY_ORDER.map((cat) => ({ cat, items: assets.filter((a) => a.category === cat) })).filter((g) => g.items.length > 0);
   // Still open, reviewed, and nothing raised — the ones worth a single decision.
   const cleanAssets = assets.filter((a) => isActionable(a.status) && isCleanForBulkApproval(a));
+  // Everything still awaiting a decision, in the order the page lists it, so the
+  // queue walks the campaign the same way reading it top to bottom would.
+  const queueAssets = grouped.flatMap((g) => g.items).filter((a) => isActionable(a.status));
   // BYO send channel: which approved deliverable is open in the export modal.
   const [externalSendFor, setExternalSendFor] = useState<CampaignWorkspaceAsset | null>(null);
 
@@ -1031,7 +875,13 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   }
 
   function submitRevision(asset: CampaignWorkspaceAsset) {
-    const instruction = reviseText.trim();
+    requestRevisionFor(asset, reviseText);
+  }
+
+  /** The one revision path. The list passes its inline textarea, the queue
+   *  passes its own — neither owns the request. */
+  function requestRevisionFor(asset: CampaignWorkspaceAsset, rawInstruction: string) {
+    const instruction = rawInstruction.trim();
     if (!instruction || pending) return;
     setErr(null);
     const prev = asset.status;
@@ -1266,6 +1116,21 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
           {/* One decision for the deliverables that were reviewed and raised
               nothing. Offered from two up — at one, the card's own button is
               already the shorter path. */}
+          {/* Two ways through the same queue: read the list, or be handed one
+              deliverable at a time. Offered from two up — with one, the card is
+              already the focused view. */}
+          {tab === "deliverables" && queueAssets.length > 1 && (
+            <div className="rqstart">
+              <span>
+                <b>{queueAssets.length} deliverables</b> need a decision.
+              </span>
+              <button className="cbtn ghost" onClick={() => { setErr(null); setQueueOpen(true); }} disabled={pending}>
+                {svg('<path d="M4 6h16M4 12h16M4 18h9"/>')}
+                Review one at a time
+              </button>
+            </div>
+          )}
+
           {tab === "deliverables" && cleanAssets.length > 1 && (
             <div className={confirmBulk ? "bulkbar confirming" : "bulkbar"}>
               {confirmBulk ? (
@@ -1321,12 +1186,6 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                     const actionable = isActionable(asset.status);
                     const assetMedia = asset.media.filter((m) => m.origin !== "referenced");
                     const summary = summarizeReview(asset);
-                    const segments = highlightClaims(asset.preview, asset.findings.map((f) => f.claim));
-                    // Long copy is clamped by default so the review stays visible.
-                    // The threshold is deliberately generous — a short email is
-                    // not worth hiding, and a clamp that fires on everything just
-                    // moves the reading rather than removing it.
-                    const longCopy = asset.preview.length > 520 || asset.preview.split("\n").length > 12;
                     const copyOpen = fullCopy.has(asset.id);
                     const cardOpen = openCards.has(asset.id);
                     return (
@@ -1374,30 +1233,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                           onEditCopy={() => openEdit(asset)}
                           canEdit={actionable}
                         />
-                        {asset.preview && (
-                          <div className="dcopy">
-                            <div className={longCopy && !copyOpen ? "dbody clamped" : "dbody"}>
-                              {segments.map((seg, i) =>
-                                seg.findingIndex === null ? (
-                                  <span key={i}>{seg.text}</span>
-                                ) : (
-                                  <mark
-                                    key={i}
-                                    id={markId(asset.id, seg.findingIndex)}
-                                    className={isBlocker(asset.findings[seg.findingIndex]) ? "dmark blk" : "dmark"}
-                                  >
-                                    {seg.text}
-                                  </mark>
-                                ),
-                              )}
-                            </div>
-                            {longCopy && (
-                              <button type="button" className="dmore" onClick={() => toggleFullCopy(asset.id)}>
-                                {copyOpen ? "Show less" : "Show full copy"}
-                              </button>
-                            )}
-                          </div>
-                        )}
+                        <DeliverableCopy asset={asset} expanded={copyOpen} onToggle={() => toggleFullCopy(asset.id)} />
                         {assetMedia.length > 0 && (
                           <div className="mediagrid">
                             {assetMedia.map((m, mediaIndex) => (
@@ -1848,6 +1684,21 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
           </div>
         </aside>
       </div>
+
+      {queueOpen ? (
+        <ReviewQueue
+          campaignName={campaign.name}
+          queue={queueAssets}
+          pending={pending}
+          error={err}
+          onDecide={decide}
+          onRevise={requestRevisionFor}
+          // Editing leaves the queue for the list's editor, opened on the piece
+          // that was on screen — one editor, not two that can disagree.
+          onEdit={(asset) => { setQueueOpen(false); setOpenCards((c) => new Set(c).add(asset.id)); openEdit(asset); }}
+          onClose={() => setQueueOpen(false)}
+        />
+      ) : null}
 
       {lightbox ? (
         <MediaLightbox items={lightbox.items} index={lightbox.index} onClose={closeLightbox} onStep={stepLightbox} />
