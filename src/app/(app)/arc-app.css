@@ -1099,11 +1099,22 @@
 .arc-app .arc-outbox .oq-count { font-family: var(--mono); font-size: 10.5px; color: var(--muted); background: var(--inset); border-radius: 6px; padding: 1px 7px; }
 .arc-app .arc-outbox .oq-section.tone-red .oq-label { color: var(--red-text); }
 .arc-app .arc-outbox .oq-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 11px; }
-.arc-app .arc-outbox .oq-cards .card:hover { border-color: var(--accent-border); transform: translateY(-2px); box-shadow: 0 14px 30px -22px rgba(0, 0, 0, .85); }
+/* Border step only. DESIGN.md §6: `.btn` is the one element that lifts, and
+   ordinary cards obey no levitation and no glow — this card did both, on the
+   screen where outbound sends get confirmed. */
+.arc-app .arc-outbox .oq-cards .card:hover { border-color: var(--accent-border); }
 
 /* hero: the sends actually waiting on a human */
-.arc-app .arc-outbox .oq-hero { border: 1px solid var(--accent-border); border-radius: 14px; background: linear-gradient(180deg, var(--accent-soft), transparent 60%); padding: 15px 15px 16px; }
-.arc-app .arc-outbox .oq-hero .oq-label { font-family: var(--serif); font-weight: 500; font-size: 15px; letter-spacing: -.01em; }
+/* Was a bordered, gradient-filled panel wrapping bordered cards — a nested
+   panel, which the Calm Principles ban outright, and the only section on this
+   page dressed that way while Scheduled and Recently sent below it are a plain
+   heading plus cards. It is still the focal moment; a hairline, whitespace and
+   the accent label carry that now, which is what DESIGN.md prescribes instead
+   of cards-in-cards. */
+.arc-app .arc-outbox .oq-hero { border-top: 1px solid var(--accent-border); padding: 15px 0 4px; }
+/* No serif: the page title is the one Fraunces moment per screen, and this
+   was a second. Weight and accent colour carry the emphasis instead. */
+.arc-app .arc-outbox .oq-hero .oq-label { font-weight: 600; font-size: 13px; letter-spacing: .01em; color: var(--accent-contrast); }
 .arc-app .arc-outbox .oq-hero .oq-count { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-app .arc-outbox .oq-empty { display: flex; align-items: center; gap: 12px; padding: 6px 2px 2px; }
 .arc-app .arc-outbox .oq-empty-ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--ok-soft); color: var(--ok-text); border: 1px solid var(--ok-border); flex-shrink: 0; }
