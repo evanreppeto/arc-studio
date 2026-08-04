@@ -212,10 +212,6 @@ export function CampaignsBoard({
           </div>
         </div>
         <div className="sp">
-          <span className="gbtn" data-soon="Campaign templates are coming soon">
-            <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M4 9h16M9 5v14" /></svg>
-            Templates
-          </span>
           <button type="button" className="gbtn gold" onClick={() => setNewOpen(true)}>
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
             New campaign

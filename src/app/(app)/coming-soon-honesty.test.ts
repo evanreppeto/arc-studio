@@ -37,26 +37,34 @@ const ARC_APP_CSS = readFileSync(join(APP_DIR, "arc-app.css"), "utf8");
  * capability already wired and the label lying? All of these are true today.
  */
 const BASELINE: Record<string, number> = {
-  // Audience rows — no audience model behind them.
-  "studio/_components/studio-view.tsx": 1,
-  // brand-view.tsx used to sit here with 2 marks (palette, typography). Both
-  // now have real write paths — `updateBrandPalette` and `updateBrandTypography`
-  // — so the file is clean and this test's own staleness check is what removed
-  // it. brand-honesty.test.ts holds the line from the other side.
+  // Empty, and that is the assertion.
   //
-  // Density (BSR-748) and column visibility (BSR-749) both ship for real now.
-  // Neither needed a backend, which is what made them worth building rather
-  // than leaving marked. The one left is "Ask Arc to enrich": there is no
-  // enrichment write path, and no UI can make that honest.
-  "crm/_components/crm-board.tsx": 1,
-  // No template model anywhere in campaigns (`industry-templates` is personas).
-  "campaigns/_components/campaigns-board.tsx": 1,
-  // Iteration drafting exists via next_iteration opportunities, but this button
-  // is not wired to it. Honest today; wiring it is the better fix when someone
-  // decides where it should land.
-  "analytics/_components/analytics-view.tsx": 1,
+  // Six controls lived here. Each is resolved the way this file's own rule
+  // demands — wired, or removed — never left as a placeholder that looks live:
+  //
+  //   wired   CRM density      BSR-748. Table row padding.
+  //   wired   CRM columns      BSR-749. Per-object visibility.
+  //   wired   analytics        "Draft it" was inert beside a feature that
+  //                            works: detectNextIterationOpportunities already
+  //                            emits kind='next_iteration' and the inbox
+  //                            already calls it "Repeat a winner", so the
+  //                            button now goes there.
+  //   removed CRM enrichment   enrichment exists only as a connector-backed
+  //                            import provider. There is no per-record
+  //                            on-demand write path, and no UI makes that
+  //                            honest.
+  //   removed campaign templates  no template model anywhere
+  //                            (`industry-templates` is personas).
+  //   removed studio audio     no audio generation, in Higgsfield or elsewhere.
+  //
+  // Density and columns needed no backend, which is exactly what made them
+  // worth building rather than leaving marked. The other four had no backend to
+  // reach, which is what made removal the honest answer rather than a UI that
+  // pretends.
+  //
+  // Adding an entry back is fine when something genuinely is unbuilt. Adding one
+  // because a control is easier to mark than to finish is the thing to refuse.
 };
-
 function tsxFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);

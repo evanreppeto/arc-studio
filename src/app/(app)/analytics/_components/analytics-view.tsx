@@ -478,7 +478,13 @@ export function AnalyticsView({
                     </div>
                   )}
                   <div className="abtns">
-                    <button type="button" className="gbtn gold" data-soon="Drafting the next round is coming soon"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Draft it</button>
+                    {/* "Draft it" was inert. Arc already detects the thing it
+                        promised — detectNextIterationOpportunities emits
+                        kind='next_iteration', which the inbox surfaces as
+                        "Repeat a winner", and converting one to a campaign is a
+                        shipped flow. So this points at that rather than at a
+                        drafting endpoint nobody wrote. */}
+                    <Link className="gbtn gold" href="/opportunities"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Repeat a winner</Link>
                     <Link className="gbtn" href="/arc"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Ask Arc</Link>
                   </div>
                   <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)", marginTop: 11, lineHeight: 1.5 }}>
