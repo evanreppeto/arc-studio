@@ -9,7 +9,7 @@ import {
   needsYouPhrase,
   toWorkState,
   WORK_STATE_LABEL,
-} from "@/domain";
+  humanizeArcProse} from "@/domain";
 import { resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getActivationState } from "@/lib/activation/read-model";
@@ -21,7 +21,6 @@ import { QuickActions } from "./_components/quick-actions";
 import { SetupChecklist } from "./_components/setup-checklist";
 import { Define } from "../_components/define";
 import { KpiStrip } from "../_components/kpi-strip";
-import { humanizeArcProse } from "../opportunities/prose";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
 

@@ -137,6 +137,7 @@ export * from "./vocabulary";
 // The predicate behind the dev-only DOM check; the source scanners in
 // plumbing-vocabulary.test.ts cannot see this class.
 export * from "./identifier-leak";
+export * from "./arc-prose";
 
 // One colour per persona, everywhere (BSR-661). Import personaAccent rather
 // than re-deriving a hue from a regex ladder.

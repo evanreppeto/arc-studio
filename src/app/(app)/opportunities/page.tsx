@@ -9,7 +9,8 @@ import { canonicalIndustryKey } from "@/lib/product-language";
 
 import { classify } from "./classify";
 import { extraEvidenceRows } from "./evidence";
-import { humanizeArcProse, isMachineText, rowName, rowQualifier } from "./prose";
+import { humanizeArcProse, isMachineText } from "@/domain";
+import { rowName, rowQualifier } from "./prose";
 import { scanStatusLine } from "./scan-status-copy";
 import { OpportunityInbox, type OpportunityVM } from "./_components/opportunity-inbox";
 
