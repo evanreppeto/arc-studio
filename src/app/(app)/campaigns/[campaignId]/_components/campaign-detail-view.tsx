@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   assetSourceLabel,
@@ -31,6 +31,14 @@ import { buildPerformanceLearning, type CampaignPerformancePanel, type Performan
 import { Modal } from "../../../_components/modal";
 import { ShareDialog } from "../../../_components/share-dialog";
 import { ExternalSendModal } from "./external-send-modal";
+import {
+  highlightClaims,
+  isBlocker,
+  isCleanForBulkApproval,
+  splitSuggestedEdits,
+  summarizeReview,
+  type ReviewSummary,
+} from "./review-summary";
 import { attachCampaignMediaAction, decideCampaignAsset, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision, retryCampaignRevision } from "../actions";
 import {
   getCampaignSharingStateAction,
@@ -503,6 +511,149 @@ function RevisionDiff({ revision }: { revision: { draft: string; current: string
   );
 }
 
+/** DOM id of the span a finding points at, so clicking the finding can jump to it. */
+function markId(assetId: string, findingIndex: number): string {
+  return `mark-${assetId}-${findingIndex}`;
+}
+
+/**
+ * Everything the reviewer needs to decide, above the draft rather than below it.
+ *
+ * This used to be four separate boxes stacked under the full copy — a banned-
+ * phrase notice, a guardrail line, an unreviewed warning and a recommendation
+ * card carrying a rationale paragraph, the findings, the risk flags and a
+ * numbered edits paragraph. Reaching the verdict meant reading all of it. Now
+ * the count of blocking problems comes first, each finding is one clickable
+ * line that jumps to the words it quotes, and the reasoning stays folded until
+ * someone wants it.
+ */
+function ReviewBlock({
+  asset,
+  summary,
+  awaitingReview,
+  openFindings,
+  onFocusFinding,
+  onEditCopy,
+  canEdit,
+}: {
+  asset: CampaignWorkspaceAsset;
+  summary: ReviewSummary;
+  awaitingReview: boolean;
+  openFindings: Set<string>;
+  onFocusFinding: (assetId: string, index: number) => void;
+  onEditCopy: () => void;
+  canEdit: boolean;
+}) {
+  const rec = asset.recommendation;
+  const edits = splitSuggestedEdits(rec?.suggestedEdits ?? "");
+  const hasAnything =
+    Boolean(rec) || asset.findings.length > 0 || asset.blockedPhrases.length > 0 || asset.complianceNotes || awaitingReview;
+  if (!hasAnything) return null;
+
+  // Blockers first: the reviewer works top-down and should hit the hard stops
+  // before the notes.
+  const ordered = asset.findings
+    .map((finding, index) => ({ finding, index }))
+    .sort((a, a2) => Number(isBlocker(a2.finding)) - Number(isBlocker(a.finding)));
+
+  return (
+    <div className={`review tone-${summary.tone}`}>
+      {/* Nothing to head the block with on a decided piece that carries only a
+          guardrail note — better silent than captioned "Reviewed" when nothing was. */}
+      {summary.headline && (
+        <div className="rvhead">
+          <span className="rvdot" aria-hidden="true" />
+          <b className="rvline">{summary.headline}</b>
+          {rec && (
+            <span className="rvverdict">
+              {reviewAgentLabel(rec.agent)} recommends {reviewVerdictLabel(rec.verdict)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {asset.blockedPhrases.length > 0 && (
+        <div className="rvbanned">
+          Your Brand Kit bans {asset.blockedPhrases.map((p) => `“${p}”`).join(", ")} — rewrite before approving.
+        </div>
+      )}
+
+      {ordered.length > 0 && (
+        <ul className="rvlist">
+          {ordered.map(({ finding, index }) => {
+            const open = openFindings.has(`${asset.id}:${index}`);
+            return (
+              <li key={index} className={isBlocker(finding) ? "rvrow blk" : "rvrow"}>
+                <button
+                  type="button"
+                  className="rvbtn"
+                  onClick={() => onFocusFinding(asset.id, index)}
+                  aria-expanded={open}
+                >
+                  {finding.claim && <q className="rvq">{finding.claim}</q>}
+                  <span className={open ? "rvwhy open" : "rvwhy"}>{finding.message}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {awaitingReview && (
+        <p className="rvpending">
+          Nothing has checked these claims against your evidence yet. On a fresh draft that usually lands
+          within a minute — until then, an empty review is not a clean one.
+        </p>
+      )}
+
+      {rec?.riskFlags && rec.riskFlags.length > 0 && (
+        <div className="flags rvflags">
+          {rec.riskFlags.map((f) => (
+            <span className="flag" key={f}>
+              {riskFlagLabel(f)}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {edits.length > 0 && (
+        <details className="rvfold">
+          <summary>
+            What to change <span className="rvcount">{edits.length}</span>
+          </summary>
+          <ol className="rvedits">
+            {edits.map((edit, i) => (
+              <li key={i}>{edit}</li>
+            ))}
+          </ol>
+          {canEdit && (
+            <button type="button" className="cbtn ghost rvedit" onClick={onEditCopy}>
+              {svg('<path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z"/>')}
+              Make these edits
+            </button>
+          )}
+        </details>
+      )}
+
+      {rec?.rationale && (
+        <details className="rvfold">
+          <summary>Why Arc says this</summary>
+          <p className="rvbody">{rec.rationale}</p>
+        </details>
+      )}
+
+      {asset.complianceNotes && (
+        <details className="rvfold">
+          <summary>Guardrail for this deliverable</summary>
+          <p className="rvbody">{asset.complianceNotes}</p>
+        </details>
+      )}
+
+      {rec && <p className="rvfoot">Advisory only — you decide.</p>}
+    </div>
+  );
+}
+
 const NUM = new Intl.NumberFormat("en-US");
 const USD0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
@@ -741,6 +892,22 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   // Full-size media preview: the tiles of one deliverable, and which is open.
   const [lightbox, setLightbox] = useState<{ items: CampaignMediaAsset[]; index: number } | null>(null);
+  // Long copy is clamped so the review above it stays on screen. These hold the
+  // assets the reviewer has opened in full, and the findings they've expanded
+  // (keyed `assetId:findingIndex`).
+  const [fullCopy, setFullCopy] = useState<Set<string>>(new Set());
+  const [openFindings, setOpenFindings] = useState<Set<string>>(new Set());
+  // Which deliverables are expanded. Collapsed is the default so the tab opens
+  // as a list you can triage — except when there is only one, where collapsing
+  // the single thing on the page helps nobody.
+  const [openCards, setOpenCards] = useState<Set<string>>(() =>
+    detail.assets.length === 1 ? new Set([detail.assets[0].id]) : new Set(),
+  );
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  // The mark to jump to once the copy above it has finished un-clamping. A ref,
+  // not state: it is a one-shot instruction to the effect below, and nothing
+  // renders from it.
+  const pendingMark = useRef<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [confirmLaunch, setConfirmLaunch] = useState(false);
@@ -759,6 +926,8 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
 
   // Re-group the (locally owned) assets so optimistic status changes reflect live.
   const grouped = CATEGORY_ORDER.map((cat) => ({ cat, items: assets.filter((a) => a.category === cat) })).filter((g) => g.items.length > 0);
+  // Still open, reviewed, and nothing raised — the ones worth a single decision.
+  const cleanAssets = assets.filter((a) => isActionable(a.status) && isCleanForBulkApproval(a));
   // BYO send channel: which approved deliverable is open in the export modal.
   const [externalSendFor, setExternalSendFor] = useState<CampaignWorkspaceAsset | null>(null);
 
@@ -766,17 +935,98 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     setAssets((as) => as.map((a) => (a.id === assetId ? { ...a, status, approval: a.approval ? { ...a.approval, status } : a.approval } : a)));
   }
 
+  function toggleCard(assetId: string) {
+    setOpenCards((current) => {
+      const next = new Set(current);
+      if (!next.delete(assetId)) next.add(assetId);
+      return next;
+    });
+  }
+
+  function toggleFullCopy(assetId: string) {
+    setFullCopy((current) => {
+      const next = new Set(current);
+      if (!next.delete(assetId)) next.add(assetId);
+      return next;
+    });
+  }
+
+  /**
+   * Open a finding and take the reviewer to the words it quotes. Clamped copy
+   * has to open too, or the highlight it scrolls to is behind the fold — which
+   * is why the jump waits for the commit below rather than running here.
+   */
+  function focusFinding(assetId: string, index: number) {
+    const key = `${assetId}:${index}`;
+    const opening = !openFindings.has(key);
+    setOpenFindings((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+    if (!opening) return;
+    setFullCopy((current) => new Set(current).add(assetId));
+    pendingMark.current = markId(assetId, index);
+  }
+
+  // Jump only once the clamp has actually lifted, or the target is still behind
+  // the fold and lands in the wrong place. An effect, not requestAnimationFrame:
+  // rAF does not fire in a throttled tab, and a click that silently does nothing
+  // is worse than one that jumps a frame late.
+  useEffect(() => {
+    const id = pendingMark.current;
+    if (!id) return;
+    pendingMark.current = null;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(id)?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+  }, [openFindings, fullCopy]);
+
   function decide(asset: CampaignWorkspaceAsset, decision: "approved" | "declined" | "archived") {
     if (pending) return;
     setErr(null);
     const prev = asset.status;
     setAssetStatus(asset.id, decision);
+    // Decided means done with, so it folds away and the next one is in reach.
+    // Re-opened on failure below, with the card back in the state it was in.
+    setOpenCards((current) => {
+      const next = new Set(current);
+      next.delete(asset.id);
+      return next;
+    });
     startTransition(async () => {
       const res = await decideCampaignAsset(campaign.id, asset.id, decision);
       if (!res.ok) {
         setAssetStatus(asset.id, prev);
+        setOpenCards((current) => new Set(current).add(asset.id));
         setErr(res.error);
       }
+    });
+  }
+
+  /**
+   * Approve every deliverable a claims review passed with nothing flagged.
+   *
+   * Deliberately narrow: only pieces that were actually reviewed qualify — see
+   * isCleanForBulkApproval. Approving still sends nothing; outbound stays locked
+   * behind launch either way.
+   */
+  function approveAllClean() {
+    if (pending || cleanAssets.length === 0) return;
+    setErr(null);
+    setConfirmBulk(false);
+    const targets = cleanAssets.map((a) => ({ id: a.id, status: a.status }));
+    targets.forEach((t) => setAssetStatus(t.id, "approved"));
+    startTransition(async () => {
+      const results = await Promise.all(targets.map((t) => decideCampaignAsset(campaign.id, t.id, "approved")));
+      const failed = targets.filter((_, i) => !results[i].ok);
+      if (failed.length === 0) return;
+      // Put back only what actually failed — a partial success must not look
+      // like a total one, and must not roll back the approvals that landed.
+      failed.forEach((t) => setAssetStatus(t.id, t.status));
+      const firstError = results.find((r) => !r.ok);
+      setErr(
+        `${failed.length} of ${targets.length} could not be approved${firstError && !firstError.ok ? `: ${firstError.error}` : ""}. The rest went through.`,
+      );
     });
   }
 
@@ -1013,6 +1263,50 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
             <p className="cerr">{err}</p>
           )}
 
+          {/* One decision for the deliverables that were reviewed and raised
+              nothing. Offered from two up — at one, the card's own button is
+              already the shorter path. */}
+          {tab === "deliverables" && cleanAssets.length > 1 && (
+            <div className={confirmBulk ? "bulkbar confirming" : "bulkbar"}>
+              {confirmBulk ? (
+                <>
+                  <div className="bulktext">
+                    <b>Approve {cleanAssets.length} deliverables?</b> Nothing sends — approved work stays
+                    locked until you launch the campaign.
+                    <ul className="bulklist">
+                      {cleanAssets.map((a) => (
+                        <li key={a.id}>{a.title}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="bulkacts">
+                    <button className="cbtn ghost" onClick={() => setConfirmBulk(false)} disabled={pending}>
+                      Cancel
+                    </button>
+                    <button className="cbtn gold" onClick={approveAllClean} disabled={pending}>
+                      {svg('<path d="M5 12l4 4L19 6"/>')}
+                      {pending ? "Approving…" : `Approve ${cleanAssets.length}`}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="bulktext">
+                    {cleanAssets.length} deliverables passed their claims review with nothing flagged.
+                  </span>
+                  <button
+                    className="cbtn ghost"
+                    onClick={() => { setErr(null); setConfirmBulk(true); }}
+                    disabled={pending}
+                  >
+                    {svg('<path d="M5 12l4 4L19 6"/>')}
+                    Approve all clean
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {tab === "deliverables" &&
             (grouped.length === 0 ? (
               <p className="empty-note">Nothing here yet. Arc drafts the assets here as it builds the campaign — each one waits on your approval.</p>
@@ -1026,21 +1320,84 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                     const meta = statusMeta(asset.status);
                     const actionable = isActionable(asset.status);
                     const assetMedia = asset.media.filter((m) => m.origin !== "referenced");
+                    const summary = summarizeReview(asset);
+                    const segments = highlightClaims(asset.preview, asset.findings.map((f) => f.claim));
+                    // Long copy is clamped by default so the review stays visible.
+                    // The threshold is deliberately generous — a short email is
+                    // not worth hiding, and a clamp that fires on everything just
+                    // moves the reading rather than removing it.
+                    const longCopy = asset.preview.length > 520 || asset.preview.split("\n").length > 12;
+                    const copyOpen = fullCopy.has(asset.id);
+                    const cardOpen = openCards.has(asset.id);
                     return (
-                      <div className="deliver" key={asset.id}>
-                        <div className="dhead">
-                          <div className="dtitle">{asset.title}</div>
+                      <div className={cardOpen ? "deliver open" : "deliver"} key={asset.id}>
+                        {/* The collapsed row has to carry enough to triage on — status,
+                            what the review found, whether media is attached — or folding
+                            the list just hides the work instead of ordering it. */}
+                        <button
+                          type="button"
+                          className="dsum"
+                          onClick={() => toggleCard(asset.id)}
+                          aria-expanded={cardOpen}
+                        >
+                          <span className="dchev" aria-hidden="true">
+                            {svg('<path d="M9 6l6 6-6 6"/>')}
+                          </span>
+                          <span className="dsumhead">
+                            <span className="dtitle">{asset.title}</span>
+                            <span className="dmeta">
+                              {asset.channel && <span>{asset.channel}</span>}
+                              {assetSourceLabel(asset.toolSource) && <span>· {assetSourceLabel(asset.toolSource)}</span>}
+                              {assetMedia.length > 0 && <span>· {assetMedia.length} attached</span>}
+                              <span>· updated {fmtDate(asset.updatedAt)}</span>
+                            </span>
+                          </span>
+                          {summary.chip && (
+                            <span className={`dsumrev tone-${summary.tone}`}>
+                              <i aria-hidden="true" />
+                              {summary.chip}
+                            </span>
+                          )}
                           <span className={`pill ${meta.tone}`}>
                             <span className="pd" />
                             {meta.label}
                           </span>
-                        </div>
-                        <div className="dmeta">
-                          {asset.channel && <span>{asset.channel}</span>}
-                          {assetSourceLabel(asset.toolSource) && <span>· {assetSourceLabel(asset.toolSource)}</span>}
-                          <span>· updated {fmtDate(asset.updatedAt)}</span>
-                        </div>
-                        {asset.preview && <div className="dbody">{asset.preview}</div>}
+                        </button>
+                        {cardOpen && (
+                        <div className="dwrap">
+                        <ReviewBlock
+                          asset={asset}
+                          summary={summary}
+                          awaitingReview={awaitingClaimsReview(asset)}
+                          openFindings={openFindings}
+                          onFocusFinding={focusFinding}
+                          onEditCopy={() => openEdit(asset)}
+                          canEdit={actionable}
+                        />
+                        {asset.preview && (
+                          <div className="dcopy">
+                            <div className={longCopy && !copyOpen ? "dbody clamped" : "dbody"}>
+                              {segments.map((seg, i) =>
+                                seg.findingIndex === null ? (
+                                  <span key={i}>{seg.text}</span>
+                                ) : (
+                                  <mark
+                                    key={i}
+                                    id={markId(asset.id, seg.findingIndex)}
+                                    className={isBlocker(asset.findings[seg.findingIndex]) ? "dmark blk" : "dmark"}
+                                  >
+                                    {seg.text}
+                                  </mark>
+                                ),
+                              )}
+                            </div>
+                            {longCopy && (
+                              <button type="button" className="dmore" onClick={() => toggleFullCopy(asset.id)}>
+                                {copyOpen ? "Show less" : "Show full copy"}
+                              </button>
+                            )}
+                          </div>
+                        )}
                         {assetMedia.length > 0 && (
                           <div className="mediagrid">
                             {assetMedia.map((m, mediaIndex) => (
@@ -1112,55 +1469,6 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                           );
                         })()}
                         {asset.revision && <RevisionDiff revision={asset.revision} />}
-                        {asset.blockedPhrases.length > 0 && (
-                          <div className="dblocked">
-                            <b>Blocked language</b> — this copy contains{" "}
-                            {asset.blockedPhrases.map((p) => `“${p}”`).join(", ")}, which your Brand Kit bans.
-                            Rewrite it before approving.
-                          </div>
-                        )}
-                        {asset.complianceNotes && <div className="dcompliance">Guardrail: {asset.complianceNotes}</div>}
-                        {awaitingClaimsReview(asset) && (
-                          <div className="dunrev">
-                            <b>Not yet reviewed</b> — nothing has checked these claims against your evidence.
-                            On a fresh draft the review usually lands within a minute; until then, an empty
-                            review is not a clean one.
-                          </div>
-                        )}
-                        {asset.recommendation && (
-                          <div className="drec">
-                            <div className="drh">
-                              {reviewAgentLabel(asset.recommendation.agent)} recommends
-                              <span className="drv">{reviewVerdictLabel(asset.recommendation.verdict)}</span>
-                            </div>
-                            {asset.recommendation.rationale && <p className="drb">{asset.recommendation.rationale}</p>}
-                            {asset.findings.length > 0 && (
-                              <ul className="dfind">
-                                {asset.findings.map((f, i) => (
-                                  <li key={i} className={f.severity === "blocker" ? "dfb" : undefined}>
-                                    {f.claim && <q>{f.claim}</q>} {f.message}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                            {asset.recommendation.riskFlags.length > 0 && (
-                              <div className="flags">
-                                {asset.recommendation.riskFlags.map((f) => (
-                                  <span className="flag" key={f}>
-                                    {riskFlagLabel(f)}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {asset.recommendation.suggestedEdits && (
-                              <p className="drb">
-                                <b>Suggested edits:</b> {asset.recommendation.suggestedEdits}
-                              </p>
-                            )}
-                            <p className="drn">Advisory only — you decide.</p>
-                          </div>
-                        )}
-
                         {editFor === asset.id ? (
                           <div className="revbox editbox">
                             <input
@@ -1261,6 +1569,8 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                               </button>
                             )}
                           </div>
+                        )}
+                        </div>
                         )}
                       </div>
                     );
