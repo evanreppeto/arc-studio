@@ -47,6 +47,23 @@ function enforcedTables(): string[] {
  * violation would train people to ignore this test, which is worse than not
  * having it.
  */
+/**
+ * Writes that NAME the column but explicitly permit a null — `workspace_id: null`
+ * or `workspace_id: input.workspaceId ?? null`. These override STAMPED.
+ *
+ * Naming a column is not supplying a value, and the difference is not academic:
+ * `ai_usage_events` had `workspace_id: input.workspaceId ?? null`, which matched
+ * /workspace_id/ and read as stamped for three waves while one caller passed null
+ * on purpose. 59 of its 148 prod rows are unstamped, the newest written minutes
+ * before this was found. Since `recordUsageEvent` is best-effort and never throws,
+ * locking that column would have turned every such write into a SILENT dropped
+ * metering row — on the table already known to undercount.
+ */
+const EXPLICIT_NULL = [
+  /workspace_id\s*:\s*null\b/,
+  /workspace_id\s*:\s*[^,\n}]*\?\?\s*null\b/,
+];
+
 const STAMPED = [
   /workspaceScopeFields/,
   /workspaceIdFields/,
@@ -93,9 +110,9 @@ const OPAQUE_PAYLOADS: Record<string, string> = {
  * deleted. A stale exception list is how a check quietly stops meaning anything.
  */
 const KNOWN_GAPS: Record<string, string> = {
-  // arc_messages.workspace_id is nullable (Group B). Wave 4 / BSR-716 backfills
-  // it, tightens it, and updates these three writes.
-  "src/lib/arc-chat/persistence.ts:arc_messages": "BSR-716 (Wave 4, Group B)",
+  // Empty, and that is the point: the arc_messages entry that lived here from
+  // Wave 1 until BSR-716 was deleted because the staleness check below failed the
+  // moment those three writes started stamping. The list cannot outlive its fix.
 };
 
 /**
@@ -223,7 +240,8 @@ function scanInsertSites(tables: string[]): Site[] {
           file,
           table,
           line: source.slice(0, match.index).split("\n").length,
-          stamped: STAMPED.some((re) => re.test(window)),
+          // An explicit null wins over any stamping evidence in the same payload.
+          stamped: !EXPLICIT_NULL.some((re) => re.test(window)) && STAMPED.some((re) => re.test(window)),
           opaque,
         });
       }

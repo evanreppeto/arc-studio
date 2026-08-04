@@ -23,7 +23,8 @@ const EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL?.trim() || "gemini-em
  * impossible to add without deciding who it bills to; an optional one would let
  * the next one default quietly back to unmetered.
  *
- * There is no workspace here on purpose: the Brain is org-scoped.
+ * No workspace here: callers pass an org and the usage ledger resolves the
+ * workspace from it. (The Brain itself became workspace-scoped in BSR-715.)
  */
 export type EmbedScope = {
   orgId: string;
@@ -78,7 +79,10 @@ async function meterEmbedding(input: string, scope: EmbedScope): Promise<void> {
     const chars = input.length;
     await recordUsageEvent({
       orgId: scope.orgId,
-      // Org-scoped by design — see RecordUsageInput.workspaceId.
+      // Null lets recordUsageEvent resolve the workspace from the org. It used
+      // to mean "org-scoped by design", on the premise that the Brain had no
+      // workspace — BSR-715 made knowledge_nodes.workspace_id NOT NULL, so that
+      // premise is gone (BSR-716).
       workspaceId: null,
       service: "gemini_embedding",
       model: EMBEDDING_MODEL,
