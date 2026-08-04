@@ -159,6 +159,7 @@ async function queueArcRevision(
     .from("agents")
     .select("id")
     .eq("org_id", tenant.org_id)
+    .eq("workspace_id", tenant.workspace_id)
     .eq("key", "arc")
     .limit(1)
     .maybeSingle<{ id: string }>();

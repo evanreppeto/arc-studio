@@ -182,8 +182,15 @@ export async function getRecentActivity(
 
     // Tenant isolation: when an orgId is supplied (Arc API tokens via arcGuard),
     // every source MUST be org-scoped — the service-role client bypasses RLS, so
-    // this app-layer filter is the only boundary. agent_run_logs has no org_id
-    // column, so it's scoped indirectly through its task's org.
+    // this app-layer filter is the only boundary.
+    //
+    // agent_run_logs is scoped indirectly, through its task's org. The note that
+    // used to sit here said that was because the table "has no org_id column";
+    // it does, and it is NOT NULL. Left as-is anyway rather than "simplified" to
+    // a direct filter, because task_id is nullable: a parentless run log is
+    // excluded by this in() and would be included by .eq("org_id"). That is a
+    // behaviour change, not a cleanup, and it does not belong in a lock migration.
+    // Tracked with the wider read-path sweep (BSR-721).
     let scopedTaskIds: string[] = [];
     if (orgId) {
       const { data: taskRows } = await supabase.from("agent_tasks").select("id").eq("org_id", orgId);
