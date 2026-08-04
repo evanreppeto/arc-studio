@@ -27,6 +27,7 @@ import {
   parseNewsQueriesInput,
   parseServicePointsInput,
   parseWeatherCategories,
+  DEMO_DATA_LABEL,
   parseWeatherServiceArea,
   WEATHER_CATEGORIES,
   WORKSPACE_ACCENT_SWATCHES,
@@ -1250,7 +1251,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         ) : (
           <>
             <div className="panel">
-              <div className="panel-h"><h2>This month</h2><span className="tg ok" style={{ marginLeft: "auto" }}>{usageView.isDemo ? "Sample data" : "Live"}</span></div>
+              <div className="panel-h"><h2>This month</h2><span className="tg ok" style={{ marginLeft: "auto" }}>{usageView.isDemo ? DEMO_DATA_LABEL : "Live"}</span></div>
               <div className="panel-b" style={{ padding: 16 }}>
                 <div className="ukpis">{[[usageView.tokensLabel, "Tokens"], [usageView.runsLabel, "Agent runs"], [usageView.costLabel, "Est. cost"]].map(([v, l]) => <div className="ukpi" key={l}><div className="uv">{v}</div><div className="ul">{l}</div></div>)}</div>
                 <div className="ubar"><i style={{ width: `${Math.min(usageView.pctOfCap, 100)}%`, ...(usageView.isNearCap ? { background: "var(--warn)" } : {}) }} /></div>
@@ -1786,7 +1787,7 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
     <>
       <Panel
         title={<>Your workspaces <span className="ph-d" style={{ marginLeft: 6 }}>{workspaces.length}</span></>}
-        foot={view.isDemo ? "Sample workspaces are shown until you connect an account." : "Switching updates the whole app to the selected workspace."}
+        foot={view.isDemo ? "Demo workspaces are shown until you connect an account." : "Switching updates the whole app to the selected workspace."}
       >
         {view.failed ? (
           <div className="me" style={{ padding: "6px 2px", color: "var(--red-text)" }}>
@@ -2795,7 +2796,7 @@ function ActivityLog({ entries, isDemo }: { entries: WorkspaceActivityEntry[]; i
     );
   }
   return (
-    <Panel title="Recent activity" tag={TGOK} foot={isDemo ? "Sample activity is shown until the workspace is connected." : "Member and workspace changes, newest first."}>
+    <Panel title="Recent activity" tag={TGOK} foot={isDemo ? "Demo activity is shown until the workspace is connected." : "Member and workspace changes, newest first."}>
       {entries.map((e) => (
         <div className="actrow" key={e.id}>
           <span className="actdot" style={{ background: actionAccent(e.action) }} />
@@ -2811,7 +2812,7 @@ function ActivityLog({ entries, isDemo }: { entries: WorkspaceActivityEntry[]; i
 
 // ---- Usage breakdowns (real ai_usage_events; demo shape offline) ----
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-const usageTag = (isDemo: boolean) => <span className="tg ok">{isDemo ? "Sample data" : "Live"}</span>;
+const usageTag = (isDemo: boolean) => <span className="tg ok">{isDemo ? DEMO_DATA_LABEL : "Live"}</span>;
 function UsageEmpty({ label }: { label: string }) {
   return (
     <Panel title="Usage" tag={<span className="tg ok">Live</span>}>
