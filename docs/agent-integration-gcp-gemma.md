@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This document captures the current direction for integrating AI agents into the Big Shoulders Growth Engine without immediately depending on expensive third-party per-token API calls.
+This document captures the current direction for integrating AI agents into Arc Studio without immediately depending on expensive third-party per-token API calls.
 
 The working idea is:
 
-Build a team of logical agents inside the Growth Engine, but run them through one shared, self-hosted model backend on GCP.
+Build a team of logical agents inside Arc Studio, but run them through one shared, self-hosted model backend on GCP.
 
 This should stay editable as the implementation changes.
 
@@ -45,12 +45,12 @@ Use Higgsfield: approved video or creative generation prompts
 Use deterministic code: scoring, routing, blocking, deduplication, approval states
 ```
 
-The Growth Engine should become the agent control room. Agents propose, route, and prepare work. Humans approve. Specialized tools execute.
+The Arc Studio should become the agent control room. Agents propose, route, and prepare work. Humans approve. Specialized tools execute.
 
 ## Core Architecture
 
 ```text
-Next.js Growth Engine
+Next.js Arc Studio
   |
   | creates tasks, displays outputs, handles approvals
   v
@@ -77,7 +77,7 @@ GCP Cloud Run Agent Worker
 Supabase
   |
   v
-Growth Engine UI
+Arc Studio UI
   Agent Operations
   Persona Intelligence
   AI Studio
@@ -352,7 +352,7 @@ Useful references:
 
 Codex and Claude Code should be treated as engineering execution tools.
 
-Agents inside the Growth Engine should not directly modify the codebase at first. They should prepare implementation handoffs.
+Agents inside Arc Studio should not directly modify the codebase at first. They should prepare implementation handoffs.
 
 Use Codex or Claude Code for:
 
@@ -364,7 +364,7 @@ Use Codex or Claude Code for:
 - Debugging build or lint failures.
 - Implementing approved product tickets.
 
-The Growth Engine should create structured handoff prompts such as:
+The Arc Studio should create structured handoff prompts such as:
 
 ```text
 Tool handoff: Codex

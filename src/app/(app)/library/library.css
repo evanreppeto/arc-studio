@@ -295,14 +295,26 @@
 .arc-library .selbar .sa-pick { position: relative; }
 .arc-library .pickscrim { position: fixed; inset: 0; z-index: 30; }
 .arc-library .pickmenu {
-  position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 31;
+  /* Opens DOWNWARD. It used to be `bottom: calc(100% + 8px)`, i.e. upward out
+     of the selection bar — and the bar sits near the top of the gallery, so the
+     menu's layout box landed at y≈54, behind the overview band and outside the
+     gallery's `overflow: hidden`. It was clipped rather than merely covered:
+     hit-testing its centre returned the band. Downward keeps it inside the
+     scrolling container, where there is far more room anyway (BSR-707). */
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 31;
   min-width: 220px; max-height: 260px; overflow: auto;
   display: flex; flex-direction: column; padding: 5px;
   border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel);
   box-shadow: 0 18px 40px -20px rgba(0, 0, 0, .85);
 }
 .arc-library .pickhd { font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 5px; }
-.arc-library .pickopt { padding: 7px 9px; border-radius: 7px; font-size: 12.5px; color: var(--text-2); cursor: pointer; transition: .12s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Used on both <span> (the campaign picker) and <button> (the folder picker,
+   BSR-707) — the reset keeps them identical while the newer one stays tabbable. */
+.arc-library .pickopt { display: block; width: 100%; text-align: left; border: none; background: none; font-family: inherit; padding: 7px 9px; border-radius: 7px; font-size: 12.5px; color: var(--text-2); cursor: pointer; transition: .12s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The folder picker's trigger is a real button inside the .sa chrome. */
+.arc-library .selbar .sa-pick-trigger { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 0; margin: 0; color: inherit; font: inherit; cursor: pointer; }
+.arc-library .selbar .sa-pick-trigger:disabled { cursor: default; opacity: 0.6; }
+.arc-library .selbar .sa-pick-trigger svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-library .pickopt:hover { background: var(--inset); color: var(--text); }
 
 /* Touch targets — see the note in arc-app.css. These per-asset quick actions
