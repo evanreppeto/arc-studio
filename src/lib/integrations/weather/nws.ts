@@ -154,3 +154,25 @@ export async function fetchPointForecast(
   if (!forecastUrl) return null;
   return nwsGet<NwsForecastResponse>(forecastUrl, opts);
 }
+
+/**
+ * Where NWS says a lat/lng actually is. The same `/points` response the forecast
+ * hop already reads, whose `relativeLocation` was being discarded.
+ *
+ * This is the only authoritative place-name available for a configured point, so
+ * it is what makes "you are watching Naperville" sayable at all (BSR-756). Nulls
+ * on any failure — an unresolved point is reported as unresolved, never guessed.
+ */
+export async function fetchPointLocation(
+  lat: number,
+  lng: number,
+  opts?: NwsRequestOptions,
+): Promise<{ city: string | null; state: string | null }> {
+  try {
+    const point = await nwsGet<NwsPointResponse>(`/points/${lat},${lng}`, opts);
+    const loc = point?.properties?.relativeLocation?.properties ?? null;
+    return { city: loc?.city ?? null, state: loc?.state ?? null };
+  } catch {
+    return { city: null, state: null };
+  }
+}
