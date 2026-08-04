@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, useTransition, type CSSProperties } f
 
 import type { SharePermission, ShareVisibility } from "@/domain";
 
+import { OverlayPortal } from "./overlay-portal";
+
 export type ShareMemberVM = { userId: string; email: string | null; permission: SharePermission | null };
 export type SharingStateVM = {
   visibility: ShareVisibility;
@@ -17,6 +19,10 @@ export type SharingStateVM = {
  * The parent supplies the resource id + noun and callbacks that wrap the resource's
  * server actions, so this component stays resource-agnostic. Renders with defaults
  * when subjectId is null (offline/no selection) and the callbacks no-op.
+ *
+ * Rendered through OverlayPortal so its `position: fixed` scrim actually covers
+ * the shell — see overlay-portal.tsx. It claims `aria-modal="true"`, so the nav
+ * rail and top bar must not stay clickable behind it.
  */
 export function ShareDialog({
   subjectId,
@@ -78,59 +84,61 @@ export function ShareDialog({
   const label: CSSProperties = { marginBottom: 8, fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em", opacity: 0.6 };
 
   return (
-    <div style={overlay} onClick={onClose} role="dialog" aria-label={`Share ${subjectNoun}`} aria-modal="true">
-      <div className="sharecard" style={card} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
-          <h3 style={{ margin: 0, fontSize: 16, textTransform: "capitalize" }}>Share {subjectNoun}</h3>
-          <button className="btn sm" style={{ marginLeft: "auto" }} onClick={onClose} aria-label="Close">Done</button>
-        </div>
-
-        {!subjectId ? <p style={{ opacity: 0.7, fontSize: 13 }}>Open a {subjectNoun} to share it.</p> : null}
-
-        <div style={label}>Who can access</div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <button style={seg(visibility === "private")} onClick={() => setVisibility("private")}>Private (just you)</button>
-          <button style={seg(visibility === "workspace")} onClick={() => setVisibility("workspace")}>Everyone in workspace</button>
-        </div>
-        {visibility === "workspace" ? (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-            <span style={{ fontSize: 13, opacity: 0.7 }}>They can</span>
-            <button style={seg(permission === "view")} onClick={() => setPermission("view")}>View</button>
-            <button style={seg(permission === "collaborate")} onClick={() => setPermission("collaborate")}>Collaborate</button>
+    <OverlayPortal>
+      <div style={overlay} onClick={onClose} role="dialog" aria-label={`Share ${subjectNoun}`} aria-modal="true">
+        <div className="sharecard" style={card} onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
+            <h3 style={{ margin: 0, fontSize: 16, textTransform: "capitalize" }}>Share {subjectNoun}</h3>
+            <button className="btn sm" style={{ marginLeft: "auto" }} onClick={onClose} aria-label="Close">Done</button>
           </div>
-        ) : null}
-        <button className="btn gold" onClick={saveVisibility} disabled={busy || !subjectId} style={{ marginBottom: 16 }}>
-          {busy ? "Saving…" : "Save access"}
-        </button>
 
-        <div style={label}>Shared with specific people</div>
-        {state && state.shared.length > 0 ? (
-          state.shared.map((m) => (
-            <div key={m.userId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", fontSize: 13 }}>
-              <span>{m.email ?? m.userId}</span>
-              <span style={{ opacity: 0.6 }}>· {m.permission}</span>
-              <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => remove(m.userId)} disabled={busy}>Remove</button>
+          {!subjectId ? <p style={{ opacity: 0.7, fontSize: 13 }}>Open a {subjectNoun} to share it.</p> : null}
+
+          <div style={label}>Who can access</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <button style={seg(visibility === "private")} onClick={() => setVisibility("private")}>Private (just you)</button>
+            <button style={seg(visibility === "workspace")} onClick={() => setVisibility("workspace")}>Everyone in workspace</button>
+          </div>
+          {visibility === "workspace" ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 13, opacity: 0.7 }}>They can</span>
+              <button style={seg(permission === "view")} onClick={() => setPermission("view")}>View</button>
+              <button style={seg(permission === "collaborate")} onClick={() => setPermission("collaborate")}>Collaborate</button>
             </div>
-          ))
-        ) : (
-          <p style={{ opacity: 0.55, fontSize: 13, margin: "2px 0 8px" }}>Not shared with anyone specific yet.</p>
-        )}
+          ) : null}
+          <button className="btn gold" onClick={saveVisibility} disabled={busy || !subjectId} style={{ marginBottom: 16 }}>
+            {busy ? "Saving…" : "Save access"}
+          </button>
 
-        {state && state.addable.length > 0 ? (
-          <>
-            <div style={{ marginTop: 10, marginBottom: 6, fontSize: 12, opacity: 0.6 }}>Add a member</div>
-            {state.addable.map((m) => (
-              <div key={m.userId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13 }}>
+          <div style={label}>Shared with specific people</div>
+          {state && state.shared.length > 0 ? (
+            state.shared.map((m) => (
+              <div key={m.userId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", fontSize: 13 }}>
                 <span>{m.email ?? m.userId}</span>
-                <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => add(m.userId, "view")} disabled={busy}>+ View</button>
-                <button className="btn sm" onClick={() => add(m.userId, "collaborate")} disabled={busy}>+ Collaborate</button>
+                <span style={{ opacity: 0.6 }}>· {m.permission}</span>
+                <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => remove(m.userId)} disabled={busy}>Remove</button>
               </div>
-            ))}
-          </>
-        ) : null}
+            ))
+          ) : (
+            <p style={{ opacity: 0.55, fontSize: 13, margin: "2px 0 8px" }}>Not shared with anyone specific yet.</p>
+          )}
 
-        {notice ? <p style={{ marginTop: 12, fontSize: 12, opacity: 0.75 }}>{notice}</p> : null}
+          {state && state.addable.length > 0 ? (
+            <>
+              <div style={{ marginTop: 10, marginBottom: 6, fontSize: 12, opacity: 0.6 }}>Add a member</div>
+              {state.addable.map((m) => (
+                <div key={m.userId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13 }}>
+                  <span>{m.email ?? m.userId}</span>
+                  <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => add(m.userId, "view")} disabled={busy}>+ View</button>
+                  <button className="btn sm" onClick={() => add(m.userId, "collaborate")} disabled={busy}>+ Collaborate</button>
+                </div>
+              ))}
+            </>
+          ) : null}
+
+          {notice ? <p style={{ marginTop: 12, fontSize: 12, opacity: 0.75 }}>{notice}</p> : null}
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }

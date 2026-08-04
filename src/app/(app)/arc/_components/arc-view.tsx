@@ -148,6 +148,7 @@ import {
 // Reused rather than reimplemented: the same `requireOperator()` gate and
 // org-scoped upsert Settings has always used to switch a connector.
 import { toggleConnectorEnabled } from "../../settings/connectors-actions";
+import { OverlayPortal } from "../../_components/overlay-portal";
 import type { GeneratedSkillRecord } from "@/lib/exemplar-skills/persistence";
 import {
   getChatSharingStateAction,
@@ -1340,17 +1341,19 @@ function ShareDialog({ conversationId, onClose }: { conversationId: string | nul
   });
 
   return (
-    <motion.div className="arc-modal-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} role="presentation">
-      <motion.div className="arc-share-dialog" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.99 }} role="dialog" aria-modal="true" aria-labelledby="arc-share-title" onClick={(event) => event.stopPropagation()}>
-        <div className="arc-share-head"><div><h2 id="arc-share-title">Share conversation</h2><p>Private by default. Choose who can view or collaborate.</p></div><button type="button" className="arc-icon-button" onClick={onClose} aria-label="Close share dialog"><X size={17} /></button></div>
-        {!conversationId ? <p className="arc-share-empty">Start a real conversation before sharing it.</p> : null}
-        <fieldset disabled={busy || !conversationId}><legend>Who can access</legend><div className="arc-segment"><button type="button" className={visibility === "private" ? "is-active" : ""} onClick={() => setVisibility("private")}>Private</button><button type="button" className={visibility === "workspace" ? "is-active" : ""} onClick={() => setVisibility("workspace")}>Workspace</button></div></fieldset>
-        {visibility === "workspace" ? <fieldset disabled={busy || !conversationId}><legend>Workspace permission</legend><div className="arc-segment"><button type="button" className={permission === "view" ? "is-active" : ""} onClick={() => setPermission("view")}>Can view</button><button type="button" className={permission === "collaborate" ? "is-active" : ""} onClick={() => setPermission("collaborate")}>Can collaborate</button></div></fieldset> : null}
-        <button type="button" className="arc-primary-button" onClick={save} disabled={busy || !conversationId}>{busy ? "Saving…" : "Save access"}</button>
-        <div className="arc-share-people"><h3>People with access</h3>{state?.shared.length ? state.shared.map((member) => <div key={member.userId}><span><Users size={15} /><b>{member.email ?? member.userId}</b><small>{member.permission}</small></span><button type="button" onClick={() => remove(member.userId)}>Remove</button></div>) : <p>No one has been added yet.</p>}{state?.addable.slice(0, 3).map((member) => <div key={member.userId}><span><Users size={15} /><b>{member.email ?? member.userId}</b></span><button type="button" onClick={() => add(member.userId, "view")}>Add</button></div>)}</div>
-        {notice ? <p className="arc-share-notice">{notice}</p> : null}
+    <OverlayPortal>
+      <motion.div className="arc-modal-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} role="presentation">
+        <motion.div className="arc-share-dialog" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.99 }} role="dialog" aria-modal="true" aria-labelledby="arc-share-title" onClick={(event) => event.stopPropagation()}>
+          <div className="arc-share-head"><div><h2 id="arc-share-title">Share conversation</h2><p>Private by default. Choose who can view or collaborate.</p></div><button type="button" className="arc-icon-button" onClick={onClose} aria-label="Close share dialog"><X size={17} /></button></div>
+          {!conversationId ? <p className="arc-share-empty">Start a real conversation before sharing it.</p> : null}
+          <fieldset disabled={busy || !conversationId}><legend>Who can access</legend><div className="arc-segment"><button type="button" className={visibility === "private" ? "is-active" : ""} onClick={() => setVisibility("private")}>Private</button><button type="button" className={visibility === "workspace" ? "is-active" : ""} onClick={() => setVisibility("workspace")}>Workspace</button></div></fieldset>
+          {visibility === "workspace" ? <fieldset disabled={busy || !conversationId}><legend>Workspace permission</legend><div className="arc-segment"><button type="button" className={permission === "view" ? "is-active" : ""} onClick={() => setPermission("view")}>Can view</button><button type="button" className={permission === "collaborate" ? "is-active" : ""} onClick={() => setPermission("collaborate")}>Can collaborate</button></div></fieldset> : null}
+          <button type="button" className="arc-primary-button" onClick={save} disabled={busy || !conversationId}>{busy ? "Saving…" : "Save access"}</button>
+          <div className="arc-share-people"><h3>People with access</h3>{state?.shared.length ? state.shared.map((member) => <div key={member.userId}><span><Users size={15} /><b>{member.email ?? member.userId}</b><small>{member.permission}</small></span><button type="button" onClick={() => remove(member.userId)}>Remove</button></div>) : <p>No one has been added yet.</p>}{state?.addable.slice(0, 3).map((member) => <div key={member.userId}><span><Users size={15} /><b>{member.email ?? member.userId}</b></span><button type="button" onClick={() => add(member.userId, "view")}>Add</button></div>)}</div>
+          {notice ? <p className="arc-share-notice">{notice}</p> : null}
+        </motion.div>
       </motion.div>
-    </motion.div>
+    </OverlayPortal>
   );
 }
 
