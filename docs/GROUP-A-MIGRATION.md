@@ -271,9 +271,29 @@ and nothing here is urgent — see finding (1).
   missed and the production break one of them had already caused.
 - **The writer audit is automated** — `src/lib/db/workspace-writers.test.ts`,
   every PR, keyed on `hasColumn`. Currently enforcing 31 tables / 78 insert sites.
-- **Wave 1 Phase B** — unblocked (BSR-711). Its static gate is green and
-  automated; the traffic-based half remains weak evidence on an idle prod.
-- **Waves 2-4** — not started (BSR-712 through BSR-717).
+- **Wave 1 Phase B** — done (BSR-711, PR #885), prod-verified 2026-08-04: 8/8
+  `NOT NULL`, 32 workspace policies, 0 stale org policies, 228 rows / 0 nulls,
+  and a read *as a real workspace member* returned rows (a schema query cannot
+  tell you nobody was locked out).
+- **Wave 2 Phase A** — done (BSR-712, PR #891), prod-verified 2026-08-04: 5
+  columns live, nullable, indexed, FK'd, **0 NULLs across 103 rows**.
+  Two things worth carrying forward:
+  - The writer audit found **3 insert sites the by-table grep missed**
+    (`upsertArcAgent`/`ensureArcAgentId` in three files — they read as selects).
+    Wave 1's lesson held on its first re-test.
+  - `agent_task_inputs` grew 83 → 85 between measurement and migration, and the
+    backfill caught both. That is evidence the backfill handles the gap, **not**
+    evidence the writers stamp — those rows predate the deploy. Still no
+    post-deploy traffic, so the static audit remains the only real gate.
+- **Wave 2 Phase B** — BSR-713. Two prerequisites beyond the usual gate:
+  1. **A Cloud Run runner deploy**, not just a Vercel one — `appendAgentRunLog`
+     is called by the runner over `/api/v1`. Verify the revision actually rolled
+     before locking; an old runner writing NULLs is fine in Phase A and fatal in
+     Phase B.
+  2. Decide `agents`' unique constraint. It is workspace-owned but still unique on
+     `(org_id, key)` — equivalent today, wrong the day an org holds two
+     workspaces. A Phase A deliberately did not rewrite it.
+- **Waves 3-4** — not started (BSR-714 through BSR-717).
 
 One known gap is recorded in the audit test rather than hidden: three
 `arc_messages` writes in `arc-chat/persistence.ts` do not stamp yet, tied to
