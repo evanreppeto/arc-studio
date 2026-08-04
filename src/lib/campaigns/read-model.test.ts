@@ -112,7 +112,10 @@ describe("getCampaignWorkspaceDetail creative media", () => {
     expect(asset.category).toBe("media");
     expect(asset.media[0]).toMatchObject({ type: "image", url: "https://cdn.example/hero.png" });
     expect(detail.metrics.media).toBeGreaterThan(0);
-    expect(supabase.calls.filter((call) => call[0] === "eq" && call[1] === "org_id" && call[2] === "org-1")).toHaveLength(7);
+    // 8, not 7, since BSR-743: the guardrail_findings read is org-scoped too. It
+    // had been relying on its campaign_asset_id list already being this org's,
+    // which is a property of the caller rather than of the query.
+    expect(supabase.calls.filter((call) => call[0] === "eq" && call[1] === "org_id" && call[2] === "org-1")).toHaveLength(8);
   });
 
   it("turns structured candidate JSON into human-readable campaign copy", async () => {

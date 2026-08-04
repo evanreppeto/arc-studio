@@ -182,3 +182,105 @@ describe("guardrail findings carry their own tenancy", () => {
     ).rejects.toThrow(/requires a resolved org and workspace/);
   });
 });
+
+describe("the one-value fix a finding can carry (BSR-743)", () => {
+  it("records the target and label the critic named", async () => {
+    const client = createSupabaseQueryMock({
+      approval_items: [{ data: { id: "item-1", risk_level: "medium" }, error: null }, { data: null, error: null }],
+      guardrail_findings: { data: null, error: null },
+      approval_recommendations: { data: { id: "rec-1" }, error: null },
+    });
+
+    await recordDraftReview(
+      {
+        assetId: "asset-1",
+        riskLevel: "high",
+        recommendation: "request revision",
+        findings: [
+          {
+            claim: "Call [24/7 line].",
+            verdict: "unsupported",
+            note: "Still the placeholder.",
+            fix: { target: "[24/7 line]", label: "The number to call", kind: "phone" },
+          },
+        ],
+      },
+      client,
+      { orgId: "org-1", workspaceId: "ws-1" },
+    );
+
+    const insert = client.calls.find((c) => c[0] === "insert");
+    const rows = insert?.[1] as Array<Record<string, unknown>>;
+    expect(rows[0]).toMatchObject({
+      fix_target: "[24/7 line]",
+      fix_label: "The number to call",
+      fix_kind: "phone",
+    });
+  });
+
+  it("writes all three columns as null when there is no fix, never a half of one", async () => {
+    // The database rejects a target with no label. A finding that arrived with
+    // one half filled in must not take the whole review's findings down with it.
+    const client = createSupabaseQueryMock({
+      approval_items: [{ data: { id: "item-1", risk_level: "medium" }, error: null }, { data: null, error: null }],
+      guardrail_findings: { data: null, error: null },
+      approval_recommendations: { data: { id: "rec-1" }, error: null },
+    });
+
+    await recordDraftReview(
+      {
+        assetId: "asset-1",
+        riskLevel: "medium",
+        recommendation: "request revision",
+        findings: [
+          { claim: "Too strong.", verdict: "unsupported", note: "Judgement, not a blank." },
+          {
+            claim: "Half a fix.",
+            verdict: "unsupported",
+            note: "Target but no label.",
+            fix: { target: "[x]", label: "   ", kind: "text" },
+          },
+        ],
+      },
+      client,
+      { orgId: "org-1", workspaceId: "ws-1" },
+    );
+
+    const insert = client.calls.find((c) => c[0] === "insert");
+    const rows = insert?.[1] as Array<Record<string, unknown>>;
+    for (const row of rows) {
+      expect(row).toMatchObject({ fix_target: null, fix_label: null, fix_kind: null });
+    }
+  });
+
+  it("falls back to a plain text input rather than rejecting an unknown kind", async () => {
+    const client = createSupabaseQueryMock({
+      approval_items: [{ data: { id: "item-1", risk_level: "medium" }, error: null }, { data: null, error: null }],
+      guardrail_findings: { data: null, error: null },
+      approval_recommendations: { data: { id: "rec-1" }, error: null },
+    });
+
+    await recordDraftReview(
+      {
+        assetId: "asset-1",
+        riskLevel: "medium",
+        recommendation: "request revision",
+        findings: [
+          {
+            claim: "Call [x].",
+            verdict: "unsupported",
+            note: "Placeholder.",
+            // "sms" is not in the CHECK constraint; writing it would fail the insert.
+            fix: { target: "[x]", label: "The number", kind: "sms" as never },
+          },
+        ],
+      },
+      client,
+      { orgId: "org-1", workspaceId: "ws-1" },
+    );
+
+    const insert = client.calls.find((c) => c[0] === "insert");
+    const rows = insert?.[1] as Array<Record<string, unknown>>;
+    expect(rows[0]).toMatchObject({ fix_target: "[x]", fix_kind: "text" });
+  });
+});

@@ -2,13 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 
-import { validateRevisionInstruction } from "@/domain";
+import { describeFixFailure, validateRevisionInstruction } from "@/domain";
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
+import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { attachMediaToCampaignAsset } from "@/lib/campaigns/attach-media";
 import { buildExternalSendPackage, recordExternalSend, type ExternalSendPackage } from "@/lib/campaigns/external-send";
 import { decideAsset, reopenAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
 import { editDraftAsset } from "@/lib/campaigns/draft-editing";
+import { applyFindingFix } from "@/lib/campaigns/inline-fix";
 import { launchCampaign } from "@/lib/campaigns/launch";
 import { redispatchStalledRevision } from "@/lib/campaigns/revision-recovery";
 import { requestAssetRevision } from "@/lib/campaigns/revisions";
@@ -278,5 +280,54 @@ export async function markCampaignAssetSentExternally(
     return result;
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not record the external send." };
+  }
+}
+
+export type ApplyFindingFixActionResult =
+  | { ok: true; persisted: boolean; replaced?: number }
+  | { ok: false; error: string };
+
+/**
+ * Fill in the one value a claims-review finding is asking for, and apply it to
+ * the draft (BSR-743).
+ *
+ * An edit, not a decision: it writes through the same path as the inline
+ * editor, leaves dispatch locked, and the deliverable still needs approving.
+ * The finding closes because it has been answered, not because anyone approved
+ * anything.
+ */
+export async function applyFindingFixAction(input: {
+  campaignId: string;
+  findingId: string;
+  value: string;
+}): Promise<ApplyFindingFixActionResult> {
+  await requireOperator();
+  if (!input.findingId) return { ok: false, error: "Missing finding." };
+  if (!input.value.trim()) return { ok: false, error: "Add the value first — nothing was changed." };
+
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  try {
+    const [operator, ctx] = await Promise.all([getOperatorActor(), getCurrentWorkspaceContext()]);
+    // Refuse rather than fall back to org-wide. Applying a fix edits copy, and
+    // an unresolved workspace is not a reason to widen what may be edited.
+    if (!ctx.workspaceId) return { ok: false, error: "No workspace is selected, so nothing was changed." };
+    const result = await applyFindingFix(
+      { findingId: input.findingId, value: input.value, orgId: ctx.orgId, workspaceId: ctx.workspaceId },
+      operator,
+    );
+    if (!result.ok) {
+      if (result.reason === "not_found") {
+        return { ok: false, error: "That finding is no longer open. Nothing was changed." };
+      }
+      if (result.reason === "no_fix") {
+        return { ok: false, error: "This finding doesn't have a value to fill in. Nothing was changed." };
+      }
+      return { ok: false, error: describeFixFailure(result.reason, result.target) };
+    }
+    revalidatePath(`/campaigns/${input.campaignId}`);
+    return { ok: true, persisted: true, replaced: result.replaced };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not apply that fix." };
   }
 }

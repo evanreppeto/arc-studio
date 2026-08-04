@@ -8,8 +8,10 @@
  * blocker looks like. There is one renderer.
  */
 
+import { useState } from "react";
+
 import { reviewAgentLabel, reviewVerdictLabel, riskFlagLabel, toWorkState, WORK_STATE_LABEL } from "@/domain";
-import { type CampaignWorkspaceAsset } from "@/lib/campaigns/read-model";
+import { type CampaignAssetFinding, type CampaignWorkspaceAsset } from "@/lib/campaigns/read-model";
 
 import { highlightClaims, isBlocker, splitSuggestedEdits, type ReviewSummary } from "./review-summary";
 
@@ -58,6 +60,8 @@ export function ReviewBlock({
   onFocusFinding,
   onEditCopy,
   canEdit,
+  onApplyFix,
+  pending = false,
 }: {
   asset: CampaignWorkspaceAsset;
   summary: ReviewSummary;
@@ -66,6 +70,11 @@ export function ReviewBlock({
   onFocusFinding: (assetId: string, index: number) => void;
   onEditCopy: () => void;
   canEdit: boolean;
+  /** Absent on a decided deliverable — there is nothing to fill in once the
+   *  decision is made, and offering an input that edits approved copy would be
+   *  a quiet way around the approval gate. */
+  onApplyFix?: (finding: CampaignAssetFinding, value: string) => void;
+  pending?: boolean;
 }) {
   const rec = asset.recommendation;
   const edits = splitSuggestedEdits(rec?.suggestedEdits ?? "");
@@ -116,6 +125,9 @@ export function ReviewBlock({
                   {finding.claim && <q className="rvq">{finding.claim}</q>}
                   <span className={open ? "rvwhy open" : "rvwhy"}>{finding.message}</span>
                 </button>
+                {finding.fix && onApplyFix && (
+                  <InlineFixRow finding={finding} pending={pending} onApply={onApplyFix} />
+                )}
               </li>
             );
           })}
@@ -177,6 +189,69 @@ export function ReviewBlock({
   );
 }
 
+
+/**
+ * The one value a finding is asking for, collected where the finding is.
+ *
+ * The point of BSR-743: the reviewer should not have to leave the review, open
+ * the editor, find the placeholder and retype a value the finding already
+ * named. Applying writes through the same draft-edit path the editor uses — it
+ * is an edit, not an approval, and the deliverable still needs approving after.
+ */
+function InlineFixRow({
+  finding,
+  pending,
+  onApply,
+}: {
+  finding: CampaignAssetFinding;
+  pending: boolean;
+  onApply: (finding: CampaignAssetFinding, value: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const fix = finding.fix;
+  if (!fix) return null;
+
+  const submit = () => {
+    if (!value.trim() || pending) return;
+    onApply(finding, value);
+    setValue("");
+  };
+
+  return (
+    <div className="rvfix">
+      <label className="rvfixlabel" htmlFor={`fix-${finding.id}`}>
+        {fix.label}
+      </label>
+      <div className="rvfixrow">
+        <input
+          id={`fix-${finding.id}`}
+          className="rvfixinput"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          // Enter submits, because this is a one-field form and reaching for the
+          // mouse to confirm a single value is the friction being removed.
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          type={fix.kind === "phone" ? "tel" : fix.kind === "url" ? "url" : fix.kind === "date" ? "date" : "text"}
+          placeholder={fix.target}
+          disabled={pending}
+          autoComplete="off"
+        />
+        <button type="button" className="cbtn gold rvfixgo" onClick={submit} disabled={pending || !value.trim()}>
+          {svg('<path d="M5 12l4 4L19 6"/>')}
+          Apply
+        </button>
+      </div>
+      <p className="rvfixnote">
+        Replaces <code>{fix.target}</code> in the draft. Still needs approving — nothing goes out because of this.
+      </p>
+    </div>
+  );
+}
 
 /** Long copy is folded so the review above it stays on screen. Generous on
  *  purpose — a short email is not worth hiding, and a clamp that fires on

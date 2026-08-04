@@ -8,7 +8,7 @@ import {
   summarizeReview,
 } from "./review-summary";
 
-const finding = (claim: string, severity: string, message = "why") => ({ claim, severity, message });
+const finding = (claim: string, severity: string, message = "why") => ({ id: `f-${claim}`, claim, severity, message, fix: null });
 const reviewed = { claimsReviewed: true };
 
 describe("summarizeReview", () => {
