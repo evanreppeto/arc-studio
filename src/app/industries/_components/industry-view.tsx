@@ -262,8 +262,10 @@ export function IndustryView({
         </div>
       </section>
 
-      {/* The honesty note. Pipeline stages ship as one general default — saying
-          otherwise is the broken promise this whole page is built to avoid. */}
+      {/* The honesty note. Stages now arrive per-industry too, so this no longer
+          apologises for them — but it must keep naming what genuinely is NOT
+          configured on day one. The rule this page is built on is that nothing
+          here may promise more than onboarding delivers. */}
       <section className="mx-auto max-w-6xl px-6 pb-20">
         <Reveal>
           <div className="max-w-[74ch] rounded-xl border border-[color:var(--border-panel)] bg-[var(--surface-panel)] p-6 sm:p-8">
@@ -271,11 +273,16 @@ export function IndustryView({
               What you still set up yourself
             </h2>
             <p className="mt-3 text-[0.95rem] leading-relaxed text-[var(--text-secondary)]">
-              The vocabulary and personas above arrive configured. Your pipeline
-              stages do not — every workspace starts from one general set of
-              stages that you rename to match how {industry.trade} actually track
-              work. It takes a few minutes and it is the one part we have not
-              made industry-specific yet.
+              The vocabulary, personas and pipeline stages above arrive
+              configured — the stages as a starting set for {industry.trade},
+              which you rename, reorder or add to in a couple of minutes if your
+              process differs.
+            </p>
+            <p className="mt-3 text-[0.95rem] leading-relaxed text-[var(--text-secondary)]">
+              What is genuinely yours to do: bring your records in, point Arc at
+              your website so it learns your voice and proof points, and connect
+              the channels you actually send through. Nothing goes out to a
+              customer until you approve it.
             </p>
           </div>
         </Reveal>
