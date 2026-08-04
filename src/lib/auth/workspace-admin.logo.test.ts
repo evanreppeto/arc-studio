@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { listWorkspacesForUser } from "./workspace-admin";
+
 // The rail's brand block resolves a workspace's mark as chrome logo → org brand
 // record (see (app)/layout.tsx). listWorkspacesForUser used to read only
 // workspaces.logo_url, so the switcher menu showed initials for the very
@@ -55,7 +61,6 @@ vi.mock("@/lib/supabase/auth-server", () => ({
   getSupabaseAuthenticatedUser: async () => ({ id: "user-1" }),
 }));
 
-const { listWorkspacesForUser } = await import("./workspace-admin");
 
 describe("listWorkspacesForUser logo resolution", () => {
   it("falls back to the org brand mark when the workspace has no chrome logo", async () => {

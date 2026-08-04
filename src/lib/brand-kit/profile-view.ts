@@ -7,16 +7,19 @@
 // Read-only — nothing here sends or publishes.
 // ---------------------------------------------------------------------------
 
-import { NEUTRAL_DEFAULTS, type BusinessProfile, type ProofPoint } from "@/domain";
+import { BRAND_COLOR_SLOTS, NEUTRAL_DEFAULTS, type BrandColorSlot, type BrandLogo, type BusinessProfile, type ProofPoint } from "@/domain";
 import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getAppSettings } from "@/lib/settings/store";
 
+import { listBrandLogos } from "./logos";
 import { getBusinessProfile } from "./persistence";
 import { isSupabaseAdminConfigured } from "../supabase/server";
 
 export type BrandSwatch = { role: string; name: string; hex: string };
+/** One editable colour slot. `hex` is "" when the workspace hasn't set that slot. */
+export type BrandPaletteSlotView = { slot: BrandColorSlot; role: string; label: string; hex: string };
 export type BrandSourceItem = { id?: string; ext: string; extColor?: string; name: string; facts: string; when: string; stale: boolean };
 
 export type BrandProfileView = {
@@ -48,6 +51,19 @@ export type BrandProfileView = {
     logoUrl: string | null;
   };
   palette: BrandSwatch[];
+  /**
+   * Every colour slot, including the ones with no colour set — which `palette`
+   * deliberately drops so the swatch row never renders a blank chip. The editor
+   * needs the unfiltered set: without it there is no way to fill an empty slot,
+   * because a slot with no colour is exactly the one that isn't on screen.
+   */
+  paletteSlots: BrandPaletteSlotView[];
+  /**
+   * Every named logo variant this workspace has uploaded. `identity.logoUrl`
+   * remains the single mirror image the rail and Studio render; this is the set
+   * the Brand screen manages and the renderer picks from per background.
+   */
+  logos: BrandLogo[];
   headingFont: string | null;
   bodyFont: string | null;
   tone: string[];
@@ -60,7 +76,7 @@ export type BrandProfileView = {
   sources: BrandSourceItem[];
 };
 
-type ColorSlot = "primary" | "secondary" | "accent" | "dark" | "light";
+type ColorSlot = BrandColorSlot;
 const ROLE_BY_SLOT: Array<[ColorSlot, string]> = [
   ["primary", "Primary"],
   ["secondary", "Secondary"],
@@ -78,10 +94,17 @@ function proofLabel(p: ProofPoint): string {
 }
 
 /** Pure: BusinessProfile (+ resolved sources) → the Brand screen view-model. */
-export function toBrandProfileView(profile: BusinessProfile, sources: BrandSourceItem[], isDemo: boolean, fallbackName: string): BrandProfileView {
+export function toBrandProfileView(profile: BusinessProfile, sources: BrandSourceItem[], isDemo: boolean, fallbackName: string, logos: BrandLogo[] = []): BrandProfileView {
   const palette: BrandSwatch[] = ROLE_BY_SLOT
     .map(([slot, role]) => ({ role, name: profile.brandPalette[slot].label || role, hex: profile.brandPalette[slot].hex }))
     .filter((s) => /^#[0-9a-fA-F]{6}$/.test(s.hex));
+
+  const paletteSlots: BrandPaletteSlotView[] = ROLE_BY_SLOT.map(([slot, role]) => ({
+    slot,
+    role,
+    label: profile.brandPalette[slot].label,
+    hex: profile.brandPalette[slot].hex,
+  }));
 
   const segments = [profile.industry, ...profile.serviceAreas].filter((v): v is string => Boolean(v && v.trim())).map(titleCase);
 
@@ -98,6 +121,8 @@ export function toBrandProfileView(profile: BusinessProfile, sources: BrandSourc
       logoUrl: profile.logoUrl?.startsWith("http") ? profile.logoUrl : null,
     },
     palette,
+    paletteSlots,
+    logos,
     headingFont: profile.brandPalette.headingFont || null,
     bodyFont: profile.brandPalette.bodyFont || null,
     // `tone` is a single stored field; a comma list (demo) becomes multiple chips.
@@ -160,6 +185,11 @@ function demoBrandProfile(name: string): BusinessProfile {
   };
 }
 
+const DEMO_LOGOS: BrandLogo[] = [
+  { role: "primary", url: "/brand/demo/meridian-logo.png", fileName: "meridian-logo.png", updatedAt: null },
+  { role: "on_dark", url: "/brand/demo/meridian-logo.png", fileName: "meridian-logo-white.png", updatedAt: null },
+];
+
 const DEMO_SOURCES: BrandSourceItem[] = [
   { ext: "PDF", name: "Brand guidelines.pdf", facts: "18 facts", when: "analyzed 30d ago", stale: true },
   { ext: "DOCX", extColor: "#2b78c4", name: "Tone of voice.docx", facts: "9 facts", when: "analyzed 30d ago", stale: true },
@@ -167,7 +197,7 @@ const DEMO_SOURCES: BrandSourceItem[] = [
   { ext: "PDF", name: "product-onepager.pdf", facts: "7 facts", when: "analyzed 6d ago", stale: false },
 ];
 
-export async function getBrandProfileView(orgId: string, fallbackName: string): Promise<BrandProfileView> {
+export async function getBrandProfileView(orgId: string, fallbackName: string, workspaceId?: string | null): Promise<BrandProfileView> {
   if (isSupabaseAdminConfigured()) {
     // `null` from this read meant two different things — "no profile saved yet"
     // and "the read failed" — and both fell through to the neutral defaults
@@ -183,13 +213,21 @@ export async function getBrandProfileView(orgId: string, fallbackName: string): 
       };
     }
     if (profile) {
-      const [sources, logoUrl] = await Promise.all([loadLiveSources(orgId), resolveLegacyLogo(orgId, profile.logoUrl)]);
-      return toBrandProfileView({ ...profile, logoUrl }, sources, false, fallbackName);
+      const [sources, logoUrl, logos] = await Promise.all([
+        loadLiveSources(orgId),
+        resolveLegacyLogo(orgId, profile.logoUrl),
+        listBrandLogos(orgId, workspaceId),
+      ]);
+      return toBrandProfileView({ ...profile, logoUrl }, sources, false, fallbackName, logos);
     }
   }
 
   if (isDemoDataEnabled()) {
-    return toBrandProfileView(demoBrandProfile(fallbackName), DEMO_SOURCES, true, fallbackName);
+    // The demo carries a populated logo set for the same reason it carries a
+    // populated palette: a field the preview leaves empty reads as a feature
+    // that does nothing. Two roles rather than five, so the empty tiles are
+    // visible too — the preview should show both states, not a finished wall.
+    return toBrandProfileView(demoBrandProfile(fallbackName), DEMO_SOURCES, true, fallbackName, DEMO_LOGOS);
   }
 
   return toBrandProfileView(NEUTRAL_DEFAULTS, [], false, fallbackName);

@@ -11,6 +11,6 @@ export default async function BrandPage() {
   // context here renders a coherent empty state, not a false claim about data.
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   const brandName = ctx?.orgName?.trim() || "Your workspace";
-  const view = await getBrandProfileView(ctx?.orgId ?? "", brandName);
+  const view = await getBrandProfileView(ctx?.orgId ?? "", brandName, ctx?.workspaceId);
   return <BrandView view={view} />;
 }

@@ -14,6 +14,13 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks below apply either way — the dynamic form bought
+// nothing and charged this file's module transform to whichever test ran first
+// (BSR-739).
+import { reportDegraded } from "@/lib/observability/report-degraded";
+import { getBrandProfileView } from "./profile-view";
+
 vi.mock("../supabase/server", () => ({ isSupabaseAdminConfigured: () => true }));
 vi.mock("@/lib/demo/demo-mode", () => ({ isDemoDataEnabled: () => false }));
 vi.mock("@/lib/observability/report-degraded", () => ({ reportDegraded: vi.fn() }));
@@ -35,7 +42,6 @@ afterEach(() => vi.clearAllMocks());
 describe("brand kit", () => {
   it("says so when the read fails, rather than showing placeholder colours as yours", async () => {
     shouldThrow.value = true;
-    const { getBrandProfileView } = await import("./profile-view");
     const view = await getBrandProfileView("org-1", "Acme");
 
     expect(view.failed).toBeTruthy();
@@ -44,8 +50,6 @@ describe("brand kit", () => {
 
   it("reports the failure so it is findable, not just visible", async () => {
     shouldThrow.value = true;
-    const { reportDegraded } = await import("@/lib/observability/report-degraded");
-    const { getBrandProfileView } = await import("./profile-view");
     await getBrandProfileView("org-1", "Acme");
     expect(reportDegraded).toHaveBeenCalled();
   });
@@ -55,7 +59,6 @@ describe("brand kit", () => {
     // warning them about a failure that did not happen would train them to
     // ignore the banner for the time it does.
     shouldThrow.value = false;
-    const { getBrandProfileView } = await import("./profile-view");
     const view = await getBrandProfileView("org-1", "Acme");
     expect(view.failed).toBeNull();
   });

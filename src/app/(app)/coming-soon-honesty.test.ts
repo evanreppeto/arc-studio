@@ -39,11 +39,15 @@ const ARC_APP_CSS = readFileSync(join(APP_DIR, "arc-app.css"), "utf8");
 const BASELINE: Record<string, number> = {
   // Audience rows — no audience model behind them.
   "studio/_components/studio-view.tsx": 1,
-  // No palette or typography editor exists; `brand-honesty.test.ts` pins that
-  // these two must KEEP saying so, and fails if a write path appears.
-  "brand/_components/brand-view.tsx": 2,
-  // No column-visibility or density state in the board; no enrichment write path.
-  "crm/_components/crm-board.tsx": 3,
+  // brand-view.tsx used to sit here with 2 marks (palette, typography). Both
+  // now have real write paths — `updateBrandPalette` and `updateBrandTypography`
+  // — so the file is clean and this test's own staleness check is what removed
+  // it. brand-honesty.test.ts holds the line from the other side.
+  //
+  // Density ships for real now too (BSR-748) — it needed no backend, which is
+  // what made it worth building rather than leaving marked. Remaining here: no
+  // column-visibility state in the board, and no enrichment write path.
+  "crm/_components/crm-board.tsx": 2,
   // No template model anywhere in campaigns (`industry-templates` is personas).
   "campaigns/_components/campaigns-board.tsx": 1,
   // Iteration drafting exists via next_iteration opportunities, but this button

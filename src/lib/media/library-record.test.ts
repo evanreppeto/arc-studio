@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { AI_FOLDER_NAME, generatedFileName, recordGeneratedMedia } from "./library-record";
+
 /**
  * BSR-634: generated media has to reach the Library.
  *
@@ -24,7 +30,6 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseAdminClient: () => ({}),
 }));
 
-const { AI_FOLDER_NAME, generatedFileName, recordGeneratedMedia } = await import("./library-record");
 
 const base = {
   orgId: "org-1",

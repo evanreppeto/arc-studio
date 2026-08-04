@@ -10,6 +10,7 @@ import {
   parseBrandPalette,
   EMPTY_BRAND_PALETTE,
   mergeBrandPalette,
+  applyBrandPaletteEdit,
   type BusinessProfile,
   type PersonaDefinition,
   type ArcBusinessContext,
@@ -235,5 +236,59 @@ describe("validateBusinessProfile palette hex", () => {
     const r = validateBusinessProfile(bad);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors).toContain("palette_primary_invalid");
+  });
+});
+
+// An operator editing their own palette needs the opposite semantics to
+// mergeBrandPalette (which serves machine extraction). These tests pin the
+// difference, because getting it wrong shows a saved-looking screen carrying the
+// previous colour — the state in which someone approves off-brand creative.
+describe("applyBrandPaletteEdit", () => {
+  const current = {
+    ...EMPTY_BRAND_PALETTE,
+    primary: { label: "Brand", hex: "#123456" },
+    headingFont: "Fraunces",
+  };
+
+  it("overwrites a slot the operator has already set", () => {
+    const r = applyBrandPaletteEdit(current, { colors: { primary: { label: "New", hex: "#ABCDEF" } } });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.palette.primary).toEqual({ label: "New", hex: "#abcdef" });
+  });
+
+  it("normalizes a hex typed without the hash, and lowercases it", () => {
+    const r = applyBrandPaletteEdit(current, { colors: { accent: { label: "Gold", hex: "C8A24B" } } });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.palette.accent).toEqual({ label: "Gold", hex: "#c8a24b" });
+  });
+
+  it("reports a malformed hex instead of silently keeping the old colour", () => {
+    const r = applyBrandPaletteEdit(current, { colors: { primary: { label: "Brand", hex: "nope" } } });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]).toContain("primary");
+  });
+
+  it("clears a slot, and its label with it, on an empty hex", () => {
+    const r = applyBrandPaletteEdit(current, { colors: { primary: { label: "Brand", hex: "  " } } });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.palette.primary).toEqual({ label: "", hex: "" });
+  });
+
+  it("leaves slots the edit never mentions untouched", () => {
+    const r = applyBrandPaletteEdit(current, { colors: { accent: { label: "Gold", hex: "#c8a24b" } } });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.palette.primary).toEqual({ label: "Brand", hex: "#123456" });
+      expect(r.palette.headingFont).toBe("Fraunces");
+    }
+  });
+
+  it("sets fonts only when the edit names them", () => {
+    const untouched = applyBrandPaletteEdit(current, { bodyFont: "Geist" });
+    expect(untouched.ok).toBe(true);
+    if (untouched.ok) {
+      expect(untouched.palette.headingFont).toBe("Fraunces");
+      expect(untouched.palette.bodyFont).toBe("Geist");
+    }
   });
 });

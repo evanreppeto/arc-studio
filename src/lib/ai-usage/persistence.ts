@@ -13,14 +13,20 @@ import {
 } from "@/domain";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { soleWorkspaceIdForOrg } from "@/lib/tenancy/resolve-workspace";
 
 export type RecordUsageInput = {
   orgId: string;
   /**
-   * Null for org-scoped services. The Brain is org-scoped — `knowledge_nodes`
-   * has an org_id and no workspace_id — so an embedding has no workspace to
-   * attribute to, and resolving a "default" one would fabricate an attribution
-   * rather than record the absence of one. Null means org-scoped, not lost.
+   * The workspace this usage belongs to, or null to let `recordUsageEvent`
+   * resolve it from the org.
+   *
+   * This used to say: "Null for org-scoped services. The Brain is org-scoped —
+   * `knowledge_nodes` has an org_id and no workspace_id — so an embedding has no
+   * workspace to attribute to." That was true when written and is now FALSE:
+   * BSR-715 gave `knowledge_nodes` a `workspace_id NOT NULL`. The Brain is
+   * workspace-scoped, so an embedding does have a workspace to attribute to, and
+   * passing null no longer records "org-scoped" — it records nothing.
    */
   workspaceId: string | null;
   service: AiUsageService;
@@ -86,12 +92,23 @@ export async function recordUsageEvent(input: RecordUsageInput): Promise<RecordU
   // established untyped-client cast (see src/lib/personas/persistence.ts).
   const db = getSupabaseAdminClient() as unknown as SupabaseClient;
 
+  // Resolve rather than record a null (BSR-716). This used to write
+  // `input.workspaceId ?? null`, which named the column without supplying a
+  // value — 59 of 148 prod rows had no workspace, the newest written minutes
+  // before this was found. Because this function is best-effort and never
+  // throws, a NOT NULL column plus a null here would drop metering rows
+  // SILENTLY, on the ledger already known to undercount.
+  //
+  // Same precedence as every backfill in this migration: the org's sole
+  // workspace, and null only if that is genuinely ambiguous.
+  const workspaceId = input.workspaceId ?? (await soleWorkspaceIdForOrg(db, input.orgId));
+
   try {
     const { data, error } = await db
       .from("ai_usage_events")
       .insert({
         org_id: input.orgId,
-        workspace_id: input.workspaceId ?? null,
+        workspace_id: workspaceId,
         actor_user: input.actorUser ?? null,
         service: input.service,
         model: input.model,
