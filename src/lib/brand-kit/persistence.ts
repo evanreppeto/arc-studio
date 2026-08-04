@@ -1,6 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 import {
   parseBusinessProfile,
   type BusinessProfile,
@@ -36,6 +37,7 @@ export async function upsertBusinessProfile(
   const supabase = getSupabaseAdminClient();
   const row = {
     org_id: orgId,
+    ...(await workspaceIdFields(supabase, orgId)),
     display_name: profile.displayName,
     legal_name: profile.legalName,
     tagline: profile.tagline,
