@@ -2,6 +2,7 @@ import { buildCampaignSeedFromOpportunity, humanizePersonaLabel, definitionText,
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { crmRecordHref, listOpenOpportunities, type OpportunityRecord } from "@/lib/opportunities/read-model";
+import { getLastScanStatus } from "@/lib/opportunities/scan-status";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { canonicalIndustryKey } from "@/lib/product-language";
@@ -9,6 +10,7 @@ import { canonicalIndustryKey } from "@/lib/product-language";
 import { classify } from "./classify";
 import { extraEvidenceRows } from "./evidence";
 import { humanizeArcProse, isMachineText, rowName, rowQualifier } from "./prose";
+import { scanStatusLine } from "./scan-status-copy";
 import { OpportunityInbox, type OpportunityVM } from "./_components/opportunity-inbox";
 
 export const metadata = { title: "Opportunities — Arc Studio" };
@@ -210,11 +212,14 @@ export default async function OpportunitiesPage({
   searchParams: Promise<{ selected?: string }>;
 }) {
   const ctx = await getCurrentWorkspaceContext();
-  const [records, storedPersonaOptions, params] = await Promise.all([
+  const [records, storedPersonaOptions, params, scanStatus] = await Promise.all([
     listOpenOpportunities(undefined, ctx.orgId).catch(() => [] as OpportunityRecord[]),
     // Correctly silent (BSR-546): picker options, as on /campaigns.
     getOrgPersonaOptions(ctx.orgId).catch(() => []),
     searchParams,
+    // Also correctly silent: without scan history the inbox still works, it just
+    // has nothing to say about Arc's last pass.
+    getLastScanStatus(ctx.orgId),
   ]);
   const demoPersonaOptions = personasForIndustry(canonicalIndustryKey(process.env.ARC_DEMO_INDUSTRY))
     .map((persona) => ({ key: persona.slug, label: persona.name }));
@@ -225,5 +230,12 @@ export default async function OpportunitiesPage({
       : [];
   const opps = records.map((record) => toVM(record, personaOptions.map((persona) => persona.key)));
 
-  return <OpportunityInbox opps={opps} personaOptions={personaOptions} selectedId={params.selected} />;
+  return (
+    <OpportunityInbox
+      opps={opps}
+      personaOptions={personaOptions}
+      selectedId={params.selected}
+      scanStatus={scanStatusLine(scanStatus)}
+    />
+  );
 }
