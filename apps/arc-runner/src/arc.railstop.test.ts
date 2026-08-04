@@ -56,6 +56,7 @@ function makeClient() {
 }
 
 const payload = {
+  route: "fast" as const,
   agentTaskId: "task-1",
   conversationId: "conv-1",
   messageId: "msg-1",
@@ -85,7 +86,11 @@ describe("a run that stops on a runaway rail", () => {
     const result = await runArcTurn(payload, makeClient() as never);
 
     expect(result.body).toContain("composited on top");
-    expect(result.body).toContain("ran out of steps");
+    // Names the limit and the tier: "Arc hit an error" left the operator with
+    // no next move, and the same request often finishes with more room.
+    expect(result.body).toMatch(/\d+-step limit/);
+    expect(result.body).toContain("Arc Spark");
+    expect(result.body).toContain("Arc Forge");
   });
 
   it("still fails the turn when the rail was hit before Arc wrote anything", async () => {
