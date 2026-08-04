@@ -2,6 +2,7 @@ import "server-only";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getOperatorActor } from "@/lib/auth/operator";
+import { notConfigured } from "@/lib/observability/unavailable";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import {
@@ -28,8 +29,9 @@ const RUN_FRESHNESS_MS = 120_000;
  *                   (fresh workspace) → the UI shows its illustrative mock.
  * - "error"       — a configured workspace could not load chat history. Keep
  *                   the real composer visible; never masquerade as demo data.
- * - "unavailable" — no Supabase backend (local demo preview) → the UI shows
- *                   its illustrative mock.
+ * - "not_configured" — no Supabase backend (local demo preview) → the UI shows
+ *                   its illustrative mock. Named apart from a failure on
+ *                   purpose: nothing broke, so nothing should be reported.
  */
 export type ArcChatModel =
   | {
@@ -44,13 +46,15 @@ export type ArcChatModel =
     }
   | { status: "empty"; operator: string }
   | { status: "error"; message: string }
-  | { status: "unavailable" };
+  /** No backend configured (the local backend-less preview). An answer, not
+   *  an outage — `/arc` reads this to fall back to the mock conversation. */
+  | { status: "not_configured" };
 
 export async function getArcChatModel(
   requestedConversationId?: string | null,
   opts?: { startBlank?: boolean },
 ): Promise<ArcChatModel> {
-  if (!isSupabaseAdminConfigured()) return { status: "unavailable" };
+  if (!isSupabaseAdminConfigured()) return notConfigured();
 
   try {
     const [viewer, operator] = await Promise.all([getShareViewer(), getOperatorActor()]);
@@ -128,6 +132,13 @@ export type ArcRecentConversationVM = {
   id: string;
   title: string;
   when: string;
+  /** True while an Arc run is genuinely in flight for this thread. The rail is
+   *  on every screen, so this is what makes "Arc is still working" survive
+   *  navigating away from /arc. */
+  running: boolean;
+  /** The thread `/arc` opens when the URL names no conversation, so the rail can
+   *  mark the current chat the way it marks the current destination. */
+  defaultActive: boolean;
 };
 
 const DAY_MS = 86_400_000;
@@ -152,7 +163,7 @@ function relativeWhen(iso: string, nowMs: number): string {
  */
 export async function getRecentArcConversations(
   {
-    limit = 3,
+    limit = 5,
     nowMs = Date.now(),
     orgId,
     workspaceId,
@@ -167,8 +178,24 @@ export async function getRecentArcConversations(
 
   try {
     const [viewer, operator] = await Promise.all([getShareViewer(), getOperatorActor()]);
-    const conversations = await listConversationsForViewer(viewer, operator);
+    const [conversations, activeRuns] = await Promise.all([
+      listConversationsForViewer(viewer, operator),
+      // Never let the "working" indicator take the rail down with it: a failed
+      // run read means no dots, not a shell without recent chats.
+      listActiveArcRunConversationIds().catch(() => []),
+    ]);
     const safeLimit = Math.max(0, Math.min(limit, 5));
+    // Mirrors getArcChatModel's own fallback: with no `?c=` in the URL, /arc
+    // opens listConversationsForViewer's first row (pinned first, then newest).
+    // Read from the unsorted list so the two screens can never disagree.
+    const defaultActiveId = conversations[0]?.id ?? null;
+    // Same freshness cap the /arc thread rail applies — past it a task is stuck,
+    // not live, and a permanent spinner in the shell is worse than no spinner.
+    const runningIds = new Set(
+      activeRuns
+        .filter((run) => nowMs - Date.parse(run.since) < RUN_FRESHNESS_MS)
+        .map((run) => run.conversationId),
+    );
 
     return [...conversations]
       .filter((conversation) => !orgId || conversation.orgId === orgId)
@@ -179,6 +206,8 @@ export async function getRecentArcConversations(
         id: conversation.id,
         title: conversation.title.trim() || "Untitled chat",
         when: relativeWhen(conversation.lastMessageAt, nowMs),
+        running: runningIds.has(conversation.id),
+        defaultActive: conversation.id === defaultActiveId,
       }));
   } catch {
     return [];

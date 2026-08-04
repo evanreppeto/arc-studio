@@ -18,11 +18,12 @@
 //
 // WHAT WE DELIBERATELY DO NOT CLAIM
 //
-// Pipeline stages. `DEFAULT_PIPELINE_STAGES` (src/domain/pipeline-stages.ts) is
-// ONE general set for every industry — a tenant can rename them (the stage
-// manager shipped in BSR-495/563) but they do not arrive pre-configured per
-// trade. Saying otherwise would be the exact broken promise this rule exists to
-// prevent, so every page states plainly that stages are something you set.
+// Pipeline stages USED TO BE the example here: one general set for every
+// industry, which these pages had to apologise for. They are now seeded per
+// trade (src/lib/pipeline-stages/industry-templates.ts), so the honesty note
+// says so instead. The RULE is unchanged and is the point: if a page claims a
+// vertical gets something configured, onboarding must actually deliver it.
+// Before adding a claim here, check what `createWorkspaceDefaults` really seeds.
 //
 // NOTE ON OVERLAP: roofing, HVAC/plumbing and commercial cleaning all resolve to
 // the same `home_services` template. That is the truth about the product, and it

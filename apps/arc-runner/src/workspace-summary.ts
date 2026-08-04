@@ -24,6 +24,11 @@ export type WorkspaceSummary = {
    * it. Absent and empty mean the same thing here — no block is rendered.
    */
   dismissalPatterns?: string[] | null;
+  /**
+   * The operator's recent corrections, verbatim (BSR-685). Optional for the
+   * same reason as the fields above: an older app deploy will not send it.
+   */
+  recentCorrections?: string[] | null;
 };
 
 /**

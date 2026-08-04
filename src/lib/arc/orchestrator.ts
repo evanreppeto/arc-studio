@@ -37,7 +37,11 @@ export async function runArcPartnerCampaign(
   const businessContext = context ?? (await getBusinessContext(orgId));
   const runId = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
   const startedAt = new Date().toISOString();
-  const agentId = await upsertArcAgent(client, orgId);
+  // Resolved here rather than just before the agent_tasks insert below: `agents`
+  // gained workspace_id in BSR-712 and is written on the very next line, so the
+  // workspace has to be known before the first write, not partway through.
+  const taskTenant = tenant ?? (await getCurrentAgentTaskTenantFields());
+  const agentId = await upsertArcAgent(client, taskTenant);
   const draft = createPartnerCampaignDraft(request, businessContext);
 
   const companyId = await insertOne(client, "companies", withOrg({
@@ -217,8 +221,6 @@ export async function runArcPartnerCampaign(
 
   await updateById(client, "campaigns", campaignId, { approval_item_id: approvalItemId }, tenant);
 
-  const taskTenant = tenant ?? (await getCurrentAgentTaskTenantFields());
-
   const agentTaskId = await insertOne(client, "agent_tasks", {
     ...taskTenant,
     agent_id: agentId,
@@ -243,7 +245,7 @@ export async function runArcPartnerCampaign(
     },
   });
 
-  await insertOne(client, "agent_task_inputs", withOrg({
+  await insertOne(client, "agent_task_inputs", withWorkspace({
     task_id: agentTaskId,
     input_type: "partner_campaign_request",
     source_table: "leads",
@@ -278,7 +280,7 @@ export async function runArcPartnerCampaign(
     approval_status: draft.guardrails.approvalStatus,
   }, taskTenant));
 
-  await insertOne(client, "agent_run_logs", withOrg({
+  await insertOne(client, "agent_run_logs", withWorkspace({
     task_id: agentTaskId,
     agent_id: agentId,
     run_status: draft.guardrails.riskLevel === "blocked" ? "completed" : "completed",
@@ -331,19 +333,20 @@ export async function runArcPartnerCampaign(
   };
 }
 
-// agents is org-scoped but has no workspace_id column, so `tenant` cannot be
-// spread here -- org_id is set explicitly. The conflict target must stay
-// (org_id, key) to match the per-org unique; targeting "key" alone would
-// resolve against another tenant's agent row and overwrite it.
-async function upsertArcAgent(client: SupabaseClient, orgId: string) {
+// agents gained workspace_id in BSR-712, so this now carries the full tenant.
+// The conflict target must stay (org_id, key) to match the per-org unique;
+// targeting "key" alone would resolve against another tenant's agent row and
+// overwrite it. On conflict the upsert also re-stamps workspace_id, which makes
+// this idempotent with the migration's backfill rather than fighting it.
+async function upsertArcAgent(client: SupabaseClient, tenant: AgentTaskTenantFields) {
   const { data, error } = await client
     .from("agents")
     .upsert(
       {
-        org_id: orgId,
+        ...workspaceScopeFields(tenant),
         key: "arc",
         name: "Arc Orchestrator",
-        description: "Coordinates Growth Engine sub-workflows and routes outbound-facing work into human approval.",
+        description: "Coordinates Arc Studio sub-workflows and routes outbound-facing work into human approval.",
         status: "ready",
         allowed_actions: [
           "create_internal_crm_records",
@@ -482,8 +485,9 @@ async function updateById(
 /**
  * Org-only tenancy, for the tables that genuinely have no workspace column:
  * companies / contacts / leads (org-owned by the BSR-637 boundary), plus
- * persona_snapshots, agent_task_inputs and agent_run_logs until Waves 2-3 give
- * them one. Delegates to the shared helper rather than being a ninth private copy.
+ * persona_snapshots until Wave 3 gives it one. agent_task_inputs and
+ * agent_run_logs left this list in BSR-712. Delegates to the shared helper rather
+ * than being a ninth private copy.
  */
 function withOrg(values: Record<string, unknown>, tenant?: AgentTaskTenantFields) {
   return { ...values, ...orgScopeFields(tenant) };

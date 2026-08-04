@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
-import { buildStoragePath, createFolder, insertAsset, insertAssetWithUrl, sanitizeFileName, setAvailableToArc, DEFAULT_MEDIA_FOLDERS, seedDefaultMediaFolders } from "./persistence";
+import { buildStoragePath, createFolder, insertAsset, insertAssetWithUrl, moveAsset, sanitizeFileName, setAvailableToArc, DEFAULT_MEDIA_FOLDERS, seedDefaultMediaFolders } from "./persistence";
 
 describe("sanitizeFileName", () => {
   it("strips path separators and unsafe chars", () => {
@@ -229,5 +229,35 @@ describe("setAvailableToArc", () => {
   it("reports no match when the asset belongs to another org", async () => {
     const { client } = updateClient([]);
     expect(await setAvailableToArc("asset-1", true, "other-org", client)).toBe(false);
+  });
+});
+
+
+/**
+ * BSR-707. `moveAsset` was the one mutator in this file that took no orgId — it
+ * updated on `id` alone. That was safe only because its single caller checked
+ * ownership first, and "safe by external convention" runs out at the second
+ * caller. The Library's move action is that second caller.
+ */
+describe("moveAsset", () => {
+  it("scopes the update to the org, not just the id", async () => {
+    const supabase = createSupabaseQueryMock({ media_assets: { data: [{ id: "a-1" }], error: null } });
+    await moveAsset("a-1", "f-1", "org-1", supabase);
+    expect(supabase.calls).toContainEqual(["update", { folder_id: "f-1" }]);
+    expect(supabase.calls).toContainEqual(["eq", "id", "a-1"]);
+    expect(supabase.calls).toContainEqual(["eq", "org_id", "org-1"]);
+  });
+
+  it("reports false when the row is not this org's, rather than a silent no-op", async () => {
+    // An org-scoped UPDATE that matches nothing succeeds and changes nothing.
+    // Returning void there would have reported someone else's asset as moved.
+    const supabase = createSupabaseQueryMock({ media_assets: { data: [], error: null } });
+    await expect(moveAsset("a-1", "f-1", "other-org", supabase)).resolves.toBe(false);
+  });
+
+  it("treats a null folder as the root, not as a missing argument", async () => {
+    const supabase = createSupabaseQueryMock({ media_assets: { data: [{ id: "a-1" }], error: null } });
+    await expect(moveAsset("a-1", null, "org-1", supabase)).resolves.toBe(true);
+    expect(supabase.calls).toContainEqual(["update", { folder_id: null }]);
   });
 });

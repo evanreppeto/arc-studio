@@ -74,19 +74,16 @@ jobs:
       # This is read-only and deliberately NOT limited to the smoke org or to
       # revisions: stranded work in the LIVE tenant is the more urgent signal,
       # and every task type has the same failure mode.
-      - name: No agent work is stranded
+      - name: Connect to the prod database
+        id: pg
         if: ${{ always() }}
         env:
           DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
-          PGSSLMODE: require
-          PGCONNECT_TIMEOUT: "30"
-          # Longer than a nightly run, so this job's own fresh task is never the
-          # thing it fails on — anything older has genuinely been abandoned.
-          STRANDED_AFTER: "30 minutes"
         run: |
           set -euo pipefail
           if [ -z "${DB_URL:-}" ]; then
-            echo "::warning title=Stranded-task check SKIPPED::PROD_SUPABASE_DB_URL is not set, so nothing verified that queued agent work is actually running. This is the check that would have caught BSR-695."
+            echo "::warning title=Prod database steps SKIPPED::PROD_SUPABASE_DB_URL is not set, so nothing verified that queued agent work is actually running and this run's own revision fixture was left queued. This is the check that would have caught BSR-695."
+            echo "ready=false" >>"$GITHUB_OUTPUT"
             exit 0
           fi
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
@@ -108,6 +105,64 @@ jobs:
           pathlib.Path("pg.env").write_text(
               f"PGHOST={host}\nPGPORT={port or '5432'}\nPGDATABASE={database or 'postgres'}\nPGUSER={user}\n")
           PARSE
+          echo "ready=true" >>"$GITHUB_OUTPUT"
+
+      # BSR-722. Step 4 requests a revision to prove the write lands, and that
+      # queues an `agent_tasks` row nothing will ever consume — so before this
+      # step existed, every nightly run left one more stranded task behind and
+      # the check below failed on the run's OWN fixture, every night, forever.
+      # A guard that is always red carries no signal, which is the failure mode
+      # BSR-708 was written to end.
+      #
+      # Scoped by the fixture's own instruction text, so it can only ever match
+      # rows this test wrote. Real operator revisions — the three that stranded
+      # in the live tenant on 2026-08-03 — do not match and still fail the run.
+      # Cancelling the task does NOT touch the asset: it stays in
+      # `revision_requested`, which is what keeps step 4 repeatable.
+      #
+      # Deliberately narrow. Do not widen this into a general sweep of queued
+      # work: `redispatchStalledRevision` is operator-initiated on purpose
+      # (src/lib/campaigns/revision-recovery.ts), because a background retry
+      # would hide the dropped-wake problem again.
+      - name: Release the nightly's own revision fixture
+        if: ${{ always() && steps.pg.outputs.ready == 'true' }}
+        env:
+          PGSSLMODE: require
+          PGCONNECT_TIMEOUT: "30"
+        run: |
+          set -euo pipefail
+          set -a; . ./pg.env; set +a
+
+          # Prefix match, not the full sentence: the instruction contains an
+          # em dash, and keeping this predicate ASCII avoids an encoding round
+          # trip through YAML, bash and psql. The prefix is documented as a
+          # fixture marker on REVISION_FIXTURE_INSTRUCTION in
+          # e2e/prod-nightly.spec.ts — reword one and the other stops matching,
+          # at which point the fixture strands and the next run goes red. Loud,
+          # not silent, by design.
+          RELEASED=$(psql -tAX -c "
+            with released as (
+              update agent_tasks
+                 set status = 'canceled', updated_at = now()
+               where task_type = 'campaign_asset_revision'
+                 and status = 'queued'
+                 and objective like 'Nightly smoke check%'
+              returning 1
+            )
+            select count(*) from released;")
+
+          echo "Released ${RELEASED} revision fixture row(s) queued by this run." >>"$GITHUB_STEP_SUMMARY"
+
+      - name: No agent work is stranded
+        if: ${{ always() && steps.pg.outputs.ready == 'true' }}
+        env:
+          PGSSLMODE: require
+          PGCONNECT_TIMEOUT: "30"
+          # Longer than a nightly run, so this job's own fresh task is never the
+          # thing it fails on — anything older has genuinely been abandoned.
+          STRANDED_AFTER: "30 minutes"
+        run: |
+          set -euo pipefail
           set -a; . ./pg.env; set +a
 
           STRANDED=$(psql -tAX -c "

@@ -142,6 +142,24 @@ export function needsDecision(state: WorkState): boolean {
  */
 export const ASSET_NOUN = { one: "asset", many: "assets" } as const;
 
+/**
+ * What we call made-up numbers, in one word (BSR-656, same rule as the states).
+ *
+ * `/journeys` badged its funnel "demo data", Settings said "Sample data",
+ * "Sample activity" and "Sample workspaces", and `/analytics` and `/crm`
+ * rendered `710 leads` and `$225k won revenue` with no marking at all. Three
+ * wordings and a silence, for one thing.
+ *
+ * The silence was the dangerous half: a reader has no way to tell an
+ * illustrative number from their own, and the first thing they do with a real
+ * number is believe it.
+ */
+export const DEMO_DATA_LABEL = "Demo data";
+
+/** Said once, where the reader can act on it. Plain, not apologetic. */
+export const DEMO_DATA_MEANING =
+  "These numbers are illustrative, not yours. Connect a workspace to see real data.";
+
 /** The campaign itself. Retires "package" as a user-facing noun. */
 export const CAMPAIGN_NOUN = { one: "campaign", many: "campaigns" } as const;
 
@@ -302,6 +320,36 @@ export function toolStatusLabel(status: string | null | undefined): string {
   return labelled(TOOL_STATUS_LABEL, status) ?? "Unknown";
 }
 
+/**
+ * What was under review, from `approval_items.item_type` (BSR-685).
+ *
+ * Arc's correction block quotes the operator's note back to it, and a note about
+ * a picture is not guidance about copy — so the line has to say which. The
+ * stored values are open-ended ("campaign_asset", "email_campaign_asset",
+ * "media_asset", and whatever the next surface adds), which is exactly why this
+ * matches on substrings and ends in a fallback rather than an exhaustive map.
+ */
+export const APPROVAL_ITEM_LABEL: Record<string, string> = {
+  campaign_asset: "Creative",
+  email_campaign_asset: "Email",
+  media_asset: "Creative",
+  campaign: "Campaign",
+};
+
+export function approvalItemLabel(itemType: string | null | undefined): string {
+  const t = (itemType ?? "").trim().toLowerCase();
+  if (!t) return "Draft";
+  const exact = APPROVAL_ITEM_LABEL[t];
+  if (exact) return exact;
+  // Substring order matters: "email_campaign_asset" contains both "email" and
+  // "campaign", and the channel is the more useful of the two to say.
+  if (t.includes("email")) return "Email";
+  if (t.includes("sms") || t.includes("text")) return "Text message";
+  if (t.includes("media") || t.includes("asset") || t.includes("creative")) return "Creative";
+  if (t.includes("campaign")) return "Campaign";
+  return "Draft";
+}
+
 // ---------------------------------------------------------------------------
 // The registry (BSR-709, option B)
 //
@@ -343,6 +391,13 @@ export const STORED_VALUE_LABELLERS: StoredValueLabeller[] = [
   { name: "runRouteLabel", source: "arc_messages.metadata->>route", map: RUN_ROUTE_LABEL, nullable: true, label: runRouteLabel },
   { name: "recallKindLabel", source: "arc_messages.metadata->recall[].kind", map: RECALL_KIND_LABEL, nullable: false, label: recallKindLabel },
   { name: "toolStatusLabel", source: "arc_messages.metadata->toolCalls[].status", map: TOOL_STATUS_LABEL, nullable: false, label: toolStatusLabel },
+  {
+    name: "approvalItemLabel",
+    source: "approval_items.item_type",
+    map: APPROVAL_ITEM_LABEL,
+    nullable: false,
+    label: approvalItemLabel,
+  },
   {
     name: "arcToolLabel",
     source: "arc_messages.metadata->toolCalls[].name",

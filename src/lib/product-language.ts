@@ -1,3 +1,5 @@
+import { deriveObjectLabelForms, parseObjectLabelOverride, type ObjectLabelOverride } from "@/domain";
+
 export type ProductIndustryKey =
   | "general"
   | "restoration"
@@ -16,10 +18,29 @@ export type CrmObjectLanguage = {
   singular: string;
 };
 
+export type ProductLanguageObjectKey = "companies" | "contacts" | "properties" | "leads" | "jobs" | "outcomes";
+
 export type ProductLanguage = {
   industry: ProductIndustryKey;
   crmLabel: string;
-  crmObjects: Record<"companies" | "contacts" | "properties" | "leads" | "jobs" | "outcomes", CrmObjectLanguage>;
+  crmObjects: Record<ProductLanguageObjectKey, CrmObjectLanguage>;
+};
+
+/**
+ * A workspace's own words, overriding the industry vocabulary. Stored on
+ * `app_settings` under `crm_object_labels`; shape validated per object by
+ * `parseObjectLabelOverride`, so a malformed or half-filled entry falls back to
+ * the industry label rather than rendering a mixed screen.
+ */
+export type ObjectLabelSettings = {
+  /** The CRM section's own name — "Matters" in the nav, replacing "Relationships". */
+  section?: string;
+  /**
+   * Typed for consumers, but still re-validated at runtime by
+   * `parseObjectLabelOverride` — this arrives from a jsonb column, so the type is
+   * a convenience for callers, not a guarantee about what's in the row.
+   */
+  objects?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>>;
 };
 
 const INDUSTRY_ALIASES: Record<string, ProductIndustryKey> = {
@@ -169,7 +190,29 @@ const LANGUAGE: Record<ProductIndustryKey, Omit<ProductLanguage, "industry">> = 
   },
 };
 
-export function getProductLanguage(industry?: string | null): ProductLanguage {
+/**
+ * The vocabulary a workspace's screens should speak.
+ *
+ * Resolution order: the workspace's own typed labels, then its industry
+ * template, then `general`'s neutral nouns. Overrides are applied per object, so
+ * a workspace that renamed only `properties` keeps its industry's words for the
+ * other five rather than being dropped to `general` wholesale.
+ *
+ * `overrides` is optional so the marketing `/industries` pages — which must show
+ * what an industry gives you, not what one tenant renamed — can ask for the
+ * template alone.
+ */
+export function getProductLanguage(industry?: string | null, overrides?: ObjectLabelSettings | null): ProductLanguage {
   const key = canonicalIndustryKey(industry);
-  return { industry: key, ...LANGUAGE[key] };
+  const base: ProductLanguage = { industry: key, ...LANGUAGE[key] };
+  if (!overrides) return base;
+
+  const section = typeof overrides.section === "string" ? overrides.section.trim() : "";
+  const crmObjects = { ...base.crmObjects };
+  for (const objectKey of Object.keys(crmObjects) as ProductLanguageObjectKey[]) {
+    const parsed = parseObjectLabelOverride(overrides.objects?.[objectKey]);
+    if (parsed) crmObjects[objectKey] = deriveObjectLabelForms(parsed);
+  }
+
+  return { industry: key, crmLabel: section || base.crmLabel, crmObjects };
 }

@@ -136,7 +136,7 @@ export async function cancelChatTask(
   const { data: row, error: readError } = await applyScope(
     client
       .from("agent_tasks")
-      .select("id,status,agent_id,metadata,org_id")
+      .select("id,status,agent_id,metadata,org_id,workspace_id")
       .eq("id", input.agentTaskId)
       .eq("task_type", "arc_chat_message")
       .eq("source_type", "arc_conversation")
@@ -147,8 +147,10 @@ export async function cancelChatTask(
     status: string;
     agent_id: string;
     metadata: Record<string, unknown> | null;
-    // NOT NULL on agent_tasks; the run-log insert below must pass it explicitly.
+    // Both NOT NULL on agent_tasks; the run-log insert below must pass them
+    // explicitly, since neither column has a default (workspace_id: BSR-712).
     org_id: string;
+    workspace_id: string;
   }>();
   assertOk("agent_tasks cancel lookup", readError);
   if (!row) return { ok: false, reason: "not_found" };
@@ -206,6 +208,7 @@ export async function cancelChatTask(
     task_id: input.agentTaskId,
     agent_id: row.agent_id,
     org_id: row.org_id,
+    workspace_id: row.workspace_id,
     run_status: "canceled",
     reasoning_summary: "Operator stopped this Arc chat run.",
     metadata: { source: "arc_chat", canceled_by: input.canceledBy },

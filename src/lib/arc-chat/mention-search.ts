@@ -1,10 +1,13 @@
 import { type ArcMention, type MentionType } from "@/domain";
 import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, personaInspectHref } from "@/domain";
+import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
 import { getCrmMentionSamples, type CrmObjectKey } from "@/lib/crm/read-model";
 import { listPersonas } from "@/lib/personas/console";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+import { getProductLanguage } from "@/lib/product-language";
+import { getAppSettings } from "@/lib/settings/store";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { listVaultNotes } from "@/lib/vault/persistence";
 
@@ -14,13 +17,17 @@ export type MentionGroup = {
   items: ArcMention[];
 };
 
-const CRM_GROUPS: Array<{ key: CrmObjectKey; type: MentionType; label: string }> = [
-  { key: "leads", type: "lead", label: "Leads" },
-  { key: "companies", type: "company", label: "Companies" },
-  { key: "contacts", type: "contact", label: "Contacts" },
-  { key: "properties", type: "property", label: "Properties" },
-  { key: "jobs", type: "job", label: "Jobs" },
-  { key: "outcomes", type: "outcome", label: "Outcomes" },
+// Group LABELS are per-workspace vocabulary, so they live in product-language,
+// not here — a home-services workspace calls `properties` "Service locations"
+// and a professional-services one calls `jobs` "Engagements". Only the
+// key→mention-type wiring is fixed.
+const CRM_GROUPS: Array<{ key: CrmObjectKey; type: MentionType }> = [
+  { key: "leads", type: "lead" },
+  { key: "companies", type: "company" },
+  { key: "contacts", type: "contact" },
+  { key: "properties", type: "property" },
+  { key: "jobs", type: "job" },
+  { key: "outcomes", type: "outcome" },
 ];
 
 /**
@@ -70,12 +77,20 @@ export async function getMentionables(): Promise<MentionGroup[]> {
   // concurrently. getCrmMentionSamples does a single table-bundle fetch instead
   // of one per CRM object. Each source self-recovers to empty so one slow/failing
   // read doesn't sink the rest.
-  const [campaignRefs, crmSamples, vaultNotes, orgPersonas] = await Promise.all([
+  const [campaignRefs, crmSamples, vaultNotes, orgPersonas, appSettings, businessProfile] = await Promise.all([
     listCampaignNames(orgId, undefined, workspaceId).catch(() => []),
     getCrmMentionSamples().catch(() => ({}) as Awaited<ReturnType<typeof getCrmMentionSamples>>),
     orgId ? listVaultNotes(client, orgId).catch(() => []) : Promise.resolve([]),
     listPersonas().catch(() => []),
+    orgId ? getAppSettings(orgId).catch(() => null) : Promise.resolve(null),
+    orgId ? getBusinessProfile(orgId).catch(() => null) : Promise.resolve(null),
   ]);
+
+  // Same industry resolution the CRM pages use, so a mention group is named what
+  // the screen it links to is named. Falls back to `general`'s neutral nouns
+  // (Organizations / People / Sites …) when no industry is set — never to the
+  // restoration set that used to be hardcoded here.
+  const language = getProductLanguage(appSettings?.industry || businessProfile?.industry, appSettings?.objectLabels);
 
   // The org's own personas, or nothing. This used to fall back to the BSR 12
   // whenever `listPersonas()` came back empty — but with Supabase configured that
@@ -105,7 +120,7 @@ export async function getMentionables(): Promise<MentionGroup[]> {
 
   const crmGroups: MentionGroup[] = CRM_GROUPS.map((group) => ({
     type: group.type,
-    label: group.label,
+    label: language.crmObjects[group.key].label,
     items: (crmSamples[group.key] ?? []).map((row) => ({
       type: group.type,
       id: row.id,

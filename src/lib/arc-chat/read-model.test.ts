@@ -58,7 +58,9 @@ describe("getArcChatModel", () => {
   it("uses demo mode only when the real backend is not configured", async () => {
     mocks.isConfigured.mockReturnValue(false);
 
-    await expect(getArcChatModel()).resolves.toEqual({ status: "unavailable" });
+    // `not_configured`, not `unavailable`: nothing failed, there is no backend
+    // to ask. /arc reads this exact status to fall back to the mock.
+    await expect(getArcChatModel()).resolves.toEqual({ status: "not_configured" });
     expect(mocks.listConversations).not.toHaveBeenCalled();
   });
 
@@ -121,8 +123,52 @@ describe("getRecentArcConversations", () => {
       orgId: "org-1",
       workspaceId: "workspace-1",
     })).resolves.toEqual([
-        { id: "conversation-2", title: "Untitled chat", when: "30m" },
-        { id: "conversation-1", title: "Growth plan", when: "2h" },
+        { id: "conversation-2", title: "Untitled chat", when: "30m", running: false, defaultActive: false },
+        { id: "conversation-1", title: "Growth plan", when: "2h", running: false, defaultActive: true },
       ]);
+  });
+
+  // The rail marks the open chat, and with no `?c=` /arc opens
+  // listConversationsForViewer's first row — pinned-first, NOT newest-first.
+  // Deriving it from the rail's own display order would mark the wrong row for
+  // any workspace with a pinned chat.
+  it("flags the thread /arc opens by default from the unsorted access order", async () => {
+    mocks.listConversations.mockResolvedValue([
+      { ...conversation, id: "pinned", pinnedAt: "2026-07-20T00:00:00.000Z", lastMessageAt: "2026-07-21T00:00:00.000Z" },
+      { ...conversation, id: "newest", lastMessageAt: "2026-07-22T13:00:00.000Z" },
+    ]);
+
+    const recents = await getRecentArcConversations({ nowMs: Date.parse("2026-07-22T14:00:00.000Z") });
+
+    expect(recents?.map((r) => [r.id, r.defaultActive])).toEqual([["newest", false], ["pinned", true]]);
+  });
+
+  it("marks a thread with a fresh run as working and ignores a stale one", async () => {
+    const nowMs = Date.parse("2026-07-22T14:00:00.000Z");
+    mocks.listConversations.mockResolvedValue([
+      conversation,
+      { ...conversation, id: "conversation-2", lastMessageAt: "2026-07-22T13:00:00.000Z" },
+    ]);
+    mocks.listActiveRuns.mockResolvedValue([
+      { conversationId: "conversation-1", since: "2026-07-22T13:59:30.000Z" },
+      // Older than RUN_FRESHNESS_MS — a stuck task, not live work.
+      { conversationId: "conversation-2", since: "2026-07-22T13:40:00.000Z" },
+    ]);
+
+    const recents = await getRecentArcConversations({ nowMs });
+
+    expect(recents?.map((r) => [r.id, r.running])).toEqual([
+      ["conversation-2", false],
+      ["conversation-1", true],
+    ]);
+  });
+
+  // A failing run read must cost the dots, not the whole section.
+  it("still returns recents when the active-run read fails", async () => {
+    mocks.listActiveRuns.mockRejectedValue(new Error("agent_tasks unavailable"));
+
+    const recents = await getRecentArcConversations({ nowMs: Date.parse("2026-07-22T14:00:00.000Z") });
+
+    expect(recents).toMatchObject([{ id: "conversation-1", running: false }]);
   });
 });

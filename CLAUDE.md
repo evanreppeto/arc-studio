@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# Big Shoulders Growth Engine
+# Arc Studio
 
 Next.js 16 + React 19 + Supabase app. Package manager is **pnpm** (workspace declared in `pnpm-workspace.yaml`). Path alias `@/*` → `./src/*`.
 
@@ -116,7 +116,7 @@ The product is **configurable per company, within a fixed object model.** `docs/
 **Tenant-defined (per-org data — never hardcode against these):**
 
 - **Personas.** The org's `personas.slug` rows are the authority; `getOrgPersonaKeys` / `getOrgPersonaOptions` (`src/lib/personas/read-model.ts`) is how you read them. Migration `20260713120000` converted all 15 persona columns from the `persona_mapping` enum to `text`. Validate with `isAllowedPersona(persona, await getOrgPersonaKeys(orgId))`.
-- **Pipeline stages.** `pipeline_stages` per org (`20260729160000`) + `leads`/`jobs`/`outcomes`.`status` widened to `text` (`20260729170000`, applied to prod by hand — `migrate-prod.yml` refuses `alter column … type`). **Ask a stage what it means (`isWon`/`isLost`/`isTerminal`/`isQualified`), never `status === "won"`** — a tenant can rename it, and a name comparison fails silently into wrong revenue numbers.
+- **Pipeline stages.** `pipeline_stages` per org (`20260729160000`) + `leads`/`jobs`/`outcomes`.`status` widened to `text` (`20260729170000`, applied to prod by hand — `migrate-prod.yml` refuses `alter column … type`). **Ask a stage what it means (`isWon`/`isLost`/`isTerminal`/`isQualified`), never `status === "won"`** — a tenant can rename it, and a name comparison fails silently into wrong revenue numbers. Starter sets are seeded **per industry** at workspace creation (`src/lib/pipeline-stages/industry-templates.ts`); `outcomes` is deliberately never varied — it's the revenue ledger. Adding a template means keeping an `isWon` and an `isLost` terminal in every pipeline; the invariant test enforces it.
 - **Custom fields** on all six CRM objects (`20260728180000`, `src/domain/custom-fields.ts`).
 - **Brand + voice** — palette, fonts, tone, preferred/banned phrases, services, proof points, disallowed claims (`src/domain/brand-kit.ts`). Arc's runner reads all of it into every prompt.
 - **Connectors**, enabled and configured per workspace (`src/domain/connectors.ts`).
@@ -124,7 +124,7 @@ The product is **configurable per company, within a fixed object model.** `docs/
 **Fixed by decision (don't "fix" these without a product call):**
 
 - **The six CRM objects** — `companies, contacts, properties, leads, jobs, outcomes`. Renameable and extensible, but no self-serve net-new object type (Option B; Option A reopens only on real repeated demand).
-- **Object/section labels come from a 9-key industry map**, not free text (`src/lib/product-language.ts`). A workspace picks its industry at onboarding (editable in Settings → General); that key also seeds its persona pack (`src/lib/personas/industry-templates.ts`). Outside the nine, it gets `general` and neutral nouns.
+- **Object/section labels.** Free text per workspace (Settings → Records → Names), stored on `app_settings.crm_object_labels`, over a 9-key industry map as the default (`src/lib/product-language.ts`). Resolution is `getProductLanguage(industry, overrides)`: workspace words → industry template → `general`, **per object**. A workspace picks its industry at onboarding (editable in Settings → General); that key also seeds its persona pack (`src/lib/personas/industry-templates.ts`). A workspace supplies **both** plural and singular — a partial pair is refused, not half-applied. Pass the overrides at every call site: omitting them silently serves industry labels.
 - **App-machinery states** — `approval_status`, `agent_task_status`, `campaign_status`. The rule (`src/domain/pipeline-stages.ts`): *per-org if it describes the tenant's process, never if the code branches on it.* Configurable approval states would let a tenant rename their way through the outbound gate.
 
 **`OFFICIAL_PERSONA_MAPPINGS` is demo seed + offline fallback, not the validation authority.** Its remaining non-test imports are all `personaOptions?.length ? … :` fallbacks for the backend-less preview. Don't extend it and don't validate against it. Same for `campaigns.restoration_focus`: superseded by the free-text `campaign_theme`, kept nullable for back-compat only.

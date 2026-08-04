@@ -23,6 +23,34 @@ export type UnavailableResult = {
 };
 
 /**
+ * "There is no backend here", which is an ANSWER, not an outage.
+ *
+ * This file already warned against using `unavailable` for it — *"Not for
+ * legitimate non-failures — 'not configured', 'not found' — which are answers,
+ * not outages, and would only train people to ignore the alert"* — and then two
+ * read models did exactly that, because `unavailable` was the only status on
+ * offer. `/analytics` showed a red **"Some analytics couldn't load"** banner in
+ * every backend-less preview, naming a query that had never run and could not
+ * have failed (BSR-546 follow-up).
+ *
+ * A banner that cries wolf is how the next real outage gets ignored, so the two
+ * cases get two statuses. `reasonIfUnavailable` returns null for this one.
+ */
+export type NotConfiguredResult = { status: "not_configured" };
+
+/**
+ * Use in the `if (!isSupabaseAdminConfigured())` guard at the top of a read
+ * model, in place of returning `unavailable`.
+ *
+ * Deliberately silent: there is nothing to report. Nothing broke, nothing is
+ * degraded, and logging it would bury the failures that matter under one line
+ * per read per request in local development.
+ */
+export function notConfigured(): NotConfiguredResult {
+  return { status: "not_configured" };
+}
+
+/**
  * Build a `.catch` handler that records the failure instead of erasing it.
  *
  * @param label  what failed, for the log line — e.g. "analytics.performance"
@@ -100,6 +128,10 @@ function postgrestDetail(error: unknown): Record<string, string> {
 
 /** The reason a read failed, or null when it succeeded. For passing to a view. */
 export function reasonIfUnavailable(result: { status: string; message?: string } | null | undefined): string | null {
-  if (!result || result.status !== "unavailable") return null;
+  // `not_configured` falls out here with everything else that isn't a failure,
+  // and that is the point — see NotConfiguredResult. Kept as an explicit early
+  // return so the intent survives a future refactor of this predicate.
+  if (!result || result.status === "not_configured") return null;
+  if (result.status !== "unavailable") return null;
   return result.message?.trim() || "This data could not be loaded.";
 }

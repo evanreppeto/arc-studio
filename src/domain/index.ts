@@ -87,6 +87,7 @@ export * from "./email-templates";
 export * from "./crm-matching";
 export * from "./custom-fields";
 export * from "./custom-field-inference";
+export * from "./object-labels";
 export * from "./env-capabilities";
 export * from "./pipeline-stages";
 export * from "./audience-resolution";
@@ -144,3 +145,6 @@ export * from "./definitions";
 
 // Why an operator dismissed an opportunity, and what Arc should learn (BSR-686).
 export * from "./dismissal-reasons";
+
+// What the operator sent back, and why — corrections Arc should learn (BSR-685).
+export * from "./correction-feedback";

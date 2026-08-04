@@ -20,7 +20,7 @@
 import { arcToolLabel, type ArcActionCard, type ArcStepKind } from "@/domain";
 
 import type { ArcMessage } from "./persistence";
-import { formatToolName, getToolKind } from "./tool-labels";
+import { getToolKind } from "./tool-labels";
 
 export type ArcWorkspaceActivityRow = {
   id: string;
@@ -86,7 +86,7 @@ export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[]
       }, settled)),
       ...toolCalls.map((tool, index) => settleRow({
         id: `${message.id}-tool-${index}`,
-        label: formatToolName(tool.name),
+        label: arcToolLabel(tool.name),
         detail: tool.output ?? tool.input,
         status: tool.status === "complete" ? "done" : tool.status === "error" ? "error" : "running",
         kind: getToolKind(tool.name),
@@ -119,17 +119,6 @@ function pushUnique(items: ArcWorkspaceEvidenceItem[], seen: Set<string>, item: 
 
 const AUDIENCE_ROW = /(audience|persona|segment)/i;
 
-/**
- * Strip the MCP transport prefix a tool name carries on the wire.
- * `mcp__arc__get_workspace_settings` is plumbing spelled out loud; the operator
- * wants to know Arc read the workspace settings.
- *
- * This was a private copy of logic `arcToolLabel` now owns in the domain layer.
- * Two copies meant the chat trace and the run page could disagree about the same
- * tool — and they did: the inline trace rendered `mcp__arc__weather_lookup` raw
- * while this one already read "Weather lookup" (BSR-709).
- */
-const toolLabel = arcToolLabel;
 
 /** Two memories are the same memory if they say the same thing. Prod's brain
  *  holds five separate nodes all stating the CRM is empty (BSR-531 is the fix
@@ -211,7 +200,7 @@ export function buildArcWorkspaceEvidence(
   const toolCounts = new Map<string, number>();
   for (const message of messages) {
     for (const tool of message.toolCalls ?? []) {
-      const label = toolLabel(tool.name);
+      const label = arcToolLabel(tool.name);
       toolCounts.set(label, (toolCounts.get(label) ?? 0) + 1);
     }
   }

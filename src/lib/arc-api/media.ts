@@ -66,6 +66,9 @@ export async function arcFileAsset(payload: Record<string, unknown>, deps: Media
     if (folderOwner !== deps.orgId) return { ok: false, error: "Target folder belongs to another workspace." };
   }
 
-  await moveAsset(assetId, folderId, client);
+  // The ownership checks above stay: they also cover the TARGET folder, which
+  // the org-scoped update cannot (it scopes the asset, not the destination).
+  const moved = await moveAsset(assetId, folderId, deps.orgId, client);
+  if (!moved) return { ok: false, error: "Asset not found." };
   return { ok: true, id: assetId };
 }

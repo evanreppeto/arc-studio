@@ -17,7 +17,12 @@
 .arc-studio .proj .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
 .arc-studio .studiobar .right { margin-left: auto; display: flex; align-items: center; gap: 9px; }
 .arc-studio .iconbtn { width: 32px; height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: 0.14s; }
-.arc-studio .iconbtn:hover { border-color: var(--accent-border); color: var(--text); }
+.arc-studio .iconbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
+/* Undo/Redo have no history to act on — the canvas keeps no edit stack. Shown
+   disabled rather than wired to a toast (BSR-688): these are the two controls a
+   user reaches for on muscle memory, and a no-op that merely explains itself is
+   still a no-op at the moment it matters. */
+.arc-studio .iconbtn:disabled { opacity: 0.4; cursor: default; }
 .arc-studio .iconbtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-studio .gbtn { height: 32px; padding: 0 13px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: 0.14s; }
 .arc-studio .gbtn:hover { border-color: var(--accent-border); color: var(--text); }

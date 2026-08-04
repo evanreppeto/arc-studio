@@ -6,9 +6,10 @@ import { createContext, useContext, useEffect, useState, useTransition, type Rea
 import type { SettingsTeamInvite, SettingsTeamMember, SettingsTeamView, WorkspaceActivityEntry } from "@/lib/auth/team-view";
 import type { WaitlistView } from "@/lib/waitlist/read-model";
 import type { HealthConsoleView } from "@/lib/observability/health-console";
-import type { CustomFieldDefinition, CustomFieldObjectKey, PipelineObjectKey, PipelineStage } from "@/domain";
+import type { CustomFieldDefinition, CustomFieldObjectKey, ObjectLabelOverride, PipelineObjectKey, PipelineStage } from "@/domain";
 
 import { CustomFieldsPanel } from "./custom-fields-panel";
+import { ObjectLabelsPanel } from "./object-labels-panel";
 import { PipelineStagesPanel } from "./pipeline-stages-panel";
 import type { LoopState } from "@/lib/observability/health-grading";
 import { WORKSPACE_ROLES } from "@/lib/auth/workspace-roles";
@@ -27,6 +28,7 @@ import {
   parseNewsQueriesInput,
   parseServicePointsInput,
   parseWeatherCategories,
+  DEMO_DATA_LABEL,
   parseWeatherServiceArea,
   WEATHER_CATEGORIES,
   WORKSPACE_ACCENT_SWATCHES,
@@ -42,7 +44,7 @@ import type { EffectiveAgentConnection } from "@/lib/agent/connection";
 import type { SettingsBillingView } from "@/lib/billing/settings-billing";
 import { INDUSTRY_OPTIONS } from "@/lib/personas/industry-templates";
 import type { PersonaOption } from "@/lib/personas/read-model";
-import { canonicalIndustryKey } from "@/lib/product-language";
+import { canonicalIndustryKey, type CrmObjectLanguage, type ProductLanguageObjectKey } from "@/lib/product-language";
 import { IMAGE_MODELS, VIDEO_MODELS, type AppSettings } from "@/lib/settings/store";
 
 import { createBillingPortalAction, createCheckoutSessionAction, updateOrgPlanAction } from "../billing-actions";
@@ -121,7 +123,7 @@ const SUBTABS: Record<string, string[]> = {
   team: ["Members", "Invites", "Roles", "Activity"],
   connections: ["Live", "Roadmap"],
   media: ["Defaults", "Roster"],
-  records: ["Fields", "Stages"],
+  records: ["Fields", "Stages", "Names"],
   usage: ["Overview", "Connectors", "By day", "By model", "Recent"],
 };
 
@@ -631,7 +633,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string> }) {
+export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
   const [cur, setCur] = useState("overview");
   // Health and the waitlist are platform-level, not workspace-level: the server
   // sends null unless the viewer is a platform admin, so the group — and every
@@ -847,7 +849,21 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         : "Waiting for work";
 
   const sections: Record<string, ReactNode> = {
-    records: activeSub === "Stages" ? (
+    records: activeSub === "Names" ? (
+      <>
+        <Head
+          t="Object names"
+          d="What this workspace calls the six record types. Your industry picks these to start with; rename any that don't match how you talk about the work."
+        />
+        {subBar}
+        <ObjectLabelsPanel
+          industryLabels={industryObjectLanguage}
+          industrySection={industrySectionLabel}
+          savedSection={settings.objectLabels.section ?? ""}
+          savedObjects={savedObjectLabels}
+        />
+      </>
+    ) : activeSub === "Stages" ? (
       <>
         <Head
           t="Pipeline stages"
@@ -1250,7 +1266,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         ) : (
           <>
             <div className="panel">
-              <div className="panel-h"><h2>This month</h2><span className="tg ok" style={{ marginLeft: "auto" }}>{usageView.isDemo ? "Sample data" : "Live"}</span></div>
+              <div className="panel-h"><h2>This month</h2><span className="tg ok" style={{ marginLeft: "auto" }}>{usageView.isDemo ? DEMO_DATA_LABEL : "Live"}</span></div>
               <div className="panel-b" style={{ padding: 16 }}>
                 <div className="ukpis">{[[usageView.tokensLabel, "Tokens"], [usageView.runsLabel, "Agent runs"], [usageView.costLabel, "Est. cost"]].map(([v, l]) => <div className="ukpi" key={l}><div className="uv">{v}</div><div className="ul">{l}</div></div>)}</div>
                 <div className="ubar"><i style={{ width: `${Math.min(usageView.pctOfCap, 100)}%`, ...(usageView.isNearCap ? { background: "var(--warn)" } : {}) }} /></div>
@@ -1786,7 +1802,7 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
     <>
       <Panel
         title={<>Your workspaces <span className="ph-d" style={{ marginLeft: 6 }}>{workspaces.length}</span></>}
-        foot={view.isDemo ? "Sample workspaces are shown until you connect an account." : "Switching updates the whole app to the selected workspace."}
+        foot={view.isDemo ? "Demo workspaces are shown until you connect an account." : "Switching updates the whole app to the selected workspace."}
       >
         {view.failed ? (
           <div className="me" style={{ padding: "6px 2px", color: "var(--red-text)" }}>
@@ -2795,7 +2811,7 @@ function ActivityLog({ entries, isDemo }: { entries: WorkspaceActivityEntry[]; i
     );
   }
   return (
-    <Panel title="Recent activity" tag={TGOK} foot={isDemo ? "Sample activity is shown until the workspace is connected." : "Member and workspace changes, newest first."}>
+    <Panel title="Recent activity" tag={TGOK} foot={isDemo ? "Demo activity is shown until the workspace is connected." : "Member and workspace changes, newest first."}>
       {entries.map((e) => (
         <div className="actrow" key={e.id}>
           <span className="actdot" style={{ background: actionAccent(e.action) }} />
@@ -2811,7 +2827,7 @@ function ActivityLog({ entries, isDemo }: { entries: WorkspaceActivityEntry[]; i
 
 // ---- Usage breakdowns (real ai_usage_events; demo shape offline) ----
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-const usageTag = (isDemo: boolean) => <span className="tg ok">{isDemo ? "Sample data" : "Live"}</span>;
+const usageTag = (isDemo: boolean) => <span className="tg ok">{isDemo ? DEMO_DATA_LABEL : "Live"}</span>;
 function UsageEmpty({ label }: { label: string }) {
   return (
     <Panel title="Usage" tag={<span className="tg ok">Live</span>}>
