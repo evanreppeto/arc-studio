@@ -43,11 +43,6 @@ function walk(dir: string, out: string[] = []): string[] {
 const PANE_SCOPED_BY_DESIGN: Record<string, string> = {
   // Renders in the shell (a sibling of <main>), so no .page-enter above it.
   "_components/command-palette.tsx": "rendered by app-shell, outside .page-enter",
-  // `position: absolute` inside the Arc workspace, with its own absolute scrim
-  // (.arc-workspace-scrim) — a drawer over the Arc pane, not a shell overlay.
-  // Its aria-modal is separately questionable, but it is not this bug: it never
-  // relies on `position: fixed`.
-  "arc/_components/arc-view.tsx": "the .arc-history drawer is absolute inside the Arc pane; its share dialog IS portaled",
 };
 
 describe("shell-wide overlays escape the .page-enter containing block", () => {
@@ -90,6 +85,22 @@ describe("shell-wide overlays escape the .page-enter containing block", () => {
       offenders,
       `these render aria-modal="true" without OverlayPortal, so they cover only the content pane while the nav rail and top bar stay clickable behind them:\n  ${offenders.join("\n  ")}`,
     ).toEqual([]);
+  });
+
+  it("keeps the Arc drawer and its scrim positioned together", () => {
+    // The file-level check above passes if ANY overlay in a file is portaled,
+    // and arc-view.tsx renders two (the drawer and the share dialog). This
+    // pins the subtle half: the drawer traps Tab document-wide and claims
+    // aria-modal, so its scrim must block the pointer across the whole shell
+    // too — and if only one of the pair is `fixed`, the portaled one paints
+    // over the other. They move together or not at all.
+    const css = read(path.join(APP, "arc/arc.css"));
+    const isFixed = (selector: string) => {
+      const body = css.split(`${selector} {`)[1]?.split("}")[0] ?? "";
+      return /position:\s*fixed/.test(body);
+    };
+    expect(isFixed(".arc-drawer-scrim"), ".arc-drawer-scrim must be position: fixed").toBe(true);
+    expect(isFixed(".arc-history"), ".arc-history must be position: fixed").toBe(true);
   });
 
   it("keeps the dropdown dismiss-scrims out of the portal", () => {
