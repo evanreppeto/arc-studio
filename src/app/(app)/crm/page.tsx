@@ -1,9 +1,8 @@
 import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
 import { humanizePersonaLabel, orderedStages, PIPELINE_OBJECT_KEYS, type PipelineObjectKey } from "@/domain";
-import { getAnalyticsOverview } from "@/lib/analytics/overview";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
-import { getCrmMentionSamples, getCrmNavCounts, type CrmObjectKey, type CrmObjectRow } from "@/lib/crm/read-model";
+import { getCrmMentionSamples, getCrmNavCounts, getCrmOverviewData, type CrmObjectKey, type CrmObjectRow } from "@/lib/crm/read-model";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
@@ -44,7 +43,7 @@ export default async function CrmPage() {
     // enrichment around the record list. Their absence is VISIBLE — an empty
     // strip, an empty dropdown — so an operator can see something is off
     // without an alert, and the records themselves still render.
-    orgId ? getAnalyticsOverview(orgId).catch(() => null) : Promise.resolve(null),
+    getCrmOverviewData().catch(unavailable("crm.overview", orgId)),
     getOrgPersonaOptions(orgId || undefined).catch(() => []),
     // These two carry the tenant's VOCABULARY (industry -> Matters / Assets /
     // Projects). Failing them doesn't blank the page — it silently relabels
@@ -84,33 +83,27 @@ export default async function CrmPage() {
   const loadError = reasonIfUnavailable(navCounts);
   const counts = navCounts.status === "live" ? navCounts.counts : null;
 
-  // Real KPI strip for the CRM header — leads volume, lead→won conversion, and
-  // won revenue — from the same wired analytics computation the Analytics screen
-  // uses (demo-safe; the strip is omitted entirely when unavailable).
-  const kpis: KpiCell[] = [];
-  if (overview) {
-    const byLabel = (l: string) => overview.kpis.find((k) => k.label === l);
-    const leadsK = byLabel("Leads");
-    const revK = byLabel("Won revenue");
-    const wonStage = overview.funnel.find((f) => f.label === "Won");
-    if (leadsK)
-      kpis.push({
-        label: "Leads",
-        sublabel: "vs previous 30 days",
-        value: leadsK.value,
-        delta: { label: leadsK.deltaLabel, dir: leadsK.dir },
-        spark: { points: overview.trend.leads.cur, up: leadsK.dir === "up" },
-      });
-    if (wonStage) kpis.push({ label: "Lead → won", value: wonStage.note, sublabel: "of leads become customers" });
-    if (revK)
-      kpis.push({
-        label: "Won revenue",
-        sublabel: "vs previous 30 days",
-        value: revK.value,
-        delta: { label: revK.deltaLabel, dir: revK.dir },
-        spark: { points: overview.trend.revenue.cur, up: revK.dir === "up" },
-      });
-  }
+  // The KPI strip describes THESE records — the ones in the table below it.
+  //
+  // It used to read `getAnalyticsOverview`, a 30-day marketing funnel belonging
+  // to the Analytics screen. On a live workspace that merely answered a
+  // different question than the tabs did; in the offline preview the two came
+  // from two independently authored fixture sets, and the header read
+  // "Leads 710" directly above a Leads tab reading 11 (BSR-656).
+  //
+  // `getCrmOverviewData` is the CRM's own computation over the same source the
+  // tabs count, so the header and the tabs cannot disagree in either mode.
+  // Count-style metrics with no time series, which is what these are: the
+  // `delta` line here is a qualifier ("3 need review"), not a percentage
+  // change, so it belongs in `sublabel` rather than the trend slot.
+  const kpis: KpiCell[] =
+    overview.status === "live"
+      ? overview.stats.map((stat) => ({
+          label: stat.label,
+          value: typeof stat.value === "number" ? stat.value.toLocaleString() : stat.value,
+          sublabel: stat.delta,
+        }))
+      : [];
 
   const rowsByKey: Record<string, CrmRowVM[]> = {};
   const objects: CrmObjectVM[] = OBJECT_KEYS.map((key) => {
