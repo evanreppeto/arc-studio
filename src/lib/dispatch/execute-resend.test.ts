@@ -301,6 +301,32 @@ describe("executeResendDispatch", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  /**
+   * BSR-757. `!connection?.enabled` covered "no row" and "row disabled" alike,
+   * so a workspace that had never connected Resend was told it was "connected
+   * but disabled" — false, and it points at a toggle that does not exist for
+   * them. This is the first error a workspace hits on its first send.
+   */
+  it("says Resend is NOT CONNECTED when the workspace has no connection row", async () => {
+    const send = vi.fn();
+    const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
+      campaign_dispatches: { data: queuedDispatch(), error: null },
+      approval_items: { data: APPROVED, error: null },
+      campaign_assets: { data: DEPLOYED_ASSET, error: null },
+      // maybeSingle() with no matching row.
+      connections: { data: null, error: null },
+    });
+
+    const result = await executeResendDispatch({ dispatchId: "d1", operator: "Operator" }, supabase, { apiKey: "re_test", send });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/isn't connected/i);
+    // The remedy has to be "connect", not "enable" — the toggle isn't there yet.
+    expect(result.message).not.toMatch(/connected but disabled/i);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("records a failure (status=failed, last_error) and logs dispatch_failed when Resend throws", async () => {
     const send = vi.fn().mockRejectedValue(new Error("Resend send failed (422): invalid from"));
     const supabase = createSupabaseQueryMock({
