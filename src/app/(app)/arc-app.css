@@ -387,7 +387,7 @@
   & .setup-meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
   & .setup-count { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
   & .setup-x { background: none; border: 0; padding: 0; font-size: 12px; color: var(--muted); cursor: pointer; transition: color 140ms var(--ease); }
-  & .setup-x:hover { color: var(--text-1); }
+  & .setup-x:hover { color: var(--text); }
   & .setup-steps { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; }
   & .setup-step { display: flex; align-items: flex-start; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
   & .setup-step:first-child { border-top: 0; padding-top: 4px; }
@@ -395,7 +395,7 @@
   & .setup-step.done .setup-tick { background: var(--accent); border-color: var(--accent); }
   & .setup-step.done .setup-title { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-3); }
   & .setup-body { flex: 1; min-width: 0; }
-  & .setup-title { font-size: 13.5px; font-weight: 600; color: var(--text-1); display: flex; align-items: center; gap: 8px; }
+  & .setup-title { font-size: 13.5px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
   & .setup-req { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 999px; padding: 1px 6px; }
   & .setup-why { margin: 5px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text-2); max-width: 62ch; }
   & .setup-step .btn { flex-shrink: 0; align-self: center; }
@@ -780,7 +780,11 @@
   background: var(--panel); color: var(--text-2); font-family: var(--mono); font-size: 9.5px; font-weight: 600;
 }
 .arc-app .arc-grid .pnm { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; max-width: 210px; }
-.arc-app .arc-grid .psub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; max-width: 210px; }
+/* Was one nowrap line capped at 210px, which cut most real descriptions mid-word
+   ("Turn recent high-intent interest int…"). The phone breakpoint below already
+   clamps to two lines; desktop had no reason to be stricter. Two lines are
+   reserved so cards in a row keep the same height. */
+.arc-app .arc-grid .psub { font-size: 11px; color: var(--muted); margin-top: 1px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; min-height: 2.9em; }
 .arc-app .arc-grid .dt td:first-child { width: 34%; }
 .arc-app .arc-grid .chip { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .arc-app .arc-grid .chip.persona { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
@@ -1809,7 +1813,10 @@
 .arc-app .arc-opps .orow .ic { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; color: var(--accent); }
 .arc-app .arc-opps .orow .ic svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-app .arc-opps .orow .ot { font-size: 13px; font-weight: 600; letter-spacing: -.005em; display: flex; align-items: baseline; gap: 7px; }
-.arc-app .arc-opps .orow .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The opportunity's headline is the thing you scan this page for, and a single
+   clipped line hid the half that distinguishes one from another ("New lead
+   returned to the pricing pag…"). Two lines, wrapped. */
+.arc-app .arc-opps .orow .nm { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; }
 .arc-app .arc-opps .orow .pct { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
 /* The part of the title the row's short name cuts. Two live flood advisories over
    different counties are otherwise two rows both reading "Flood Advisory". */
@@ -2298,7 +2305,7 @@
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--canvas);
-  color: var(--ink);
+  color: var(--text);
   font: inherit;
   font-size: 14px;
   text-transform: none;
