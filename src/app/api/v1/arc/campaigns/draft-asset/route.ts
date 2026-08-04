@@ -13,6 +13,7 @@ import {
   CampaignResolutionError,
   createCampaignFromOpportunity,
   promoteAssetToCampaign,
+  recordCampaignPackageSummary,
   resolveOrCreateCampaign,
 } from "@/lib/campaigns/create";
 import { markOpportunityDrafted } from "@/lib/opportunities/persistence";
@@ -164,6 +165,25 @@ export async function POST(request: Request) {
       agentName: "Arc",
       tenant,
     });
+
+    // Package-level summary, additive across the several calls a package takes
+    // to build. Best-effort: the asset is already created, so a summary write
+    // must not turn a successful 201 into a 502.
+    await recordCampaignPackageSummary({
+      campaignId,
+      handoffNote: body.handoff_note,
+      // The wire contract is snake_case like every other field here; the stored
+      // shape parseConsideredAudiences reads is camelCase. Mapped at the
+      // boundary — left unmapped, `size_estimate` parses to undefined and the
+      // number is silently dropped.
+      consideredAudiences: Array.isArray(body.considered_audiences)
+        ? body.considered_audiences.map((entry) => {
+            const e = (entry ?? {}) as Record<string, unknown>;
+            return { label: e.label, reason: e.reason, sizeEstimate: e.size_estimate ?? e.sizeEstimate };
+          })
+        : body.considered_audiences,
+      tenant,
+    }).catch(() => undefined);
 
     if (opportunityId) {
       // Link the source opportunity to this campaign and flip it to drafted.

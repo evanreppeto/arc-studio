@@ -86,6 +86,24 @@ export function draftWorkProductTools(
         .string()
         .optional()
         .describe("One line: who this targets and why they were grouped."),
+      handoff_note: z
+        .string()
+        .optional()
+        .describe(
+          "The sales/partner handoff note — what a human picking this up needs to know. Recorded on the campaign and shown on its page.",
+        ),
+      considered_audiences: z
+        .array(
+          z.object({
+            label: z.string().describe("The audience you weighed, in this workspace's own words"),
+            reason: z.string().describe("Why it was NOT chosen — a label with no reason explains nothing"),
+            size_estimate: z.number().optional().describe("Rough size, only when you actually know it"),
+          }),
+        )
+        .optional()
+        .describe(
+          "Audiences you considered and set aside, each with the reason. Say what you rejected and why, not just what you picked.",
+        ),
     },
     async (args) => {
       const label = "Creating campaign draft";

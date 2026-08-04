@@ -5,6 +5,7 @@ vi.mock("@/lib/campaigns/create", async (orig) => ({
   resolveOrCreateCampaign: vi.fn(),
   promoteAssetToCampaign: vi.fn(),
   createCampaignFromOpportunity: vi.fn(),
+  recordCampaignPackageSummary: vi.fn(),
 }));
 vi.mock("@/lib/opportunities/read-model", () => ({ getOpportunityForCampaign: vi.fn() }));
 
@@ -33,6 +34,7 @@ import {
   CampaignResolutionError,
   createCampaignFromOpportunity,
   promoteAssetToCampaign,
+  recordCampaignPackageSummary,
   resolveOrCreateCampaign,
 } from "@/lib/campaigns/create";
 import { markOpportunityDrafted } from "@/lib/opportunities/persistence";
@@ -45,6 +47,7 @@ const promoteMock = vi.mocked(promoteAssetToCampaign);
 const markDraftedMock = vi.mocked(markOpportunityDrafted);
 const fromOppMock = vi.mocked(createCampaignFromOpportunity);
 const getOppMock = vi.mocked(getOpportunityForCampaign);
+const summaryMock = vi.mocked(recordCampaignPackageSummary);
 
 function req(authorization: string | undefined, body?: unknown) {
   return new Request("http://localhost/api/v1/arc/campaigns/draft-asset", {
@@ -82,6 +85,8 @@ beforeEach(() => {
   // tests written before opportunity-aware creation existed.
   getOppMock.mockResolvedValue(null);
   fromOppMock.mockResolvedValue({ campaignId: "camp_from_opp" });
+  summaryMock.mockReset();
+  summaryMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -387,5 +392,55 @@ describe("drafting from a known opportunity", () => {
     expect(res.status).toBe(201);
     expect(fromOppMock).not.toHaveBeenCalled();
     expect(resolveMock).toHaveBeenCalled();
+  });
+});
+
+/**
+ * BSR-677 part 2. `handoff_note` and `considered_audiences` are named parts of
+ * the Campaign Package Builder and are rendered on the campaign page, and until
+ * now no path on either side wrote them — the considered-audiences branch in the
+ * detail view had never once had data. Arc produces both while drafting.
+ */
+describe("package summary write-back", () => {
+  beforeEach(() => configure());
+
+  it("records the handoff note and considered audiences", async () => {
+    await POST(
+      req("Bearer secret", {
+        campaign_id: "camp_9",
+        asset_type: "email",
+        title: "Email",
+        handoff_note: "Call within 24h; mention the Aug 1 advisory.",
+        considered_audiences: [
+          { label: "Property managers", reason: "No owned records to ground it", size_estimate: 120 },
+          { label: "Past clients", reason: "No completed-job history yet" },
+        ],
+      }),
+    );
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    const passed = summaryMock.mock.calls[0][0];
+    expect(passed.campaignId).toBe("camp_9");
+    expect(passed.handoffNote).toBe("Call within 24h; mention the Aug 1 advisory.");
+    // snake_case on the wire, camelCase in storage — unmapped, the size is lost.
+    expect(passed.consideredAudiences).toEqual([
+      { label: "Property managers", reason: "No owned records to ground it", sizeEstimate: 120 },
+      { label: "Past clients", reason: "No completed-job history yet", sizeEstimate: undefined },
+    ]);
+  });
+
+  it("still creates the asset when the summary write fails", async () => {
+    // The asset already exists by then; a summary hiccup must not 502 the draft.
+    summaryMock.mockRejectedValueOnce(new Error("db down"));
+    const res = await POST(
+      req("Bearer secret", { campaign_id: "camp_9", asset_type: "email", title: "Email", handoff_note: "x" }),
+    );
+    expect(res.status).toBe(201);
+  });
+
+  it("passes nothing through when neither field is supplied", async () => {
+    await POST(req("Bearer secret", { campaign_id: "camp_9", asset_type: "email", title: "Email" }));
+    const passed = summaryMock.mock.calls[0][0];
+    expect(passed.handoffNote).toBeUndefined();
+    expect(passed.consideredAudiences).toBeUndefined();
   });
 });
