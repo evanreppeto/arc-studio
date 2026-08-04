@@ -40,10 +40,28 @@ export const DEMO_THREADS: ArcThreadGroupVM[] = [
 // Carries `running`/`active` straight off the thread fixtures so the offline
 // preview shows the same rail states a live workspace does — a fixture that
 // flattened them would make the preview lie about a field prod really sets.
+/** Names for the campaigns the demo threads belong to, so the preview shows the
+ *  rail's campaign label and grouping. The live path resolves these from the
+ *  campaigns table; dropping them here left the preview unable to render either,
+ *  which is how a fixture hides a feature rather than demonstrating it. */
+const DEMO_CAMPAIGN_NAMES: Record<string, string> = {
+  "demo-camp": "Pricing-Intent Fast Track",
+  "past-customer": "Past-customer win-back",
+  "property-partners": "Multi-seat expansion",
+};
+
 export const DEMO_RECENT_CONVERSATIONS: ArcRecentConversationVM[] = DEMO_THREADS
   .flatMap((group) => group.items)
   .slice(0, 5)
-  .map(({ id, title, when, running, active }) => ({ id, title, when, running, defaultActive: active }));
+  .map(({ id, title, when, running, active, campaignId }) => ({
+    id,
+    title,
+    when,
+    running,
+    defaultActive: active,
+    campaignId: campaignId ?? null,
+    campaignName: campaignId ? DEMO_CAMPAIGN_NAMES[campaignId] ?? null : null,
+  }));
 
 export const DEMO_STEPS: ArcStep[] = [
   { label: "Read the pricing-intent brief", status: "done", at: "9:38 AM", kind: "think" },

@@ -3,7 +3,7 @@ import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getOperatorActor } from "@/lib/auth/operator";
 import { notConfigured } from "@/lib/observability/unavailable";
-import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import {
   listActiveArcRunConversationIds,
@@ -139,6 +139,10 @@ export type ArcRecentConversationVM = {
   /** The thread `/arc` opens when the URL names no conversation, so the rail can
    *  mark the current chat the way it marks the current destination. */
   defaultActive: boolean;
+  /** The campaign this chat belongs to, when it has one. 5 of prod's 25
+   *  conversations do, so the rail groups on it rather than assuming it. */
+  campaignId?: string | null;
+  campaignName?: string | null;
 };
 
 const DAY_MS = 86_400_000;
@@ -197,7 +201,7 @@ export async function getRecentArcConversations(
         .map((run) => run.conversationId),
     );
 
-    return [...conversations]
+    const rows = [...conversations]
       .filter((conversation) => !orgId || conversation.orgId === orgId)
       .filter((conversation) => !workspaceId || !conversation.workspaceId || conversation.workspaceId === workspaceId)
       .sort((left, right) => Date.parse(right.lastMessageAt) - Date.parse(left.lastMessageAt))
@@ -208,7 +212,26 @@ export async function getRecentArcConversations(
         when: relativeWhen(conversation.lastMessageAt, nowMs),
         running: runningIds.has(conversation.id),
         defaultActive: conversation.id === defaultActiveId,
+        campaignId: conversation.campaignId,
+        campaignName: null as string | null,
       }));
+
+    // Names for the handful of campaigns actually referenced — one query, and
+    // only when a row needs it. A failed lookup leaves the label off rather than
+    // dropping the chat: the link still works without knowing the campaign.
+    const campaignIds = [...new Set(rows.map((row) => row.campaignId).filter((id): id is string => Boolean(id)))];
+    if (campaignIds.length > 0) {
+      const { data } = await getSupabaseAdminClient()
+        .from("campaigns")
+        .select("id, name")
+        .in("id", campaignIds);
+      const names = new Map((data ?? []).map((row: { id: string; name: string | null }) => [row.id, row.name]));
+      for (const row of rows) {
+        if (row.campaignId) row.campaignName = names.get(row.campaignId) ?? null;
+      }
+    }
+
+    return rows;
   } catch {
     return [];
   }

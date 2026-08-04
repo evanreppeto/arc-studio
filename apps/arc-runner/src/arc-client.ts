@@ -51,18 +51,36 @@ export function createArcClient(config: Config, identity?: WakeTenantIdentity) {
     return json as T;
   }
 
-  /** Authenticated POST against the Operations API. Throws on non-2xx or { ok:false }. */
+  /**
+   * Authenticated POST against the Operations API. Throws on non-2xx or { ok:false }.
+   *
+   * Retries a 5xx a couple of times with a short backoff. The API verifies our
+   * DB-issued token against Supabase on EVERY request, so a single blip there
+   * used to end the whole run: on 2026-08-04 a completed opportunity scan could
+   * not post its own completion and the task sat `queued` forever. A 4xx is still
+   * fatal on the first try — that one really is our fault and retrying it just
+   * repeats the mistake.
+   */
   async function apiPost<T = unknown>(path: string, body: Record<string, unknown>): Promise<T> {
-    const res = await fetch(`${config.appApiBaseUrl}${path}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string } & Record<string, unknown>;
-    if (!res.ok || json?.ok === false) {
-      throw new Error(`POST ${path} -> ${res.status} ${json?.message ?? ""}`.trim());
+    const payload = JSON.stringify(body);
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+
+      const res = await fetch(`${config.appApiBaseUrl}${path}`, { method: "POST", headers, body: payload });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string } & Record<string, unknown>;
+      if (res.ok && json?.ok !== false) return json as T;
+
+      lastError = new Error(`POST ${path} -> ${res.status} ${json?.message ?? ""}`.trim());
+      if (res.status < 500) throw lastError;
+      const willRetry = attempt < 2;
+      console.warn(
+        `[arc-runner] POST ${path} -> ${res.status}${willRetry ? `, retrying (${attempt + 1}/3)` : " — giving up after 3 attempts"}`,
+      );
     }
-    return json as T;
+
+    throw lastError ?? new Error(`POST ${path} failed`);
   }
 
   /** Authenticated PUT against the Operations API. Throws on non-2xx or { ok:false }. */
