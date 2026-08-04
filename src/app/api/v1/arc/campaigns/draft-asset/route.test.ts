@@ -4,7 +4,9 @@ vi.mock("@/lib/campaigns/create", async (orig) => ({
   ...(await orig<typeof import("@/lib/campaigns/create")>()),
   resolveOrCreateCampaign: vi.fn(),
   promoteAssetToCampaign: vi.fn(),
+  createCampaignFromOpportunity: vi.fn(),
 }));
+vi.mock("@/lib/opportunities/read-model", () => ({ getOpportunityForCampaign: vi.fn() }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/personas/read-model", () => ({
@@ -27,14 +29,22 @@ vi.mock("@/lib/arc-chat/persistence", () => ({ linkConversationToCampaign: vi.fn
 import { linkConversationToCampaign } from "@/lib/arc-chat/persistence";
 const linkMock = vi.mocked(linkConversationToCampaign);
 
-import { CampaignResolutionError, promoteAssetToCampaign, resolveOrCreateCampaign } from "@/lib/campaigns/create";
+import {
+  CampaignResolutionError,
+  createCampaignFromOpportunity,
+  promoteAssetToCampaign,
+  resolveOrCreateCampaign,
+} from "@/lib/campaigns/create";
 import { markOpportunityDrafted } from "@/lib/opportunities/persistence";
+import { getOpportunityForCampaign } from "@/lib/opportunities/read-model";
 
 import { POST } from "./route";
 
 const resolveMock = vi.mocked(resolveOrCreateCampaign);
 const promoteMock = vi.mocked(promoteAssetToCampaign);
 const markDraftedMock = vi.mocked(markOpportunityDrafted);
+const fromOppMock = vi.mocked(createCampaignFromOpportunity);
+const getOppMock = vi.mocked(getOpportunityForCampaign);
 
 function req(authorization: string | undefined, body?: unknown) {
   return new Request("http://localhost/api/v1/arc/campaigns/draft-asset", {
@@ -66,6 +76,12 @@ beforeEach(() => {
   promoteMock.mockResolvedValue({ assetId: "asset_1" });
   markDraftedMock.mockResolvedValue({ ok: true });
   linkMock.mockResolvedValue(undefined);
+  fromOppMock.mockReset();
+  getOppMock.mockReset();
+  // Default: no such opportunity, so the shell path stays the default in the
+  // tests written before opportunity-aware creation existed.
+  getOppMock.mockResolvedValue(null);
+  fromOppMock.mockResolvedValue({ campaignId: "camp_from_opp" });
 });
 
 afterEach(() => {
@@ -261,5 +277,115 @@ describe("POST /api/v1/arc/campaigns/draft-asset", () => {
       }),
     );
     expect(res.status).toBe(201);
+  });
+});
+
+/**
+ * BSR-675 / BSR-677. Arc drafted a full package from opportunity 7865e1f7 in
+ * chat and the campaign landed with `source_signal: {}`, `objective: null`,
+ * `audience_summary: null`, while the opportunity stayed `pending` — so the next
+ * scan would re-propose work that was already drafted, and nothing tied the
+ * campaign to the signal that justified it.
+ *
+ * The operator's "Create campaign" button never had this problem, because it
+ * goes through createCampaignFromOpportunity. These assert the Arc path now
+ * takes the same route.
+ */
+describe("drafting from a known opportunity", () => {
+  beforeEach(() => configure());
+
+  const opp = {
+    id: "opp_1",
+    subjectType: "weather_event",
+    subjectId: "urn:alert:1",
+    title: "Flood Advisory — Cook, IL",
+    summary: "Flood advisory across Cook County",
+    confidence: 55,
+    urgency: "low" as const,
+    recommendedAction: "Launch a geo-targeted damage-response campaign",
+    recommendedCampaignType: "storm_response",
+    persona: "persona_homeowner_emergency",
+    evidence: { area: "Cook, IL" },
+    status: "pending",
+    campaignId: null,
+  };
+
+  it("converts through the opportunity path, not the bare shell", async () => {
+    getOppMock.mockResolvedValue(opp);
+    const res = await POST(
+      req("Bearer secret", {
+        opportunity_id: "opp_1",
+        name: "Flood response",
+        persona: "persona_homeowner_emergency",
+        campaign_theme: "Storm response",
+        asset_type: "email",
+        title: "Email draft",
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(fromOppMock).toHaveBeenCalledTimes(1);
+    // The bare shell records no provenance — it must not be what runs here.
+    expect(resolveMock).not.toHaveBeenCalled();
+    const passed = fromOppMock.mock.calls[0][0];
+    expect(passed.opportunity).toEqual(opp);
+    expect(passed.objective).toBe(opp.recommendedAction);
+  });
+
+  it("carries Arc's own objective and audience when it supplies them", async () => {
+    getOppMock.mockResolvedValue(opp);
+    await POST(
+      req("Bearer secret", {
+        opportunity_id: "opp_1",
+        name: "Flood response",
+        persona: "persona_homeowner_emergency",
+        asset_type: "email",
+        title: "Email draft",
+        objective: "Capture post-flood water-damage calls",
+        audience_summary: "Cook County homeowners in the advisory footprint",
+      }),
+    );
+    const passed = fromOppMock.mock.calls[0][0];
+    expect(passed.objective).toBe("Capture post-flood water-damage calls");
+    expect(passed.audienceSummary).toBe("Cook County homeowners in the advisory footprint");
+  });
+
+  it("attaches to the existing campaign rather than drafting a duplicate", async () => {
+    getOppMock.mockResolvedValue({ ...opp, status: "drafted", campaignId: "camp_existing" });
+    const res = await POST(
+      req("Bearer secret", { opportunity_id: "opp_1", asset_type: "email", title: "Second asset" }),
+    );
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ campaignId: "camp_existing" });
+    expect(fromOppMock).not.toHaveBeenCalled();
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
+  it("attaching to an explicit campaign_id never re-converts", async () => {
+    // campaign_id wins: the caller already knows where the asset belongs.
+    const res = await POST(
+      req("Bearer secret", { campaign_id: "camp_9", opportunity_id: "opp_1", asset_type: "email", title: "X" }),
+    );
+    expect(res.status).toBe(201);
+    expect(getOppMock).not.toHaveBeenCalled();
+    expect(fromOppMock).not.toHaveBeenCalled();
+    expect(resolveMock).toHaveBeenCalled();
+  });
+
+  it("falls back to the shell when the opportunity cannot be read", async () => {
+    // A lookup failure must not lose the draft the operator asked for.
+    getOppMock.mockRejectedValue(new Error("db down"));
+    const res = await POST(
+      req("Bearer secret", {
+        opportunity_id: "opp_1",
+        name: "Flood response",
+        persona: "persona_homeowner_emergency",
+        campaign_theme: "Storm response",
+        asset_type: "email",
+        title: "Email draft",
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(fromOppMock).not.toHaveBeenCalled();
+    expect(resolveMock).toHaveBeenCalled();
   });
 });

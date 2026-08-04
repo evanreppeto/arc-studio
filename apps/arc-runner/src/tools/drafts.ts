@@ -68,6 +68,24 @@ export function draftWorkProductTools(
       title: z.string().describe("Short title for the asset"),
       body: z.string().optional().describe("The draft copy/content"),
       media_url: z.string().optional().describe("Optional reference media URL"),
+      // Without these three, a package drafted in chat lost its provenance: the
+      // campaign recorded no objective, no audience, and no link to the signal it
+      // came from, so the opportunity stayed `pending` and the next scan
+      // re-proposed work that was already done (BSR-675/677).
+      opportunity_id: z
+        .string()
+        .optional()
+        .describe(
+          "The opportunity this campaign is being drafted FROM, when you know it (e.g. from list_opportunities). Links the campaign to the signal that justified it and marks the opportunity drafted, so it stops being re-proposed. Pass it whenever you are acting on an opportunity.",
+        ),
+      objective: z
+        .string()
+        .optional()
+        .describe("One line: what this campaign is for. Recorded on the campaign so the package reads complete."),
+      audience_summary: z
+        .string()
+        .optional()
+        .describe("One line: who this targets and why they were grouped."),
     },
     async (args) => {
       const label = "Creating campaign draft";
