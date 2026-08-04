@@ -24,7 +24,7 @@ This is a single **pnpm monorepo** with three workspaces:
   wake, runs Arc via the Claude Agent SDK, and posts replies back to the app.
   Deploys to Google Cloud Run.
 - **`packages/arc-connector`** — shared connector helpers for attaching an Arc
-  agent to a hosted Growth Engine workspace.
+  agent to a hosted Arc Studio workspace.
 
 See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full repo map (deploy
 targets, data, auth, and layering).
