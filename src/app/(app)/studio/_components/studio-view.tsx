@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ChangeEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { type ChangeEvent, type CSSProperties, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { type CreativeLayoutOverride } from "@/domain";
 
@@ -82,29 +82,80 @@ const ItemMedia = ({ item }: { item: Item }) =>
     <Raw html={item.s} />
   );
 
+/**
+ * The stage toolbar. Every entry now RESOLVES to something:
+ *
+ * - `focus` — scrolls the Design pane to the section that control belongs to
+ *   (and opens it if it's collapsed).
+ * - `ask` — switches to the Arc pane and seeds the composer with the request,
+ *   the same move "Ask Arc for variations" in the version strip already makes.
+ * - `soon` — no implementation exists, so it says so through the app's
+ *   `data-soon` toast rather than looking like a button that does nothing.
+ *
+ * Before this, all thirteen set a `tool` string nothing read and flipped the
+ * inspector tab: eleven of them were indistinguishable from broken.
+ */
 const TOOLS = {
   compose: [
-    { t: "overlay", target: "design", label: "Brand overlay", d: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 15l4-3 3 2 4-3 5 4"/>' },
-    { t: "text", target: "design", label: "Text", d: '<path d="M5 7h14M5 7V5h14v2M12 7v12M9 19h6"/>' },
-    { t: "recolor", target: "design", label: "Recolor", d: '<circle cx="12" cy="12" r="8"/><circle cx="9" cy="9" r="1.3"/><circle cx="15" cy="9" r="1.3"/><circle cx="9" cy="15" r="1.3"/>' },
+    { t: "overlay", target: "design", label: "Brand overlay", focus: "sec-parts", d: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 15l4-3 3 2 4-3 5 4"/>' },
+    { t: "text", target: "design", label: "Text", focus: "sec-copy", d: '<path d="M5 7h14M5 7V5h14v2M12 7v12M9 19h6"/>' },
+    { t: "recolor", target: "design", label: "Recolor", focus: "sec-look", d: '<circle cx="12" cy="12" r="8"/><circle cx="9" cy="9" r="1.3"/><circle cx="15" cy="9" r="1.3"/><circle cx="9" cy="15" r="1.3"/>' },
   ],
   generate: [
-    { t: "genimg", target: "arc", label: "Image", ai: true, d: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z"/>' },
-    { t: "genvid", target: "arc", label: "Video", ai: true, d: '<rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9l4-2v10l-4-2"/>' },
-    { t: "vary", target: "arc", label: "Other versions", ai: true, d: '<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 002-2V9"/>' },
+    { t: "genimg", target: "arc", label: "Image", ai: true, ask: "Generate a new image for this creative.", d: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z"/>' },
+    { t: "genvid", target: "arc", label: "Video", ai: true, ask: "Turn this creative into a short video.", d: '<rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9l4-2v10l-4-2"/>' },
+    { t: "vary", target: "arc", label: "Other versions", ai: true, ask: "Make a few on-brand variations of this creative.", d: '<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 002-2V9"/>' },
   ],
   edit: [
-    { t: "reframe", target: "arc", label: "Resize", ai: true, d: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 6v12"/>' },
-    { t: "expand", target: "arc", label: "Expand", ai: true, d: '<path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3"/>' },
-    { t: "cutout", target: "arc", label: "Cut-out", ai: true, d: '<path d="M5 5l14 14M9 5a4 4 0 014 4M5 9a4 4 0 004 4"/><rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="3 3"/>' },
-    { t: "upscale", target: "arc", label: "Upscale", ai: true, d: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>' },
-    { t: "animate", target: "arc", label: "Animate", ai: true, d: '<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>' },
+    { t: "reframe", target: "arc", label: "Resize", ai: true, ask: "Resize this creative for the other formats — 1:1, 4:5, 9:16 and 16:9.", d: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 6v12"/>' },
+    { t: "expand", target: "arc", label: "Expand", ai: true, ask: "Expand this image to fill more of the frame without cropping the subject.", d: '<path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3"/>' },
+    { t: "cutout", target: "arc", label: "Cut-out", ai: true, ask: "Cut the subject out of this photo onto a clean background.", d: '<path d="M5 5l14 14M9 5a4 4 0 014 4M5 9a4 4 0 004 4"/><rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="3 3"/>' },
+    { t: "upscale", target: "arc", label: "Upscale", ai: true, ask: "Upscale this image to a higher resolution.", d: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>' },
+    { t: "animate", target: "arc", label: "Animate", ai: true, ask: "Add gentle motion to this image — a short looping clip.", d: '<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>' },
   ],
   check: [
-    { t: "virality", target: "design", label: "Virality", d: '<path d="M3 17l5-5 4 3 5-7 4 4"/><circle cx="8" cy="12" r="1"/>' },
-    { t: "guardrails", target: "design", label: "Guardrails", d: '<path d="M12 3l8 4v6c0 4-3.5 7-8 8-4.5-1-8-4-8-8V7z"/><path d="M9 12l2 2 4-4"/>' },
+    { t: "virality", target: "design", label: "Virality", soon: "Arc can't score creative for reach yet.", d: '<path d="M3 17l5-5 4 3 5-7 4 4"/><circle cx="8" cy="12" r="1"/>' },
+    { t: "guardrails", target: "design", label: "Guardrails", focus: "sec-prov", d: '<path d="M12 3l8 4v6c0 4-3.5 7-8 8-4.5-1-8-4-8-8V7z"/><path d="M9 12l2 2 4-4"/>' },
   ],
 } as const;
+
+type StudioTool = (typeof TOOLS)[keyof typeof TOOLS][number];
+
+/** What each composer mode tells Arc to come back with. The mode is a hint
+ *  carried in the message preamble, not a capability switch — the copy says
+ *  what you're asking for, never what Arc is prevented from doing. */
+const MODE_HINT: Record<string, string> = {
+  Ask: "Ask for an answer or an opinion — nothing gets made.",
+  Act: "Ask Arc to go and do something in the workspace.",
+  Draft: "Ask for creative you can review and approve.",
+};
+
+/** Openers that seed the composer. Plain requests a person would actually
+ *  make of the thing on the canvas — they only fill the box, nothing is sent. */
+const STARTERS = [
+  "Write three headline options for this ad.",
+  "Make a few on-brand variations of this creative.",
+  "Rewrite this shorter and punchier.",
+  "Which of my approved photos would work better here?",
+];
+
+/**
+ * A collapsible inspector section. Defined at module scope on purpose: a
+ * component declared inside StudioView is a new type every render, so React
+ * would remount the copy inputs and drop focus on every keystroke.
+ */
+function Section({ id, title, tag, open = true, children }: { id: string; title: string; tag?: string; open?: boolean; children: React.ReactNode }) {
+  return (
+    <details className="psec" id={id} open={open}>
+      <summary className="ph2">
+        <span className="phchev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg></span>
+        {title}
+        {tag ? <span className="tagv">{tag}</span> : null}
+      </summary>
+      <div className="psecb">{children}</div>
+    </details>
+  );
+}
 
 /**
  * Layer names as a person would say them. The keys stay as they are — they are
@@ -127,6 +178,23 @@ const FORMATS = [
   { ar: "9 / 16", dim: "1080 × 1920", label: "Story", r: "9:16", use: "Story / Reel" },
   { ar: "16 / 9", dim: "1920 × 1080", label: "Landscape", r: "16:9", use: "Wide / web banner" },
 ];
+
+/**
+ * The canvas's inline style: the CSS aspect ratio, plus that ratio as a bare
+ * number in `--ar-num`.
+ *
+ * CSS needs the number because `aspect-ratio` alone cannot make a box fit a
+ * height — a `max-height` clamps the used height and leaves the width where it
+ * was, squashing the ratio rather than scaling the box. The `.canvas` rule caps
+ * width at `100cqh × var(--ar-num)` instead, so the height constraint reaches
+ * the width and the artboard scales down whole. Derived from `ar` rather than
+ * stored beside it, so the two can't drift apart.
+ */
+export function arStyle(ar: string): CSSProperties {
+  const [w, h] = ar.split("/").map((part) => Number(part.trim()));
+  const ratio = Number.isFinite(w) && Number.isFinite(h) && h > 0 ? w / h : 1;
+  return { aspectRatio: ar, "--ar-num": ratio } as CSSProperties;
+}
 /**
  * Template tiles. `id` MUST match a CREATIVE_TEMPLATE_IDS value in
  * src/domain/creative-templates.ts — it is sent to generateStudioAsset as the
@@ -468,6 +536,20 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // hardcoded campaign ("Storm-Season Reactivation") that no workspace owns.
   const selectedCampaignLabel = campaigns.find((c) => c.id === campaignId)?.name ?? null;
   const [drafts, setDrafts] = useState<StudioDraft[]>([]);
+  /**
+   * A rendered draft shown on the artboard in place of the live composite.
+   *
+   * The canvas only ever painted the SOURCE photo plus editable text — what the
+   * renderer actually produced appeared nowhere but a 42px thumbnail in a list,
+   * so you generated a creative and the picture in front of you didn't change.
+   * `bg` deliberately stays the source: swapping it for the composite would make
+   * the next generate bake the copy in a second time.
+   */
+  const [preview, setPreview] = useState<StudioDraft | null>(null);
+  const previewFormat = useMemo(
+    () => (preview ? FORMATS.find((f) => f.r === preview.format) ?? FORMATS[fmt] : null),
+    [preview, fmt],
+  );
   const [gen, startGen] = useTransition();
   const [genErr, setGenErr] = useState<string | null>(null);
   const [draftBusy, setDraftBusy] = useState<string | null>(null);
@@ -544,10 +626,12 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         });
         if (res.ok && res.assetId && res.media) {
           const media = res.media;
-          setDrafts((prev) => [
-            { campaignId: res.campaignId ?? campaignId, assetId: res.assetId!, url: media.url, source: media.source, format: media.format, title: headline || "Studio creative", status: "pending_approval" },
-            ...prev,
-          ]);
+          const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: media.url, source: media.source, format: media.format, title: headline || "Studio creative", status: "pending_approval" };
+          setDrafts((prev) => [draft, ...prev]);
+          // Put the render on the artboard. Only for the format that's actually
+          // selected — a "resize for all platforms" run would otherwise leave the
+          // canvas showing 16:9 while the format bar still reads 1:1.
+          if (f === FORMATS[fmt].r) setPreview(draft);
         } else if (!res.ok) {
           setGenErr(res.error);
           break;
@@ -604,10 +688,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           return;
         }
         if (poll.status === "done") {
-          setDrafts((prev) => [
-            { campaignId: poll.campaignId, assetId: poll.assetId, url: poll.media.url, source: poll.media.source, format: poll.media.format, title, status: "pending_approval", kind: "video" },
-            ...prev,
-          ]);
+          const draft: StudioDraft = { campaignId: poll.campaignId, assetId: poll.assetId, url: poll.media.url, source: poll.media.source, format: poll.media.format, title, status: "pending_approval", kind: "video" };
+          setDrafts((prev) => [draft, ...prev]);
+          setPreview(draft);
           return;
         }
       }
@@ -655,9 +738,27 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     );
   };
 
-  const pickTool = (t: (typeof TOOLS)[keyof typeof TOOLS][number]) => {
+  const pickTool = (t: StudioTool) => {
+    // `data-soon` already toasted; don't also move the operator somewhere that
+    // has nothing to show them.
+    if ("soon" in t && t.soon) return;
     setTool(t.t);
-    setTab(t.target === "arc" ? "arc" : "design");
+    if (t.target === "arc") {
+      setTab("arc");
+      // Seed, never overwrite: a half-typed message is the operator's, not ours.
+      if ("ask" in t && t.ask) setMsg((m) => (m.trim() ? m : t.ask));
+      return;
+    }
+    setTab("design");
+    if (!("focus" in t) || !t.focus) return;
+    const target = t.focus;
+    // After the tab has painted — the section doesn't exist to scroll to until then.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(target);
+      if (!el) return;
+      if (el instanceof HTMLDetailsElement) el.open = true;
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
   };
   const logoInitial = (brandName || "S").trim().charAt(0).toUpperCase();
   // What the canvas paints with. The accent is the swatch the operator picked
@@ -704,7 +805,12 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           <button type="button" className="iconbtn" aria-label="Redo" title="Redo — not available yet" disabled><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 000 10h3" /></svg></button>
           <span className="cdivr" />
           <a className="gbtn" href="/library"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>Save to Library</a>
-          <Link className="gbtn gold" href="/campaigns"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add to campaign</Link>
+          {/* Sent to /campaigns even with a campaign picked two controls to the
+              left, which dropped you on a list to find the one you'd already chosen. */}
+          <Link className="gbtn gold" href={campaignId ? `/campaigns/${campaignId}` : "/campaigns"}>
+            <svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>
+            {campaignId ? "Open campaign" : "Pick a campaign"}
+          </Link>
         </div>
       </div>
 
@@ -736,17 +842,28 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
 
         {/* STAGE */}
         <section className="stage">
+          {/* Each group is one atomic box on a single scrolling row — see the
+              .toolbar rule for why this can't wrap. The standalone 1px rules
+              that used to sit between the groups are gone: the labels already
+              carry the grouping, and a wrapped row stranded them. */}
           <div className="toolbar">
-            {(["compose", "generate", "edit", "check"] as const).map((grp, gi) => (
-              <div key={grp} style={{ display: "contents" }}>
-                {gi > 0 && <div className="tdiv" />}
-                <div className="tgrp">
-                  <span className="tglabel">{grp.charAt(0).toUpperCase() + grp.slice(1)}</span>
+            {(["compose", "generate", "edit", "check"] as const).map((grp) => (
+              <div className="tgrp" key={grp}>
+                <span className="tglabel">{grp === "check" ? "Check" : grp.charAt(0).toUpperCase() + grp.slice(1)}</span>
+                <div className="tgrpt">
                   {TOOLS[grp].map((t) => (
-                    <div key={t.t} className={`tool${"ai" in t && t.ai ? " ai" : ""}${tool === t.t ? " on" : ""}`} onClick={() => pickTool(t)}>
+                    <button
+                      type="button"
+                      key={t.t}
+                      className={`tool${"ai" in t && t.ai ? " ai" : ""}${tool === t.t ? " on" : ""}`}
+                      aria-pressed={tool === t.t}
+                      title={"ai" in t && t.ai ? `${t.label} — runs on the AI engine` : t.label}
+                      onClick={() => pickTool(t)}
+                      {...("soon" in t && t.soon ? { "data-soon": t.soon } : {})}
+                    >
                       {"ai" in t && t.ai && <span className="tdot" />}
                       <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: t.d }} /><span className="tlbl">{t.label}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -779,54 +896,99 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
               </span>
             )}
             <span className="fspacer" />
+            {/* "Zoom 100%" sat here: a static string, no zoom control anywhere,
+                permanently reading 100% whatever the artboard was doing. */}
             <span className={`szbtn${safe ? " on" : ""}`} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Keep text clear of edges</span>
-            <span className="zoom">Zoom 100%</span>
           </div>
+
+          {/* A stage-wide mode banner, not a caption on the artboard: keeping it
+              out of .artboard means the artboard is the same two-box column in
+              both modes, so the fit maths below has one case, not two. */}
+          {preview ? (
+            <div className="prevbar">
+              <span className="pvi"><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" /></svg></span>
+              <div className="pvt">
+                <b>This is the finished render</b>
+                <span>{preview.title} · {preview.format} · draft, not approved</span>
+              </div>
+              <button type="button" className="pvback" onClick={() => setPreview(null)}>
+                <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" /></svg>Back to editing
+              </button>
+            </div>
+          ) : null}
 
           <div className="stagewrap">
             <div className="artboard">
-              <div className={`canvas${safe ? " szon" : ""}${mode === "video" ? " video" : ""}`} style={{ aspectRatio: FORMATS[fmt].ar }}>
-                {/* Laid out from CREATIVE_LAYOUTS — the same numbers the exporter
-                    uses — so switching template changes what you see, and what
-                    you see is the shape that ships (BSR-679). */}
-                <StudioCanvas
-                  template={(TEMPLATES[tmpl]?.id ?? "bold") as "bold" | "editorial" | "minimal"}
-                  brand={canvasBrand}
-                  copy={{ kicker, headline, subhead: sub, cta }}
-                  shown={shown}
-                  override={layoutOverride}
-                  onOverrideChange={setLayoutOverride}
-                  selected={selectedLayer}
-                  onSelect={setSelectedLayer}
-                  onCopyChange={(field, value) => {
-                    if (field === "kicker") setKicker(value);
-                    else if (field === "headline") setHeadline(value);
-                    else if (field === "subhead") setSub(value);
-                    else setCta(value);
-                  }}
-                  background={
-                    !bg ? (
-                      <div className="cbg-empty">No approved media yet — pick a source, upload, or generate to set a background.</div>
-                    ) : shown("Background") ? (
-                      <ItemMedia item={bg} />
-                    ) : null
-                  }
-                />
-                <div className="cveil" />
-                <div className="cplay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div>
-                {bg && <div className="cprov">{PVLABEL[bg.p]}</div>}
-                <div className="safez"><div className="szb szt"><span className="szl">caption / UI safe area</span></div><div className="szb szbo" /></div>
+              {/* .canvasfit is a size container: it takes exactly the height left
+                  over after .cspec, and the canvas caps its own width at that
+                  height × the format's ratio. That's what stops a 1:1 artboard
+                  running 421px tall inside a 313px stage and scrolling. */}
+              <div className="canvasfit">
+                {preview ? (
+                  /* The finished render, at size. Editing is paused while it's up —
+                     the copy fields still drive the composite underneath, and
+                     "Back to editing" returns to it untouched. */
+                  <div className="canvas prev" style={arStyle(previewFormat?.ar ?? FORMATS[fmt].ar)}>
+                    {preview.kind === "video" ? (
+                      <video src={preview.url} controls playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000" }} />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element -- generated media URL
+                      <img src={preview.url} alt={preview.title} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                    )}
+                  </div>
+                ) : (
+                  <div className={`canvas${safe ? " szon" : ""}${mode === "video" ? " video" : ""}`} style={arStyle(FORMATS[fmt].ar)}>
+                    {/* Laid out from CREATIVE_LAYOUTS — the same numbers the exporter
+                        uses — so switching template changes what you see, and what
+                        you see is the shape that ships (BSR-679). */}
+                    <StudioCanvas
+                      template={(TEMPLATES[tmpl]?.id ?? "bold") as "bold" | "editorial" | "minimal"}
+                      brand={canvasBrand}
+                      copy={{ kicker, headline, subhead: sub, cta }}
+                      shown={shown}
+                      override={layoutOverride}
+                      onOverrideChange={setLayoutOverride}
+                      selected={selectedLayer}
+                      onSelect={setSelectedLayer}
+                      onCopyChange={(field, value) => {
+                        if (field === "kicker") setKicker(value);
+                        else if (field === "headline") setHeadline(value);
+                        else if (field === "subhead") setSub(value);
+                        else setCta(value);
+                      }}
+                      background={
+                        !bg ? (
+                          <div className="cbg-empty">No approved media yet — pick a source, upload, or generate to set a background.</div>
+                        ) : shown("Background") ? (
+                          <ItemMedia item={bg} />
+                        ) : null
+                      }
+                    />
+                    <div className="cveil" />
+                    <div className="cplay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div>
+                    {bg && <div className="cprov">{PVLABEL[bg.p]}</div>}
+                    <div className="safez"><div className="szb szt"><span className="szl">caption / UI safe area</span></div><div className="szb szbo" /></div>
+                  </div>
+                )}
               </div>
-              <div className="cspec">
-                <span>Rendered by <b>Arc</b></span><span className="dotsep" />
-                <span><b>{FORMATS[fmt].dim}</b> px</span><span className="dotsep" />
-                <span title="Colours and type come from your Brand page, not from Arc">{brandName}&rsquo;s own colours</span><span className="dotsep" />
-                <span className="draftpill">Draft · not approved</span>
-              </div>
+              {preview ? (
+                <div className="cspec">
+                  <span>Rendered by <b>Arc</b></span><span className="dotsep" />
+                  <span><b>{previewFormat?.dim ?? preview.format}</b></span><span className="dotsep" />
+                  <span className="draftpill">Draft · not approved</span>
+                </div>
+              ) : (
+                <div className="cspec">
+                  <span>Rendered by <b>Arc</b></span><span className="dotsep" />
+                  <span><b>{FORMATS[fmt].dim}</b> px</span><span className="dotsep" />
+                  <span title="Colours and type come from your Brand page, not from Arc">{brandName}&rsquo;s own colours</span><span className="dotsep" />
+                  <span className="draftpill">Draft · not approved</span>
+                </div>
+              )}
             </div>
           </div>
 
-          {mode === "video" && (
+          {mode === "video" && !preview && (
             <div className="vidtl show">
               <span className="pp"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></span>
               <span className="tk"><span className="pl" /><span className="ph" /></span>
@@ -836,12 +998,35 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           )}
 
           <div className="strip">
-            {/* Version thumbs and the awaiting-drafts count are sample art. Live
-                they'd claim this workspace has variations and drafts pending
-                approval that do not exist, so live shows the empty truth. */}
+            {/* Offline, the version thumbs are sample art. Live they are the
+                drafts this session actually rendered — clicking one puts it on
+                the artboard. An empty strip means nothing has been made yet,
+                which is the truth, not a placeholder. */}
             <span className="sl">This session</span>
             {live ? (
-              <span className="sl" style={{ textTransform: "none", letterSpacing: 0 }}>No variations yet</span>
+              drafts.length === 0 ? (
+                <span className="sl" style={{ textTransform: "none", letterSpacing: 0 }}>Nothing rendered yet</span>
+              ) : (
+                drafts.slice(0, 8).map((d) => (
+                  <span
+                    key={d.assetId}
+                    className={`vthumb${preview?.assetId === d.assetId ? " on" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    title={`${d.title} · ${d.format}`}
+                    onClick={() => setPreview(d)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPreview(d); } }}
+                  >
+                    {d.kind === "video" ? (
+                      <video src={d.url} muted playsInline preload="metadata" />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element -- generated media URL
+                      <img src={d.url} alt="" />
+                    )}
+                    <span className="vtag">{d.format}</span>
+                  </span>
+                ))
+              )
             ) : (
               <>
                 {SESSION.slice(0, 3).map((v) => (
@@ -860,18 +1045,18 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
 
         {/* INSPECTOR */}
         <aside className="insp">
-          <div className="itabs">
-            <div className={`itab${tab === "design" ? " on" : ""}`} onClick={() => setTab("design")}><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M4 9h16M9 9v11" /></svg>Design</div>
-            <div className={`itab${tab === "arc" ? " on" : ""}`} onClick={() => setTab("arc")}><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Arc</div>
+          <div className="itabs" role="tablist" aria-label="Inspector">
+            <button type="button" role="tab" aria-selected={tab === "design"} className={`itab${tab === "design" ? " on" : ""}`} onClick={() => setTab("design")}><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M4 9h16M9 9v11" /></svg>Design{drafts.length > 0 ? <span className="ibadge">{drafts.length}</span> : null}</button>
+            <button type="button" role="tab" aria-selected={tab === "arc"} className={`itab${tab === "arc" ? " on" : ""}`} onClick={() => setTab("arc")}><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Arc</button>
           </div>
 
           {tab === "design" ? (
             <div className="ipane">
+              <div className="iscroll">
               <div className="dwrap">
                 <div className="brief">
                   <div className="bh"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Campaign context</div>
                   <div className="bn">{campaigns.find((c) => c.id === campaignId)?.name ?? "No campaign selected"}</div>
-                  <div className="bmeta">Pick a campaign and anything you make here gets attached to it for approval</div>
                   {/* The angle and proof chips are sample brief copy — there is no
                       wired source for a campaign's angle here yet. Showing them
                       live would put another tenant's positioning on this canvas
@@ -886,44 +1071,78 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   )}
                 </div>
 
-                <div className="psec">
-                  <h3 className="ph2">Parts of this ad</h3>
+                {/* Right under the brief, not buried at the bottom of the pane:
+                    this is what you just made and the only place to act on it. */}
+                {drafts.length > 0 && (
+                  <Section id="sec-drafts" title={`Drafts · ${drafts.length}`}>
+                    {drafts.map((d) => (
+                      <div className="draftrow" key={d.assetId}>
+                        <button
+                          type="button"
+                          className={`draftthumb${preview?.assetId === d.assetId ? " on" : ""}`}
+                          title="Show this on the artboard"
+                          onClick={() => setPreview(d)}
+                        >
+                          {d.kind === "video" ? (
+                            // A video draft has to be watchable to be reviewable —
+                            // an <img> pointed at an MP4 renders a broken thumbnail.
+                            <video src={d.url} muted playsInline preload="metadata" />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element -- generated media URL
+                            <img src={d.url} alt="" />
+                          )}
+                        </button>
+                        <div className="draftmeta">
+                          <div className="gt">{d.title}</div>
+                          <div className="gd">{d.format} · {d.status === "pending_approval" ? "awaiting your approval" : d.status === "approved" ? "approved — outbound still locked" : d.status === "declined" ? "declined" : "revision requested — Arc will re-draft"}</div>
+                          {d.status === "pending_approval" ? (
+                            <div className="actl">
+                              <button className="abtn ap" disabled={draftBusy === d.assetId} onClick={() => decideDraft(d, "approved")}><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" /></svg>Approve</button>
+                              <button className="abtn" disabled={draftBusy === d.assetId} onClick={() => reviseDraft(d)}>Revise</button>
+                              <button className="abtn" disabled={draftBusy === d.assetId} onClick={() => decideDraft(d, "declined")}>Decline</button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="clock" style={{ marginTop: 9 }}><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>Approving unlocks the next step — nothing sends without an explicit send.</div>
+                  </Section>
+                )}
+
+                <Section id="sec-parts" title="Parts of this ad">
                   <div className={`layer${selectedLayer === "Background" ? " sel" : ""}`} role="button" tabIndex={0} onClick={() => setSelectedLayer("Background")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer("Background"); } }} style={shown("Background") ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL.Background}</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
                   {[["Kicker", kicker], ["Headline", headline], ["Subhead", sub], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
                     <div className={`layer${selectedLayer === lt ? " sel" : ""}`} key={lt} role="button" tabIndex={0} onClick={() => setSelectedLayer(lt as CanvasLayer)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer(lt as CanvasLayer); } }} style={shown(lt) ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL[lt as string] ?? lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
                   ))}
-                </div>
+                </Section>
 
-                <div className="psec">
-                  <h3 className="ph2">Edit copy</h3>
+                <Section id="sec-copy" title="Edit copy">
                   <div className="fieldl"><span>{LAYER_LABEL.Kicker}</span></div><input className="input" placeholder="e.g. Storm season" value={kicker} onChange={(e) => setKicker(e.target.value)} />
                   <div className="field"><div className="fieldl"><span>Headline</span></div><input className="input" placeholder="The one line that has to land" value={headline} onChange={(e) => setHeadline(e.target.value)} /></div>
                   <div className="field"><div className="fieldl"><span>{LAYER_LABEL.Subhead}</span></div><input className="input" placeholder="Supporting detail or offer" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
                   <div className="field"><div className="fieldl"><span>Button</span></div><input className="input" placeholder="e.g. Get my free quote" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
-                </div>
+                </Section>
 
-                <div className="psec">
-                  <h3 className="ph2">Brand color</h3>
+                {/* Colour and template were two sections apart with a header each,
+                    for four controls total. They are one decision — how it looks. */}
+                <Section id="sec-look" title="Look">
+                  <div className="fieldl"><span>Accent colour</span></div>
                   <div className="swatches">{swatches.map((c) => <span key={c} className={`sw${accent === c ? " on" : ""}`} style={{ background: c }} onClick={() => setAccent(c)} />)}</div>
                   <div className="swnote">{brandPalette.length > 0 ? "From your Brand kit palette — the renderer uses this accent for the CTA." : "Default accents — set a palette in Brand and these become your own. The renderer uses this accent for the CTA."}</div>
-                </div>
-
-                <div className="psec">
-                  <h3 className="ph2">Template</h3>
+                  <div className="fieldl" style={{ marginTop: 14 }}><span>Template</span></div>
                   <div className="tmpl">
                     {TEMPLATES.map((tm, i) => (
                       <div key={tm.id} className={`tmplc${tmpl === i ? " on" : ""}`} onClick={() => setTmpl(i)}><div className="tmi" style={{ background: tm.bg }}><span style={{ fontFamily: tm.ff, color: tm.c, fontSize: tm.fs, fontStyle: tm.fst, fontWeight: 600 }}>Aa</span></div><div className="tmn">{tm.n}</div></div>
                     ))}
                   </div>
-                </div>
+                </Section>
 
                 {mode === "video" && (
-                  <div className="psec">
-                    <h3 className="ph2">Audio <span className="tagv">Higgsfield · video</span></h3>
+                  <Section id="sec-audio" title="Audio" tag="Higgsfield · video" open={false}>
                     {[["Voiceover", "Generate or dub a narration track", "Add →"], ["Music bed", "On-brand background track", "Add →"], ["Captions", "Auto-burned subtitles", "On"]].map(([an, ad, ax]) => (
                       <div className="audrow" key={an} data-soon={`${an} is coming soon`}><span className="ai"><svg viewBox="0 0 24 24"><path d="M12 3v18M8 7v10M16 7v10M4 10v4M20 10v4" /></svg></span><div><div className="an">{an}</div><div className="ad">{ad}</div></div><span className="ax">{ax}</span></div>
                     ))}
-                  </div>
+                  </Section>
                 )}
 
                 {/* Media provenance — the ONE guardrail this app can actually compute.
@@ -936,8 +1155,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     unconditionally with green checkmarks. No logo detection, face
                     detection or claim checker exists, so those were removed rather than
                     left as a compliance gate that never ran. */}
-                <div className="psec">
-                  <h3 className="ph2">Media provenance</h3>
+                <Section id="sec-prov" title="Media provenance">
                   <div className="grow">
                     <span className={`gic ${provenance.tone}`}>
                       {provenance.tone === "ok"
@@ -946,119 +1164,75 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     </span>
                     <div><div className="gt">{provenance.title}</div><div className="gd">{provenance.detail}</div></div>
                   </div>
-                  <div className="grow">
-                    <span className="gic warn"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z" /></svg></span>
-                    <div><div className="gt">Review before you send</div><div className="gd">Arc doesn&rsquo;t scan creatives for faces, logo legibility, or unsupported claims — check those yourself. Nothing goes out until you approve it.</div></div>
-                  </div>
-                </div>
+                  {/* Always true, never derived — so it reads as a footnote, not as
+                      a second finding competing with the one above it. */}
+                  <div className="gnote">Arc doesn&rsquo;t scan creatives for faces, logo legibility, or unsupported claims — check those yourself.</div>
+                </Section>
 
-                <div className="psec">
-                  <h3 className="ph2">Output spec</h3>
-                  <div className="imgproxy">
-                    <span className="pxchip">{FORMATS[fmt].label}</span>
-                    <span className="pxchip">{FORMATS[fmt].r}</span>
-                    <span className="pxchip">{FORMATS[fmt].dim}</span>
-                  </div>
-                  <div className="scapt">
-                    Arc can&rsquo;t predict how this will perform yet. These are the
-                    dimensions this creative will render at.
-                  </div>
-                </div>
+                {/* "Output spec" lived here: three chips repeating the format
+                    already chosen in the format bar and printed again under the
+                    canvas. Three statements of 1:1 / 1080 × 1080 on one screen. */}
 
-                <div className="psec">
-                  <h3 className="ph2">Generate</h3>
-                  {genErr ? <div role="alert" style={{ margin: "0 2px 8px", fontSize: 11, color: "#cc6666", lineHeight: 1.4 }}>{genErr}</div> : null}
-                  {draftNotice ? (
-                    <div role="status" style={{ margin: "0 2px 8px", fontSize: 11, color: "var(--warn-text)", lineHeight: 1.4 }}>
-                      {draftNotice}
-                    </div>
-                  ) : null}
-                  {mode === "video" ? (
-                    <>
-                      {/* Video doesn't composite over the selected photo — Veo renders
-                          the scene you describe. Keep that distinction visible so the
-                          canvas background isn't mistaken for the video's input. */}
-                      <div className="field">
-                        <div className="fieldl"><span>Describe the shot</span></div>
-                        <textarea
-                          className="input"
-                          rows={3}
-                          style={{ resize: "vertical", lineHeight: 1.45 }}
-                          placeholder="e.g. A clean service van pulls into a suburban driveway on a bright morning, slow steady camera"
-                          value={videoPrompt}
-                          onChange={(e) => setVideoPrompt(e.target.value)}
-                          disabled={videoBusy}
-                        />
-                      </div>
-                      {/* role + tabIndex + Enter/Space, not a bare onClick div: the
-                          surrounding .exrow controls are the keyboard-unreachable
-                          debt BSR-664 ratchets down, and a new control must not add
-                          to it. */}
-                      <div
-                        className="exrow gold"
-                        role="button"
-                        tabIndex={videoGate || videoBusy ? -1 : 0}
-                        aria-disabled={Boolean(videoGate) || videoBusy}
-                        onClick={runVideo}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); runVideo(); } }}
-                        style={!videoGate && !videoBusy ? { cursor: "pointer" } : { opacity: 0.55 }}
-                        {...(videoGate ? { "data-soon": videoGate } : {})}
-                      >
-                        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2" /><path d="M17 9l4-2v10l-4-2" /></svg>
-                        {videoBusy ? "Rendering video…" : `Generate video · ${videoAspect}`}
-                      </div>
-                      <div className="scapt">
-                        {videoNote
-                          ? videoNote
-                          : `Veo renders a short clip from your description — it does not use the selected photo. Landscape and portrait only, so this renders at ${videoAspect}. Lands as a draft for your approval.`}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="exrow gold" onClick={() => runGenerate([FORMATS[fmt].r])} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>{gen ? "Generating…" : `Generate creative · ${FORMATS[fmt].r}`}</div>
-                      <div className="exrow" onClick={() => runGenerate(FORMATS.map((f) => f.r))} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.6" /></svg>Resize for all platforms <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)" }}>1:1 4:5 9:16 16:9</span></div>
-                    </>
-                  )}
-                </div>
-
-                {drafts.length > 0 && (
-                  <div className="psec">
-                    <h3 className="ph2">Drafts · {drafts.length}</h3>
-                    {drafts.map((d) => (
-                      <div className="grow" key={d.assetId} style={{ alignItems: "center", gap: 9 }}>
-                        <span style={{ width: 42, height: 42, borderRadius: 6, overflow: "hidden", flexShrink: 0, background: "var(--line)" }}>
-                          {d.kind === "video" ? (
-                            // A video draft has to be watchable to be reviewable —
-                            // an <img> pointed at an MP4 renders a broken thumbnail.
-                            <video src={d.url} muted playsInline preload="metadata" controls style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                          ) : (
-                            // eslint-disable-next-line @next/next/no-img-element -- generated media URL
-                            <img src={d.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                          )}
-                        </span>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div className="gt">{d.title} · {d.format}</div>
-                          <div className="gd">{d.status === "pending_approval" ? "Draft · awaiting your approval" : d.status === "approved" ? "Approved · outbound still locked" : d.status === "declined" ? "Declined" : "Revision requested — Arc will re-draft"}</div>
-                        </div>
-                        {d.status === "pending_approval" ? (
-                          <div className="actl" style={{ flexShrink: 0 }}>
-                            <button className="abtn ap" disabled={draftBusy === d.assetId} onClick={() => decideDraft(d, "approved")}><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" /></svg>Approve</button>
-                            <button className="abtn" disabled={draftBusy === d.assetId} onClick={() => reviseDraft(d)}>Revise</button>
-                            <button className="abtn" disabled={draftBusy === d.assetId} onClick={() => decideDraft(d, "declined")}>Decline</button>
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                    <div className="clock" style={{ marginTop: 7 }}><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>Approving unlocks the next step — nothing sends without an explicit send.</div>
-                  </div>
-                )}
-
-                <div className="psec">
-                  <h3 className="ph2">Export</h3>
+                <Section id="sec-export" title="Export" open={false}>
                   <a className="exrow" href="/library"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>Save to Library</a>
-                  <Link className="exrow gold" href={campaignId ? `/campaigns/${campaignId}` : "/campaigns"}><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Open campaign</Link>
+                  <Link className="exrow" href={campaignId ? `/campaigns/${campaignId}` : "/campaigns"}><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Open campaign</Link>
                   <div className="exrow" onClick={downloadCurrent} style={bg?.url ? { cursor: "pointer" } : undefined} {...(!bg?.url ? { "data-soon": "Select an approved photo or video to download its file" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg>{bg?.url ? "Download asset" : "Download (PNG / MP4)"}</div>
-                </div>
+                </Section>
+              </div>
+              </div>
+
+              {/* Pinned. Generating is the reason this pane exists, and it used
+                  to sit below eight scrolling sections. */}
+              <div className="ifoot">
+                {genErr ? <div role="alert" className="ifooterr">{genErr}</div> : null}
+                {draftNotice ? <div role="status" className="ifootwarn">{draftNotice}</div> : null}
+                {mode === "video" ? (
+                  <>
+                    {/* Video doesn't composite over the selected photo — Veo renders
+                        the scene you describe. Keep that distinction visible so the
+                        canvas background isn't mistaken for the video's input. */}
+                    <div className="field">
+                      <div className="fieldl"><span>Describe the shot</span></div>
+                      <textarea
+                        className="input"
+                        rows={2}
+                        style={{ resize: "vertical", lineHeight: 1.45 }}
+                        placeholder="e.g. A clean service van pulls into a suburban driveway on a bright morning, slow steady camera"
+                        value={videoPrompt}
+                        onChange={(e) => setVideoPrompt(e.target.value)}
+                        disabled={videoBusy}
+                      />
+                    </div>
+                    {/* role + tabIndex + Enter/Space, not a bare onClick div: the
+                        surrounding .exrow controls are the keyboard-unreachable
+                        debt BSR-664 ratchets down, and a new control must not add
+                        to it. */}
+                    <div
+                      className="exrow gold"
+                      role="button"
+                      tabIndex={videoGate || videoBusy ? -1 : 0}
+                      aria-disabled={Boolean(videoGate) || videoBusy}
+                      onClick={runVideo}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); runVideo(); } }}
+                      style={!videoGate && !videoBusy ? { cursor: "pointer" } : { opacity: 0.55 }}
+                      {...(videoGate ? { "data-soon": videoGate } : {})}
+                    >
+                      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2" /><path d="M17 9l4-2v10l-4-2" /></svg>
+                      {videoBusy ? "Rendering video…" : `Generate video · ${videoAspect}`}
+                    </div>
+                    <div className="scapt">
+                      {videoNote
+                        ? videoNote
+                        : `Veo renders a short clip from your description — it does not use the selected photo. Landscape and portrait only, so this renders at ${videoAspect}. Lands as a draft for your approval.`}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="exrow gold" onClick={() => runGenerate([FORMATS[fmt].r])} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>{gen ? "Generating…" : `Generate creative · ${FORMATS[fmt].r}`}</div>
+                    <div className="exrow" onClick={() => runGenerate(FORMATS.map((f) => f.r))} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.6" /></svg>Resize for all platforms <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)" }}>1:1 4:5 9:16 16:9</span></div>
+                    {genGate ? <div className="scapt">{genGate}</div> : null}
+                  </>
+                )}
               </div>
             </div>
           ) : (
@@ -1074,23 +1248,47 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     the composer below actually does. */}
                 <div className="archead">
                   <span className="am">A</span>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div className="at">Arc</div>
-                    <div className="ad"><i />{selectedCampaignLabel ? `Working in ${selectedCampaignLabel}` : "No campaign selected"}</div>
+                    <div className="ad"><i /><span>{selectedCampaignLabel ? `Working in ${selectedCampaignLabel}` : "No campaign selected"}</span></div>
                   </div>
+                </div>
+                {/* askArc() silently appends "(From Studio · Draft · image · 1:1)"
+                    to every message. Showing the same three values here means the
+                    operator can see what Arc is being told, rather than finding it
+                    in the transcript after the fact. */}
+                <div className="arcctxbar" title="Sent with every message so Arc knows what you're looking at">
+                  <span className="acx">{mode === "video" ? "Video" : "Image"}</span>
+                  <span className="acx">{FORMATS[fmt].r}</span>
+                  <span className="acx">{cmode}</span>
+                  <span className="acxn">Arc sees the canvas</span>
                 </div>
                 <div className="arcscroll">
                   {thread.length === 0 && !awaitingReply ? (
                     <div className="arcempty">
                       <div className="arcempty-t">Ask Arc about this creative</div>
                       <p className="arcempty-d">
-                        Your message starts an Arc conversation seeded with what&rsquo;s on the canvas — the
-                        format, the headline, and the campaign you picked. The reply appears here; you keep
-                        the artboard.
+                        Your message starts a real Arc conversation seeded with what&rsquo;s on the canvas.
+                        The reply lands here — you keep the artboard.
                       </p>
-                      <p className="arcempty-d">
-                        Arc drafts only; nothing it produces goes outbound until you approve it. Drafts you
-                        generate here show up under <b>Drafts</b> on the Design tab.
+                      <div className="arcstart-l">Try one</div>
+                      <div className="arcstart">
+                        {STARTERS.map((s) => (
+                          <button
+                            type="button"
+                            key={s}
+                            className="starter"
+                            onClick={() => setMsg(s)}
+                            disabled={!live}
+                            {...(!live ? { "data-soon": "Connect a workspace to chat with Arc" } : {})}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="arcempty-f">
+                        Anything Arc renders shows up under <b>Drafts</b> on the Design tab, and on the
+                        artboard, for your approval.
                       </p>
                     </div>
                   ) : (
@@ -1137,7 +1335,13 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   )}
                 </div>
                 <div className="composer">
-                  <div className="modes">{["Ask", "Act", "Draft"].map((m) => <span key={m} className={`mode${cmode === m ? " on" : ""}`} onClick={() => setCmode(m)}>{m}</span>)}</div>
+                  <div className="modes" role="group" aria-label="What to ask Arc for">
+                    {["Ask", "Act", "Draft"].map((m) => (
+                      <button type="button" key={m} className={`mode${cmode === m ? " on" : ""}`} aria-pressed={cmode === m} onClick={() => setCmode(m)}>{m}</button>
+                    ))}
+                  </div>
+                  {/* Three unexplained words was the whole control. */}
+                  <div className="modehint">{MODE_HINT[cmode]}</div>
                   <div className="cbox">
                     <textarea
                       rows={1}
@@ -1158,7 +1362,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                     </button>
                   </div>
-                  {sendErr ? <div role="alert" style={{ margin: "6px 2px 0", fontSize: 11, color: "#cc6666", lineHeight: 1.4 }}>{sendErr}</div> : null}
+                  {sendErr ? <div role="alert" className="ifooterr" style={{ marginTop: 7, marginBottom: 0 }}>{sendErr}</div> : null}
                   <div className="clock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>Drafts only — nothing sends until you approve.</div>
                 </div>
               </div>
