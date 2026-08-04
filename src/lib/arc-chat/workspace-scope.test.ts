@@ -5,6 +5,7 @@ import type { ArcMessage } from "./persistence";
 
 import {
   collectArcWorkspaceCards,
+  partitionArcWorkspaceCards,
   selectArcWorkspaceMessages,
 } from "./workspace-scope";
 
@@ -79,5 +80,55 @@ describe("Arc workspace scope", () => {
 
   it("deduplicates approval assets and keeps the newest representation", () => {
     expect(collectArcWorkspaceCards(messages, "conversation")).toEqual([revisedDraft, smsDraft]);
+  });
+});
+
+/** The card shape Arc emits for records it merely READ — prod's "5 CRM contacts
+ *  (live read, Aug 3)". No approval block, so nothing can decide it. */
+const lookup: ArcActionCard = {
+  kind: "result",
+  title: "5 CRM contacts (live read)",
+  rows: [],
+  flags: [],
+  href: "/crm/contacts",
+};
+
+describe("splitting workspace cards into decisions and context", () => {
+  it("never counts a card nobody can approve as a deliverable", () => {
+    // The panel stamped these "Needs you" — a card with no approval hook falls
+    // through to the review label — while offering no control that could clear
+    // it. Reintroduce the bug by dropping the `card.approval` filter and this
+    // fails on both the count and the findings list.
+    const result = partitionArcWorkspaceCards([firstDraft, lookup, smsDraft]);
+    expect(result.deliverables).toEqual([firstDraft]);
+    expect(result.findings).toEqual([lookup, smsDraft]);
+    expect(result.awaiting).toEqual([firstDraft]);
+  });
+
+  it("counts approval progress over what can be approved, not over every card", () => {
+    // Three cards, one approvable and approved: "1 of 1", never "1 of 3".
+    const approved = { ...firstDraft, status: "approved" as const };
+    const result = partitionArcWorkspaceCards([approved, lookup, smsDraft]);
+    expect(result.approvedCount).toBe(1);
+    expect(result.deliverables).toHaveLength(1);
+    expect(result.awaiting).toEqual([]);
+  });
+
+  it("puts what is still waiting above what has been settled", () => {
+    const approvedFirst = { ...firstDraft, status: "approved" as const };
+    const waiting: ArcActionCard = {
+      ...firstDraft,
+      title: "Storm landing page",
+      approval: { kind: "campaign", campaignId: "campaign-1", assetId: "asset-2" },
+    };
+    const result = partitionArcWorkspaceCards([approvedFirst, waiting]);
+    expect(result.deliverables.map((card) => card.title)).toEqual(["Storm landing page", "Storm email"]);
+  });
+
+  it("reads a live decision from the statuses map, not the card's draft-time snapshot", () => {
+    // The operator approves in the panel; the card object still says "draft".
+    const result = partitionArcWorkspaceCards([firstDraft], { "asset-1": "approved" });
+    expect(result.approvedCount).toBe(1);
+    expect(result.awaiting).toEqual([]);
   });
 });
