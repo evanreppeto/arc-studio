@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build the Big Shoulders Growth Engine as a backend-first operating layer for the Hermes agent, with visible, accountable AI work that humans can inspect, approve, decline, revise, and measure.
+Build Arc Studio as a backend-first operating layer for the Hermes agent, with visible, accountable AI work that humans can inspect, approve, decline, revise, and measure.
 
 Hermes is the primary operator. The web UI is the control room: it helps Hermes, Robby, and the team see the work, understand why it happened, and intervene when a human decision is required.
 
@@ -17,7 +17,7 @@ The app should not hide AI behind a generic "generate" button. It should show ag
 
 ## Product Thesis
 
-The Growth Engine should become an agentic marketing operations system for restoration.
+The Arc Studio should become an agentic marketing operations system for restoration.
 
 Generic marketing software automates tasks. The Big Shoulders system should coordinate specialized agents that understand water-loss urgency, partner relationships, persona context, local demand, compliance rules, and owner approval gates.
 

@@ -1855,6 +1855,25 @@ a.arc-work-evidence-item:hover > svg { color: var(--accent); }
 .arc-created-list > button.arc-created-item { cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast); }
 .arc-created-list > button.arc-created-item:hover { transform: translateY(-1px); border-color: var(--line-3); background: var(--panel); }
 .arc-created-icon { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--inset); }
+/* A deliverable that HAS creative shows the creative. The glyph is the fallback,
+   not the default — see DeliverableThumb. */
+.arc-created-icon.has-media { overflow: hidden; padding: 0; }
+.arc-created-icon.has-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.arc-created-list > button.arc-created-item:hover .arc-created-icon { border-color: var(--line-3); }
+
+/* "What Arc found" — cards with nothing to decide. Quieter than a deliverable
+   on purpose: they are context, and stamping them with a review badge was the
+   bug this section exists to fix. */
+.arc-work-findings { display: grid; gap: 2px; }
+.arc-work-finding { min-height: 40px; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 9px; border-radius: 8px; padding: 6px 7px; color: inherit; text-decoration: none; }
+a.arc-work-finding:hover { background: rgba(255, 255, 255, .035); }
+.arc-work-finding-icon { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: var(--inset); color: var(--muted); }
+.arc-work-finding > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.arc-work-finding b { color: var(--text-2); font-size: 11px; font-weight: 550; line-height: 1.4; }
+.arc-work-finding small { color: var(--muted); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-work-finding > svg { color: var(--muted); }
+a.arc-work-finding:hover b { color: var(--text); }
+a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-created-list > .arc-created-item > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .arc-created-list b { color: var(--text-2); font-size: 11px; font-weight: 580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-created-list small { color: var(--muted); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
