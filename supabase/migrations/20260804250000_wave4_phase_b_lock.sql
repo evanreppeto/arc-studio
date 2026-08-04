@@ -9,6 +9,63 @@
 -- After this, every table the contract classes as workspace-owned is enforced:
 -- 112 enforced, 0 pending. The read side is BSR-729 and is NOT closed by this.
 
+-- ── 0. Re-derive anything that arrived since Phase A ───────────────────────
+--
+-- ⚠️ THIS SECTION EXISTS BECAUSE THIS MIGRATION ALREADY FAILED ON PROD ONCE.
+--
+-- The gate below read 0 nulls when I wrote it. By the time migrate-prod ran, two
+-- arc_messages rows had been written (16:59:45Z, during a Vercel deploy) and the
+-- migration correctly aborted:
+--
+--     ERROR: BSR-717: 2 row(s) in arc_messages still have no workspace_id.
+--
+-- Nothing was applied — the whole migration is one transaction — so prod was
+-- unharmed, which is the gate doing exactly its job.
+--
+-- But the underlying flaw is in the SHAPE of every Phase B in this series: they
+-- gate on a count measured minutes earlier, then lock. On an idle database that
+-- works; on a live one it is a race, and Waves 1-3 passed partly on luck. A lock
+-- migration must therefore re-run its derivation IN THE SAME TRANSACTION as the
+-- lock, so a row written in the gap is placed rather than fatal.
+--
+-- This does NOT weaken the gate. Anything still unresolved after this still
+-- aborts below, and a nonzero count here is raised as a NOTICE — because rows
+-- needing a late backfill are evidence that a writer may still not be stamping,
+-- which is the thing the gate is really for. Silence would hide it.
+
+do $$
+declare
+  healed bigint;
+begin
+  update public.arc_messages m
+  set workspace_id = c.workspace_id
+  from public.arc_conversations c
+  where m.conversation_id = c.id and m.workspace_id is null and c.workspace_id is not null;
+  get diagnostics healed = row_count;
+  if healed > 0 then
+    raise notice 'BSR-717: re-derived workspace_id for % arc_messages row(s) written since Phase A. Check whether the writer is stamping.', healed;
+  end if;
+
+  update public.arc_projects p
+  set workspace_id = (select w.id from public.workspaces w where w.org_id = p.org_id)
+  where p.workspace_id is null
+    and (select count(*) from public.workspaces w where w.org_id = p.org_id) = 1;
+  get diagnostics healed = row_count;
+  if healed > 0 then
+    raise notice 'BSR-717: re-derived workspace_id for % arc_projects row(s) since Phase A.', healed;
+  end if;
+
+  update public.ai_usage_events e
+  set workspace_id = (select w.id from public.workspaces w where w.org_id = e.org_id)
+  where e.workspace_id is null
+    and e.org_id is not null
+    and (select count(*) from public.workspaces w where w.org_id = e.org_id) = 1;
+  get diagnostics healed = row_count;
+  if healed > 0 then
+    raise notice 'BSR-717: re-derived workspace_id for % ai_usage_events row(s) since Phase A.', healed;
+  end if;
+end $$;
+
 -- ── 1. Refuse to lock a column that still has a NULL ────────────────────────
 
 do $$
