@@ -1,4 +1,4 @@
-import { humanizePersonaLabel } from "@/domain";
+import { humanizePersonaLabel, UUID_PATTERN, UUID_SOURCE } from "@/domain";
 
 /**
  * Arc writes the opportunity inbox's prose, and it had been writing it for an
@@ -34,11 +34,15 @@ const TOOL_VERBS = new Set([
   "recommend", "record", "research", "search", "submit", "suggest", "update",
 ]);
 
-const UUID_SOURCE = String.raw`\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`;
-/** For `replace` — global, and therefore stateful; never call `.test` on it. */
+/**
+ * For `replace` — global, and therefore stateful; never call `.test` on it.
+ * Compiled here rather than imported because a shared `g` regex carries
+ * `lastIndex` between callers. The SHAPE is shared (`UUID_SOURCE`); the
+ * compiled global is not.
+ */
 const UUID = new RegExp(UUID_SOURCE, "gi");
 /** For `test` — a `g` regex would advance `lastIndex` and answer differently each call. */
-const IS_UUID = new RegExp(UUID_SOURCE, "i");
+const IS_UUID = UUID_PATTERN;
 
 /** `persona_property_manager`, and the internal `unassigned_persona` sentinel. */
 const PERSONA_TOKEN = /\bpersona_[a-z0-9_]+|\bunassigned_persona\b/gi;
