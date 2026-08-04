@@ -750,6 +750,12 @@
 .arc-app .arc-grid .dt thead th { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--panel) 96%, #000); text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 11px 14px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 .arc-app .arc-grid .dt tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--text-2); }
 .arc-app .arc-grid .dt tbody tr { cursor: pointer; transition: background .12s; }
+/* Row height (BSR-748). Compact trades the breathing room for rows on screen —
+   worth having on a table that routinely holds a few hundred contacts. Only the
+   vertical padding moves: the avatar, the chips and the two-line name cell all
+   keep their own metrics, so nothing reflows sideways. */
+.arc-app .arc-grid .tablewrap[data-density="compact"] .dt tbody td { padding-top: 6px; padding-bottom: 6px; }
+.arc-app .arc-grid .tablewrap[data-density="compact"] .dt thead th { padding-top: 7px; padding-bottom: 7px; }
 .arc-app .arc-grid .dt tbody tr:last-child td { border-bottom: none; }
 .arc-app .arc-grid .dt tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .arc-app .arc-grid .emptyrow td { text-align: center; color: var(--muted); padding: 34px 14px; cursor: default; }
