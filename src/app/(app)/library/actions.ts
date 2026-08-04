@@ -6,7 +6,7 @@ import { type AssetDecision } from "@/domain";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { removeMediaRecordFromBrain, syncMediaRecordToBrain } from "@/lib/brain-ingestion/sync";
-import { createFolder, deleteAsset, deleteFolder, insertAssetWithUrl, renameAsset, renameFolder, setAssetTags, setAvailableToArc } from "@/lib/media-library/persistence";
+import { createFolder, deleteAsset, deleteFolder, insertAssetWithUrl, moveAsset, renameAsset, renameFolder, setAssetTags, setAvailableToArc } from "@/lib/media-library/persistence";
 import { decideAssetApproval } from "@/lib/media-library/approval";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { promoteAssetToCampaign } from "@/lib/campaigns/create";
@@ -413,6 +413,71 @@ export async function addLibraryAssetsToCampaign(input: {
     return { ok: true, persisted: true, added, campaignName: campaign.name };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not add those assets to the campaign." };
+  }
+}
+
+export type MoveAssetsResult =
+  | { ok: true; persisted: boolean; moved: number; folderName: string | null }
+  | { ok: false; error: string };
+
+/**
+ * File selected assets into a folder, or back out to the Library root (BSR-707).
+ *
+ * The Library's folder tree was read-only in practice: folders could be created,
+ * renamed and deleted, but `media_assets.folder_id` was only ever set at upload,
+ * so an asset stayed wherever it first landed. "Move to folder" sat in the
+ * selection bar as a dead <span> because there was nothing to wire it to.
+ *
+ * `folderId: null` means the root, and is a real destination rather than a
+ * missing argument — moving something OUT of a folder has to be possible or the
+ * tree becomes a one-way trip.
+ *
+ * Both sides are re-checked org-scoped rather than trusted from the browser:
+ * the assets (so a foreign id cannot be dragged into this workspace) and the
+ * destination (so this workspace's asset cannot be filed into another tenant's
+ * folder). `moveAsset` scopes the write to the asset's org, which stops the
+ * first but cannot stop the second — the destination check is not redundant.
+ */
+export async function moveLibraryAssets(input: {
+  assetIds: string[];
+  folderId: string | null;
+}): Promise<MoveAssetsResult> {
+  await requireOperator();
+
+  const assetIds = [...new Set((input.assetIds ?? []).map((id) => id?.trim()).filter(Boolean))] as string[];
+  const folderId = input.folderId?.trim() || null;
+  if (assetIds.length === 0) return { ok: false, error: "Select at least one asset." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, moved: assetIds.length, folderName: null };
+
+  try {
+    const orgId = await getCurrentOrgId();
+    const client = getSupabaseAdminClient();
+
+    let folderName: string | null = null;
+    if (folderId) {
+      const { data: folder } = await client
+        .from("media_folders")
+        .select("id,name")
+        .eq("org_id", orgId)
+        .eq("id", folderId)
+        .maybeSingle<{ id: string; name: string }>();
+      if (!folder) return { ok: false, error: "That folder isn't in this workspace." };
+      folderName = folder.name;
+    }
+
+    let moved = 0;
+    for (const assetId of assetIds) {
+      // eslint-disable-next-line no-await-in-loop -- a handful of ids; sequential keeps the count honest
+      if (await moveAsset(assetId, folderId, orgId, client)) moved += 1;
+    }
+    // Every id was rejected: the selection is not this workspace's, and saying
+    // "moved 0" as a success would read as "done".
+    if (moved === 0) return { ok: false, error: "Those assets aren't in this workspace." };
+
+    revalidatePath("/library");
+    return { ok: true, persisted: true, moved, folderName };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not move those assets." };
   }
 }
 
