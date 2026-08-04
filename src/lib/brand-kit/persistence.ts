@@ -64,7 +64,11 @@ export async function upsertBusinessProfile(
   };
   const { data, error } = await supabase
     .from("business_profiles")
-    .upsert(row, { onConflict: "org_id" })
+    // business_profiles is unique on workspace_id as of BSR-715 — a workspace owns
+    // its brand identity, and the old UNIQUE (org_id) actively forbade a second
+    // workspace having one. The conflict target must match the live constraint or
+    // this upsert fails at runtime; a mocked upsert cannot see that.
+    .upsert(row, { onConflict: "workspace_id" })
     .select("*")
     .single<Record<string, unknown>>();
   if (error) throw new Error(`Failed to upsert business profile: ${error.message}`);
