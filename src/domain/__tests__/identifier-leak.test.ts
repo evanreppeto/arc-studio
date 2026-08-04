@@ -136,3 +136,20 @@ describe("primary keys", () => {
     expect(leak("#c8a24a")).toBeNull();
   });
 });
+
+describe("short ids, the shape Arc cites records by", () => {
+  it("catches the eight-character prefix of a UUID", () => {
+    // Every claims review on the campaign card carried these — "per learning
+    // 8abff0f5" — and this guard read clean the whole time, because a short id
+    // is neither a UUID nor snake_case.
+    expect(findIdentifierLeak("The phone number is a placeholder per learning 8abff0f5.")?.match).toBe("8abff0f5");
+    expect(findIdentifierLeak("asset ID 90cb3cf2 does not appear in the brain")?.match).toBe("90cb3cf2");
+  });
+
+  it("stays quiet on a long number, which is not an identifier", () => {
+    // A phone number and a count are both long digit runs. Warning about them
+    // would send someone to "fix" a real figure.
+    expect(findIdentifierLeak("Call 7739008407 for the 24/7 line.")).toBeNull();
+    expect(findIdentifierLeak("The line answered 12345678 times.")).toBeNull();
+  });
+});
