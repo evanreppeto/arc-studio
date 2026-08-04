@@ -43,8 +43,11 @@ const BASELINE: Record<string, number> = {
   // now have real write paths — `updateBrandPalette` and `updateBrandTypography`
   // — so the file is clean and this test's own staleness check is what removed
   // it. brand-honesty.test.ts holds the line from the other side.
-  // No column-visibility or density state in the board; no enrichment write path.
-  "crm/_components/crm-board.tsx": 3,
+  //
+  // Density ships for real now too (BSR-748) — it needed no backend, which is
+  // what made it worth building rather than leaving marked. Remaining here: no
+  // column-visibility state in the board, and no enrichment write path.
+  "crm/_components/crm-board.tsx": 2,
   // No template model anywhere in campaigns (`industry-templates` is personas).
   "campaigns/_components/campaigns-board.tsx": 1,
   // Iteration drafting exists via next_iteration opportunities, but this button
