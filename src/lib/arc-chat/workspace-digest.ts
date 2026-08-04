@@ -19,7 +19,7 @@
 
 import { arcToolLabel, type ArcActionCard, type ArcStepKind } from "@/domain";
 
-import type { ArcMessage } from "./persistence";
+import type { ArcMessage, ArcToolCall } from "./persistence";
 import { getToolKind } from "./tool-labels";
 
 export type ArcWorkspaceActivityRow = {
@@ -63,6 +63,40 @@ function settleRow(row: ArcWorkspaceActivityRow, settled: boolean): ArcWorkspace
   return row.status === "running" || row.status === "queued" ? { ...row, status: "done" } : row;
 }
 
+/**
+ * Does this run hold a tool error Arc never got past?
+ *
+ * A single errored call used to condemn the whole run, and Arc's normal recovery
+ * makes that reading wrong far more often than right. Arc invokes a deferred MCP
+ * tool before fetching its schema, guesses the arguments, is rejected by
+ * validation, calls `ToolSearch`, and immediately succeeds. Prod run 7631013c is
+ * the shape exactly: `emit_card`, `cite_sources` and `suggest_followups` all
+ * failed on "expected …, received undefined", then all three completed four
+ * calls later — the card, the citations and the composited creative all landed,
+ * on a message whose own status is `complete`.
+ *
+ * The panel called that run failed and offered "Retry failed step", whose prompt
+ * asks Arc to redo work that had already succeeded — on a run that had just
+ * composited a creative, so the retry could leave a duplicate approval-gated
+ * asset behind. Censused on prod: of 77 tool calls across 10 runs, every one of
+ * the 3 errors ever recorded was superseded. The indicator had never been right.
+ *
+ * So an error counts only when that tool never went on to succeed in the same
+ * run. `message.status === "failed"` is still honoured on its own, which keeps
+ * the case this must not swallow: Arc abandoning a tool and finishing with a
+ * caveat is a real failure, and it is the runner that says so, not the count.
+ *
+ * The individual rows stay red either way — the call did error, and run history
+ * showing the retry is the point.
+ */
+function hasUnresolvedToolError(toolCalls: ArcToolCall[]): boolean {
+  return toolCalls.some((tool, index) =>
+    tool.status === "error"
+    && !toolCalls.some((later, laterIndex) =>
+      laterIndex > index && later.name === tool.name && later.status === "complete"),
+  );
+}
+
 export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[] {
   const runs: ArcWorkspaceRun[] = [];
   let pendingRequest = "";
@@ -93,7 +127,7 @@ export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[]
       }, settled && tool.status !== "error")),
     ];
 
-    const failed = message.status === "failed" || toolCalls.some((tool) => tool.status === "error");
+    const failed = message.status === "failed" || hasUnresolvedToolError(toolCalls);
     runs.push({
       id: message.id,
       index: runs.length + 1,
