@@ -345,3 +345,125 @@ export function summarizeForecastPeriods(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Monitored-point coverage (BSR-756)
+// ---------------------------------------------------------------------------
+
+/** A configured point, with the place NWS actually resolves it to. */
+export type MonitoredPointLocation = {
+  /** What the operator called it. Free text — nothing verifies it on save. */
+  label?: string | null;
+  /** `relativeLocation.city` from /points/{lat,lng}. Null when unresolved. */
+  city?: string | null;
+  /** `relativeLocation.state` from the same response. */
+  state?: string | null;
+};
+
+export type MonitoredPointCoverage = {
+  /** One line per point: what it was called, and where it actually is. */
+  lines: string[];
+  /** Points whose resolved city is not obviously inside the service area. */
+  unconfirmed: string[];
+  /** Points whose label disagrees with the resolved city — a definite error. */
+  mislabelled: string[];
+  /** Operator-facing summary, or null when everything looks consistent. */
+  warning: string | null;
+};
+
+function norm(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+/**
+ * Compare where a workspace is WATCHING against where it says it OPERATES.
+ *
+ * BSR monitored four points; three were outside its service area — Naperville
+ * (a different county), Evanston and Cicero. Alerts fired correctly for
+ * geography the business cannot serve, each seeding an opportunity, and one
+ * became a campaign scoped to "Chicagoland". Nothing checked, because a point is
+ * a lat/lng and a service area is a name.
+ *
+ * ── What this can and cannot know ────────────────────────────────────────────
+ * It cannot decide whether `41.94,-87.66` is "in Lakeview": there is no
+ * geocoding here, and a workspace names its patch however it likes. What it CAN
+ * do is compare NWS's own resolved city for each point against the places the
+ * workspace named — city to city, both read from records.
+ *
+ * So a point resolving to the home city, or to somewhere named in the service
+ * areas, passes. Anything else is reported as UNCONFIRMED, not wrong: a business
+ * may legitimately serve a neighbouring town. The operator decides; this only
+ * makes the question visible, which it never was before.
+ *
+ * A label that disagrees with the resolved city IS reported as an error —
+ * "Chicago" resolving to Naperville is not a judgement call.
+ */
+export function describeMonitoredPointCoverage(input: {
+  points: readonly MonitoredPointLocation[];
+  serviceAreas?: readonly string[] | null;
+  /** The workspace's own city, when known. A point here is presumed covered. */
+  homeCity?: string | null;
+}): MonitoredPointCoverage {
+  const areas = (input.serviceAreas ?? []).map(norm).filter(Boolean);
+  const home = norm(input.homeCity);
+  const lines: string[] = [];
+  const unconfirmed: string[] = [];
+  const mislabelled: string[] = [];
+
+  for (const point of input.points) {
+    const label = (point.label ?? "").trim();
+    const city = (point.city ?? "").trim();
+    const state = (point.state ?? "").trim();
+    const where = city ? (state ? `${city}, ${state}` : city) : "unresolved";
+    lines.push(label ? `${label} → ${where}` : where);
+
+    // Unresolved points can't be judged either way — say so, don't guess.
+    if (!city) continue;
+
+    const covered = (home && norm(city) === home) || areas.includes(norm(city));
+    if (!covered) unconfirmed.push(label ? `${label} (${where})` : where);
+
+    // Only meaningful when the operator wrote a place name; a descriptive label
+    // like "north lakefront" is not a claim about which city it is.
+    if (label && norm(label) !== norm(city) && areas.includes(norm(label)) === false && home && norm(label) === home) {
+      mislabelled.push(`${label} actually resolves to ${where}`);
+    }
+  }
+
+  const parts: string[] = [];
+  if (mislabelled.length) {
+    parts.push(`Mislabelled: ${mislabelled.join("; ")}.`);
+  }
+  if (unconfirmed.length) {
+    parts.push(
+      `${unconfirmed.length} of ${input.points.length} monitored point(s) resolve outside your service area: ${unconfirmed.join("; ")}. Alerts there will seed opportunities for work you may not take — confirm you serve them, or remove them.`,
+    );
+  }
+  return { lines, unconfirmed, mislabelled, warning: parts.length ? parts.join(" ") : null };
+}
+
+/**
+ * The city from a US postal address block, or null.
+ *
+ * Needed because `business_profiles` records where a workspace SERVES (named
+ * areas) but not where it IS, and a monitored point resolving to the home city
+ * is the one case that is unambiguously covered. Without it, a correctly-placed
+ * point in a workspace whose service areas are neighbourhood names — "Lakeview",
+ * not "Chicago" — reads as outside its own service area, and a warning that
+ * cries wolf gets ignored within a week.
+ *
+ * Deliberately narrow: the last line matching `City, ST` (optionally + ZIP).
+ * Anything it cannot parse returns null and the caller simply gets no home-city
+ * signal, rather than a guess.
+ */
+export function cityFromPostalAddress(address: string | null | undefined): string | null {
+  const lines = (address ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const match = /^(.+?),\s*([A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?$/.exec(lines[i]);
+    if (match) {
+      const city = match[1].trim();
+      if (city) return city;
+    }
+  }
+  return null;
+}

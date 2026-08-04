@@ -1,7 +1,9 @@
 import {
+  describeMonitoredPointCoverage,
   isWeatherServiceAreaConfigured,
   mapNwsAlertsToWeatherEvents,
   summarizeForecastPeriods,
+  type MonitoredPointCoverage,
   type WeatherServiceArea,
 } from "@/domain";
 import type { WeatherEventInput } from "@/domain";
@@ -12,6 +14,7 @@ import {
   fetchActiveAlertsByPoint,
   fetchActiveAlertsByState,
   fetchPointForecast,
+  fetchPointLocation,
   fetchServiceAreaAlerts,
   type NwsRequestOptions,
 } from "./nws";
@@ -44,6 +47,12 @@ export type NwsConnectionResult = {
   count?: number;
   /** Short forecast headline for the first configured point (best-effort). */
   forecast?: string;
+  /**
+   * Where each monitored point actually is, and whether that looks like
+   * somewhere this workspace serves (BSR-756). Absent when there are no points
+   * or NWS could not be reached.
+   */
+  coverage?: MonitoredPointCoverage;
   error?: string;
 };
 
@@ -55,7 +64,12 @@ export type NwsConnectionResult = {
  */
 export async function checkNwsConnection(
   area: WeatherServiceArea,
-  opts?: NwsRequestOptions,
+  opts?: NwsRequestOptions & {
+    /** `business_profiles.service_areas` — what the workspace says it covers. */
+    serviceAreas?: readonly string[] | null;
+    /** The workspace's own city, when known. */
+    homeCity?: string | null;
+  },
 ): Promise<NwsConnectionResult> {
   try {
     // Nothing to probe until the operator says where to watch. This used to fall
@@ -83,7 +97,25 @@ export async function checkNwsConnection(
         // forecast is a bonus — a failure here doesn't fail the connectivity check
       }
     }
-    return { ok: true, count, ...(forecast ? { forecast } : {}) };
+    // Resolve every configured point to the place NWS says it is, so "you are
+    // watching Naperville" becomes sayable. Best-effort and only on an explicit
+    // test click: a resolution failure must not fail the connectivity check.
+    let coverage: MonitoredPointCoverage | undefined;
+    if (area.points.length) {
+      try {
+        const located = await Promise.all(
+          area.points.map(async (p) => ({ label: p.label ?? null, ...(await fetchPointLocation(p.lat, p.lng, opts)) })),
+        );
+        coverage = describeMonitoredPointCoverage({
+          points: located,
+          serviceAreas: opts?.serviceAreas ?? null,
+          homeCity: opts?.homeCity ?? null,
+        });
+      } catch {
+        // coverage is a bonus, like the forecast above
+      }
+    }
+    return { ok: true, count, ...(forecast ? { forecast } : {}), ...(coverage ? { coverage } : {}) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "NWS unreachable" };
   }
