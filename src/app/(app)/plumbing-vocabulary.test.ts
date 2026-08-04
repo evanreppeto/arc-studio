@@ -32,6 +32,14 @@ const BANNED: { pattern: RegExp; why: string }[] = [
   { pattern: /\bapproval-gated\b/i, why: 'say "nothing sends until you approve it"' },
   { pattern: /\bmetered spend\b/i, why: "billing-system vocabulary" },
   { pattern: /\brunner\b/i, why: "the Cloud Run worker's name; users do not know what a runner is" },
+  { pattern: /\bbackend\b/i, why: "our architecture, not theirs; say \"workspace\" — what they connect" },
+  // Environment variables named in customer-facing copy. Listed explicitly for
+  // the same reason the database identifiers below are: `renderedText` matches
+  // `>…<` and so also scoops up code between TS generics, where SCREAMING_SNAKE
+  // is ordinary and harmless. A general pattern here fired on `PAGE_SIZES`,
+  // `SORT_LABELS` and a dozen more. The general rule still exists — it runs
+  // against attribute text, which is clean — see the env-var test below.
+  { pattern: /\b(ARC_MEDIA_ENABLED|ARC_AGENT_API_TOKEN|GEMINI_API_KEY|GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|SUPABASE_SERVICE_ROLE_KEY|RESEND_API_KEY)\b/, why: "an environment variable name; only settable by someone with shell access, who is not the person clicking" },
   // Database identifiers that reached the UI verbatim.
   { pattern: /\b(media_assets|voice_guidance|proof_points|listNodes|created_at|org_id|workspace_id)\b/, why: "database or API identifier" },
 ];
@@ -48,9 +56,25 @@ function tsxFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Drop `//` and block comments so a developer note never trips the guard. */
+/**
+ * Drop `//` and block comments so a developer note never trips the guard.
+ *
+ * A block comment opens only where a comment can actually start: at the
+ * beginning of a line, after whitespace, or after `{` (a JSX comment). What
+ * that excludes is the point — in `accept="image/*,video/*"` the `/*` follows
+ * `e`, so it is a MIME wildcard, not an opener.
+ *
+ * The old version accepted any `/*`. That one attribute opened a "comment" that
+ * ran to the next `*` + `/`, and everything between was invisible to every
+ * check in this file: 15 lines of studio-view.tsx and 26 of library-view.tsx,
+ * including a `data-soon` control sitting in the middle of one of them
+ * (BSR-731). A guard with a hole that silently swallows source is worse than no
+ * guard, because the green tick gets read as coverage.
+ */
 function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  return source
+    .replace(/(^|[\s{])\/\*[\s\S]*?\*\//g, (_m, lead: string) => lead)
+    .replace(/^\s*\/\/.*$/gm, "");
 }
 
 /**
@@ -65,6 +89,55 @@ function renderedText(source: string): string[] {
     if (trimmed && /[a-z]/i.test(trimmed)) out.push(trimmed);
   }
   return out;
+}
+
+/**
+ * Copy that reaches the screen through an ATTRIBUTE rather than a text node.
+ *
+ * `renderedText` above matches `>text<` and so is blind to all of these, which
+ * is how "Media generation is off — set ARC_MEDIA_ENABLED + GEMINI_API_KEY"
+ * shipped: a `data-soon` value, printed verbatim into a toast by
+ * `ComingSoonToasts`, past a guard that was only ever looking between tags
+ * (BSR-731).
+ *
+ * `placeholder` and `title` are here for the same reason — Studio said "Connect
+ * a backend to chat with Arc" in a placeholder and "Arc chat needs a connected
+ * backend" in a title, both invisible to the old scanner.
+ */
+const TEXT_BEARING_ATTRS = ["data-soon", "placeholder", "title", "aria-label"];
+
+function attributeText(source: string): string[] {
+  const out: string[] = [];
+  for (const attr of TEXT_BEARING_ATTRS) {
+    // JSX form: attr="…" or attr={`…`}
+    for (const [, dq, tpl] of source.matchAll(new RegExp(`${attr}=(?:"([^"]*)"|\\{\`([^\`]*)\`\\})`, "g"))) {
+      out.push(dq ?? tpl ?? "");
+    }
+    // Object-property form, e.g. {...(gate ? { "data-soon": gate } : {})}.
+    // A literal is read directly; an identifier is followed ONE hop, below.
+    for (const [, lit, ident] of source.matchAll(new RegExp(`"${attr}":\\s*(?:"([^"]*)"|([A-Za-z_$][\\w$]*))`, "g"))) {
+      if (lit) out.push(lit);
+      else if (ident) out.push(...constStringLiterals(source, ident));
+    }
+  }
+  // Drop `${…}` holes: a template renders the VALUE, so the identifier inside is
+  // no more user-facing than a variable name anywhere else. Leaving them in made
+  // `title={`Sort: ${SORT_LABELS[value]}`}` read as an env var.
+  return out.map((t) => t.replace(/\$\{[^}]*\}/g, " ")).filter((t) => t.trim() && /[a-z]/i.test(t));
+}
+
+/**
+ * String literals inside `const <name> = …;` in the same file. ONE hop, on
+ * purpose: `genGate` and `videoGate` are ternary chains of user-facing copy
+ * assigned to a const and handed straight to `data-soon`, and that indirection
+ * was enough to hide two env var names. Following one named local is a long way
+ * short of dataflow analysis and catches the shape that actually occurs.
+ */
+function constStringLiterals(source: string, name: string): string[] {
+  const decl = source.match(new RegExp(String.raw`const\s+${name}\s*=([\s\S]*?);\s*
+`));
+  if (!decl) return [];
+  return [...decl[1].matchAll(/"([^"]+)"/g)].map(([, text]) => text);
 }
 
 /**
@@ -106,6 +179,29 @@ describe("stored identifiers are not rendered as body text", () => {
   });
 });
 
+/**
+ * Attribute copy gets the GENERAL env-var rule, not just the known names.
+ *
+ * `attributeText` returns curated, quoted, genuinely user-facing strings, so
+ * SCREAMING_SNAKE inside one is an environment variable rather than a code
+ * identifier — unlike `renderedText`, whose `>…<` match also spans TS generics.
+ * This is where a *new* variable name gets caught without waiting for someone to
+ * add it to a list.
+ */
+const ENV_VAR = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/;
+
+describe("no control explains itself with an environment variable", () => {
+  it("names no env var in a toast, placeholder, title or aria-label", () => {
+    const offenders: string[] = [];
+    for (const file of tsxFiles(APP_DIR)) {
+      for (const text of attributeText(stripComments(readFileSync(file, "utf8")))) {
+        if (ENV_VAR.test(text)) offenders.push(`${file.replace(APP_DIR, "")}: ${text.slice(0, 90)}`);
+      }
+    }
+    expect(offenders, "say what the operator can change, not what an engineer would set").toEqual([]);
+  });
+});
+
 describe("plumbing vocabulary never reaches the customer", () => {
   const files = tsxFiles(APP_DIR);
 
@@ -116,7 +212,8 @@ describe("plumbing vocabulary never reaches the customer", () => {
   it.each(BANNED)("does not render $pattern — $why", ({ pattern }) => {
     const offenders: string[] = [];
     for (const file of files) {
-      for (const text of renderedText(stripComments(readFileSync(file, "utf8")))) {
+      const source = stripComments(readFileSync(file, "utf8"));
+      for (const text of [...renderedText(source), ...attributeText(source)]) {
         if (pattern.test(text)) offenders.push(`${file.replace(APP_DIR, "")}: ${text.slice(0, 80)}`);
       }
     }
