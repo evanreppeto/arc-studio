@@ -1,8 +1,8 @@
-# Growth Engine Schema Notes
+# Arc Studio Schema Notes
 
 ## Core Objects
 
-The initial Supabase migration creates the six-object CRM foundation for the Growth Engine:
+The initial Supabase migration creates the six-object CRM foundation for Arc Studio:
 
 - `companies`
 - `contacts`

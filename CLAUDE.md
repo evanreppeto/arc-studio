@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# Big Shoulders Growth Engine
+# Arc Studio
 
 Next.js 16 + React 19 + Supabase app. Package manager is **pnpm** (workspace declared in `pnpm-workspace.yaml`). Path alias `@/*` → `./src/*`.
 
