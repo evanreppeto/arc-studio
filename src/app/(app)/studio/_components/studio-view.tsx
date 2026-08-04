@@ -192,7 +192,7 @@ const SAMPLE_COPY = {
 };
 const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
 
-export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, brandPalette = [], brandTokens = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; brandPalette?: string[]; brandTokens?: CanvasBrand | null }) {
+export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
   // The "Approved media" source shows the workspace's real media_assets. Live, it
   // shows ONLY those — never the built-in samples, which would present stock art as
@@ -489,10 +489,13 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   }, []);
 
   // Why generation is unavailable (honest gating), or null when it's ready.
+  // The off-reason comes from `resolveMediaGeneration`, which already names the
+  // connector and where to switch it on. The fallback is only for a caller that
+  // passes none — it must still not name an env var (BSR-731).
   const genGate = !mediaEnabled
-    ? "Media generation is off — set ARC_MEDIA_ENABLED + GEMINI_API_KEY"
+    ? mediaOffReason ?? "Image and video generation isn't switched on for this workspace yet."
     : !live
-      ? "Connect a backend to generate"
+      ? "Connect a workspace to generate"
       : !campaignId
         ? "Pick a campaign above first"
         : !bg?.url
@@ -560,9 +563,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // the button never promises a ratio the render won't produce.
   const videoAspect = FORMATS[fmt].r === "9:16" ? "9:16" : "16:9";
   const videoGate = !mediaEnabled
-    ? "Media generation is off — set ARC_MEDIA_ENABLED + GEMINI_API_KEY"
+    ? mediaOffReason ?? "Image and video generation isn't switched on for this workspace yet."
     : !live
-      ? "Connect a backend to generate"
+      ? "Connect a workspace to generate"
       : !campaignId
         ? "Pick a campaign above first"
         : !videoPrompt.trim()
@@ -717,7 +720,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             ))}
           </div>
           <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUploadFiles} style={{ display: "none" }} />
-          <div className="drop" onClick={() => { if (live) fileRef.current?.click(); }} style={live ? { cursor: "pointer" } : undefined} {...(!live ? { "data-soon": "Connect a backend to import art" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><div className="dt">{uploading ? "Uploading…" : "Upload or import art"}</div><div className="dd">{uploadNote ?? "Bring in art from Canva, Midjourney, DALL·E — anything"}</div></div>
+          <div className="drop" onClick={() => { if (live) fileRef.current?.click(); }} style={live ? { cursor: "pointer" } : undefined} {...(!live ? { "data-soon": "Connect a workspace to import art" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><div className="dt">{uploading ? "Uploading…" : "Upload or import art"}</div><div className="dd">{uploadNote ?? "Bring in art from Canva, Midjourney, DALL·E — anything"}</div></div>
           <div className="srchead"><span className="st">{sources[srcTab].title}</span><span className="sc">{sources[srcTab].items.length} items</span></div>
           <div className="mgrid2">{sources[srcTab].items.map((it, i) => <Tile key={i} item={it} i={i} />)}</div>
           {srcTab === "library" && sources.library.items.length === 0 ? (
@@ -1141,7 +1144,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       value={msg}
                       onChange={(e) => setMsg(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askArc(); } }}
-                      placeholder={live ? "Ask Arc to change the words, the photo, or the size…" : "Connect a backend to chat with Arc"}
+                      placeholder={live ? "Ask Arc to change the words, the photo, or the size…" : "Connect a workspace to chat with Arc"}
                       disabled={!live || sending}
                     />
                     <button
@@ -1149,8 +1152,8 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       aria-label="Send to Arc"
                       onClick={askArc}
                       disabled={!live || sending || !msg.trim()}
-                      title={live ? "Send to Arc" : "Arc chat needs a connected backend"}
-                      {...(!live ? { "data-soon": "Connect a backend to chat with Arc" } : {})}
+                      title={live ? "Send to Arc" : "Arc chat needs a connected workspace"}
+                      {...(!live ? { "data-soon": "Connect a workspace to chat with Arc" } : {})}
                     >
                       <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                     </button>
