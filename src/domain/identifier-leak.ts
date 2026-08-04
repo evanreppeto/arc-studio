@@ -75,6 +75,12 @@ const IDENTIFIER_SHAPES: { name: string; pattern: RegExp }[] = [
   // The existing shapes could not catch these: a UUID is neither snake_case nor
   // CONSTANT_CASE, so every check here passed while the ids shipped.
   { name: "UUID", pattern: UUID_PATTERN },
+  // The first eight characters of one. Arc cites records this way in prose —
+  // "per learning 8abff0f5" — and the whole-UUID shape above sails past it, so
+  // every claims review on the campaign card leaked ids while this guard read
+  // clean. Requires a letter AND a digit: without the letter an eight-digit run
+  // matches, and a phone number or an order number is not an identifier leak.
+  { name: "short id", pattern: /\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{8,}\b/i },
   // snake_case with at least two segments: needs_review, crm_lead, proof_point.
   // Requires lowercase both sides so CONSTANT_CASE and Mixed_Case fall to the
   // rules below rather than matching here twice.
