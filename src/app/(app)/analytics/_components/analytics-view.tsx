@@ -222,9 +222,15 @@ function WhatConverts({ model }: { model: OpportunityConversionReadModel }) {
       <div className="blk" style={{ marginTop: 18 }}>
         <h2>What converts <span className="tg wired">opportunity → booked</span></h2>
         <div className="psub">
+          {/* Three different answers, and they were previously two. `unavailable`
+              means the read FAILED and the panel must not reassure; the banner
+              above names it. `not_configured` is the offline preview. `empty` is
+              a real, healthy workspace with nothing booked yet. */}
           {model.status === "unavailable"
-            ? "Nothing to show yet. This fills in once opportunities start turning into booked work."
-            : "Not enough data yet — Arc learns which opportunity types convert as campaigns get approved and book work."}
+            ? "This didn’t load, so there is nothing to read into the blank. Reload, and if it persists check your workspace access."
+            : model.status === "not_configured"
+              ? "Connect a workspace to see which opportunity types turn into booked work."
+              : "Not enough data yet — Arc learns which opportunity types convert as campaigns get approved and book work."}
         </div>
       </div>
     );
