@@ -100,6 +100,46 @@ const KNOWN_GAPS: Record<string, string> = {
 
 type Site = { file: string; table: string; line: number; stamped: boolean; opaque: boolean };
 
+/**
+ * Is the `"table"` string literal at `index` part of an INSERT?
+ *
+ * WHY THIS IS NOT A REGEX ANY MORE. The original pattern hardcoded two helper
+ * names (`insertOne`, `insertNoReturn`) and required `.from("t")` to close
+ * immediately. This repo has **six** insert helpers — `insertOne` (three separate
+ * definitions), `insertNoReturn`, `insertGetId`, `insertAndReturnId` (two), and
+ * `insertManyAndReturnIds` — and at least one call site written
+ * `.from("media_folders" as string).insert(rows)`, where a cast alone defeated the
+ * match. Measured against the real tree, the old pattern saw 2 of 5 write forms.
+ *
+ * It had not caused a miss yet, only because the tables using the unseen helpers
+ * were not enforced yet — they are Wave 3's (BSR-714). A guard that would have
+ * gone quietly blind on the next wave is the same failure it exists to prevent,
+ * so it is fixed before that wave rather than after it.
+ *
+ * Two shapes count, decided structurally instead of by pattern:
+ *   1. helper form  — `<name containing insert/upsert>(client, "table", …)`
+ *   2. builder form — `.from("table"…)` followed by `.insert(` / `.upsert(`
+ */
+function isWriteSite(source: string, index: number, table: string): boolean {
+  const before = source.slice(Math.max(0, index - 160), index);
+
+  // 1. Any helper whose name contains insert/upsert, taking (client, "table", …).
+  //    The leading `[\w$]*` must be able to match EMPTY: `insertOne` starts with
+  //    the word, and requiring a character before it silently dropped 22 sites —
+  //    every `insertOne(client, "campaigns", …)` in the tree. Caught by comparing
+  //    site counts against the previous implementation rather than by the suite,
+  //    which stayed green because `sites.length > 50` was slack enough to hide it.
+  if (/\b[\w$]*(?:[Ii]nsert|[Uu]psert)[\w$]*\s*\(\s*[\w.]+\s*,\s*$/.test(before)) return true;
+
+  // 2. `.from("table")`, tolerating a cast, then an insert/upsert in the same
+  //    statement. Bounded to the statement so a later unrelated write cannot
+  //    claim this read.
+  if (!/\.\s*from\(\s*$/.test(before)) return false;
+  const rest = source.slice(index + table.length + 2, index + 1200);
+  const end = rest.indexOf(";");
+  return /\.\s*(?:insert|upsert)\s*\(/.test(end === -1 ? rest : rest.slice(0, end));
+}
+
 function scanInsertSites(tables: string[]): Site[] {
   const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "src", "apps"], {
     cwd: ROOT,
@@ -115,12 +155,13 @@ function scanInsertSites(tables: string[]): Site[] {
   for (const file of files) {
     const source = readFileSync(resolve(ROOT, file), "utf8");
     for (const table of tables) {
-      const pattern = new RegExp(
-        `(?:insertOne|insertNoReturn)\\(\\s*[\\w.]+\\s*,\\s*"${table}"|\\.from\\("${table}"\\)\\s*\\.\\s*(?:insert|upsert)`,
-        "g",
-      );
+      // Every mention of the table name is a candidate; `isWriteSite` decides.
+      // This used to be a single regex naming `insertOne|insertNoReturn` and
+      // requiring `.from("t")` to close immediately — see WHY below.
+      const pattern = new RegExp(`"${table}"`, "g");
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(source))) {
+        if (!isWriteSite(source, match.index, table)) continue;
         // Bound the window to the insert STATEMENT, not a fixed character count.
         // A flat 700 chars bled into the next statement and picked up an unrelated
         // `.select("...workspace_id...")`, marking an unstamped write as stamped —
@@ -151,7 +192,15 @@ describe("every write to a workspace-owned table stamps the workspace", () => {
 
   it("finds the insert sites at all — a scan that matches nothing would pass on air", () => {
     expect(tables.length).toBeGreaterThan(20);
-    expect(sites.length).toBeGreaterThan(50);
+    // Deliberately close to the real count (91 across 36 enforced tables), not a
+    // token floor. This bound used to be `> 50`, which was slack enough to hide a
+    // detection regression that dropped 22 real sites — every
+    // `insertOne(client, "campaigns", …)` in the tree — while the suite stayed
+    // green. A coverage assertion that cannot fail is not a coverage assertion.
+    //
+    // Raise it when a wave adds tables; if it ever drops, the scanner broke, not
+    // the codebase.
+    expect(sites.length).toBeGreaterThanOrEqual(85);
   });
 
   it("has no unstamped insert site outside the recorded gaps", () => {
