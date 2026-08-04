@@ -119,30 +119,3 @@ export function findIdentifierLeak(text: string): IdentifierLeak | null {
   }
   return null;
 }
-
-/**
- * Remove primary keys from prose that is otherwise fine to show.
- *
- * Arc writes an opportunity's `summary` as free text and cites the records it
- * reasoned over by id — `"Suburban Home Background Asset" (campaign 0bd41cb3-…)`.
- * The campaign is already named in the same breath, so the parenthetical adds
- * nothing a person can use and is the first thing they see on Home.
- *
- * A display-boundary transform, not a repair: the stored summary keeps its ids
- * for Arc to read back. Tightening what Arc emits is the other half (the
- * `propose_opportunity` tool description now says so), but a prompt is advice
- * and this is the guarantee.
- */
-export function stripIdentifiers(text: string): string {
-  const uuid = UUID_PATTERN.source;
-  return text
-    // A whole parenthetical whose payload is an id: "(campaign <uuid>)", "(<uuid>)".
-    .replace(new RegExp(String.raw`\s*\((?:[\w ]{0,24}\s)?${uuid}\)`, "gi"), "")
-    // Any id left loose in the sentence.
-    .replace(new RegExp(String.raw`\s*${uuid}`, "gi"), "")
-    // Tidy the seams the removals leave behind.
-    .replace(/\(\s*\)/g, "")
-    .replace(/\s+([,.;:])/g, "$1")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}

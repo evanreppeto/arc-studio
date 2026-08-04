@@ -5,9 +5,11 @@ import {
   arcToolLabel,
   humanizeIdentifier,
   recallKindLabel,
+  redactToolPayload,
   runModeLabel,
   runRouteLabel,
   runStatusLabel,
+  summarizeToolPayload,
   toolStatusLabel,
 } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
@@ -194,7 +196,18 @@ function RunDetail({ run }: { run: ArcRunInspection }) {
                   <b>{arcToolLabel(tool.name)}</b>
                   <span className="runpill sm">{toolStatusLabel(tool.status)}</span>
                 </div>
-                {tool.output && <pre>{tool.output.slice(0, 600)}</pre>}
+                {/* Summary first, payload behind a disclosure. This page is the
+                    inspector, so the raw text stays — but redacted, and not as
+                    the default view. Two of prod's payloads carry a phone
+                    number, because a tool that reads contacts returns contact
+                    rows (BSR-724). */}
+                {summarizeToolPayload(tool.output) && <p className="runtool-sum">{summarizeToolPayload(tool.output)}</p>}
+                {tool.output && (
+                  <details>
+                    <summary>Show raw</summary>
+                    <pre>{redactToolPayload(tool.output).slice(0, 600)}</pre>
+                  </details>
+                )}
               </li>
             ))}
           </ul>

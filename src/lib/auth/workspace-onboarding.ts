@@ -358,9 +358,14 @@ async function createWorkspaceDefaults(
     { onConflict: "org_id,key" },
   );
 
+  // The brand identity a workspace creates from (BSR-714) — distinct from
+  // workspaces.logo_url, which is shell chrome. NOTE the conflict target is still
+  // (org_id): business_profiles has a bare UNIQUE (org_id), which does not merely
+  // fail to express workspace ownership, it forbids it. Flagged for BSR-715.
   await client.from("business_profiles").upsert(
     {
       org_id: org.id,
+      workspace_id: workspace.id,
       display_name: org.name,
       legal_name: org.name,
       short_mark: shortMarkFor(org.name),
@@ -378,7 +383,7 @@ async function createWorkspaceDefaults(
   // identically — it just can't be edited in Settings until the first save
   // materialises the set. Failing workspace creation over that trades a working
   // workspace for a cosmetic one.
-  await seedDefaultPipelineStages({ orgId: org.id, client }).catch((error) => {
+  await seedDefaultPipelineStages({ orgId: org.id, client, industry }).catch((error) => {
     reportDegraded(error, { scope: "workspace-onboarding.seedDefaultPipelineStages", surface: "secondary" });
     return 0;
   });

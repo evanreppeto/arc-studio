@@ -230,7 +230,7 @@ export function JourneysView({
     );
   }
 
-  const { funnel, kpis, channelCreditByModel, defaultModel, isDemo } = model;
+  const { funnel, kpis, channelCreditByModel, defaultModel } = model;
   const topCount = funnel[0]?.count ?? 0;
   const channelCredit = channelCreditByModel[lens] ?? [];
   const creditTotal = channelCredit.reduce((s, c) => s + c.valueCents, 0);
@@ -259,10 +259,9 @@ export function JourneysView({
       )}
       <header className="jr-head">
         <div>
-          <h2>
-            Customer Journeys
-            {isDemo ? <span className="jr-tag demo">demo data</span> : null}
-          </h2>
+          {/* No per-screen demo tag: the console-wide DemoDataBar says it once,
+              in one wording, on every screen. */}
+          <h2>Customer Journeys</h2>
           <p className="jr-lede">Every contact&rsquo;s path from first touch to conversion — one stitched timeline.</p>
         </div>
         <div className="jr-model" title={activeLens?.blurb ?? "How revenue is shared between the campaigns a customer saw"}>

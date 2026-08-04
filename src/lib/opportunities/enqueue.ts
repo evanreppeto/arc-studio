@@ -35,6 +35,7 @@ export async function enqueueArcOpportunityTask(
     .from("agents")
     .select("id")
     .eq("org_id", tenant.org_id)
+    .eq("workspace_id", tenant.workspace_id)
     .in("key", await markAgentKeys())
     .limit(1)
     .maybeSingle<{ id: string }>();
@@ -106,6 +107,7 @@ export async function enqueueOpportunityScanTask(input: {
       .from("agents")
       .select("id")
       .eq("org_id", tenant.org_id)
+      .eq("workspace_id", tenant.workspace_id)
       .in("key", await markAgentKeys())
       .limit(1)
       .maybeSingle<{ id: string }>();

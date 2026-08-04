@@ -1,6 +1,6 @@
 # `@growth-engine/arc`
 
-Connector helpers for attaching a Arc agent to a hosted Growth Engine workspace.
+Connector helpers for attaching an Arc agent to a hosted Arc Studio workspace.
 
 ## Initialize Arc
 

@@ -24,7 +24,7 @@ export async function persistCompetitorIntel(
   const agentId = await upsertArcAgent(client, tenant);
 
   const competitorCampaignId = await insertOne(client, "competitor_campaigns", {
-    ...(tenant ? { org_id: tenant.org_id } : {}),
+    ...workspaceScopeFields(tenant),
     source: req.source,
     competitor_name: req.competitorName,
     competitor_url: req.competitorUrl ?? null,

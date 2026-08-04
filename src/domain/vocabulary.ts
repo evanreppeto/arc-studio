@@ -142,6 +142,24 @@ export function needsDecision(state: WorkState): boolean {
  */
 export const ASSET_NOUN = { one: "asset", many: "assets" } as const;
 
+/**
+ * What we call made-up numbers, in one word (BSR-656, same rule as the states).
+ *
+ * `/journeys` badged its funnel "demo data", Settings said "Sample data",
+ * "Sample activity" and "Sample workspaces", and `/analytics` and `/crm`
+ * rendered `710 leads` and `$225k won revenue` with no marking at all. Three
+ * wordings and a silence, for one thing.
+ *
+ * The silence was the dangerous half: a reader has no way to tell an
+ * illustrative number from their own, and the first thing they do with a real
+ * number is believe it.
+ */
+export const DEMO_DATA_LABEL = "Demo data";
+
+/** Said once, where the reader can act on it. Plain, not apologetic. */
+export const DEMO_DATA_MEANING =
+  "These numbers are illustrative, not yours. Connect a workspace to see real data.";
+
 /** The campaign itself. Retires "package" as a user-facing noun. */
 export const CAMPAIGN_NOUN = { one: "campaign", many: "campaigns" } as const;
 

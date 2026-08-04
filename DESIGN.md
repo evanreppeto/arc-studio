@@ -1,4 +1,4 @@
-# Design System: Signal (Big Shoulders Growth Engine)
+# Design System: Signal (Arc Studio)
 
 ## 1. Visual Theme & Atmosphere
 

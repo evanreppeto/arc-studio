@@ -854,7 +854,7 @@ export function CrmBoard({
             )}
           </div>
         ) : (
-          <span className="sa" data-soon="Add contacts to a campaign from the People tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign</span>
+          <span className="sa is-inapplicable" title="Add contacts to a campaign from the People tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign</span>
         )}
         <div className="sa-wrap">
           <button type="button" className="sa" onClick={() => setPersonaMenuOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={personaMenuOpen}>
@@ -937,8 +937,12 @@ export function CrmBoard({
                       <strong>No {active.noun} yet.</strong> Arc works from these — it scans them for opportunities
                       worth acting on.
                       <div style={{ marginTop: 8 }}>
+                        {/* addLabel carries the workspace's own singular. Stripping a
+                            trailing "s" off the plural instead produced "Add peopl"
+                            for any irregular noun, and free-text object names make
+                            irregulars reachable rather than hypothetical. */}
                         <button type="button" className="gbtn gold" onClick={() => setAddOpen(true)}>
-                          Add {active.noun.replace(/s$/, "")}
+                          {active.addLabel}
                         </button>
                       </div>
                     </>

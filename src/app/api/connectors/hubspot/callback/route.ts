@@ -69,7 +69,10 @@ export async function GET(request: Request): Promise<NextResponse> {
     const credentialRef = await writeConnectorCredential(client, { workspaceId: flow.workspaceId, connectorKey: CONNECTOR_KEY, plaintext: bundle });
     await setConnectorCredentialRef(client, { workspaceId: flow.workspaceId, orgId: flow.orgId, connectorKey: CONNECTOR_KEY, credentialRef });
     await setConnectorEnabled(client, { workspaceId: flow.workspaceId, connectorKey: CONNECTOR_KEY, enabled: true });
-  } catch {
+  } catch (error) {
+    // The operator only sees `store_failed`; without this the reason is lost
+    // and the failure takes a database census to diagnose (BSR-733).
+    console.error(`[connectors] ${CONNECTOR_KEY} connect could not be stored for workspace ${flow.workspaceId}:`, error);
     return done(base, "store_failed");
   }
 

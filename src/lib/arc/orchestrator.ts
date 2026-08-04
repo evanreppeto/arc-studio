@@ -135,7 +135,7 @@ export async function runArcPartnerCampaign(
     },
   }, tenant));
 
-  const personaSnapshotId = await insertOne(client, "persona_snapshots", withOrg({
+  const personaSnapshotId = await insertOne(client, "persona_snapshots", withWorkspace({
     persona: request.persona,
     company_id: companyId,
     contact_id: contactId,
@@ -346,7 +346,7 @@ async function upsertArcAgent(client: SupabaseClient, tenant: AgentTaskTenantFie
         ...workspaceScopeFields(tenant),
         key: "arc",
         name: "Arc Orchestrator",
-        description: "Coordinates Growth Engine sub-workflows and routes outbound-facing work into human approval.",
+        description: "Coordinates Arc Studio sub-workflows and routes outbound-facing work into human approval.",
         status: "ready",
         allowed_actions: [
           "create_internal_crm_records",

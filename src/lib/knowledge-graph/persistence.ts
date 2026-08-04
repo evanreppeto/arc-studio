@@ -18,6 +18,9 @@ import { getCurrentOrgId } from "@/lib/auth/org";
 import { embedText } from "@/lib/embeddings/gemini-embeddings";
 import { type TypedSupabaseClient, getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
+import { type SupabaseClient } from "@supabase/supabase-js";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
+
 export type WriteResult = { ok: true; id: string } | { ok: false; error: string };
 
 const NOT_CONFIGURED = "Supabase is not configured, so nothing was written.";
@@ -67,6 +70,7 @@ export async function createNode(input: KnowledgeNodeInput, deps: WriteDeps = {}
     .from("knowledge_nodes")
     .insert({
       org_id: orgId,
+      ...(await workspaceIdFields(client as unknown as SupabaseClient, orgId)),
       kind: value.kind,
       // NOT normalised, deliberately. Prod holds `crm_contacts_empty`,
       // `crm-empty-state` and `CRM state` for one fact, so normalising here is
@@ -239,6 +243,7 @@ export async function createEdge(input: KnowledgeEdgeInput, deps: WriteDeps = {}
     .from("knowledge_edges")
     .insert({
       org_id: orgId,
+      ...(await workspaceIdFields(client as unknown as SupabaseClient, orgId)),
       from_node_id: parsed.value.fromNodeId,
       to_node_id: parsed.value.toNodeId,
       relation: parsed.value.relation,
@@ -455,6 +460,7 @@ export async function upsertReferenceNode(input: KnowledgeNodeInput, deps: Write
     .from("knowledge_nodes")
     .insert({
       org_id: orgId,
+      ...(await workspaceIdFields(client as unknown as SupabaseClient, orgId)),
       kind: value.kind,
       key,
       label: value.label,
@@ -529,6 +535,7 @@ export async function upsertReferenceEdge(
     .from("knowledge_edges")
     .insert({
       org_id: orgId,
+      ...(await workspaceIdFields(client as unknown as SupabaseClient, orgId)),
       from_node_id: from,
       to_node_id: to,
       relation: rel,

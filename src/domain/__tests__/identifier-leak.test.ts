@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findIdentifierLeak, stripIdentifiers } from "../identifier-leak";
+import { findIdentifierLeak } from "../identifier-leak";
 
 /**
  * BSR-709. The cases below are not invented — the "catches" are the exact
@@ -134,33 +134,5 @@ describe("primary keys", () => {
     expect(leak("2026-08-04")).toBeNull();
     expect(leak("60613-1204")).toBeNull();
     expect(leak("#c8a24a")).toBeNull();
-  });
-});
-
-describe("stripIdentifiers", () => {
-  it("removes the parenthetical citation Arc writes, and nothing else", () => {
-    const summary =
-      'Arc generated two reusable homeowner-facing background creatives on Jul 31 that are still sitting in draft, unused: ' +
-      '"Suburban Home Background Asset" (campaign 0bd41cb3-ff30-4548-92e6-4ba431b61c8d) and ' +
-      '"Service Van — Driveway Morning" (campaign 02a05c97-5f0d-4ab7-8440-8d1c213fa847), both tagged persona emergency-homeowner.';
-
-    expect(stripIdentifiers(summary)).toBe(
-      'Arc generated two reusable homeowner-facing background creatives on Jul 31 that are still sitting in draft, unused: ' +
-        '"Suburban Home Background Asset" and "Service Van — Driveway Morning", both tagged persona emergency-homeowner.',
-    );
-  });
-
-  it("removes a loose id and tidies the seam", () => {
-    expect(stripIdentifiers("See 0bd41cb3-ff30-4548-92e6-4ba431b61c8d for details.")).toBe("See for details.");
-  });
-
-  it("leaves prose with no identifiers untouched", () => {
-    const clean = "Flood Advisory in effect for Cook, IL / Will, IL. Damage-response demand typically spikes within days.";
-    expect(stripIdentifiers(clean)).toBe(clean);
-  });
-
-  it("leaves nothing a leak check would still flag", () => {
-    const out = stripIdentifiers("Asset (campaign 0bd41cb3-ff30-4548-92e6-4ba431b61c8d) is ready.");
-    expect(findIdentifierLeak(out)).toBeNull();
   });
 });

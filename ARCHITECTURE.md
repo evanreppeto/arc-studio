@@ -14,7 +14,7 @@ keeps them in lockstep and lets a change land atomically. Three workspaces:
 - **`apps/arc-runner`** — the TypeScript Arc agent runner. Receives the chat
   wake, runs Arc via the Claude Agent SDK, and posts replies back to the app.
 - **`packages/arc-connector`** — shared connector helpers for attaching an Arc
-  agent to a hosted Growth Engine workspace.
+  agent to a hosted Arc Studio workspace.
 
 ## Deploy targets
 

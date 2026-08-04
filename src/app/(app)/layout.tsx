@@ -109,6 +109,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppShell
+      demoData={isDemoDataEnabled()}
       workspaceName={identity.name}
       orgName={ctx.orgName}
       workspaceSubtitle={identity.subtitle}
@@ -119,6 +120,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       logoUrl={logoUrl}
       avatarUrl={viewerAvatarUrl}
       industry={industry}
+      objectLabels={appSettings?.objectLabels}
       workspaces={workspacesView.workspaces}
       navBadges={navBadges}
       recentConversations={recentConversations}

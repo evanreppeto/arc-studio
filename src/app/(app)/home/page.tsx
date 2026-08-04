@@ -7,7 +7,6 @@ import {
   countOf,
   DAY_NOUN,
   needsYouPhrase,
-  stripIdentifiers,
   toWorkState,
   WORK_STATE_LABEL,
 } from "@/domain";
@@ -22,6 +21,7 @@ import { QuickActions } from "./_components/quick-actions";
 import { SetupChecklist } from "./_components/setup-checklist";
 import { Define } from "../_components/define";
 import { KpiStrip } from "../_components/kpi-strip";
+import { humanizeArcProse } from "../opportunities/prose";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
 
@@ -38,12 +38,13 @@ function relativeTime(iso: string): string {
   return `${Math.round(hr / 24)}d ago`;
 }
 
-// Arc cites the records it reasoned over by id, and this is the front page —
-// the hero card read `"Suburban Home Background Asset" (campaign 0bd41cb3-…)`
-// before this (BSR-732). Stripped before truncating, so removing an id can win
-// back room for words.
+// Home renders the SAME Arc-written opportunity prose the inbox does — the hero
+// card read `"Suburban Home Background Asset" (campaign 0bd41cb3-…)` — so it
+// goes through the same sanitizer rather than a second one that would drift
+// (#908, BSR-732). Cleaned before truncating, so removing a token can win back
+// room for words.
 function concise(value: string, maxLength: number): string {
-  const normalized = stripIdentifiers(value).replace(/\s+/g, " ").trim();
+  const normalized = humanizeArcProse(value).replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
   const clipped = normalized.slice(0, maxLength + 1);
   const lastSpace = clipped.lastIndexOf(" ");

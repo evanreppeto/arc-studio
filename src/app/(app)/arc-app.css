@@ -188,12 +188,29 @@
   & .rail-recents-head h2 { margin: 0; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); font: 600 10.5px/1.4 var(--sans); letter-spacing: 0.11em; text-transform: uppercase; }
   & .rail-recents-head a { color: var(--muted); font-size: 10.5px; font-weight: 600; text-decoration: none; transition: color 0.15s var(--ease); }
   & .rail-recents-head a:hover { color: var(--accent); }
+  /* "New" reads as an action, not a caption: a bordered chip with a plus, sized
+     to stay quieter than the nav rows above it. */
+  & .rail-recents-new { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border: 1px solid var(--line-2); border-radius: 6px; transition: color 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease); }
+  & .rail-recents-new svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.1; stroke-linecap: round; }
+  & .rail-recents-head a.rail-recents-new:hover { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
   & .rail-recents-list { display: grid; gap: 1px; }
   & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: 7px; color: var(--text-2); text-decoration: none; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
   & .rail-recent:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
+  /* The chat you're reading, marked the same way the rail marks the page you're
+     on — otherwise /arc is the one destination that never says where you are. */
+  & .rail-recent.on { color: var(--text); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); }
+  & .rail-recent.on .rail-recent-title { font-weight: 600; }
   & .rail-recent-dot { width: 5px; height: 5px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 72%, var(--muted)); opacity: 0.72; }
+  & .rail-recent.on .rail-recent-dot { background: var(--accent); opacity: 1; }
   & .rail-recent-title { min-width: 0; overflow: hidden; font-size: 11.5px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
   & .rail-recent time { color: var(--muted); font: 500 9.5px/1 var(--mono); }
+  /* An Arc run in flight. The rail is on every screen, so this is how work
+     started in a chat stays visible after you navigate away from it. */
+  & .rail-recent.working .rail-recent-dot { background: var(--accent); opacity: 1; }
+  & .rail-recent-working { color: var(--accent); font: 600 9.5px/1 var(--mono); letter-spacing: 0.04em; }
+  @media (prefers-reduced-motion: no-preference) {
+    & .rail-recent.working .rail-recent-dot { animation: arcBreathe 2.2s var(--ease) infinite; }
+  }
   & .rail-recents-empty { margin: 0; padding: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; }
   & .nav-more { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding: 7px 10px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; transition: color 0.15s var(--ease); }
   & .nav-more:hover { color: var(--text-2); }
@@ -1668,6 +1685,11 @@
 .arc-app .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 5px 9px; border-radius: 7px; transition: 0.14s; border: none; background: none; font-family: inherit; }
 .arc-app .selbar .sa:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .arc-app .selbar .sa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+/* Not "coming soon" — "not applicable to what you have selected". This used
+   data-soon, so bulk-adding a COMPANY to a campaign popped a clock icon saying
+   a shipped feature was unbuilt. The capability exists; it just belongs to the
+   People tab (BSR-688). */
+.arc-app .selbar .sa.is-inapplicable { opacity: 0.45; cursor: default; }
 .arc-app .selbar .sa-wrap { position: relative; display: inline-flex; }
 .arc-app .selbar .sa-backdrop { position: fixed; inset: 0; z-index: 40; background: none; border: none; cursor: default; }
 .arc-app .selbar .sa-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; min-width: 200px; max-height: 300px; overflow-y: auto; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; gap: 1px; }
@@ -1730,11 +1752,14 @@
 .arc-app .arc-opps .orow .ot { font-size: 13px; font-weight: 600; letter-spacing: -.005em; display: flex; align-items: baseline; gap: 7px; }
 .arc-app .arc-opps .orow .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-app .arc-opps .orow .pct { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
-.arc-app .arc-opps .orow .om { font-size: 10.5px; color: var(--muted); margin-top: 3px; display: flex; align-items: center; gap: 7px; }
+/* The part of the title the row's short name cuts. Two live flood advisories over
+   different counties are otherwise two rows both reading "Flood Advisory". */
+.arc-app .arc-opps .orow .oq { font-size: 11px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-app .arc-opps .orow .om { font-size: 10.5px; color: var(--muted); margin-top: 5px; display: flex; align-items: center; gap: 7px; }
 .arc-app .arc-opps .orow .src { border: 1px solid var(--line-2); background: var(--inset); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; color: var(--text-2); }
 .arc-app .arc-opps .orow .stale { font-family: var(--mono); font-size: 9.5px; color: var(--muted); white-space: nowrap; }
 .arc-app .arc-opps .orow .ostat { border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; font-weight: 600; color: var(--accent-contrast); }
-.arc-app .arc-opps .odetail { min-width: 0; overflow: auto; padding: 30px clamp(22px, 3.2vw, 44px) 56px; }
+.arc-app .arc-opps .odetail { min-width: 0; overflow: auto; padding: 30px clamp(22px, 3.2vw, 44px) 56px; container-type: inline-size; container-name: oppdetail; }
 .arc-app .arc-opps .odetail .inner { max-width: 1000px; }
 .arc-app .arc-opps .metarow { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; flex-wrap: wrap; }
 .arc-app .arc-opps .tchip { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 11px; border: 1px solid var(--line-2); background: var(--inset); border-radius: 7px; font-size: 11px; color: var(--text-2); }
@@ -1748,17 +1773,28 @@
 .arc-app .arc-opps .dttl { font-family: var(--serif); font-weight: 500; font-size: clamp(1.5rem, 2.5vw, 2.05rem); line-height: 1.1; letter-spacing: -.018em; margin: 0; }
 .arc-app .arc-opps .opp-quick-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .arc-app .arc-opps .dgrid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 30px; margin-top: 24px; align-items: start; }
-@media (max-width: 1080px) { .arc-app .arc-opps .dgrid { grid-template-columns: 1fr; } }
+/* Two columns only while the detail pane is genuinely wide enough for two.
+   The rule this replaces was keyed to the VIEWPORT (max-width: 1080px), but the
+   pane is what has to fit the columns: the nav rail and the 362px inbox take
+   ~600px before the detail pane starts, so a 1280px laptop — the common case —
+   left the reading column 259px wide and the evidence values 35px, and the
+   viewport query never fired because 1280 > 1080. A container query asks the
+   question the layout actually depends on. */
+@container oppdetail (max-width: 760px) { .arc-app .arc-opps .dgrid { grid-template-columns: minmax(0, 1fr); gap: 22px; } }
 .arc-app .arc-opps .lab { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--muted); text-transform: uppercase; margin-bottom: 11px; }
 .arc-app .arc-opps .summary { font-size: 13.5px; color: var(--text-2); line-height: 1.6; margin: 0 0 4px; max-width: 68ch; }
 .arc-app .arc-opps .blk { margin-top: 26px; }
-.arc-app .arc-opps .evrow { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); cursor: pointer; transition: border-color .15s, transform .15s var(--ease); margin-bottom: 9px; }
-.arc-app .arc-opps .evrow:hover { border-color: var(--accent-border); transform: translateX(2px); }
-.arc-app .arc-opps .evrow .n { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; font-family: var(--mono); font-size: 10px; color: var(--accent); }
-.arc-app .arc-opps .evrow .es { font-size: 12.5px; font-weight: 600; }
-.arc-app .arc-opps .evrow .ed { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-.arc-app .arc-opps .evrow .go { color: var(--muted); font-size: 14px; }
-.arc-app .arc-opps .evrow:hover .go { color: var(--accent); }
+/* Evidence reads as a fact table: hairline rows, label left, value right. It was
+   a stack of numbered cards — nested panels inside the detail pane, numbered as
+   though the facts were steps, each with a pointer cursor and hover nudge for a
+   row nothing has ever been able to click. */
+.arc-app .arc-opps .evlist { margin: 0; max-width: 76ch; border-top: 1px solid var(--line-2); }
+/* Proportional, not a fixed 200px: the label must never starve the value it
+   labels, however narrow the pane gets. */
+.arc-app .arc-opps .evitem { display: grid; grid-template-columns: minmax(0, 0.42fr) minmax(0, 1fr); gap: 18px; align-items: baseline; padding: 11px 2px; border-bottom: 1px solid var(--line-2); }
+.arc-app .arc-opps .evitem dt { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.arc-app .arc-opps .evitem dd { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 620px) { .arc-app .arc-opps .evitem { grid-template-columns: minmax(0, 1fr); gap: 3px; } }
 .arc-app .arc-opps .recpanel { border: 1px solid var(--line-2); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent); padding: 18px 20px; }
 .arc-app .arc-opps .recpanel .rl { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--accent); text-transform: uppercase; }
 .arc-app .arc-opps .recpanel .rtxt { font-size: 13.5px; color: var(--text); line-height: 1.6; margin-top: 9px; }
@@ -1773,6 +1809,10 @@
 .arc-app .arc-opps .btn.ghost:hover { border-color: var(--line-3); color: var(--text); }
 .arc-app .arc-opps .btn:disabled { opacity: .6; cursor: default; transform: none; filter: none; }
 .arc-app .arc-opps .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; }
+/* Stacked under the content there is nothing to stick to, and sticky on the last
+   child only makes the block lag the scroll. Declared after the rule it overrides
+   — same specificity, so source order is what decides it. */
+@container oppdetail (max-width: 760px) { .arc-app .arc-opps .side { position: static; } }
 .arc-app .arc-opps .card { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 16px; }
 .arc-app .arc-opps .card .cl { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
 .arc-app .arc-opps .bignum { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -.02em; color: var(--accent-contrast); line-height: 1; }
@@ -2290,4 +2330,104 @@
     width: 18px;
     height: 18px;
   }
+}
+
+/* ============================================================
+   Not-yet-built controls, and the toast that explains them (BSR-688)
+   ============================================================
+
+   `ComingSoonToasts` has shipped since the mockup port with NO stylesheet at
+   all. The wrapper defaulted to `position: static`, so it appended itself after
+   `.app` inside `.arc-app`: measured on /brand at 1440x900 it rendered at
+   y=900 — below the fold, invisible — 1450px tall, growing the document from
+   900px to 2350px. Clicking a "coming soon" control therefore did nothing a
+   person could see and quietly added a screenful of blank space.
+
+   Which is the exact state the toast exists to prevent. A dead control that
+   silently does nothing reads as broken; that was the whole argument for the
+   mechanism, and the mechanism was doing it too.
+
+   Two rules here, and they are separate concerns:
+     1. The toast must be a toast — fixed, on top, visible, self-dismissing.
+     2. An unbuilt control must not look identical to a working one. */
+
+.arc-app .soon-toasts {
+  position: fixed;
+  /* Above the rail and any page chrome, below modals (which sit at 100+). */
+  z-index: 60;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  /* Never intercept a click meant for the page underneath. */
+  pointer-events: none;
+}
+
+.arc-app .soon-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(92vw, 420px);
+  padding: 10px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.9);
+  animation: soonToastIn 0.22s var(--ease) both;
+}
+
+.arc-app .soon-toast svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  stroke: var(--muted);
+  fill: none;
+  stroke-width: 1.8;
+}
+
+@keyframes soonToastIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arc-app .soon-toast { animation: none; }
+}
+
+/* Rule 2. Attribute-scoped rather than class-scoped on purpose: these controls
+   wear five different classes (.gbtn, .iconbtn, .editlink, .sa, .iconf) and the
+   thing they have in common is the attribute, not the styling. Muted rather
+   than greyed-out-disabled — the control is real and will work later, it just
+   is not offering to do anything today. */
+/* Doubled attribute selector on purpose. Per-screen stylesheets (brand.css,
+   studio.css, library.css…) load AFTER arc-app.css and set `cursor: pointer` on
+   these same controls at equal specificity, so a single `[data-soon]` loses on
+   source order alone — `.arc-brand .editlink` beat it and the palette link kept
+   a pointer cursor. `[data-soon][data-soon]` outranks every per-screen rule
+   without reaching for !important. */
+.arc-app [data-soon][data-soon] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* No hover affordance: a lift or a border-brighten promises a response the
+   control cannot give. The gold gradient is dropped for the same reason —
+   nothing unbuilt should carry the one accent per screen (DESIGN.md §4). */
+.arc-app [data-soon][data-soon]:hover {
+  opacity: 0.72;
+  transform: none;
+  filter: none;
+}
+
+.arc-app [data-soon][data-soon].gold,
+.arc-app .arc-grid [data-soon][data-soon].gbtn.gold {
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
 }
