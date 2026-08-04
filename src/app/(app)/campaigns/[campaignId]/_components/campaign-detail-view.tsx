@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import {
+  assetSourceLabel,
   humanizePersonaLabel as humanizePersona,
+  reviewAgentLabel,
+  reviewVerdictLabel,
+  riskFlagLabel,
   toWorkState,
   WORK_STATE_LABEL,
   WORK_STATE_TONE,
@@ -419,7 +423,7 @@ function MediaLightbox({
           </b>
           <ul>
             {media.riskFlags.map((flag) => (
-              <li key={flag}>{flag}</li>
+              <li key={flag}>{riskFlagLabel(flag)}</li>
             ))}
           </ul>
           <p>Recorded when the asset was produced. Nothing has cleared it — that is your call.</p>
@@ -1033,7 +1037,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                         </div>
                         <div className="dmeta">
                           {asset.channel && <span>{asset.channel}</span>}
-                          {asset.toolSource && <span>· {asset.toolSource}</span>}
+                          {assetSourceLabel(asset.toolSource) && <span>· {assetSourceLabel(asset.toolSource)}</span>}
                           <span>· updated {fmtDate(asset.updatedAt)}</span>
                         </div>
                         {asset.preview && <div className="dbody">{asset.preview}</div>}
@@ -1126,8 +1130,8 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                         {asset.recommendation && (
                           <div className="drec">
                             <div className="drh">
-                              {asset.recommendation.agent} recommends
-                              <span className="drv">{asset.recommendation.verdict}</span>
+                              {reviewAgentLabel(asset.recommendation.agent)} recommends
+                              <span className="drv">{reviewVerdictLabel(asset.recommendation.verdict)}</span>
                             </div>
                             {asset.recommendation.rationale && <p className="drb">{asset.recommendation.rationale}</p>}
                             {asset.findings.length > 0 && (
@@ -1143,7 +1147,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                               <div className="flags">
                                 {asset.recommendation.riskFlags.map((f) => (
                                   <span className="flag" key={f}>
-                                    {f}
+                                    {riskFlagLabel(f)}
                                   </span>
                                 ))}
                               </div>

@@ -41,6 +41,7 @@ function entry(
     kind: "run",
     tone: "blue",
     title: id,
+    predicate: "logged a run",
     detail: "",
     actor: "Arc",
     actorType: "arc",

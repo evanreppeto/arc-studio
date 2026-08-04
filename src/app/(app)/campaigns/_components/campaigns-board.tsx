@@ -8,7 +8,7 @@ import { CAMPAIGN_NOUN, countOf, WORK_STATE_LABEL, personaAccent,} from "@/domai
 
 import { createCampaign, type NewCampaignInput } from "../actions";
 import { NewCampaignModal } from "./new-campaign-modal";
-import { needsOperatorApproval, type CampaignTone } from "./tone";
+import { needsOperatorAttention, type CampaignDeskState, type CampaignTone } from "./tone";
 
 export type { CampaignTone } from "./tone";
 
@@ -53,10 +53,13 @@ const TABS: { key: string; label: string }[] = [
   { key: "archived", label: WORK_STATE_LABEL.archived },
 ];
 
-function inTab(tone: CampaignTone, tab: string): boolean {
+// The "Needs you" tab takes the whole row, not just its tone: a campaign earns
+// that tab either by its own status or by holding an undecided asset. Every
+// other tab is a plain tone match.
+function inTab(row: CampaignDeskState, tab: string): boolean {
   if (tab === "all") return true;
-  if (tab === "needs") return needsOperatorApproval(tone);
-  return tone === tab;
+  if (tab === "needs") return needsOperatorAttention(row);
+  return row.tone === tab;
 }
 
 type SortKey = "recent" | "name" | "status";
@@ -154,22 +157,22 @@ export function CampaignsBoard({
 
   const allRows = useMemo(() => [...localRows, ...rows], [localRows, rows]);
 
-  const counts = useMemo(() => {
-    const by = (fn: (t: CampaignTone) => boolean) => allRows.filter((r) => fn(r.tone)).length;
-    return {
-      all: allRows.length,
-      needs: by(needsOperatorApproval),
-      live: by((t) => t === "live"),
-      approved: by((t) => t === "approved"),
-      draft: by((t) => t === "draft"),
-      archived: by((t) => t === "archived"),
-    } as Record<string, number>;
-  }, [allRows]);
+  // Each tab's badge is literally how many rows that tab shows — counted through
+  // `inTab`, the same function that filters the table. A count derived any other
+  // way is a second implementation of the rule, which is how "Needs you 0" came
+  // to sit above three rows reading "Approve N assets".
+  const counts = useMemo(
+    () =>
+      Object.fromEntries(
+        TABS.map((t) => [t.key, allRows.filter((r) => inTab(r, t.key)).length]),
+      ) as Record<string, number>,
+    [allRows],
+  );
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const filtered = allRows.filter((r) => {
-      if (!inTab(r.tone, tab)) return false;
+      if (!inTab(r, tab)) return false;
       if (needle && !`${r.name} ${r.brief} ${r.audience}`.toLowerCase().includes(needle)) return false;
       return true;
     });
