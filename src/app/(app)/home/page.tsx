@@ -112,10 +112,13 @@ export default async function HomePage() {
     source: signalLabel[o.urgency] ?? "Source-backed signal",
     time: relativeTime(o.evidence?.lastActivityAt ?? ""),
   }));
+  // This feed renders `<b>{actor}</b> {text}`, so `text` has to be a PREDICATE —
+  // handed the entry's title it read "You Approval Revision Requested" four
+  // times down the front page (BSR-734).
   const activityItems = summary.activity.slice(0, 5).map((a) => ({
     at: relativeTime(a.occurredAt),
     actor: a.actorType === "arc" || a.actorType === "sub_agent" ? "Arc" : a.actorType === "human" ? "You" : "System",
-    text: a.title || a.detail,
+    text: a.predicate,
   }));
 
   const now = new Date();

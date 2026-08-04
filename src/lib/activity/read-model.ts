@@ -1,5 +1,16 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  approvalItemLabel,
+  approvalDecisionActivityLabel,
+  approvalDecisionActivityPredicate,
+  campaignEventActivityPredicate,
+  runActivityLabel,
+  runActivityPredicate,
+  toWorkState,
+  WORK_STATE_LABEL,
+} from "@/domain";
+
 import { isDemoDataEnabled } from "../demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 import { buildDemoActivity } from "./demo";
@@ -27,7 +38,14 @@ export type ActivityEntry = {
   id: string;
   kind: ActivityKind;
   tone: ActivityTone;
+  /** Standalone noun phrase, for a list row that leads with the event. */
   title: string;
+  /**
+   * The same event as a verb phrase, for a feed that names the actor first and
+   * renders `{actor} {predicate}`. Home did that with `title` and produced
+   * "You Approval Revision Requested" (BSR-734).
+   */
+  predicate: string;
   detail: string;
   actor: string;
   actorType: ActivityActorType;
@@ -367,7 +385,8 @@ export function mapDecision(row: Record<string, unknown>, links: ActivityLinks =
     id: `decision:${String(row.id)}`,
     kind: "decision",
     tone: decisionTone(decision),
-    title: `Approval ${titleize(decision)}`,
+    title: approvalDecisionActivityLabel(decision),
+    predicate: approvalDecisionActivityPredicate(decision),
     detail: str(row.decision_notes) ?? `Decision recorded by ${decidedBy}.`,
     actor: decidedBy,
     actorType: "human",
@@ -389,7 +408,8 @@ export function mapRun(row: Record<string, unknown>, links: ActivityLinks = NO_L
     id: `run:${String(row.id)}`,
     kind: "run",
     tone: error ? "red" : runTone(status),
-    title: `Run ${titleize(status)}`,
+    title: runActivityLabel(status),
+    predicate: runActivityPredicate(status),
     detail: error ?? str(row.reasoning_summary) ?? str(row.model_name) ?? "Agent run logged.",
     actor,
     actorType: agentActorType(actor),
@@ -414,7 +434,10 @@ function mapOutput(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS
     kind: "draft",
     tone,
     title: str(row.title) ?? "Agent draft created",
-    detail: `${titleize(str(row.output_type) ?? "draft")} - ${titleize(approval || compliance || "pending approval")}`,
+    // The output's own title is a real name Arc wrote; the predicate says what
+    // Arc DID with it, so the feed line reads "Arc drafted <name>".
+    predicate: "created a draft",
+    detail: `${approvalItemLabel(str(row.output_type))} · ${WORK_STATE_LABEL[toWorkState(approval || compliance || "pending approval")]}`,
     actor: "Arc",
     actorType: "arc",
     category: tone === "red" ? "risk" : "asset",
@@ -440,6 +463,11 @@ export function mapCampaignEvent(row: Record<string, unknown>, links: ActivityLi
     kind: "campaign",
     tone,
     title: campaignEventTitle(eventType, decisionSignal),
+    // A decided approval says WHICH decision; everything else names the event.
+    predicate:
+      normalizeStatus(eventType) === "approval_decided" && decisionSignal
+        ? approvalDecisionActivityPredicate(normalizeStatus(decisionSignal))
+        : campaignEventActivityPredicate(eventType),
     detail: detail ?? "Campaign lifecycle update.",
     actor,
     actorType: actorTypeFromActor(actor),

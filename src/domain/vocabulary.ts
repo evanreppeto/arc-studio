@@ -333,6 +333,127 @@ export function approvalItemLabel(itemType: string | null | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
+// The activity feed (BSR-734)
+//
+// What happened, in TWO shapes, because two surfaces need two grammars:
+//
+//   LABEL      a standalone noun phrase heading a list row  — "Changes requested"
+//   PREDICATE  completes "You …" / "Arc …" in a feed that names the actor first
+//
+// Home renders `<b>{actor}</b> {text}` and was handed the label, so the front
+// page read "You Approval Revision Requested" four times in a row — a stored
+// enum, Title-Cased, templated into a sentence it does not fit. Both halves were
+// wrong: the Title Case is what makes it look like a database value, and the
+// noun phrase is what makes it ungrammatical after an actor.
+//
+// One string cannot do both jobs. "Changes requested" is a fine heading and a
+// broken sentence; "asked for changes" is the reverse.
+// ---------------------------------------------------------------------------
+
+/** `approval_decisions.decision`. Census 2026-08-04: revision_requested, approved, archived, declined. */
+const APPROVAL_DECISION_LABEL: Record<string, string> = {
+  approved: "Approved",
+  declined: "Declined",
+  revision_requested: "Changes requested",
+  reverted: "Decision reverted",
+  archived: "Archived",
+};
+
+const APPROVAL_DECISION_PREDICATE: Record<string, string> = {
+  approved: "approved a draft",
+  declined: "declined a draft",
+  revision_requested: "asked for changes",
+  reverted: "reverted a decision",
+  archived: "archived a draft",
+};
+
+/** `agent_run_logs.run_status`. Census 2026-08-04: completed, canceled. */
+const RUN_ACTIVITY_LABEL: Record<string, string> = {
+  completed: "Run finished",
+  complete: "Run finished",
+  canceled: "Run canceled",
+  cancelled: "Run canceled",
+  failed: "Run failed",
+  queued: "Run queued",
+  running: "Run started",
+};
+
+const RUN_ACTIVITY_PREDICATE: Record<string, string> = {
+  completed: "finished a run",
+  complete: "finished a run",
+  canceled: "canceled a run",
+  cancelled: "canceled a run",
+  failed: "hit an error on a run",
+  queued: "queued a run",
+  running: "started a run",
+};
+
+/** `campaign_events.event_type`. Census 2026-08-04: ten distinct values, all mapped. */
+const CAMPAIGN_EVENT_LABEL: Record<string, string> = {
+  created: "Campaign created",
+  asset_generated: "Draft created",
+  approval_submitted: "Sent for approval",
+  approval_decided: "Decision recorded",
+  campaign_launched: "Campaign launched",
+  dispatch_queued: "Send queued",
+  dispatch_sent: "Message sent",
+  dispatch_canceled: "Send canceled",
+  dispatch_failed: "Send failed",
+  archived: "Archived",
+};
+
+const CAMPAIGN_EVENT_PREDICATE: Record<string, string> = {
+  created: "created a campaign",
+  asset_generated: "drafted an asset",
+  approval_submitted: "sent a draft for approval",
+  approval_decided: "recorded a decision",
+  campaign_launched: "launched a campaign",
+  dispatch_queued: "queued a send",
+  dispatch_sent: "sent a message",
+  dispatch_canceled: "canceled a send",
+  dispatch_failed: "hit a send failure",
+  archived: "archived a campaign",
+};
+
+/**
+ * A predicate for a value nobody wrote a case for.
+ *
+ * "recorded X" rather than X on its own, because the fallback has to stay
+ * GRAMMATICAL after an actor name — "You some new state" is the same bug in a
+ * new costume, and a fallback that reintroduces the bug is not a fallback.
+ */
+function predicateFallback(value: string): string {
+  return `recorded ${humanizeIdentifier(value).toLowerCase()}`;
+}
+
+export function approvalDecisionActivityLabel(decision: string | null | undefined): string {
+  return labelled(APPROVAL_DECISION_LABEL, decision) ?? "Decision recorded";
+}
+
+export function approvalDecisionActivityPredicate(decision: string | null | undefined): string {
+  if (!decision?.trim()) return "recorded a decision";
+  return APPROVAL_DECISION_PREDICATE[decision] ?? predicateFallback(decision);
+}
+
+export function runActivityLabel(status: string | null | undefined): string {
+  return labelled(RUN_ACTIVITY_LABEL, status) ?? "Run logged";
+}
+
+export function runActivityPredicate(status: string | null | undefined): string {
+  if (!status?.trim()) return "logged a run";
+  return RUN_ACTIVITY_PREDICATE[status] ?? predicateFallback(status);
+}
+
+export function campaignEventActivityLabel(eventType: string | null | undefined): string {
+  return labelled(CAMPAIGN_EVENT_LABEL, eventType) ?? "Campaign updated";
+}
+
+export function campaignEventActivityPredicate(eventType: string | null | undefined): string {
+  if (!eventType?.trim()) return "updated a campaign";
+  return CAMPAIGN_EVENT_PREDICATE[eventType] ?? predicateFallback(eventType);
+}
+
+// ---------------------------------------------------------------------------
 // The registry (BSR-709, option B)
 //
 // Every mapper above turns a value the database stores into something a person
@@ -379,6 +500,51 @@ export const STORED_VALUE_LABELLERS: StoredValueLabeller[] = [
     map: APPROVAL_ITEM_LABEL,
     nullable: false,
     label: approvalItemLabel,
+  },
+  // The activity feed's two grammars. Both halves are registered: a predicate is
+  // just as capable of printing a stored value as a label, and it reaches the
+  // front page (BSR-734).
+  {
+    name: "approvalDecisionActivityLabel",
+    source: "approval_decisions.decision",
+    map: APPROVAL_DECISION_LABEL,
+    nullable: false,
+    label: approvalDecisionActivityLabel,
+  },
+  {
+    name: "approvalDecisionActivityPredicate",
+    source: "approval_decisions.decision",
+    map: APPROVAL_DECISION_PREDICATE,
+    nullable: false,
+    label: approvalDecisionActivityPredicate,
+  },
+  {
+    name: "runActivityLabel",
+    source: "agent_run_logs.run_status",
+    map: RUN_ACTIVITY_LABEL,
+    nullable: false,
+    label: runActivityLabel,
+  },
+  {
+    name: "runActivityPredicate",
+    source: "agent_run_logs.run_status",
+    map: RUN_ACTIVITY_PREDICATE,
+    nullable: false,
+    label: runActivityPredicate,
+  },
+  {
+    name: "campaignEventActivityLabel",
+    source: "campaign_events.event_type",
+    map: CAMPAIGN_EVENT_LABEL,
+    nullable: false,
+    label: campaignEventActivityLabel,
+  },
+  {
+    name: "campaignEventActivityPredicate",
+    source: "campaign_events.event_type",
+    map: CAMPAIGN_EVENT_PREDICATE,
+    nullable: false,
+    label: campaignEventActivityPredicate,
   },
   {
     name: "arcToolLabel",
