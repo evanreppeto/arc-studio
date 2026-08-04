@@ -58,20 +58,55 @@
 .arc-campaign .est { font-family: var(--mono); font-size: 9px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent-contrast); background: var(--accent-soft); border-radius: 5px; padding: 2px 6px; }
 .arc-campaign .empty-note { font-size: 12.5px; color: var(--muted); line-height: 1.6; padding: 6px 0; }
 
+/* One decision for everything a review passed. Sits above the list, quiet until
+   it is armed — a bulk approval should look deliberate, not like a toolbar. */
+.arc-campaign .bulkbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); padding: 10px 13px; margin-bottom: 16px; }
+.arc-campaign .bulkbar.confirming { align-items: flex-start; border-color: var(--accent-border); background: var(--accent-soft); }
+.arc-campaign .bulkbar .bulktext { flex: 1; min-width: 220px; font-size: 12px; color: var(--text-2); line-height: 1.5; }
+.arc-campaign .bulkbar .bulktext b { color: var(--text); }
+.arc-campaign .bulklist { list-style: none; margin: 7px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.arc-campaign .bulklist li { font-size: 11.5px; color: var(--text); padding-left: 13px; position: relative; }
+.arc-campaign .bulklist li::before { content: ""; position: absolute; left: 3px; top: 7px; width: 4px; height: 4px; border-radius: 99px; background: var(--ok); }
+.arc-campaign .bulkacts { display: flex; gap: 8px; flex: none; }
+
 /* Deliverable card + approval controls */
-.arc-campaign .deliver { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); padding: 16px 17px; margin-bottom: 13px; }
-.arc-campaign .dhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.arc-campaign .deliver { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); margin-bottom: 13px; }
+
+/* The collapsed row. Everything needed to triage without opening anything:
+   name, channel, whether media is attached, what the review found, status. */
+.arc-campaign .dsum { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; padding: 14px 17px; border: 0; background: none; cursor: pointer; border-radius: 13px; }
+.arc-campaign .deliver.open .dsum { border-radius: 13px 13px 0 0; }
+.arc-campaign .dsum:hover { background: var(--inset); }
+.arc-campaign .dsum:focus-visible { outline: 2px solid var(--accent-border); outline-offset: -2px; }
+.arc-campaign .dchev { flex: none; display: flex; color: var(--muted); transition: transform 0.18s var(--ease); }
+.arc-campaign .dchev svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+.arc-campaign .deliver.open .dchev { transform: rotate(90deg); }
+.arc-campaign .dsumhead { flex: 1; min-width: 0; }
+.arc-campaign .dsumrev { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); white-space: nowrap; }
+.arc-campaign .dsumrev i { width: 5px; height: 5px; border-radius: 99px; background: var(--muted); }
+.arc-campaign .dsumrev.tone-red { color: var(--red-text); }
+.arc-campaign .dsumrev.tone-red i { background: var(--red); }
+.arc-campaign .dsumrev.tone-amber { color: var(--warn-text); }
+.arc-campaign .dsumrev.tone-amber i { background: var(--warn); }
+.arc-campaign .dsumrev.tone-ok { color: var(--ok-text); }
+.arc-campaign .dsumrev.tone-ok i { background: var(--ok); }
+.arc-campaign .dwrap { padding: 0 17px 16px; }
+
 .arc-campaign .dtitle { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .arc-campaign .dmeta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
+.arc-campaign .dcopy { position: relative; }
 .arc-campaign .dbody { font-size: 12.5px; color: var(--text-2); line-height: 1.6; margin-top: 11px; white-space: pre-wrap; }
+/* Long copy is folded so the review above it stays on screen. The mask makes the
+   fold legible as a fold — a hard cut reads as copy that simply ended. */
+.arc-campaign .dbody.clamped { max-height: 15em; overflow: hidden; mask-image: linear-gradient(180deg, #000 72%, transparent); }
+.arc-campaign .dmore { margin-top: 6px; padding: 0; border: 0; background: none; font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; color: var(--muted); cursor: pointer; }
+.arc-campaign .dmore:hover { color: var(--accent-contrast); }
+/* The words a finding quotes, marked where they live. Underline rather than fill:
+   a highlighter block over body copy fights the card for attention. */
+.arc-campaign .dmark { background: none; color: var(--text); box-shadow: inset 0 -1px 0 0 var(--warn-border); border-radius: 2px; padding: 0 1px; scroll-margin: 90px; }
+.arc-campaign .dmark.blk { box-shadow: inset 0 -1px 0 0 var(--red-border); }
 .arc-campaign .revnote { font-size: 11px; color: var(--accent-contrast); background: var(--accent-soft); border-radius: 7px; padding: 6px 9px; margin-top: 11px; }
 .arc-campaign .revnote b { color: var(--text); }
-.arc-campaign .dcompliance { font-size: 11px; color: var(--muted); margin-top: 10px; padding-left: 11px; border-left: 2px solid var(--line-3); line-height: 1.5; }
-.arc-campaign .dblocked { font-size: 11px; color: var(--red-text); background: var(--red-soft); margin-top: 10px; padding: 8px 10px; border-left: 2px solid var(--red); border-radius: 0 6px 6px 0; line-height: 1.5; }
-.arc-campaign .dblocked b { color: var(--red); }
-
-.arc-campaign .dunrev { font-size: 11px; color: var(--text-2); background: var(--inset); margin-top: 10px; padding: 8px 10px; border-left: 2px solid var(--line-3); border-radius: 0 6px 6px 0; line-height: 1.5; }
-.arc-campaign .dunrev b { color: var(--text); }
 
 /* A revision the operator asked for that Arc never started. Warn, not error:
    nothing is broken or lost, it just has not run — and the fix is one click. */
@@ -79,17 +114,52 @@
 .arc-campaign .dstalled b { color: var(--text); }
 .arc-campaign .dstalled .dsq { display: block; margin-top: 5px; color: var(--muted); font-style: italic; }
 .arc-campaign .dstalled .cbtn { margin-top: 8px; }
-.arc-campaign .drec { margin-top: 10px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); }
-.arc-campaign .drh { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--muted); }
-.arc-campaign .drv { color: var(--text); background: var(--raised); border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 7px; text-transform: capitalize; }
-.arc-campaign .drb { font-size: 11.5px; color: var(--text-2); line-height: 1.55; margin-top: 6px; }
-.arc-campaign .drb b { color: var(--text); }
-.arc-campaign .drec .flags { margin-top: 7px; }
-.arc-campaign .drn { font-size: 10.5px; color: var(--muted); margin-top: 7px; }
-.arc-campaign .dfind { list-style: none; margin: 7px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-.arc-campaign .dfind li { font-size: 11px; color: var(--text-2); line-height: 1.5; padding-left: 9px; border-left: 2px solid var(--warn); }
-.arc-campaign .dfind li.dfb { border-left-color: var(--red); }
-.arc-campaign .dfind q { color: var(--text); font-style: italic; }
+/* The review, above the draft it is about. One block: the verdict, what blocks
+   send, and everything else folded away. It sits at the top of the card because
+   the reviewer's question is "can I approve this?", not "what does this say?" */
+.arc-campaign .review { margin-top: 11px; padding: 10px 12px; border: 1px solid var(--line-2); border-left-width: 2px; border-radius: 8px; background: var(--inset); }
+.arc-campaign .review.tone-red { border-left-color: var(--red); }
+.arc-campaign .review.tone-amber { border-left-color: var(--warn); }
+.arc-campaign .review.tone-ok { border-left-color: var(--ok); }
+/* Unchecked. Deliberately colourless — the one thing this must never look like
+   is a pass. */
+.arc-campaign .review.tone-gray { border-left-color: var(--line-3); }
+.arc-campaign .rvhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.arc-campaign .rvdot { width: 6px; height: 6px; border-radius: 99px; flex: none; background: var(--muted); }
+.arc-campaign .review.tone-red .rvdot { background: var(--red); }
+.arc-campaign .review.tone-amber .rvdot { background: var(--warn); }
+.arc-campaign .review.tone-ok .rvdot { background: var(--ok); }
+.arc-campaign .rvline { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.arc-campaign .rvverdict { margin-left: auto; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.03em; color: var(--muted); background: var(--raised); border: 1px solid var(--line-2); border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
+.arc-campaign .rvbanned { font-size: 11.5px; color: var(--red-text); line-height: 1.5; margin-top: 8px; }
+
+/* Findings. One line each by default — the quoted words plus the first clause of
+   why — expanding to the full reasoning on click. */
+.arc-campaign .rvlist { list-style: none; margin: 9px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.arc-campaign .rvrow { border-left: 2px solid var(--warn); }
+.arc-campaign .rvrow.blk { border-left-color: var(--red); }
+.arc-campaign .rvbtn { display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 4px 8px 5px 9px; border-radius: 0 5px 5px 0; transition: background 0.15s var(--ease); }
+.arc-campaign .rvbtn:hover { background: var(--raised); }
+.arc-campaign .rvq { display: block; font-size: 11.5px; font-style: italic; color: var(--text); line-height: 1.45; }
+.arc-campaign .rvq::before, .arc-campaign .rvq::after { content: none; }
+.arc-campaign .rvwhy { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden; font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: 2px; }
+.arc-campaign .rvwhy.open { display: block; overflow: visible; }
+.arc-campaign .rvpending { font-size: 11px; color: var(--text-2); line-height: 1.5; margin-top: 8px; }
+.arc-campaign .rvflags { margin-top: 8px; }
+
+/* Folds. Everything below here is available, not in the way. */
+.arc-campaign .rvfold { margin-top: 8px; border-top: 1px solid var(--line-3); padding-top: 7px; }
+.arc-campaign .rvfold > summary { font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; color: var(--muted); cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+.arc-campaign .rvfold > summary::-webkit-details-marker { display: none; }
+.arc-campaign .rvfold > summary::before { content: "▸"; font-size: 8px; transition: transform 0.15s var(--ease); }
+.arc-campaign .rvfold[open] > summary::before { transform: rotate(90deg); }
+.arc-campaign .rvfold > summary:hover { color: var(--accent-contrast); }
+.arc-campaign .rvcount { color: var(--text-2); background: var(--raised); border-radius: 4px; padding: 0 5px; }
+.arc-campaign .rvbody { font-size: 11.5px; color: var(--text-2); line-height: 1.55; margin-top: 7px; }
+.arc-campaign .rvedits { margin: 7px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+.arc-campaign .rvedits li { font-size: 11.5px; color: var(--text-2); line-height: 1.5; }
+.arc-campaign .rvedit { margin-top: 9px; height: 28px; font-size: 11.5px; }
+.arc-campaign .rvfoot { font-size: 10.5px; color: var(--muted); margin-top: 8px; }
 
 .arc-campaign .dctrls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .arc-campaign .cbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; text-decoration: none; transition: 0.15s var(--ease); }
