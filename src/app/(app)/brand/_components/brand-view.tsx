@@ -5,8 +5,12 @@ import { useRef, useState, useTransition } from "react";
 import type { BrandProfileView } from "@/lib/brand-kit/profile-view";
 import type { BrandKnowledgeSyncSummary } from "@/lib/brand-knowledge/sync-summary";
 
-import { analyzeBrandWebsite, removeBrandLogo, resyncBrandSources, saveBrandLogo, updateBrandIdentity, uploadBrandDocuments, type BrandLogoResult, type BrandUploadResult, type BrandWebsiteAnalysis } from "../actions";
+import { DEFAULT_BODY_FONT, DEFAULT_HEADING_FONT, resolveBrandFont } from "@/domain";
+
+import { analyzeBrandWebsite, removeBrandLogo, resyncBrandSources, saveBrandLogo, updateBrandIdentity, updateBrandPalette, updateBrandTypography, uploadBrandDocuments, type BrandLogoResult, type BrandUploadResult, type BrandWebsiteAnalysis } from "../actions";
 import { EditIdentityModal } from "./edit-identity-modal";
+import { EditPaletteModal } from "./edit-palette-modal";
+import { EditTypographyModal } from "./edit-typography-modal";
 
 const STUDIO = "/studio";
 const BRAIN = "/brain";
@@ -35,9 +39,13 @@ function isLight(hex: string): boolean {
 }
 
 export function BrandView({ view }: { view: BrandProfileView }) {
-  const { identity, palette, tone, voiceGuidance, preferredPhrases, bannedPhrases, proofPoints, services, guardrails, sources } = view;
+  const { identity, palette, paletteSlots, tone, voiceGuidance, preferredPhrases, bannedPhrases, proofPoints, services, guardrails, sources } = view;
   const [active, setActive] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteSaved, setPaletteSaved] = useState<null | "saved" | "not_persisted">(null);
+  const [typographyOpen, setTypographyOpen] = useState(false);
+  const [typographySaved, setTypographySaved] = useState<null | "saved" | "not_persisted">(null);
   const [saved, setSaved] = useState(false);
 
   // Brand document intake: one in-flight action at a time, one banner of its
@@ -164,8 +172,11 @@ export function BrandView({ view }: { view: BrandProfileView }) {
   }
   const accent = palette[active]?.hex ?? palette[0]?.hex ?? "var(--accent)";
   const tagline = identity.tagline ?? "";
-  const headingFont = view.headingFont ?? "Fraunces";
-  const bodyFont = view.bodyFont ?? "Geist";
+  // Resolve through the catalog so the section names — and renders in — the face
+  // the creative renderer will genuinely use, including for a legacy stored value
+  // that names a font we don't bundle.
+  const headingFace = resolveBrandFont(view.headingFont, DEFAULT_HEADING_FONT);
+  const bodyFace = resolveBrandFont(view.bodyFont, DEFAULT_BODY_FONT);
 
   return (
     <div className="arc-brand" style={{ ["--bactive" as string]: accent }}>
@@ -325,10 +336,17 @@ export function BrandView({ view }: { view: BrandProfileView }) {
         <div className="bcol">
           {/* PALETTE */}
           <div className="bsec">
-            <div className="bsh"><h3>Brand palette</h3><div className="sx"><span className="editlink" data-soon="Editing the palette is coming soon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add color</span></div></div>
+            <div className="bsh"><h3>Brand palette</h3><div className="sx">
+              {paletteSaved === "saved" && <span className="bsaved">Saved ✓</span>}
+              {paletteSaved === "not_persisted" && <span className="blogoerr">Connect a workspace to save</span>}
+              <button type="button" className="editlink" onClick={() => setPaletteOpen(true)}><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg>Edit colors</button>
+            </div></div>
             <div className="bsb">
               {palette.length === 0 ? (
-                <div className="bsnote" style={{ margin: 0 }}>No palette yet — add colors, or let Arc extract them from your website and logo.</div>
+                <button type="button" className="bsempty" onClick={() => setPaletteOpen(true)}>
+                  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+                  <span><b>Set your brand colors</b> — or let Arc extract them from your website and logo.</span>
+                </button>
               ) : (
                 <div className="swrow">
                   {palette.map((p, i) => {
@@ -352,12 +370,20 @@ export function BrandView({ view }: { view: BrandProfileView }) {
 
           {/* TYPOGRAPHY */}
           <div className="bsec">
-            <div className="bsh"><h3>Typography</h3><div className="sx"><span className="editlink" data-soon="Editing typography is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Change</span></div></div>
-            <div className="bsb"><div className="typ">
-              <div className="tspec serif"><div className="glyph">Aa</div><div className="ti"><div className="role">Display</div><div className="fam">{headingFont}</div><div className="sample">{tagline || "Your headline, set in the display face."}</div></div></div>
-              <div className="tspec"><div className="glyph">Aa</div><div className="ti"><div className="role">UI / Body</div><div className="fam">{bodyFont}</div><div className="sample">{proofPoints.slice(0, 2).join(". ") || "Body copy for everyday UI and paragraphs."}</div></div></div>
-              <div className="tspec mono"><div className="glyph">Aa</div><div className="ti"><div className="role">Mono / Code</div><div className="fam">{bodyFont} Mono</div><div className="sample">{services[0] ?? "Structured data & labels"}</div></div></div>
+            <div className="bsh"><h3>Typography</h3><div className="sx">
+              {typographySaved === "saved" && <span className="bsaved">Saved ✓</span>}
+              {typographySaved === "not_persisted" && <span className="blogoerr">Connect a workspace to save</span>}
+              <button type="button" className="editlink" onClick={() => setTypographyOpen(true)}><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg>Change</button>
             </div></div>
+            {/* Each row renders IN its own face. The third row used to claim a
+                "{bodyFont} Mono" that nothing ever set and no renderer could
+                draw — there is no mono slot in the brand kit, so it has gone
+                rather than being restyled. */}
+            <div className="bsb"><div className="typ">
+              <div className="tspec"><div className="glyph" style={{ fontFamily: headingFace.stack, fontWeight: 700 }}>Aa</div><div className="ti"><div className="role">Headlines</div><div className="fam">{headingFace.label}</div><div className="sample" style={{ fontFamily: headingFace.stack, fontWeight: 700 }}>{tagline || "Your headline, set in the display face."}</div></div></div>
+              <div className="tspec"><div className="glyph" style={{ fontFamily: bodyFace.stack }}>Aa</div><div className="ti"><div className="role">Body copy</div><div className="fam">{bodyFace.label}</div><div className="sample" style={{ fontFamily: bodyFace.stack }}>{proofPoints.slice(0, 2).join(". ") || "Body copy for everyday UI and paragraphs."}</div></div></div>
+            </div></div>
+            <div className="bsnote">Arc renders every ad, email and landing page in these two faces — the samples above are the real thing, not a stand-in.</div>
           </div>
 
           {/* VOICE */}
@@ -478,6 +504,41 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           </div>
         </div>
       </div>
+
+      {/* Keyed on open so each visit starts from what's actually stored rather
+          than a stale draft from a cancelled edit. */}
+      <EditPaletteModal
+        key={paletteOpen ? "palette-open" : "palette-closed"}
+        open={paletteOpen}
+        slots={paletteSlots}
+        onClose={() => setPaletteOpen(false)}
+        onSubmit={async (colors) => {
+          const res = await updateBrandPalette({ colors });
+          if (res.ok) {
+            // `persisted: false` is the backend-less preview. Saying "Saved" there
+            // would be the screen lying about a write that never happened.
+            setPaletteSaved(res.persisted ? "saved" : "not_persisted");
+            setTimeout(() => setPaletteSaved(null), 4000);
+          }
+          return res;
+        }}
+      />
+
+      <EditTypographyModal
+        key={typographyOpen ? "type-open" : "type-closed"}
+        open={typographyOpen}
+        initialHeading={headingFace.id}
+        initialBody={bodyFace.id}
+        onClose={() => setTypographyOpen(false)}
+        onSubmit={async (value) => {
+          const res = await updateBrandTypography(value);
+          if (res.ok) {
+            setTypographySaved(res.persisted ? "saved" : "not_persisted");
+            setTimeout(() => setTypographySaved(null), 4000);
+          }
+          return res;
+        }}
+      />
 
       <EditIdentityModal
         key={editOpen ? "open" : "closed"}

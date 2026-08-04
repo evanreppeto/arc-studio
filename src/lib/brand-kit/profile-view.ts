@@ -7,7 +7,7 @@
 // Read-only — nothing here sends or publishes.
 // ---------------------------------------------------------------------------
 
-import { NEUTRAL_DEFAULTS, type BusinessProfile, type ProofPoint } from "@/domain";
+import { BRAND_COLOR_SLOTS, NEUTRAL_DEFAULTS, type BrandColorSlot, type BusinessProfile, type ProofPoint } from "@/domain";
 import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { reportDegraded } from "@/lib/observability/report-degraded";
@@ -17,6 +17,8 @@ import { getBusinessProfile } from "./persistence";
 import { isSupabaseAdminConfigured } from "../supabase/server";
 
 export type BrandSwatch = { role: string; name: string; hex: string };
+/** One editable colour slot. `hex` is "" when the workspace hasn't set that slot. */
+export type BrandPaletteSlotView = { slot: BrandColorSlot; role: string; label: string; hex: string };
 export type BrandSourceItem = { id?: string; ext: string; extColor?: string; name: string; facts: string; when: string; stale: boolean };
 
 export type BrandProfileView = {
@@ -48,6 +50,13 @@ export type BrandProfileView = {
     logoUrl: string | null;
   };
   palette: BrandSwatch[];
+  /**
+   * Every colour slot, including the ones with no colour set — which `palette`
+   * deliberately drops so the swatch row never renders a blank chip. The editor
+   * needs the unfiltered set: without it there is no way to fill an empty slot,
+   * because a slot with no colour is exactly the one that isn't on screen.
+   */
+  paletteSlots: BrandPaletteSlotView[];
   headingFont: string | null;
   bodyFont: string | null;
   tone: string[];
@@ -60,7 +69,7 @@ export type BrandProfileView = {
   sources: BrandSourceItem[];
 };
 
-type ColorSlot = "primary" | "secondary" | "accent" | "dark" | "light";
+type ColorSlot = BrandColorSlot;
 const ROLE_BY_SLOT: Array<[ColorSlot, string]> = [
   ["primary", "Primary"],
   ["secondary", "Secondary"],
@@ -83,6 +92,13 @@ export function toBrandProfileView(profile: BusinessProfile, sources: BrandSourc
     .map(([slot, role]) => ({ role, name: profile.brandPalette[slot].label || role, hex: profile.brandPalette[slot].hex }))
     .filter((s) => /^#[0-9a-fA-F]{6}$/.test(s.hex));
 
+  const paletteSlots: BrandPaletteSlotView[] = ROLE_BY_SLOT.map(([slot, role]) => ({
+    slot,
+    role,
+    label: profile.brandPalette[slot].label,
+    hex: profile.brandPalette[slot].hex,
+  }));
+
   const segments = [profile.industry, ...profile.serviceAreas].filter((v): v is string => Boolean(v && v.trim())).map(titleCase);
 
   return {
@@ -98,6 +114,7 @@ export function toBrandProfileView(profile: BusinessProfile, sources: BrandSourc
       logoUrl: profile.logoUrl?.startsWith("http") ? profile.logoUrl : null,
     },
     palette,
+    paletteSlots,
     headingFont: profile.brandPalette.headingFont || null,
     bodyFont: profile.brandPalette.bodyFont || null,
     // `tone` is a single stored field; a comma list (demo) becomes multiple chips.

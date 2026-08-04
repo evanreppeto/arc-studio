@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { NEUTRAL_DEFAULTS, type MediaKind } from "@/domain";
+import { applyBrandPaletteEdit, isCatalogFont, NEUTRAL_DEFAULTS, type BrandPaletteEdit, type MediaKind } from "@/domain";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
@@ -60,6 +60,99 @@ export async function updateBrandIdentity(input: BrandIdentityInput): Promise<Br
     return { ok: true, persisted: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save brand changes." };
+  }
+}
+
+/**
+ * Edit the brand palette and typography — the five colour slots plus the heading
+ * and body faces.
+ *
+ * This write path already existed and was reachable by Arc
+ * (`POST /api/v1/arc/brand/profile` sets every one of these fields), but never by
+ * the operator: both controls on /brand were inert spans badged "coming soon"
+ * while the agent could recolour and re-font the workspace at will.
+ *
+ * Same fetch-merge-upsert shape as `updateBrandIdentity`, so a palette edit
+ * leaves voice, services and guardrails alone. Internal config — a palette
+ * change never reaches anyone outside the workspace on its own; creative drawn
+ * with it still goes through approval.
+ */
+export type BrandPaletteResult =
+  | { ok: true; persisted: boolean }
+  | { ok: false; error: string };
+
+export async function updateBrandPalette(edit: BrandPaletteEdit): Promise<BrandPaletteResult> {
+  await requireOperator();
+
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const ctx = await getCurrentWorkspaceContext();
+  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+
+  try {
+    const current = (await getBusinessProfile(ctx.orgId)) ?? NEUTRAL_DEFAULTS;
+    const applied = applyBrandPaletteEdit(current.brandPalette, edit);
+    // A bad hex comes back as an error rather than a silent no-op: the operator
+    // is looking at the colour they typed, and a quiet save would leave the old
+    // one in place under a "Saved" badge.
+    if (!applied.ok) return { ok: false, error: applied.errors.join(" ") };
+
+    await upsertBusinessProfile(ctx.orgId, { ...current, brandPalette: applied.palette });
+    revalidatePath("/brand");
+    // Studio renders its swatches and canvas from this palette, and the shell
+    // reads brand identity — both go stale otherwise.
+    revalidatePath("/studio");
+    revalidatePath("/", "layout");
+    return { ok: true, persisted: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save your palette." };
+  }
+}
+
+/**
+ * Set the brand's heading and body typefaces.
+ *
+ * Only families in the BRAND_FONTS catalog are accepted, and that is the point:
+ * the catalog is exactly the set the creative renderer ships static weights for
+ * (`loadCreativeFonts`). Accepting an arbitrary family name here would store a
+ * font that looks right in the app and renders as something else in every ad
+ * Arc generates — a substitution the approving operator never sees.
+ */
+export type BrandTypographyResult =
+  | { ok: true; persisted: boolean }
+  | { ok: false; error: string };
+
+export async function updateBrandTypography(input: {
+  headingFont: string;
+  bodyFont: string;
+}): Promise<BrandTypographyResult> {
+  await requireOperator();
+
+  for (const [field, value] of [["heading", input.headingFont], ["body", input.bodyFont]] as const) {
+    if (!isCatalogFont(value)) {
+      return { ok: false, error: `That ${field} font isn't one we can render. Pick one from the list.` };
+    }
+  }
+
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const ctx = await getCurrentWorkspaceContext();
+  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+
+  try {
+    const current = (await getBusinessProfile(ctx.orgId)) ?? NEUTRAL_DEFAULTS;
+    const applied = applyBrandPaletteEdit(current.brandPalette, {
+      headingFont: input.headingFont,
+      bodyFont: input.bodyFont,
+    });
+    if (!applied.ok) return { ok: false, error: applied.errors.join(" ") };
+
+    await upsertBusinessProfile(ctx.orgId, { ...current, brandPalette: applied.palette });
+    revalidatePath("/brand");
+    revalidatePath("/studio");
+    return { ok: true, persisted: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save your typography." };
   }
 }
 

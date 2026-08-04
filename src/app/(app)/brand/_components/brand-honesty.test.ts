@@ -30,6 +30,8 @@ const SHIPPED_CAPABILITIES: Array<{ action: string; claims: RegExp; label: strin
   { action: "updateBrandIdentity", claims: /note|voice|tone|identity|tagline|field/i, label: "brand identity & voice editing" },
   { action: "uploadBrandDocuments", claims: /document|\bfiles?\b/i, label: "document upload" },
   { action: "analyzeBrandWebsite", claims: /website|url/i, label: "website analysis" },
+  { action: "updateBrandPalette", claims: /palette|colou?rs?\b/i, label: "palette editing" },
+  { action: "updateBrandTypography", claims: /typography|font|typeface/i, label: "typeface selection" },
 ];
 
 describe("brand page tells the truth about what it can do", () => {
@@ -50,17 +52,34 @@ describe("brand page tells the truth about what it can do", () => {
   );
 
   /**
-   * The other half of honesty: what IS still unbuilt must keep saying so. There
-   * is no palette or typography editor — `upsertBusinessProfile` writes those
-   * columns, but nothing in the UI or actions layer sets them — so those two
-   * labels are correct and must not be removed just to make the page look
-   * finished.
+   * The other half of honesty. Palette and typography both used to be asserted
+   * here as *correctly* marked coming-soon; both moved to SHIPPED_CAPABILITIES
+   * as their write paths landed. The claim is about the write path, so when one
+   * appears the assertion flips rather than being deleted.
+   *
+   * Nothing on /brand is unbuilt now, so this asserts the page carries no
+   * coming-soon marks at all. Add one back only alongside a genuine gap — and
+   * put it in SHIPPED_CAPABILITIES the moment it stops being a gap.
    */
-  it("keeps the coming-soon marker on palette and typography, which have no write path", () => {
-    const messages = comingSoonMessages(BRAND_VIEW);
-    expect(messages.some((m) => /palette/i.test(m))).toBe(true);
-    expect(messages.some((m) => /typography/i.test(m))).toBe(true);
-    expect(BRAND_ACTIONS).not.toMatch(/export async function (updateBrandPalette|updateBrandTypography)/);
+  it("carries no coming-soon marks, because nothing on the page is unbuilt", () => {
+    expect(comingSoonMessages(BRAND_VIEW)).toEqual([]);
+  });
+
+  /**
+   * Typeface selection is only honest because the renderer can draw every font
+   * the picker offers. `loadCreativeFonts` used to pick between exactly two
+   * files via a serif/sans guess on the name, which meant every workspace's
+   * creative rendered as Inter or one serif whatever their brand kit said.
+   *
+   * The catalog is now the shared source of truth for both sides, and
+   * brand-fonts.test.ts checks the static files are actually on disk. This
+   * guards the wiring: the renderer must resolve through the catalog, never
+   * back to a two-file guess.
+   */
+  it("renders creative through the font catalog, not a serif/sans guess", () => {
+    const loader = readFileSync(new URL("../../../../lib/media/compose/fonts.ts", import.meta.url), "utf8");
+    expect(loader).toMatch(/resolveBrandFont/);
+    expect(loader, "the renderer fell back to the old two-file heuristic").not.toMatch(/resolveFontRole/);
   });
 
   it("routes every logo entry point through the one write path", () => {

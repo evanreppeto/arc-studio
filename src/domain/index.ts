@@ -53,6 +53,7 @@ export * from "./interactions";
 export * from "./knowledge-graph";
 export * from "./brain-recall";
 export * from "./campaign-performance";
+export * from "./brand-fonts";
 export * from "./brand-kit";
 export * from "./brand-design";
 export * from "./creative-templates";
