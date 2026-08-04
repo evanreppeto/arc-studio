@@ -13,6 +13,7 @@ import {
   snoozeOpportunityAction,
 } from "../actions";
 import { scanMessage } from "../scan-feedback";
+import type { ScanStatusLine } from "../scan-status-copy";
 import { DraftCampaignModal, type DraftMode } from "./draft-campaign-modal";
 import { definitionText, DEFINITIONS, DISMISS_REASON_OPTIONS, type DismissReason } from "@/domain";
 import { Define, HowThisWorks } from "../../_components/define";
@@ -123,18 +124,44 @@ function ScanButton({ subtle }: { subtle?: boolean }) {
   );
 }
 
+/**
+ * What Arc's own background scan last did.
+ *
+ * Arc has scanned this workspace daily since 2026-08-01 and the product never
+ * said so — the inbox offered a manual scan button and nothing else, so work
+ * Arc did on its own read as work nobody did. Worse, every outcome looked
+ * identical: on 2026-08-04 a scan ran, proposed nothing, failed to mark itself
+ * complete, and the screen was indistinguishable from a healthy quiet day.
+ */
+function ScanStatus({ status }: { status?: ScanStatusLine | null }) {
+  if (!status) return null;
+  return (
+    <div className={`scanstat ${status.tone}`} role="status">
+      <span className="l">
+        <i />
+        {status.text}
+      </span>
+      {status.detail && <span className="d">{status.detail}</span>}
+    </div>
+  );
+}
+
 /** The scan form + its result line. Self-contained so both call sites report alike. */
-function ScanForm({ subtle }: { subtle?: boolean }) {
+function ScanForm({ subtle, status }: { subtle?: boolean; status?: ScanStatusLine | null }) {
   const [result, formAction] = useActionState(scanForOpportunitiesAction, null);
   return (
     <>
       <form action={formAction}>
         <ScanButton subtle={subtle} />
       </form>
-      {result && (
+      {/* The manual scan's own result supersedes the background one — it is
+          newer, and it is what the operator just asked for. */}
+      {result ? (
         <div className={`scanmsg${result.ok ? "" : " bad"}`} role="status">
           {scanMessage(result)}
         </div>
+      ) : (
+        <ScanStatus status={status} />
       )}
     </>
   );
@@ -158,12 +185,15 @@ export function OpportunityInbox({
   opps,
   personaOptions,
   selectedId,
+  scanStatus,
 }: {
   opps: OpportunityVM[];
   /** The org's own personas for the draft-campaign picker. */
   personaOptions?: { key: string; label: string }[];
   /** Opportunity selected by a contextual deep link from Home or Arc. */
   selectedId?: string;
+  /** What Arc's last background scan did — null when there is no history. */
+  scanStatus?: ScanStatusLine | null;
 }) {
   // Selection is held by id, not list index: filtering, sorting and triage all
   // reorder the list, and an index would silently point at a different card.
@@ -244,7 +274,7 @@ export function OpportunityInbox({
             No open opportunities yet. Arc scans your CRM for source-backed signals — quiet leads worth re-engaging,
             and more.
           </div>
-          <ScanForm subtle />
+          <ScanForm subtle status={scanStatus} />
         </div>
       </div>
     );
@@ -324,7 +354,7 @@ export function OpportunityInbox({
           </span>
         </div>
         <div style={{ padding: "2px 4px 12px" }}>
-          <ScanForm />
+          <ScanForm status={scanStatus} />
         </div>
 
         {types.length > 1 && (
