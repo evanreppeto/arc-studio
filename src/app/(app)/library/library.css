@@ -16,7 +16,10 @@
 .arc-library .tg.est { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); }
 .arc-library .oband { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 14px clamp(20px, 2.6vw, 30px); margin-top: 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line-2); background: color-mix(in srgb, var(--canvas-deep) 24%, transparent); flex-shrink: 0; }
 .arc-library .obig { display: flex; align-items: baseline; gap: 9px; }
-.arc-library .obig .ov { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -0.02em; }
+/* NOT `.ov` — that class is the card hover overlay further down this file
+   (absolute / inset 0 / opacity 0), and it was winning here: the headline count
+   was invisible and its stretched box intercepted the stat filters' clicks. */
+.arc-library .obig .obigv { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -0.02em; color: var(--text); }
 .arc-library .obig .ol { font-size: 11.5px; color: var(--muted); }
 .arc-library .obars { display: flex; gap: 14px; flex-wrap: wrap; }
 .arc-library .obar { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-2); }
@@ -29,8 +32,12 @@
 .arc-library .ospacer { margin-left: auto; }
 
 /* body split */
-.arc-library .lib { flex: 1; min-height: 0; display: grid; grid-template-columns: 216px minmax(0, 1fr); overflow: hidden; transition: grid-template-columns 0.2s var(--ease); }
-.arc-library .lib.detail { grid-template-columns: 216px minmax(0, 1fr) 308px; }
+/* 216px left folder names ~97px after the chevron, icon, gaps and count — which
+   truncated "Logos & marketing" to "Logos & mar…" and "Photo + text mockups" to
+   "Photo + text moc…". The names ARE the navigation; widening the rail is the
+   cheapest way to make them readable. */
+.arc-library .lib { flex: 1; min-height: 0; display: grid; grid-template-columns: 248px minmax(0, 1fr); overflow: hidden; transition: grid-template-columns 0.2s var(--ease); }
+.arc-library .lib.detail { grid-template-columns: 248px minmax(0, 1fr) 308px; }
 .arc-library .lib.detail .inspector { display: flex; }
 
 /* Phones: no room for the folder rail + inspector alongside the grid. Collapse
@@ -56,14 +63,21 @@
 .arc-library .treeh { font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; padding: 0 8px 8px; display: flex; justify-content: space-between; align-items: center; }
 .arc-library .treeh .add { color: var(--muted); cursor: pointer; }
 .arc-library .treeh .add:hover { color: var(--text-2); }
-.arc-library .folder { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-radius: 8px; cursor: pointer; color: var(--text-2); font-size: 12.5px; transition: 0.14s; position: relative; }
+.arc-library .folder { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 8px; cursor: pointer; color: var(--text-2); font-size: 13px; transition: 0.14s; position: relative; }
 .arc-library .folder:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
 .arc-library .folder.on { background: var(--accent-soft); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
-.arc-library .folder .ficon { width: 25px; height: 25px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; transition: transform 0.14s var(--ease); }
+/* 25 -> 22: three pixels back to the name, and the icon still reads at a glance. */
+.arc-library .folder .ficon { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; flex-shrink: 0; transition: transform 0.14s var(--ease); }
 .arc-library .folder:hover .ficon { transform: scale(1.06); }
-.arc-library .folder .ficon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; }
-.arc-library .folder .fn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.arc-library .folder .fc { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--muted); transition: opacity 0.14s; }
+.arc-library .folder .ficon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+/* The name gets every spare pixel and carries the weight — it is what you read
+   to navigate. `flex: 1` so the count can't push it into an early ellipsis. */
+.arc-library .folder .fn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; letter-spacing: -0.005em; }
+.arc-library .folder.on .fn { font-weight: 600; }
+/* Tabular so counts line up down the column, and `flex: none` so a 3-digit count
+   never steals width from the name. */
+.arc-library .folder .fc { margin-left: auto; flex: none; font-family: var(--mono); font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--muted); transition: color 0.14s; }
+.arc-library .folder:hover .fc, .arc-library .folder.on .fc { color: var(--text-2); }
 .arc-library .folder .fmanage { display: none; margin-left: auto; flex: none; gap: 1px; align-items: center; }
 .arc-library .folder:hover .fmanage { display: flex; }
 .arc-library .folder:hover .fc { display: none; }
@@ -78,7 +92,10 @@
 .arc-library .tchev.open { transform: rotate(90deg); }
 .arc-library .tchev.leaf { visibility: hidden; cursor: default; }
 .arc-library .tchev svg { width: 9px; height: 9px; stroke: currentColor; fill: none; stroke-width: 2.4; }
-.arc-library .tchildren { margin-left: 17px; padding-left: 9px; border-left: 1px solid var(--line-2); }
+/* A child folder should be obviously a child. The old 1px --line-2 rule at this
+   indent was almost invisible against the rail, so nesting read as a flat list
+   with odd spacing. */
+.arc-library .tchildren { margin-left: 18px; padding-left: 10px; border-left: 1px solid var(--line-3, var(--line-2)); }
 .arc-library .newfolder { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border: 1px dashed var(--line-3); border-radius: 8px; color: var(--muted); font-size: 11.5px; cursor: pointer; margin-top: 10px; transition: 0.14s; }
 .arc-library .newfolder:hover { border-color: var(--accent-border); color: var(--text-2); background: var(--accent-soft); }
 .arc-library .newfolder svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
@@ -161,9 +178,16 @@
 .arc-library .athumb .risk { position: absolute; bottom: 8px; left: 8px; width: 18px; height: 18px; border-radius: 5px; background: var(--warn-soft); border: 1px solid var(--warn-border); display: grid; place-items: center; z-index: 2; }
 .arc-library .athumb .risk svg { position: static; width: 11px; height: 11px; stroke: var(--warn-text); fill: none; stroke-width: 2; }
 .arc-library .ainfo { padding: 9px 11px; }
-.arc-library .ainfo .an { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 7px; }
-.arc-library .ainfo .an .pdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.arc-library .ainfo .am { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* One hard-clipped line turned most names into "Before / after — storm r…" and
+   "Insurance-claim one-pa…" — you could not tell two assets apart without
+   opening them. Two lines fit nearly every real name; the dot stays on the
+   first line via float rather than flex, which can't wrap a clamped block. */
+.arc-library .ainfo .an { font-size: 12px; font-weight: 600; line-height: 1.35; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.arc-library .ainfo .an .pdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; float: left; margin: 5px 7px 0 0; }
+/* Fixed two-line box: the meta used to wrap to 1-3 lines depending on how many
+   chips an asset had, so cards in the same row ended up different heights and
+   the grid looked ragged. */
+.arc-library .ainfo .am { font-family: var(--mono); font-size: 9.5px; line-height: 1.45; color: var(--muted); margin-top: 5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 2.9em; align-content: flex-start; }
 .arc-library .ainfo .arcok { color: var(--ok-text); display: inline-flex; align-items: center; gap: 3px; }
 .arc-library .ainfo .unused { color: var(--warn-text); }
 
