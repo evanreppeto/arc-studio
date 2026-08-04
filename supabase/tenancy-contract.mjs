@@ -117,6 +117,14 @@ export const TENANCY_CONTRACT = {
   // Creative brand identity that constrains generation — distinct from
   // workspaces.logo_url, which is UI chrome. Two brands, two profiles.
   business_profiles: { category: "workspace", pending: GROUP_A },
+  // The named logo variants of that same profile, so they carry the same
+  // category and migrate in the same wave. Two brands disagreeing about their
+  // own wordmark is two brands being right, which is the test in the rule above.
+  // Created org-scoped to match business_profiles as it stands today; it gains
+  // workspace_id alongside it rather than ahead of it, because a logo set
+  // narrower than the profile it belongs to would strand rows no brand screen
+  // could reach.
+  brand_logos: { category: "workspace", pending: GROUP_A },
   media_assets: { category: "workspace", pending: GROUP_A },
   media_folders: { category: "workspace", pending: GROUP_A },
   arc_instances: "workspace",

@@ -5,10 +5,11 @@ import { useRef, useState, useTransition } from "react";
 import type { BrandProfileView } from "@/lib/brand-kit/profile-view";
 import type { BrandKnowledgeSyncSummary } from "@/lib/brand-knowledge/sync-summary";
 
-import { DEFAULT_BODY_FONT, DEFAULT_HEADING_FONT, resolveBrandFont } from "@/domain";
+import { DEFAULT_BODY_FONT, DEFAULT_HEADING_FONT, resolveBrandFont, type BrandLogo } from "@/domain";
 
 import { analyzeBrandWebsite, removeBrandLogo, resyncBrandSources, saveBrandLogo, updateBrandIdentity, updateBrandPalette, updateBrandTypography, uploadBrandDocuments, type BrandLogoResult, type BrandUploadResult, type BrandWebsiteAnalysis } from "../actions";
 import { EditIdentityModal } from "./edit-identity-modal";
+import { LogoSet } from "./logo-set";
 import { EditPaletteModal } from "./edit-palette-modal";
 import { EditTypographyModal } from "./edit-typography-modal";
 
@@ -44,6 +45,12 @@ export function BrandView({ view }: { view: BrandProfileView }) {
   const [editOpen, setEditOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteSaved, setPaletteSaved] = useState<null | "saved" | "not_persisted">(null);
+  // The logo set is held locally so an upload updates every tile without a full
+  // page round trip; the server actions still revalidate /brand, /studio and the
+  // shell so the rail's mirror logo follows.
+  const [logoSet, setLogoSet] = useState<BrandLogo[]>(view.logos);
+  const logoSetRef = useRef<HTMLDivElement>(null);
+  const logoCount = logoSet.length;
   const [typographyOpen, setTypographyOpen] = useState(false);
   const [typographySaved, setTypographySaved] = useState<null | "saved" | "not_persisted">(null);
   const [saved, setSaved] = useState(false);
@@ -79,25 +86,18 @@ export function BrandView({ view }: { view: BrandProfileView }) {
   // The workspace logo — one image, shared with the Settings control: it draws
   // in the nav rail AND is stamped on generated creative, so the preview here
   // reflects both.
-  // Two pickers, not one shared picker plus a "who opened it" ref: each control
-  // then carries its own origin, so the result reports itself in the right place
-  // without mutating state from inside JSX.
+  // One picker now: the per-role tiles in the logo set below own every other
+  // upload path, and this header control writes the `primary` variant through
+  // the same action so there is a single writer of the mirror column.
   const logoInput = useRef<HTMLInputElement>(null);
-  const cardLogoInput = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(identity.logoUrl);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
-  // WHERE the failure should be reported. The header button and the intake card
-  // share one action, and an error rendered only in the header is off-screen for
-  // someone who just dropped a file on the card further down the page.
-  const [logoErrorAt, setLogoErrorAt] = useState<"header" | "card">("header");
-  const [dragOverLogo, setDragOverLogo] = useState(false);
   const [, startLogo] = useTransition();
 
-  function runLogo(action: () => Promise<BrandLogoResult>, from: "header" | "card" = "header") {
+  function runLogo(action: () => Promise<BrandLogoResult>) {
     setLogoBusy(true);
     setLogoError(null);
-    setLogoErrorAt(from);
     startLogo(async () => {
       try {
         const result = await action();
@@ -111,39 +111,16 @@ export function BrandView({ view }: { view: BrandProfileView }) {
     });
   }
 
-  function onLogoPicked(chosen: File | null, event: React.ChangeEvent<HTMLInputElement>, from: "header" | "card") {
+  function onLogoPicked(chosen: File | null, event: React.ChangeEvent<HTMLInputElement>) {
     event.target.value = ""; // let the same file be re-picked after a remove
     if (!chosen) return;
     const formData = new FormData();
     formData.append("file", chosen);
-    runLogo(() => saveBrandLogo(formData), from);
+    runLogo(() => saveBrandLogo(formData));
   }
 
   function onLogoRemove() {
     runLogo(() => removeBrandLogo());
-  }
-
-  /**
-   * Drag-and-drop onto the logo card. Filters to images up front so dropping a
-   * PDF fails here with a readable message instead of reaching the action and
-   * coming back as a generic upload rejection — `uploadBrandingImage` accepts
-   * only the LOGO_ACCEPT types, and it still re-checks type and size server-side.
-   */
-  function onLogoDropped(event: React.DragEvent<HTMLButtonElement>) {
-    event.preventDefault();
-    setDragOverLogo(false);
-    if (logoBusy) return;
-    const dropped = Array.from(event.dataTransfer.files ?? []);
-    if (dropped.length === 0) return;
-    const image = dropped.find((file) => LOGO_ACCEPT.includes(file.type));
-    if (!image) {
-      setLogoErrorAt("card");
-      setLogoError("That file type isn't supported. Use a PNG, JPG, WebP, GIF or SVG.");
-      return;
-    }
-    const formData = new FormData();
-    formData.append("file", image);
-    runLogo(() => saveBrandLogo(formData), "card");
   }
 
   // Website analysis. Read-only: it fetches the page and shows what it found;
@@ -225,7 +202,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           </div>
         </div>
         <div className="bacts">
-          <input ref={logoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={(e) => onLogoPicked(e.target.files?.[0] ?? null, e, "header")} />
+          <input ref={logoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={(e) => onLogoPicked(e.target.files?.[0] ?? null, e)} />
           <button type="button" className="gbtn sm" onClick={() => logoInput.current?.click()} disabled={logoBusy}>
             <svg viewBox="0 0 24 24"><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3M8 9l4-4 4 4M12 5v10" /></svg>
             {logoBusy ? "Uploading…" : logoUrl ? "Replace logo" : "Add logo"}
@@ -234,7 +211,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           {logoUrl && !logoBusy && (
             <button type="button" className="gbtn sm" onClick={onLogoRemove}>Remove</button>
           )}
-          {logoError && logoErrorAt === "header" && <span className="blogoerr">{logoError}</span>}
+          {logoError && <span className="blogoerr">{logoError}</span>}
           {saved && <span className="bsaved">Saved ✓</span>}
           <button type="button" className="gbtn gold sm" onClick={() => setEditOpen(true)}><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg>Edit identity</button>
         </div>
@@ -299,25 +276,15 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             </button>
           </div>
           <div className="isrc">
-            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logo</div><div className="ds">Drawn in the sidebar and stamped on creative Arc makes</div></div></div>
-            {/* Same action as the "Add logo" button in the header — one logo, one
-                write path. This card advertised the capability as "Coming soon"
-                while `saveBrandLogo` was wired and working 400px above it, so an
-                operator reading this card concluded Arc could not use their logo. */}
-            <input ref={cardLogoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={(e) => onLogoPicked(e.target.files?.[0] ?? null, e, "card")} />
-            <button
-              type="button"
-              className={`ucta drop${logoBusy ? " is-busy" : ""}${dragOverLogo ? " is-over" : ""}`}
-              disabled={logoBusy}
-              onClick={() => cardLogoInput.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); setDragOverLogo(true); }}
-              onDragLeave={() => setDragOverLogo(false)}
-              onDrop={onLogoDropped}
-            >
-              <svg className="upi" viewBox="0 0 24 24"><path d="M12 16V6M8 10l4-4 4 4" /><path d="M5 16v3a1 1 0 001 1h12a1 1 0 001-1v-3" /></svg>
-              <span>{logoBusy ? <b>Uploading…</b> : logoUrl ? <><b>Replace logo</b> — drop or browse</> : <><b>Drop a logo</b> or browse</>}</span>
+            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logos</div><div className="ds">Drawn in the sidebar and stamped on creative Arc makes</div></div></div>
+            {/* The upload cards moved into the logo set below, where each variant
+                has its own tile. This points at it rather than offering a second,
+                role-less write path that would race the set for the same primary. */}
+            <button type="button" className="ucta" onClick={() => logoSetRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+              {logoCount > 0
+                ? <><b>{logoCount} logo{logoCount === 1 ? "" : "s"}</b> — manage them below</>
+                : <><b>Add your logos</b> — light, dark, icon and wordmark</>}
             </button>
-            {logoError && logoErrorAt === "card" && <span className="blogoerr">{logoError}</span>}
           </div>
           <div className="isrc">
             <div className="si"><span className="ic mu"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg></span><div><div className="nm">Write it yourself</div><div className="ds">Set your name, tagline, website and how Arc should sound</div></div></div>
@@ -334,6 +301,14 @@ export function BrandView({ view }: { view: BrandProfileView }) {
       <div className="bbody">
         {/* LEFT */}
         <div className="bcol">
+          {/* LOGOS */}
+          <div className="bsec" ref={logoSetRef}>
+            <div className="bsh"><h3>Logos</h3></div>
+            <div className="bsb">
+              <LogoSet logos={logoSet} onChange={setLogoSet} />
+            </div>
+          </div>
+
           {/* PALETTE */}
           <div className="bsec">
             <div className="bsh"><h3>Brand palette</h3><div className="sx">

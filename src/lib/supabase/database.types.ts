@@ -1928,6 +1928,57 @@ export type Database = {
         }
         Relationships: []
       }
+      brand_logos: {
+        Row: {
+          created_at: string
+          file_name: string | null
+          id: string
+          media_asset_id: string | null
+          org_id: string
+          role: string
+          updated_at: string
+          uploaded_by: string | null
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          media_asset_id?: string | null
+          org_id: string
+          role: string
+          updated_at?: string
+          uploaded_by?: string | null
+          url: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          media_asset_id?: string | null
+          org_id?: string
+          role?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_logos_media_asset_id_fkey"
+            columns: ["media_asset_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_logos_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_profiles: {
         Row: {
           accent: string

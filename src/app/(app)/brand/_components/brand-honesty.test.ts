@@ -82,15 +82,36 @@ describe("brand page tells the truth about what it can do", () => {
     expect(loader, "the renderer fell back to the old two-file heuristic").not.toMatch(/resolveFontRole/);
   });
 
-  it("routes every logo entry point through the one write path", () => {
-    // Three ways in — the header button, the card's browse button, and dropping a
-    // file on the card — and all of them must reach `saveBrandLogo`. The picker
-    // paths share `onLogoPicked`; the drop path is its own handler. A fourth
-    // uploader that wrote the logo somewhere else is the thing to prevent.
-    expect(BRAND_VIEW).toContain('onLogoPicked(e.target.files?.[0] ?? null, e, "header")');
-    expect(BRAND_VIEW).toContain('onLogoPicked(e.target.files?.[0] ?? null, e, "card")');
-    expect(BRAND_VIEW).toContain("onDrop={onLogoDropped}");
-    // Exactly two: the shared picker handler, and the drop handler.
-    expect([...BRAND_VIEW.matchAll(/saveBrandLogo\(formData\)/g)]).toHaveLength(2);
+  /**
+   * Originally: three entry points (header button, card browse, card drop) that
+   * all had to reach `saveBrandLogo`. The card is gone — per-role tiles in the
+   * logo set replaced it — so the shape of the guard changes, but its subject
+   * does not. What must never happen is a second writer of the logo.
+   *
+   * `business_profiles.logo_url` is now DERIVED from the variant set, so an
+   * action that set it directly would be overwritten by the next variant change
+   * with nothing on screen saying so. Every write goes through
+   * `@/lib/brand-kit/logos`, whose `syncPrimaryLogoMirror` owns the column.
+   */
+  it("keeps one writer of the logo, with the mirror column derived from the set", () => {
+    // The header's single-logo control still exists and still reaches the action.
+    expect(BRAND_VIEW).toContain("onLogoPicked(e.target.files?.[0] ?? null, e)");
+    expect(BRAND_VIEW).toMatch(/saveBrandLogo\(formData\)/);
+
+    // ...and the action writes a variant rather than the column.
+    expect(BRAND_ACTIONS).toMatch(/saveBrandLogoVariant\(/);
+    expect(BRAND_ACTIONS).toMatch(/removeBrandLogoVariant\(/);
+
+    // `saveProfileLogo` was the direct writer. Nothing may call it any more:
+    // that is precisely the second writer this guard exists to prevent.
+    const directWrites = [...BRAND_ACTIONS.matchAll(/saveProfileLogo\(/g)];
+    expect(directWrites, "brand/actions.ts writes logo_url directly — the set must own it").toHaveLength(0);
+  });
+
+  it("gives every logo role a tile, so no stored variant is unreachable", () => {
+    const logoSet = readFileSync(new URL("./logo-set.tsx", import.meta.url), "utf8");
+    // Driven off BRAND_LOGO_ROLES rather than a hand-written list — a sixth role
+    // added to the domain must not silently have nowhere to be uploaded.
+    expect(logoSet).toMatch(/BRAND_LOGO_ROLES\.map/);
   });
 });
