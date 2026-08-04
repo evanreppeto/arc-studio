@@ -37,7 +37,7 @@ describe("the control is wired, not decorative", () => {
   });
 
   it("renders a real menu and drives the table from it", () => {
-    expect(SOURCE).toMatch(/<DensityMenu value=\{density\} onChange=\{writeDensity\} \/>/);
+    expect(SOURCE).toMatch(/<DensityMenu value=\{density\} onChange=\{densityPref\.set\} \/>/);
     expect(SOURCE).toMatch(/data-density=\{density\}/);
   });
 
@@ -49,22 +49,12 @@ describe("the control is wired, not decorative", () => {
    *   useState + read in effect   a synchronous setState on mount, i.e. a
    *                               cascading render; eslint rejects it
    *
-   * `useSyncExternalStore` has a server snapshot for exactly this reason.
+   * The behaviour of the store itself lives in stored-preference.test.ts; this
+   * only pins that the board consumes it the right way.
    */
-  it("reads the preference without mismatching hydration or cascading a render", () => {
-    expect(SOURCE).toMatch(/useSyncExternalStore\(subscribeDensity, densitySnapshot, densityServerSnapshot\)/);
+  it("reads the preference through the store, not through state", () => {
+    expect(SOURCE).toMatch(/useSyncExternalStore\(\s*densityPref\.subscribe/);
     expect(SOURCE).not.toMatch(/setDensity/);
-  });
-
-  it("renders the default on the server, where there is no preference to read", () => {
-    expect(SOURCE).toMatch(/function densityServerSnapshot\(\): Density \{\s*return "comfortable";/);
-  });
-
-  it("survives a storage read or write that throws", () => {
-    // Private mode and quota errors are real, and they can throw on READ too —
-    // a display preference must not take the board down for either.
-    expect(SOURCE).toMatch(/densityCache = readStoredDensity\(window\.localStorage\.getItem\(DENSITY_KEY\)\);\s*\} catch/);
-    expect(SOURCE).toMatch(/window\.localStorage\.setItem\(DENSITY_KEY, next\);\s*\} catch/);
   });
 });
 

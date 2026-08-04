@@ -44,10 +44,11 @@ const BASELINE: Record<string, number> = {
   // — so the file is clean and this test's own staleness check is what removed
   // it. brand-honesty.test.ts holds the line from the other side.
   //
-  // Density ships for real now too (BSR-748) — it needed no backend, which is
-  // what made it worth building rather than leaving marked. Remaining here: no
-  // column-visibility state in the board, and no enrichment write path.
-  "crm/_components/crm-board.tsx": 2,
+  // Density (BSR-748) and column visibility (BSR-749) both ship for real now.
+  // Neither needed a backend, which is what made them worth building rather
+  // than leaving marked. The one left is "Ask Arc to enrich": there is no
+  // enrichment write path, and no UI can make that honest.
+  "crm/_components/crm-board.tsx": 1,
   // No template model anywhere in campaigns (`industry-templates` is personas).
   "campaigns/_components/campaigns-board.tsx": 1,
   // Iteration drafting exists via next_iteration opportunities, but this button
