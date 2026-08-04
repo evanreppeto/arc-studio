@@ -36,6 +36,7 @@
     "backfill:brain-dedup": "tsx scripts/backfill-brain-dedup.ts",
     "census:vocabulary": "tsx scripts/census-vocabulary.ts",
     "test": "vitest run",
+    "test:timing": "node scripts/check-test-timing.mjs",
     "test:e2e": "playwright test",
     "test:e2e:guardrails:prod": "E2E_BASE_URL=https://arc-studio.ai playwright test e2e/guardrails.spec.ts",
     "test:e2e:smoke:prod": "E2E_BASE_URL=https://arc-studio.ai playwright test e2e/prod-smoke.spec.ts",

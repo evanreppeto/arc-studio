@@ -20,10 +20,16 @@ import { describe, expect, it } from "vitest";
  * 1, 6 and 4 failures, a different set each time, and a fourth was green. Every
  * failure was `Test timed out in 5000ms`, never a wrong value.
  *
- * The slowest test observed across four green runs after the fix was 3179ms, so
- * the floor below is roughly four times the worst real case — high enough that
- * transform cost can never decide a result, low enough that a genuinely hung
- * test still reports rather than hanging the run.
+ * This file pins the BUDGET. It cannot pin the other side — the slowest actual
+ * test — because a test cannot measure the run it is part of. That number was
+ * hand-recorded once as 3179ms and never re-checked, and it was an
+ * underestimate: a full local run measures 6157ms, past the old 5s default that
+ * caused the flake (BSR-739).
+ *
+ * `scripts/check-test-timing.mjs` now measures it from the report every run
+ * writes, and CI runs it right after the suite so the numbers are a contended
+ * runner's rather than an idle laptop's. Change the floor here and that check
+ * re-reads it; they cannot drift apart.
  *
  * This is a contract test because the failure it prevents is invisible: drop the
  * timeouts and the suite still passes, most of the time, on an idle machine.
@@ -52,5 +58,33 @@ describe("the suite's timeouts leave room for on-demand module transform", () =>
     const hookTimeout = declaredMs("hookTimeout");
     expect(hookTimeout, "vitest.config.ts must set hookTimeout — see this file's header").not.toBeNull();
     expect(hookTimeout).toBeGreaterThanOrEqual(FLOOR_MS);
+  });
+});
+
+/**
+ * The budget is only half the contract. The check that watches the other half
+ * has to exist and has to be wired, or this file goes back to pinning a number
+ * against nothing.
+ */
+describe("the slowest real test is measured, not assumed", () => {
+  const CHECK = resolve(import.meta.dirname, "../../../scripts/check-test-timing.mjs");
+
+  it("ships the check that compares real timings against this budget", () => {
+    const source = readFileSync(CHECK, "utf8");
+    // It must read the SAME declaration this file asserts on, not a copy.
+    expect(source).toContain("testTimeout");
+    expect(source).toMatch(/WARN_AT|FAIL_AT/);
+  });
+
+  it("runs in CI, where contention is real", () => {
+    // Measured locally the margin looks far larger than CI's. A check nobody
+    // runs on the contended machine is the same blind spot in a new place.
+    const workflow = readFileSync(resolve(import.meta.dirname, "../../../.github/workflows/ci.yml"), "utf8");
+    expect(workflow).toContain("pnpm test:timing");
+  });
+
+  it("emits the report the check reads", () => {
+    expect(CONFIG).toMatch(/reporters:\s*\[/);
+    expect(CONFIG).toContain("test-results.json");
   });
 });
