@@ -235,7 +235,7 @@ html[data-motion="reduced"] *::after {
   --color-input: var(--input);
   --color-ring: var(--ring);
   --font-sans: var(--ff-body), "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--ff-display), var(--ff-body), "Segoe UI Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--ff-display, var(--ff-body)), "Segoe UI Variable", ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--ff-serif), "Fraunces", Georgia, "Times New Roman", serif;
   --font-mono: var(--ff-mono), "Cascadia Mono", ui-monospace, "Segoe UI Mono", monospace;
 }
