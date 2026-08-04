@@ -17,6 +17,7 @@ import { recordUsageEvent } from "@/lib/ai-usage/persistence";
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+import { listBrandLogos } from "@/lib/brand-kit/logos";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { promoteAssetToCampaign, resolveOrCreateCampaign } from "@/lib/campaigns/create";
 import { getMediaProviderWithKey, isMediaGenEnabled } from "@/lib/media";
@@ -187,12 +188,19 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
         subhead: (input.subhead ?? "").trim() || undefined,
         ctaLabel: (input.ctaLabel ?? "").trim() || undefined,
       };
-      const profile = await getBusinessProfile(ctx.orgId);
+      // The logo SET travels with the profile: the renderer picks the variant
+      // that suits the template's logo background, so a workspace whose only
+      // dark-on-transparent mark used to vanish into the scrim now gets its
+      // knocked-out version.
+      const [profile, brandLogos] = await Promise.all([
+        getBusinessProfile(ctx.orgId),
+        listBrandLogos(ctx.orgId, ctx.workspaceId),
+      ]);
       // The workspace's brand kit is the base; the operator's accent pick in Studio
       // overrides it so the rendered creative matches the canvas they approved by
       // eye. Ignored unless it's a well-formed hex, so a junk value can't corrupt
       // the render.
-      const baseBrand = toBrandTokens(profile);
+      const baseBrand = toBrandTokens(profile, brandLogos);
       const accentOverride = /^#[0-9a-f]{6}$/i.test((input.accent ?? "").trim()) ? input.accent!.trim() : null;
       const brand = accentOverride ? { ...baseBrand, accent: accentOverride } : baseBrand;
       const { bytes, contentType } = await renderCreative({ template, format, brand, copy, backgroundUrl, layoutOverride: input.layoutOverride });

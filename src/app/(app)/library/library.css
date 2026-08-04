@@ -338,3 +338,32 @@
 .arc-library .ostatgrp { display: inline-flex; align-items: center; gap: 14px; }
 .arc-library .ostatsep { width: 1px; height: 14px; background: var(--line-2); margin: 0 4px; }
 .arc-library .ostat:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+/* The selection checkbox used to ride the hover overlay's opacity, so the only
+   route into multi-select was invisible until you happened to hover a card —
+   and never on a touch screen. It now carries its own opacity: quiet but
+   present, full strength on hover, focus or selection. */
+.arc-library .ov .ck { opacity: 0.72; }
+.arc-library .acard:hover .ov .ck,
+.arc-library .ov .ck:focus-visible,
+.arc-library .ov .ck.on { opacity: 1; }
+/* The overlay itself stays hover-only, but must not hide the checkbox with it. */
+.arc-library .acard .ov:has(.ck) { opacity: 1; background: none; pointer-events: none; }
+.arc-library .acard:hover .ov, .arc-library .acard.sel .ov, .arc-library .lib.selmode .ov { background: linear-gradient(180deg, rgba(16, 16, 19, 0.55), transparent 38%, transparent 64%, rgba(16, 16, 19, 0.72)); }
+.arc-library .ov .ck, .arc-library .ov .qa { pointer-events: auto; }
+.arc-library .ov .qa { opacity: 0; transition: opacity 0.16s; }
+.arc-library .acard:hover .ov .qa { opacity: 1; }
+/* Buttons now, not spans — strip the UA chrome the span never had. */
+.arc-library .ov .ck { padding: 0; font: inherit; }
+.arc-library .ck-l { padding: 0; background: none; }
+
+/* Select all — states the capability instead of leaving it to be discovered. */
+.arc-library .selall { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); font: inherit; font-size: 11.5px; cursor: pointer; transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background 0.15s var(--ease); }
+.arc-library .selall:hover:not(:disabled) { border-color: var(--line-3); color: var(--text); }
+.arc-library .selall:disabled { opacity: 0.45; cursor: default; }
+.arc-library .selall.on { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
+.arc-library .selall-box { width: 15px; height: 15px; flex: 0 0 15px; border: 1.5px solid var(--line-3); border-radius: 4px; display: grid; place-items: center; transition: 0.12s; }
+.arc-library .selall-box.on, .arc-library .selall-box.some { background: var(--accent); border-color: var(--accent); }
+.arc-library .selall-box svg { width: 10px; height: 10px; stroke: #201808; fill: none; stroke-width: 3.2; }
+/* Indeterminate: some of what's shown is selected, but not all. */
+.arc-library .selall-dash { width: 8px; height: 2px; border-radius: 1px; background: #201808; }
