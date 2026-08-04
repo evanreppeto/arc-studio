@@ -31,11 +31,18 @@ export type InferenceSettings = {
 // Arc Pulse — Instant. Sonnet 5 supersedes 4.6 (near-Opus quality at Sonnet cost,
 // adaptive thinking on by default). Its tokenizer is ~30% heavier than 4.6, so the
 // budget rail is bumped to keep the same effective headroom per turn.
+//
+// maxTurns was 12, which an ordinary question reached: every Studio message
+// routes here (the composer sends no route, so `fast` is the default) in act or
+// draft mode, where reading the brand kit, the library and the brain costs a
+// turn each before Arc has written a word. On 2026-08-04 "put our logo on the
+// side of the car" spent all 12 and the operator got an error. 20 keeps the
+// tier below STANDARD; `maxBudgetUsd` is the rail that actually bounds spend.
 const FAST: InferenceSettings = {
   model: "claude-sonnet-5",
   fallbackModel: "claude-haiku-4-5",
   maxThinkingTokens: 2_000,
-  maxTurns: 12,
+  maxTurns: 20,
   maxBudgetUsd: 1,
 };
 
