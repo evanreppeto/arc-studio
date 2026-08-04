@@ -41,7 +41,23 @@
  * it: "does this text contain one" (the leak check) and "is this whole value
  * one" (a renderer deciding whether a value is worth showing).
  */
-export const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
+/**
+ * The shape itself, as a SOURCE string rather than only a compiled regex.
+ *
+ * Callers need different flags — `replace` wants `g`, `test` must not have it,
+ * because a global regex carries `lastIndex` and answers differently on
+ * successive calls. Sharing a compiled `g` regex across modules is therefore a
+ * bug waiting to happen, and sharing only the non-global one forces the next
+ * caller to write the pattern out again. That is exactly what happened: this
+ * file and `opportunities/prose.ts` each defined the shape, hours apart, for the
+ * same purpose (BSR-750).
+ *
+ * So the string is the shared thing, and each caller compiles what it needs.
+ */
+export const UUID_SOURCE = String.raw`\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`;
+
+/** For `test` and `match` — deliberately not global; see `UUID_SOURCE`. */
+export const UUID_PATTERN = new RegExp(UUID_SOURCE, "i");
 
 /**
  * Shapes that are identifiers in any codebase, and that a person writing UI copy
