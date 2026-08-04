@@ -9,8 +9,15 @@ import {
 } from "@/domain";
 import { linkConversationToCampaign } from "@/lib/arc-chat/persistence";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
-import { CampaignResolutionError, promoteAssetToCampaign, resolveOrCreateCampaign } from "@/lib/campaigns/create";
+import {
+  CampaignResolutionError,
+  createCampaignFromOpportunity,
+  promoteAssetToCampaign,
+  recordCampaignPackageSummary,
+  resolveOrCreateCampaign,
+} from "@/lib/campaigns/create";
 import { markOpportunityDrafted } from "@/lib/opportunities/persistence";
+import { getOpportunityForCampaign } from "@/lib/opportunities/read-model";
 
 /**
  * Lets Arc create an approval-gated campaign draft asset. If `campaign_id` is
@@ -95,20 +102,55 @@ export async function POST(request: Request) {
 
   try {
     let campaignId: string;
-    try {
-      ({ campaignId } = await resolveOrCreateCampaign({
+    // A NEW campaign drafted from a known opportunity goes through the same
+    // conversion the operator's "Create campaign" button uses (BSR-675/677).
+    //
+    // The bare shell path records none of the provenance: Arc drafted a full
+    // package from opportunity 7865e1f7 and the campaign landed with
+    // `source_signal: {}`, `objective: null`, `audience_summary: null`, while the
+    // opportunity stayed `pending` — so the next scan would re-propose work that
+    // was already drafted, and nothing tied the campaign to the signal that
+    // justified it. createCampaignFromOpportunity already writes all of that, and
+    // is what the operator path calls, so this reuses it rather than teaching a
+    // second path the same trick and letting the two drift.
+    const sourceOpportunity =
+      opportunityId && !campaignIdIn
+        ? await getOpportunityForCampaign(opportunityId, allowed.scope.orgId).catch(() => null)
+        : null;
+
+    if (sourceOpportunity?.campaignId) {
+      // Already converted — attach to the existing campaign instead of creating a
+      // duplicate, matching draftCampaignFromOpportunityAction's "existing" branch.
+      campaignId = sourceOpportunity.campaignId;
+    } else if (sourceOpportunity) {
+      ({ campaignId } = await createCampaignFromOpportunity({
         operator,
-        campaignId: campaignIdIn,
-        name: str(body.name),
-        persona: str(body.persona),
+        name: str(body.name) || sourceOpportunity.title,
+        persona: str(body.persona) || sourceOpportunity.persona,
         campaignTheme: str(body.campaign_theme),
         restorationFocus: str(body.restoration_focus),
+        objective: str(body.objective) || sourceOpportunity.recommendedAction,
+        audienceSummary: str(body.audience_summary) || null,
+        opportunity: sourceOpportunity,
         agentName: "Arc",
         tenant,
       }));
-    } catch (error) {
-      if (error instanceof CampaignResolutionError) return fail("rejected", error.message, 400);
-      throw error;
+    } else {
+      try {
+        ({ campaignId } = await resolveOrCreateCampaign({
+          operator,
+          campaignId: campaignIdIn,
+          name: str(body.name),
+          persona: str(body.persona),
+          campaignTheme: str(body.campaign_theme),
+          restorationFocus: str(body.restoration_focus),
+          agentName: "Arc",
+          tenant,
+        }));
+      } catch (error) {
+        if (error instanceof CampaignResolutionError) return fail("rejected", error.message, 400);
+        throw error;
+      }
     }
 
     const asset = await promoteAssetToCampaign({
@@ -123,6 +165,25 @@ export async function POST(request: Request) {
       agentName: "Arc",
       tenant,
     });
+
+    // Package-level summary, additive across the several calls a package takes
+    // to build. Best-effort: the asset is already created, so a summary write
+    // must not turn a successful 201 into a 502.
+    await recordCampaignPackageSummary({
+      campaignId,
+      handoffNote: body.handoff_note,
+      // The wire contract is snake_case like every other field here; the stored
+      // shape parseConsideredAudiences reads is camelCase. Mapped at the
+      // boundary — left unmapped, `size_estimate` parses to undefined and the
+      // number is silently dropped.
+      consideredAudiences: Array.isArray(body.considered_audiences)
+        ? body.considered_audiences.map((entry) => {
+            const e = (entry ?? {}) as Record<string, unknown>;
+            return { label: e.label, reason: e.reason, sizeEstimate: e.size_estimate ?? e.sizeEstimate };
+          })
+        : body.considered_audiences,
+      tenant,
+    }).catch(() => undefined);
 
     if (opportunityId) {
       // Link the source opportunity to this campaign and flip it to drafted.

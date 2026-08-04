@@ -15,6 +15,7 @@ import { ComingSoonToasts } from "./coming-soon";
 import { CommandPalette, type CommandItem } from "./command-palette";
 import { IdentifierLeakCheck } from "./identifier-leak-check";
 import { NavProgress } from "./nav-progress";
+import { RailRecents } from "./rail-recents";
 import { RoutePrewarm } from "./route-prewarm";
 import { WorkspaceSwitcher, type WorkspaceOption } from "./workspace-switcher";
 
@@ -66,11 +67,11 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
 
 const ADVANCED_NAV_GROUPS: NavGroup[] = [
   {
-    group: "See how it's going",
+    group: "Performance",
     items: [{ label: "Analytics", href: "/analytics", icon: IconAnalytics, hint: "Leads, jobs and revenue over time" }],
   },
   {
-    group: "What Arc knows",
+    group: "Knowledge",
     items: [
       { label: "Journeys", href: "/journeys", icon: IconJourneys, hint: "How each customer got to you" },
       { label: "Brain", href: "/brain", icon: IconBrain, hint: "What Arc knows about your business" },
@@ -78,7 +79,7 @@ const ADVANCED_NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    group: "Make & send",
+    group: "Create & send",
     items: [
       { label: "Studio", href: "/studio", icon: IconStudio, hint: "Design ads and images" },
       { label: "Library", href: "/library", icon: IconLibrary, hint: "Your photos, logos and files" },
@@ -419,36 +420,11 @@ export function AppShell({
                   New
                 </Link>
               </div>
-              {recentConversations.length > 0 ? (
-                <div className="rail-recents-list">
-                  {recentConversations.map((conversation) => {
-                    const open = conversation.id === openConversationId;
-                    return (
-                      <Link
-                        key={conversation.id}
-                        href={`/arc?c=${encodeURIComponent(conversation.id)}`}
-                        className={`rail-recent${open ? " on" : ""}${conversation.running ? " working" : ""}`}
-                        aria-current={open ? "page" : undefined}
-                        // Rail titles ellipsize at this width; the tooltip is the
-                        // only way to read a long one without opening the chat.
-                        title={conversation.title}
-                        prefetch={false}
-                        onClick={() => closeMobileNav(false)}
-                      >
-                        <span className="rail-recent-dot" aria-hidden="true" />
-                        <span className="rail-recent-title">{conversation.title}</span>
-                        {conversation.running ? (
-                          <span className="rail-recent-working">Working</span>
-                        ) : (
-                          <time>{conversation.when}</time>
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="rail-recents-empty">Start a chat to keep active work close by.</p>
-              )}
+              <RailRecents
+                conversations={recentConversations}
+                openConversationId={openConversationId}
+                onNavigate={() => closeMobileNav(false)}
+              />
             </section>
           </nav>
           {/* Pinned above the account control: when something is broken, the way
