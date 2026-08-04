@@ -238,6 +238,33 @@ export function detectColdLeadOpportunities(leads: ColdLeadInput[], config: Dete
 // live alert feed is injected at the I/O layer (see WeatherEventSource in
 // src/lib/opportunities/detector.ts) — this module only scores normalized input.
 
+/**
+ * Has this signal's own effective window already closed?
+ *
+ * Some opportunities describe a moment that ends on its own schedule — a weather
+ * alert is live until its `endsAt`, and after that it is not an opportunity, it
+ * is history. Expiry was enforced when opportunities were WRITTEN and never when
+ * they were READ, so a row created while an advisory was live stayed in the
+ * inbox forever: the live workspace was showing a Flood Advisory that ended
+ * three days earlier, at 55% confidence, under a headline reading "while
+ * advisories are live", with a working "Draft with Arc" button.
+ *
+ * Detection-time filtering cannot fix that on its own — it stops the row being
+ * re-created, but nothing retires the row already there. Every surface that
+ * treats an opportunity as OPEN has to ask this question too.
+ *
+ * Absent or unparseable `endsAt` means "no window" — an opportunity with nothing
+ * to expire (a cold lead, a competitor move) is never hidden by this. The one
+ * thing this must not do is hide work because a date failed to parse.
+ */
+export function hasSignalWindowClosed(endsAt: string | null | undefined, nowIso: string): boolean {
+  if (!endsAt) return false;
+  const ends = Date.parse(endsAt);
+  const now = Date.parse(nowIso);
+  if (Number.isNaN(ends) || Number.isNaN(now)) return false;
+  return ends < now;
+}
+
 /** Normalized alert severity, ordered advisory < watch < warning < emergency. */
 export type WeatherSeverity = "advisory" | "watch" | "warning" | "emergency";
 
@@ -475,16 +502,13 @@ export function detectWeatherEventOpportunities(
   events: WeatherEventInput[],
   config: WeatherDetectionConfig,
 ): OpportunityCandidate[] {
-  const now = Date.parse(config.now);
   const persona = typeof config.persona === "string" && config.persona.trim() ? config.persona.trim() : null;
   const allowed = new Set<WeatherCategory>(config.categories ?? DEFAULT_WEATHER_CATEGORIES);
   const out: OpportunityCandidate[] = [];
   for (const ev of events) {
     if (!ev.id) continue;
-    if (ev.endsAt) {
-      const ends = Date.parse(ev.endsAt);
-      if (!Number.isNaN(ends) && !Number.isNaN(now) && ends < now) continue; // expired alert
-    }
+    // Same question the inbox asks when it reads these back (BSR-727).
+    if (hasSignalWindowClosed(ev.endsAt, config.now)) continue;
     const severity: WeatherSeverity = WEATHER_SEVERITY_RANK[ev.severity] ? ev.severity : "advisory";
     const eventType = ev.eventType?.trim() || "Weather alert";
     // A real alert this workspace hasn't opted into — or one that drives no demand
