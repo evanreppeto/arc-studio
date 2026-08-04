@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, isPipelineObjectKey, personaAccent, statusTone } from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
@@ -192,6 +192,54 @@ const COLS: Record<string, Col[]> = {
   jobs: [{ k: "sel" }, { k: "primary", t: "Job" }, { k: "status", t: "Status" }, { k: "value", t: "Est. value" }, { k: "last", t: "Scheduled" }, { k: "act" }],
   outcomes: [{ k: "sel" }, { k: "primary", t: "Outcome" }, { k: "status", t: "Status" }, { k: "value", t: "Revenue" }, { k: "last", t: "Closed" }, { k: "act" }],
 };
+
+/** Columns that carry selection and row actions — hiding either breaks the row. */
+const LOCKED_COLS = ["sel", "act"];
+const HIDDEN_COLS_KEY = "arc:crm:hidden-columns";
+
+/**
+ * Hidden columns per object, kept at module scope behind useSyncExternalStore —
+ * the same shape support-view.tsx uses for browser-only context.
+ *
+ * Not useState + an effect, for two reasons. The snapshot must be a STABLE
+ * reference or the store re-renders forever on a fresh object each read; and
+ * the server snapshot has to be the empty one so the first paint matches the
+ * server's, with the stored preference applied after hydration. Reading
+ * localStorage during render instead would make the server emit one set of
+ * columns and the client another.
+ */
+type HiddenCols = Record<string, string[]>;
+const NO_HIDDEN_COLS: HiddenCols = {};
+let hiddenColsCache: HiddenCols | null = null;
+const hiddenColsListeners = new Set<() => void>();
+
+function readHiddenCols(): HiddenCols {
+  if (!hiddenColsCache) {
+    try {
+      const raw = window.localStorage.getItem(HIDDEN_COLS_KEY);
+      hiddenColsCache = raw ? (JSON.parse(raw) as HiddenCols) : NO_HIDDEN_COLS;
+    } catch {
+      // Malformed or unavailable storage means "no preference", never a crash.
+      hiddenColsCache = NO_HIDDEN_COLS;
+    }
+  }
+  return hiddenColsCache;
+}
+
+function writeHiddenCols(next: HiddenCols): void {
+  hiddenColsCache = next;
+  try {
+    window.localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify(next));
+  } catch {
+    // The preference is lost on reload rather than the toggle failing.
+  }
+  hiddenColsListeners.forEach((notify) => notify());
+}
+
+function subscribeHiddenCols(onChange: () => void): () => void {
+  hiddenColsListeners.add(onChange);
+  return () => hiddenColsListeners.delete(onChange);
+}
 
 function nx(v: string) {
   return v ? v : "—";
@@ -422,6 +470,32 @@ export function CrmBoard({
   const [ownerF, setOwnerF] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("recent");
 
+  // Which columns the operator has hidden, per object. Local to the browser on
+  // purpose: this is a view preference, not workspace configuration, and two
+  // people looking at the same CRM should not fight over each other's columns.
+  // `sel` and `act` are never hideable — they carry selection and row actions.
+  const hiddenCols = useSyncExternalStore(subscribeHiddenCols, readHiddenCols, () => NO_HIDDEN_COLS);
+  const [colsOpen, setColsOpen] = useState(false);
+  const colsRef = useRef<HTMLDivElement>(null);
+
+  // A menu you can only close by re-clicking its own button is a menu people
+  // leave open by accident.
+  useEffect(() => {
+    if (!colsOpen) return;
+    function onDocClick(event: MouseEvent) {
+      if (!colsRef.current?.contains(event.target as Node)) setColsOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setColsOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [colsOpen]);
+
   const active = objects.find((o) => o.key === activeKey) ?? objects[0];
   const localRows = localByKey[active.key] ?? [];
   const totalRows = localRows.length + (rowsByKey[active.key] ?? []).length;
@@ -435,6 +509,22 @@ export function CrmBoard({
     if (actIdx < 0) return [...base, ...extra];
     return [...base.slice(0, actIdx), ...extra, ...base.slice(actIdx)];
   })();
+  const hiddenForObject = hiddenCols[active.key] ?? [];
+  // What the table actually renders. Header and body both map over this, so a
+  // hidden column cannot leave a body cell behind and shift every row.
+  const visibleCols = cols.filter((c) => LOCKED_COLS.includes(c.k) || !hiddenForObject.includes(c.k));
+  const hideableCols = cols.filter((c) => !LOCKED_COLS.includes(c.k));
+
+  function toggleAllColsOn() {
+    writeHiddenCols({ ...hiddenCols, [active.key]: [] });
+  }
+
+  function toggleCol(key: string) {
+    const current = hiddenCols[active.key] ?? [];
+    const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+    writeHiddenCols({ ...hiddenCols, [active.key]: next });
+  }
+
   // o.count is the server's row count for the object; archived rows are soft-deleted
   // so they're netted out of the headline count and tab badges the same way they're
   // hidden from the list. Subtracting (rather than recomputing) keeps the count intact
@@ -823,12 +913,50 @@ export function CrmBoard({
         )}
         <span className="gspacer" />
         <SortMenu value={sortBy} onChange={setSortBy} />
-        <span className="iconf" title="Columns" data-soon="Column settings are coming soon">
-          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 4v16" /></svg>
-        </span>
-        <span className="iconf" title="Density" data-soon="Density settings are coming soon">
-          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
-        </span>
+        {/* Columns. The density control that used to sit beside this is gone
+            rather than wired: the app already HAS a working density setting
+            (Settings -> Appearance writes html[data-density], which resizes
+            .arc-app and therefore this table), so a second CRM-local one would
+            have been a competing concept, not a missing feature. */}
+        <div className="colsmenu" ref={colsRef}>
+          <button
+            type="button"
+            className={`iconf${hiddenForObject.length > 0 ? " on" : ""}`}
+            title={hiddenForObject.length > 0 ? `Columns — ${hiddenForObject.length} hidden` : "Columns"}
+            aria-haspopup="menu"
+            aria-expanded={colsOpen}
+            onClick={() => setColsOpen((o) => !o)}
+          >
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 4v16" /></svg>
+            {hiddenForObject.length > 0 && <span className="colsdot" aria-hidden="true" />}
+          </button>
+          {colsOpen && (
+            <div className="colspop" role="menu">
+              <div className="colshd">Columns shown</div>
+              {hideableCols.map((c) => {
+                const shown = !hiddenForObject.includes(c.k);
+                return (
+                  <button
+                    key={c.k}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={shown}
+                    className={`colsrow${shown ? " on" : ""}`}
+                    onClick={() => toggleCol(c.k)}
+                  >
+                    <span className="colsbox">{shown ? CHECK : null}</span>
+                    {c.k === "primary" ? active.nameHeader : c.t ?? c.k}
+                  </button>
+                );
+              })}
+              {hiddenForObject.length > 0 && (
+                <button type="button" className="colsreset" onClick={() => toggleAllColsOn()}>
+                  Show all
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className={`selbar${selected.size ? " show" : ""}${personaMenuOpen || taskMenuOpen || campaignMenuOpen ? " menuopen" : ""}`}>
@@ -897,7 +1025,6 @@ export function CrmBoard({
             </>
           )}
         </div>
-        <span className="sa" data-soon="Arc enrichment is coming soon"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-6.2-8.6" /><path d="M21 4v5h-5" /></svg>Ask Arc to enrich</span>
         <span className="clr" onClick={() => setSelected(new Set())}>Clear</span>
       </div>
 
@@ -905,7 +1032,7 @@ export function CrmBoard({
         <table className="dt">
           <thead>
             <tr>
-              {cols.map((c) => (
+              {visibleCols.map((c) => (
                 <th key={c.k} className={cellClass(c.k)}>
                   {c.k === "sel" ? (
                     <span
@@ -927,7 +1054,7 @@ export function CrmBoard({
           <tbody>
             {visible.length === 0 ? (
               <tr className="emptyrow">
-                <td colSpan={cols.length}>
+                <td colSpan={visibleCols.length}>
                   {totalRows === 0 ? (
                     // A brand-new workspace has no records at all, and every
                     // other screen stays empty until it does — so say where they
@@ -961,7 +1088,7 @@ export function CrmBoard({
                     if (!r.id.startsWith("local-")) window.location.href = recordHref(r);
                   }}
                 >
-                  {cols.map((c) => (
+                  {visibleCols.map((c) => (
                     <td key={c.k} className={cellClass(c.k)}>
                       {c.k === "sel" ? (
                         <span

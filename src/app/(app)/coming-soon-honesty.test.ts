@@ -37,22 +37,30 @@ const ARC_APP_CSS = readFileSync(join(APP_DIR, "arc-app.css"), "utf8");
  * capability already wired and the label lying? All of these are true today.
  */
 const BASELINE: Record<string, number> = {
-  // Audience rows — no audience model behind them.
-  "studio/_components/studio-view.tsx": 1,
-  // brand-view.tsx used to sit here with 2 marks (palette, typography). Both
-  // now have real write paths — `updateBrandPalette` and `updateBrandTypography`
-  // — so the file is clean and this test's own staleness check is what removed
-  // it. brand-honesty.test.ts holds the line from the other side.
-  // No column-visibility or density state in the board; no enrichment write path.
-  "crm/_components/crm-board.tsx": 3,
-  // No template model anywhere in campaigns (`industry-templates` is personas).
-  "campaigns/_components/campaigns-board.tsx": 1,
-  // Iteration drafting exists via next_iteration opportunities, but this button
-  // is not wired to it. Honest today; wiring it is the better fix when someone
-  // decides where it should land.
-  "analytics/_components/analytics-view.tsx": 1,
+  // Empty, and that is the assertion.
+  //
+  // Six controls lived here: CRM columns / density / Arc-enrichment, campaign
+  // templates, the analytics "Draft it" button, and Studio's three audio rows.
+  // Each was resolved the way this file's own rule demands — wired, or removed —
+  // never left as a placeholder that looks live:
+  //
+  //   wired   CRM columns      a real per-object visibility picker
+  //   wired   analytics        points at kind='next_iteration' opportunities,
+  //                            which Arc already detects and the inbox already
+  //                            calls "Repeat a winner"
+  //   removed CRM density      NOT unbuilt — a duplicate. Settings -> Appearance
+  //                            writes html[data-density], which resizes .arc-app
+  //                            and therefore this very table. Two density
+  //                            concepts is worse than one.
+  //   removed CRM enrichment   enrichment exists only as a connector-backed
+  //                            import provider; there is no per-record
+  //                            on-demand write path to call.
+  //   removed campaign templates  no template model anywhere.
+  //   removed studio audio     no audio generation, in Higgsfield or elsewhere.
+  //
+  // Adding an entry back is fine when something genuinely is unbuilt. Adding one
+  // because a control is easier to mark than to finish is the thing to refuse.
 };
-
 function tsxFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);

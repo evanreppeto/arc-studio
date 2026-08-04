@@ -917,15 +917,6 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   </div>
                 </div>
 
-                {mode === "video" && (
-                  <div className="psec">
-                    <h3 className="ph2">Audio <span className="tagv">Higgsfield · video</span></h3>
-                    {[["Voiceover", "Generate or dub a narration track", "Add →"], ["Music bed", "On-brand background track", "Add →"], ["Captions", "Auto-burned subtitles", "On"]].map(([an, ad, ax]) => (
-                      <div className="audrow" key={an} data-soon={`${an} is coming soon`}><span className="ai"><svg viewBox="0 0 24 24"><path d="M12 3v18M8 7v10M16 7v10M4 10v4M20 10v4" /></svg></span><div><div className="an">{an}</div><div className="ad">{ad}</div></div><span className="ax">{ax}</span></div>
-                    ))}
-                  </div>
-                )}
-
                 {/* Media provenance — the ONE guardrail this app can actually compute.
                     It reads the provenance tag of the background you picked (Item.p) plus
                     whether it resolves to a real stored asset (Item.url), so every line
