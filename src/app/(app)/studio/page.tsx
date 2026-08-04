@@ -27,10 +27,16 @@ function provFromSource(source: string): Item["p"] {
 
 /** media_assets → Studio source Item. Only image/video make usable backgrounds. */
 function toStudioItem(v: MediaAssetView): Item {
-  return { s: "", l: v.fileName, p: provFromSource(v.source), url: v.url };
+  return { s: "", l: v.fileName, p: provFromSource(v.source), url: v.url, id: v.id };
 }
 
-export default async function StudioPage() {
+export default async function StudioPage({
+  searchParams,
+}: {
+  /** `?asset=<media_assets uuid>` — Library's "Edit in Studio" deep link. */
+  searchParams: Promise<{ asset?: string }>;
+}) {
+  const { asset: initialAssetId } = await searchParams;
   // Correctly silent (BSR-546): (app)/layout.tsx is the auth boundary; a null
   // context here renders a coherent empty state, not a false claim about data.
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
@@ -103,6 +109,7 @@ export default async function StudioPage() {
       brandName={brandName}
       brandTokens={brandTokens}
       libraryItems={libraryItems}
+      initialAssetId={initialAssetId ?? null}
       live={live}
       campaigns={campaigns}
       mediaEnabled={mediaEnabled}
