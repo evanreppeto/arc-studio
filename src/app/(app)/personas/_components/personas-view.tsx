@@ -94,7 +94,14 @@ function buildOptimisticPersona(slug: string, v: NewPersonaInput): PersonaVM {
   };
 }
 
-export function PersonasView({ personas, initialSlug }: { personas: PersonaVM[]; initialSlug?: string }) {
+export function PersonasView({ personas, initialSlug, failed = null }: {
+  personas: PersonaVM[];
+  initialSlug?: string;
+  /** Why the persona read failed, or null. An empty roster is a claim about the
+   *  workspace; a failed read is the absence of one, and they must not look the
+   *  same (BSR-563 fixed exactly this for the performance numbers below). */
+  failed?: string | null;
+}) {
   const [view, setView] = useState<"roster" | "compare">("roster");
   const [segment, setSegment] = useState("all");
   const [q, setQ] = useState("");
@@ -230,13 +237,23 @@ export function PersonasView({ personas, initialSlug }: { personas: PersonaVM[];
   if (allPersonas.length === 0) {
     return (
       <div className="arc-personas">
-        <div className="empty">
-          <p>No personas yet. Personas are the playbooks that power your CRM, targeting, and campaigns — define your own for how your business sees its audience.</p>
-          <button type="button" className="gbtn" onClick={() => setNewOpen(true)} style={{ marginTop: 14 }}>
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-            Create your first persona
-          </button>
-        </div>
+        {/* A failed read is NOT an empty workspace. "No personas yet" plus
+            "create your first" is an onboarding claim, and showing it to
+            someone who has twelve personas and a broken query is the same
+            failure BSR-563 fixed for the numbers on this page. */}
+        {failed ? (
+          <div className="empty" role="status">
+            <p>{failed}</p>
+          </div>
+        ) : (
+          <div className="empty">
+            <p>No personas yet. Personas are the playbooks that power your CRM, targeting, and campaigns — define your own for how your business actually sells.</p>
+            <button type="button" className="gbtn" onClick={() => setNewOpen(true)} style={{ marginTop: 14 }}>
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+              Create your first persona
+            </button>
+          </div>
+        )}
         <NewPersonaModal
           key={newOpen ? "open" : "closed"}
           open={newOpen}

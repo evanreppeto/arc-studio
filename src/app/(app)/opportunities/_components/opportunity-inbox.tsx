@@ -186,6 +186,7 @@ export function OpportunityInbox({
   personaOptions,
   selectedId,
   scanStatus,
+  failed = null,
 }: {
   opps: OpportunityVM[];
   /** The org's own personas for the draft-campaign picker. */
@@ -194,6 +195,9 @@ export function OpportunityInbox({
   selectedId?: string;
   /** What Arc's last background scan did — null when there is no history. */
   scanStatus?: ScanStatusLine | null;
+  /** Why the opportunity read failed, or null. An empty inbox and a broken one
+   *  are opposite messages; this is what tells them apart. */
+  failed?: string | null;
 }) {
   // Selection is held by id, not list index: filtering, sorting and triage all
   // reorder the list, and an index would silently point at a different card.
@@ -344,6 +348,15 @@ export function OpportunityInbox({
 
   return (
     <div className="arc-opps">
+      {/* A read that FAILED must not read as a quiet week. The inbox is Arc's
+          proactive surface, so an empty one is a claim ("nothing for you") and
+          a broken one is the absence of a claim — rendering them identically is
+          how an outage looks like a working product (BSR-544 / BSR-563). */}
+      {failed && (
+        <div className="opp-failed" role="status">
+          {failed}
+        </div>
+      )}
       <aside className="olist">
         <div className="olisthd">
           <span className="h">OPEN OPPORTUNITIES</span>

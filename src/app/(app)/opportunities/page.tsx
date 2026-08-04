@@ -1,7 +1,7 @@
 import { buildCampaignSeedFromOpportunity, humanizePersonaLabel, definitionText,} from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
-import { crmRecordHref, listOpenOpportunities, type OpportunityRecord } from "@/lib/opportunities/read-model";
+import { crmRecordHref, readOpenOpportunities, type OpportunityRecord } from "@/lib/opportunities/read-model";
 import { getLastScanStatus } from "@/lib/opportunities/scan-status";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
@@ -213,8 +213,13 @@ export default async function OpportunitiesPage({
   searchParams: Promise<{ selected?: string }>;
 }) {
   const ctx = await getCurrentWorkspaceContext();
-  const [records, storedPersonaOptions, params, scanStatus] = await Promise.all([
-    listOpenOpportunities(undefined, ctx.orgId).catch(() => [] as OpportunityRecord[]),
+  const [opportunityRead, storedPersonaOptions, params, scanStatus] = await Promise.all([
+    // The outer catch stays as a backstop, but it no longer HIDES the failure:
+    // readOpenOpportunities reports it and hands back a message for the screen.
+    readOpenOpportunities(undefined, ctx.orgId).catch(() => ({
+      records: [] as OpportunityRecord[],
+      failed: "We couldn't load your opportunities. Nothing was changed; refresh to try again.",
+    })),
     // Correctly silent (BSR-546): picker options, as on /campaigns.
     getOrgPersonaOptions(ctx.orgId).catch(() => []),
     searchParams,
@@ -229,11 +234,12 @@ export default async function OpportunitiesPage({
     : isDemoDataEnabled()
       ? demoPersonaOptions
       : [];
-  const opps = records.map((record) => toVM(record, personaOptions.map((persona) => persona.key)));
+  const opps = opportunityRead.records.map((record) => toVM(record, personaOptions.map((persona) => persona.key)));
 
   return (
     <OpportunityInbox
       opps={opps}
+      failed={opportunityRead.failed}
       personaOptions={personaOptions}
       selectedId={params.selected}
       scanStatus={scanStatusLine(scanStatus)}

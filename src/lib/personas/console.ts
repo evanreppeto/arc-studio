@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import {
   DEMO_PERSONAS,
@@ -93,7 +94,25 @@ function mapRow(row: PersonaRow): Persona {
  * isn't configured or the org has none yet, so the console is never empty.
  */
 export async function listPersonas(): Promise<Persona[]> {
-  if (!isSupabaseAdminConfigured()) return isDemoDataEnabled() ? DEMO_PERSONAS : [];
+  return (await readPersonas()).personas;
+}
+
+/**
+ * As `listPersonas`, but says whether the read actually succeeded.
+ *
+ * The bare `catch` this replaces turned an RLS denial or a timeout into an empty
+ * list, and /personas rendered that as "no personas yet" — a confident claim
+ * about a workspace we had failed to ask. That is the identical failure the
+ * SAME page already guards against for its attributed-performance numbers
+ * (BSR-563, which returns `failed` precisely so a broken query cannot read as
+ * "nobody converted"). The list underneath it kept the bug the numbers lost.
+ *
+ * Demo data is still returned on failure when the offline preview is on: there
+ * it is illustrative content, not a claim about a real workspace.
+ */
+export async function readPersonas(): Promise<{ personas: Persona[]; failed: string | null }> {
+  // Not configured is an ANSWER, not an outage (BSR-546).
+  if (!isSupabaseAdminConfigured()) return { personas: isDemoDataEnabled() ? DEMO_PERSONAS : [], failed: null };
   try {
     const orgId = await getCurrentOrgId();
     // `personas` isn't in the generated types yet — use an untyped client.
@@ -101,12 +120,14 @@ export async function listPersonas(): Promise<Persona[]> {
     const { data, error } = await supabase.from("personas").select(COLUMNS).eq("org_id", orgId).eq("is_active", true).order("score", { ascending: false });
     if (error) throw error;
     if (!data || data.length === 0) {
-      if (isDemoDataEnabled()) return DEMO_PERSONAS;
-      return [];
+      if (isDemoDataEnabled()) return { personas: DEMO_PERSONAS, failed: null };
+      return { personas: [], failed: null };
     }
-    return (data as PersonaRow[]).map(mapRow);
-  } catch {
-    return isDemoDataEnabled() ? DEMO_PERSONAS : [];
+    return { personas: (data as PersonaRow[]).map(mapRow), failed: null };
+  } catch (error) {
+    reportDegraded(error, { scope: "personas.readPersonas", surface: "primary" });
+    if (isDemoDataEnabled()) return { personas: DEMO_PERSONAS, failed: null };
+    return { personas: [], failed: "We couldn't load your personas. Nothing was changed; refresh to try again." };
   }
 }
 
