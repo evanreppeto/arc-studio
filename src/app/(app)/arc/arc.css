@@ -1797,6 +1797,10 @@
 .arc-work-activity > div.is-done > svg { color: var(--ok); }
 .arc-work-activity > div.is-running > svg { color: var(--accent); animation: arc-spin 1s linear infinite; }
 .arc-work-activity > div.is-error > svg { color: var(--priority); }
+/* Recovered, not broken. Red is reserved for something the operator still has to
+   act on; a call Arc retried and got right is finished work that took a detour,
+   so it reads in the warning tone rather than the destructive one. */
+.arc-work-activity > div.is-retried > svg { color: var(--warn); }
 .arc-work-recovery { margin: 0; border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px; }
 .arc-work-recovery > div:first-child { display: flex; align-items: flex-start; gap: 8px; color: var(--red-text); }
 .arc-work-recovery > div:first-child > span { display: flex; flex-direction: column; gap: 2px; }

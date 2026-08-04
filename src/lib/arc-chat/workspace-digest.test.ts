@@ -123,9 +123,27 @@ describe("buildArcWorkspaceRuns", () => {
     // prompt asks Arc to redo work that already succeeded — on a run that had
     // just composited a creative, so the retry risked a duplicate asset.
     expect(runs[0]!.state).toBe("complete");
-    // The rows stay honest: those calls did error, and seeing the retry is the
-    // reason run history exists.
-    expect(runs[0]!.rows.filter((row) => row.status === "error")).toHaveLength(2);
+    // The rows stay honest without staying red: those calls did error, and Arc
+    // got past them. `error` would keep the run reading "Completed with
+    // limitations · 19/22"; `done` would hide that Arc had to go around.
+    expect(runs[0]!.rows.filter((row) => row.status === "retried")).toHaveLength(2);
+    expect(runs[0]!.rows.filter((row) => row.status === "error")).toHaveLength(0);
+  });
+
+  it("keeps an error red when that tool never recovered", () => {
+    const runs = buildArcWorkspaceRuns([
+      message("m1", "operator", { body: "Go" }),
+      message("m2", "arc", {
+        status: "complete",
+        toolCalls: [
+          { name: "mcp__arc__emit_card", status: "error", output: "boom" },
+          { name: "mcp__arc__cite_sources", status: "error", output: "boom" },
+          { name: "mcp__arc__cite_sources", status: "complete", output: "Cited 3 source(s)." },
+        ],
+      }),
+    ]);
+
+    expect(runs[0]!.rows.map((row) => row.status)).toEqual(["error", "retried", "done"]);
   });
 
   it("still condemns a run when only SOME of a tool's retries succeeded", () => {

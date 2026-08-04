@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { type ParsedCampaignDraft, type ViralityScore, channelForAssetType, deriveCampaignTheme, normalizeCampaignAssetType, normalizeRestorationFocus, resolveCampaignCta } from "@/domain";
+import { type ParsedCampaignDraft, type ViralityScore, channelForAssetType, deriveCampaignTheme, normalizeCampaignAssetType, normalizeHandoffNote, normalizeRestorationFocus, parseConsideredAudiences, resolveCampaignCta } from "@/domain";
 
 import { getSupabaseAdminClient, type TypedSupabaseClient } from "../supabase/server";
 import { type AgentTaskTenantFields } from "../agent-tasks/scope";
@@ -343,6 +343,56 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
   // round-trips into every Arc draft-asset / campaign-create call.
   deferAfterResponse(() => mirrorCampaignToBrain(client, campaignId, input.tenant));
   return { campaignId };
+}
+
+export type CampaignPackageSummaryInput = {
+  campaignId: string;
+  /** Sales/partner handoff note — the "what a human needs to know" half of the package. */
+  handoffNote?: unknown;
+  /** Audiences weighed and set aside, each with the reason it lost. */
+  consideredAudiences?: unknown;
+  client?: SupabaseClient;
+  tenant?: AgentTaskTenantFields;
+};
+
+/**
+ * Record the package-level summary a campaign accumulates as it is drafted
+ * (BSR-677).
+ *
+ * `handoff_note` and `considered_audiences` are named parts of the Campaign
+ * Package Builder and are both rendered on the campaign detail page — and until
+ * now nothing on any path wrote either, so the UI branch for considered
+ * audiences had never once had data. Arc produces both while drafting; they were
+ * simply spoken in chat and dropped.
+ *
+ * Validated through the SAME domain helpers the read model parses with, so what
+ * is written is exactly what the reader accepts rather than a second, looser
+ * shape that renders as nothing.
+ *
+ * Additive: a field absent from the input is left alone, because the pieces of a
+ * package arrive across several calls and a later asset must not blank the
+ * handoff note an earlier one recorded.
+ */
+export async function recordCampaignPackageSummary(input: CampaignPackageSummaryInput): Promise<void> {
+  const update: Record<string, unknown> = {};
+
+  if (input.handoffNote !== undefined) {
+    const note = normalizeHandoffNote(input.handoffNote);
+    if (note) update.handoff_note = note;
+  }
+  if (input.consideredAudiences !== undefined) {
+    const audiences = parseConsideredAudiences(input.consideredAudiences);
+    // Only write a list that survived parsing. An empty result means the input
+    // was malformed, and overwriting a real list with [] would lose more than it
+    // records.
+    if (audiences.length) update.considered_audiences = audiences;
+  }
+  if (Object.keys(update).length === 0) return;
+
+  const client = input.client ?? getSupabaseAdminClient();
+  let query = client.from("campaigns").update(update as never).eq("id", input.campaignId);
+  if (input.tenant?.org_id) query = query.eq("org_id", input.tenant.org_id);
+  await query;
 }
 
 /**

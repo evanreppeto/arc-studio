@@ -1031,9 +1031,9 @@ export function ArcWorkPanel({
                                 <div>
                                   <b>{row.label}</b>
                                   {row.detail ? <small>{row.detail}</small> : null}
-                                  <span className="sr-only">{row.status === "done" ? "Complete" : row.status === "running" ? "In progress" : row.status === "error" ? "Error" : "Queued"}</span>
+                                  <span className="sr-only">{row.status === "done" ? "Complete" : row.status === "retried" ? "Failed, then succeeded on retry" : row.status === "running" ? "In progress" : row.status === "error" ? "Error" : "Queued"}</span>
                                 </div>
-                                {row.status === "done" ? <Check size={13} /> : row.status === "running" ? <LoaderCircle size={14} /> : row.status === "error" ? <X size={13} /> : <Circle size={9} />}
+                                {row.status === "done" ? <Check size={13} /> : row.status === "retried" ? <RotateCcw size={13} /> : row.status === "running" ? <LoaderCircle size={14} /> : row.status === "error" ? <X size={13} /> : <Circle size={9} />}
                               </div>
                             ))}
                           </div>
