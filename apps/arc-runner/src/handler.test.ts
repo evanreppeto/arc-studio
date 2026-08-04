@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ArcClient } from "./arc-client";
 import type { Config } from "./config";
 import { runArcCampaignTask, runArcOpportunityScan, runArcTurn } from "./arc";
-import { handleCampaignTask, handleChatMessage, handleOpportunityScan } from "./handler";
+import { handleCampaignTask, handleChatMessage, handleOpportunityScan, scanCompletionSummary } from "./handler";
 
 vi.mock("./arc", () => ({
   runArcTurn: vi.fn(async () => ({
@@ -28,11 +28,13 @@ vi.mock("./arc", () => ({
     toolCalls: [],
   })),
   runArcOpportunityScan: vi.fn(async () => ({
+    body: "Filed one dormant-company opportunity.",
     actions: [{ kind: "opportunity", title: "Dormant company", rows: [], flags: [] }],
     suggestions: [],
     sources: [],
     questions: [],
     memory: [],
+    toolCalls: [{ name: "list_opportunities" }],
     usage: { model: "claude", inputTokens: 10, outputTokens: 20, detail: null },
   })),
 }));
@@ -361,7 +363,74 @@ describe("handleOpportunityScan", () => {
 
     expect(fakeClient.apiPost).toHaveBeenCalledWith(
       "/api/v1/arc/tasks/scan-2/block",
-      expect.objectContaining({ reason: expect.stringContaining("opportunity scan") }),
+      // The error itself, not "check the runner logs" — that instruction is what
+      // sent a diagnosis to Cloud Logging for an hour on 2026-08-04.
+      expect.objectContaining({ reason: expect.stringContaining("boom") }),
     );
+  });
+
+  /**
+   * The zero-card scan. Arc read everything, proposed nothing, and explained
+   * itself in prose the runner then dropped on the floor — leaving a scan that
+   * worked perfectly indistinguishable from one that crashed.
+   */
+  it("records Arc's reason when it proposes nothing", async () => {
+    const fakeClient = client();
+    vi.mocked(runArcOpportunityScan).mockResolvedValueOnce({
+      body: "Every gap I can see is already open in the inbox, and the five I raised this week were dismissed.",
+      actions: [],
+      suggestions: [],
+      sources: [],
+      questions: [],
+      memory: [],
+      toolCalls: [{ name: "list_opportunities" }, { name: "search_companies" }],
+      usage: { model: "claude", inputTokens: 10, outputTokens: 20, detail: null },
+    } as never);
+
+    await handleOpportunityScan(fakeClient, {} as Config, {
+      type: "arc_opportunity_scan",
+      agentTaskId: "scan-3",
+      message: "Survey the CRM and propose opportunities.",
+      operator: "Scheduled scan",
+    });
+
+    const [, payload] = vi
+      .mocked(fakeClient.apiPost)
+      .mock.calls.find(([path]) => path === "/api/v1/arc/tasks/scan-3/complete") as [string, Record<string, unknown>];
+
+    expect(payload.summary).toContain("proposed 0 opportunity(ies)");
+    expect(payload.summary).toContain("already open in the inbox");
+    expect(payload.outputs).toMatchObject({
+      actions: [],
+      reply: expect.stringContaining("dismissed"),
+      // What it looked at — how you tell a considered "nothing new" from a
+      // scan that barely read anything.
+      toolCalls: [{ name: "list_opportunities" }, { name: "search_companies" }],
+    });
+  });
+});
+
+describe("scanCompletionSummary", () => {
+  it("stays a plain count when cards were proposed", () => {
+    expect(scanCompletionSummary(3, "some prose")).toBe("Opportunity scan complete — proposed 3 opportunity(ies).");
+  });
+
+  it("carries Arc's reason when nothing was proposed", () => {
+    expect(scanCompletionSummary(0, "  Nothing new —\n  the inbox already covers it. ")).toBe(
+      "Opportunity scan complete — proposed 0 opportunity(ies). Arc's reason: Nothing new — the inbox already covers it.",
+    );
+  });
+
+  // Proposed nothing AND said nothing is a different problem from a considered
+  // "nothing to add", and the record has to be able to tell them apart.
+  it("says so when Arc proposed nothing and explained nothing", () => {
+    expect(scanCompletionSummary(0, "")).toBe("Opportunity scan complete — proposed 0 opportunity(ies). Arc gave no reason.");
+    expect(scanCompletionSummary(0, null)).toContain("gave no reason");
+  });
+
+  it("clips a long reason, leaving the full text to the outputs", () => {
+    const summary = scanCompletionSummary(0, "x".repeat(900));
+    expect(summary.length).toBeLessThan(500);
+    expect(summary.endsWith("…")).toBe(true);
   });
 });
