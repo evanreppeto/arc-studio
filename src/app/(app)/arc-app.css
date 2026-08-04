@@ -2553,3 +2553,9 @@
 .arc-app .arc-grid .pnmlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 /* Was a <span onClick>. Same look, now tabbable and Enter-activated. */
 .arc-app .selbar .clr { border: 0; background: none; font: inherit; cursor: pointer; }
+
+/* "Review all N" on the campaigns board footer, beside the count it opens. The
+   queue itself is styled in campaign.css and portals into the shell, so the
+   only thing needed here is the button. */
+.arc-app .arc-grid .gfoot .gqueue { margin-left: auto; height: 30px; font-size: 11.5px; }
+.arc-app .arc-grid .gfoot .gqueue svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }

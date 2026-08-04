@@ -6,6 +6,7 @@ import { isAllowedPersona } from "@/domain";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { createCampaignShell } from "@/lib/campaigns/create";
+import { getWorkspaceReviewQueue, type ReviewQueueEntry } from "@/lib/campaigns/read-model";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -55,4 +56,25 @@ export async function createCampaign(input: NewCampaignInput): Promise<CreateCam
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not create the campaign." };
   }
+}
+
+export type LoadReviewQueueResult =
+  | { ok: true; entries: ReviewQueueEntry[] }
+  | { ok: false; error: string };
+
+/**
+ * Everything on the operator's desk, across every campaign in the workspace.
+ *
+ * Loaded on demand rather than with the board. The queue needs two tables the
+ * list read does not touch — the recommendations and the findings — and the
+ * campaigns page is the most-visited screen in the app. Paying for a review
+ * nobody asked to see, on every visit, to save one click when they do, is the
+ * wrong trade.
+ */
+export async function loadReviewQueueAction(): Promise<LoadReviewQueueResult> {
+  await requireOperator();
+  const ctx = await getCurrentWorkspaceContext();
+  const queue = await getWorkspaceReviewQueue(undefined, "Arc", ctx.orgId, ctx.workspaceId);
+  if (queue.status !== "live") return { ok: false, error: queue.message };
+  return { ok: true, entries: queue.entries };
 }

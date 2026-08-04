@@ -657,6 +657,120 @@ export async function getArcAssetStatuses(
   }
 }
 
+/**
+ * Every deliverable in the workspace still waiting on a decision, wherever it
+ * lives (BSR-702 follow-on).
+ *
+ * The campaign list already builds all of this — it fetches the campaigns, the
+ * assets and the approvals, and runs them through `buildWorkspaceAssets`. What
+ * it throws away is the review: `approval_recommendations` and
+ * `guardrail_findings` are only read on the detail path, so a list item knows a
+ * deliverable is undecided but not what the reviewer said about it. A queue
+ * that could not show the review would be a list of titles.
+ *
+ * `assetDecisionState(...) === "pending"` is the SAME predicate the board's
+ * "N deliverables undecided" is counted with, on purpose. The count and the
+ * queue behind it are one claim, and this file already carries the scars of
+ * what happens when two surfaces answer that question separately (BSR-726).
+ */
+export type ReviewQueueEntry = {
+  campaignId: string;
+  campaignName: string;
+  asset: CampaignWorkspaceAsset;
+};
+
+export type WorkspaceReviewQueue =
+  | { status: "live"; entries: ReviewQueueEntry[] }
+  | { status: "unavailable"; message: string };
+
+export async function getWorkspaceReviewQueue(
+  client?: SupabaseClient,
+  agentName = "Arc",
+  orgId?: string,
+  workspaceId?: string | null,
+): Promise<WorkspaceReviewQueue> {
+  if (!client && !isSupabaseAdminConfigured()) {
+    return isDemoDataEnabled()
+      ? { status: "live", entries: buildDemoReviewQueue(agentName) }
+      : { status: "live", entries: [] };
+  }
+
+  try {
+    const supabase = client ?? getSupabaseAdminClient();
+    const { data, error } = await applyCampaignScope(
+      supabase.from("campaigns").select(CAMPAIGN_SELECT),
+      orgId,
+      workspaceId,
+    )
+      .order("updated_at", { ascending: false })
+      .limit(100);
+    assertSupabaseResult("campaigns", error);
+
+    const campaigns = (data ?? []) as CampaignRow[];
+    const campaignIds = campaigns.map((campaign) => campaign.id);
+    if (campaignIds.length === 0) return { status: "live", entries: [] };
+
+    const [assets, approvals] = await Promise.all([
+      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at", orgId, workspaceId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at", orgId, workspaceId),
+    ]);
+    const approvalIds = approvals.map((approval) => approval.id);
+    const assetIds = assets.map((asset) => asset.id);
+
+    // The review, which the list read does not fetch. Both tolerate failure the
+    // same way the detail read does: a missing critique must not take the queue
+    // down with it — an un-reviewed deliverable still needs deciding.
+    const [outputs, recommendations, findings] = await Promise.all([
+      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "approval_item_id", approvalIds, "created_at", orgId).catch(() => []),
+      selectIn<ApprovalRecommendationRow>(supabase, "approval_recommendations", RECOMMENDATION_SELECT, "approval_item_id", approvalIds, "created_at", orgId, workspaceId)
+        .then(groupByApprovalItem)
+        .catch(() => new Map<string, ApprovalRecommendationRow[]>()),
+      selectIn<GuardrailFindingRow>(supabase, "guardrail_findings", FINDING_SELECT, "campaign_asset_id", assetIds, "created_at", orgId, workspaceId)
+        .then(groupFindingsByAsset)
+        .catch(() => new Map<string, CampaignAssetFinding[]>()),
+    ]);
+
+    const entries: ReviewQueueEntry[] = [];
+    for (const campaign of campaigns) {
+      const campaignApprovals = approvals.filter((approval) => approval.campaign_id === campaign.id);
+      const campaignAssets = buildWorkspaceAssets(
+        assets.filter((asset) => asset.campaign_id === campaign.id),
+        campaignApprovals,
+        outputs.filter((output) => output.approval_item_id && campaignApprovals.some((approval) => approval.id === output.approval_item_id)),
+        agentName,
+        recommendations,
+        findings,
+      );
+      for (const asset of campaignAssets) {
+        if (assetDecisionState(asset) !== "pending") continue;
+        entries.push({ campaignId: campaign.id, campaignName: cleanCampaignName(campaign.name), asset });
+      }
+    }
+    return { status: "live", entries };
+  } catch (error) {
+    // Said out loud rather than returned empty: "nothing is waiting on you" and
+    // "we could not find out" are different answers, and only one of them means
+    // the reviewer can stop.
+    return {
+      status: "unavailable",
+      message: error instanceof Error ? error.message : "Could not load what is waiting on you.",
+    };
+  }
+}
+
+/** The same queue over the demo campaigns, so the preview can exercise it. */
+function buildDemoReviewQueue(agentName: string): ReviewQueueEntry[] {
+  const entries: ReviewQueueEntry[] = [];
+  for (const campaign of demoCampaigns(agentName)) {
+    const detail = buildDemoCampaignWorkspaceDetail(campaign, agentName);
+    for (const asset of detail.assets) {
+      if (assetDecisionState(asset) !== "pending") continue;
+      entries.push({ campaignId: campaign.id, campaignName: campaign.name, asset });
+    }
+  }
+  return entries;
+}
+
 export async function getCampaignWorkspaceList(client?: SupabaseClient, agentName = "Arc", orgId?: string, workspaceId?: string | null): Promise<CampaignWorkspaceList> {
   if (!client && !isSupabaseAdminConfigured()) {
     // Local preview has no database. When the demo flag is on, render a realistic

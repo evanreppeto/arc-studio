@@ -772,7 +772,10 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   const cleanAssets = assets.filter((a) => isActionable(a.status) && isCleanForBulkApproval(a));
   // Everything still awaiting a decision, in the order the page lists it, so the
   // queue walks the campaign the same way reading it top to bottom would.
-  const queueAssets = grouped.flatMap((g) => g.items).filter((a) => isActionable(a.status));
+  const queueAssets = grouped
+    .flatMap((g) => g.items)
+    .filter((a) => isActionable(a.status))
+    .map((asset) => ({ campaignId: campaign.id, campaignName: campaign.name, asset }));
   // BYO send channel: which approved deliverable is open in the export modal.
   const [externalSendFor, setExternalSendFor] = useState<CampaignWorkspaceAsset | null>(null);
 
@@ -1720,7 +1723,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
 
       {queueOpen ? (
         <ReviewQueue
-          campaignName={campaign.name}
+          title={campaign.name}
           queue={queueAssets}
           pending={pending}
           error={err}
