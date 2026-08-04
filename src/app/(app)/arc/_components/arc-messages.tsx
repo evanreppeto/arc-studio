@@ -570,7 +570,21 @@ export function ChannelIcon({ channel, size = 17 }: { channel?: string; size?: n
   return <FileText size={size} />;
 }
 
-export function assetStatusMeta(status: ArcAssetStatus | null) {
+/**
+ * How a deliverable's state reads on a card.
+ *
+ * `reviewable` is whether the card carries an approval hook — i.e. whether the
+ * operator can actually decide it. Without one there is no Approve button and
+ * the row renders inert, so labelling it "Needs you" asks for an action the UI
+ * does not offer. The live workspace had four deliverables all badged "Needs
+ * you" — one of them a CRM read — above a header reading "2 waiting on you",
+ * because the badge and the count asked different questions (BSR-735).
+ *
+ * A recorded outcome still wins: an approved or declined card says so whether
+ * or not it can still be acted on.
+ */
+export function assetStatusMeta(status: ArcAssetStatus | null, reviewable = true) {
+  if (!reviewable && !isDecidedAssetStatus(status)) return DRAFT_STATUS_META.unreviewable;
   return DRAFT_STATUS_META[status ?? "review"] ?? DRAFT_STATUS_META.review;
 }
 
@@ -749,8 +763,13 @@ export function ArcWorkPanel({
   });
 
   const statusOf = (card: ArcActionCard) => statuses[card.approval?.assetId ?? ""] ?? card.status ?? null;
-  const approvedCount = scopedCards.filter((card) => statusOf(card) === "approved").length;
-  const awaitingCards = scopedCards.filter((card) => card.approval && !isDecidedAssetStatus(statusOf(card)));
+  // Approval progress is measured over the cards that can BE approved. Counting
+  // it over every deliverable made a bar that could never reach 100%: the live
+  // workspace read "0 of 4 approved" where two of the four — one a CRM read —
+  // carried no approval hook at all (BSR-735).
+  const reviewableCards = scopedCards.filter((card) => Boolean(card.approval));
+  const approvedCount = reviewableCards.filter((card) => statusOf(card) === "approved").length;
+  const awaitingCards = reviewableCards.filter((card) => !isDecidedAssetStatus(statusOf(card)));
   const isEmpty = runs.length === 0 && scopedCards.length === 0;
 
   const summary = [
@@ -816,13 +835,17 @@ export function ArcWorkPanel({
           <section className="arc-work-section">
             <h3 className="arc-work-section-title arc-work-section-head">
               <span className="arc-work-section-name">Deliverables</span>
-              <span className="arc-work-section-meta">{approvedCount} of {scopedCards.length} approved</span>
+              {reviewableCards.length > 0 ? (
+                <span className="arc-work-section-meta">{approvedCount} of {reviewableCards.length} approved</span>
+              ) : null}
             </h3>
-            <div className="arc-created-progress"><div><i style={{ width: `${(approvedCount / scopedCards.length) * 100}%` }} /></div></div>
+            {reviewableCards.length > 0 ? (
+              <div className="arc-created-progress"><div><i style={{ width: `${(approvedCount / reviewableCards.length) * 100}%` }} /></div></div>
+            ) : null}
             <div className="arc-created-list">
               {scopedCards.map((card, index) => {
                 const status = statusOf(card);
-                const meta = assetStatusMeta(status);
+                const meta = assetStatusMeta(status, Boolean(card.approval));
                 const content = (
                   <>
                     <span className="arc-created-icon"><ChannelIcon channel={card.channel} size={15} /></span>
@@ -1112,9 +1135,12 @@ export function AssetReviewPanel({ cards, statuses, onStatus, onClose }: { cards
   );
 }
 
-export const DRAFT_STATUS_META: Record<ArcAssetStatus | "review", { label: string; tone: string }> = {
+export const DRAFT_STATUS_META: Record<ArcAssetStatus | "review" | "unreviewable", { label: string; tone: string }> = {
   review: { label: WORK_STATE_LABEL.needs_you, tone: "muted" },
   draft: { label: WORK_STATE_LABEL.needs_you, tone: "muted" },
+  // Something Arc produced that never entered the approval queue — a working
+  // artefact, not a decision. Neutral tone: it is not asking for anything.
+  unreviewable: { label: WORK_STATE_LABEL.draft, tone: "muted" },
   revision: { label: WORK_STATE_LABEL.needs_changes, tone: "accent" },
   approved: { label: WORK_STATE_LABEL.approved, tone: "ok" },
   rejected: { label: WORK_STATE_LABEL.declined, tone: "red" },
