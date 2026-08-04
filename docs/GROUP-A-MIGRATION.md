@@ -1,10 +1,14 @@
 # Group A/B migration plan — finishing the workspace boundary
 
-Last updated: 2026-08-03 (amended after Wave 1 — see the ⚠️ section below)
+Last updated: 2026-08-04 (Waves 1 and 2 shipped — see Status)
 
-BSR-637 decided the boundary and BSR-638 made it enforceable. 77 tables are
-enforced today; **35 are still marked `pending`** in `supabase/tenancy-contract.mjs`,
-which is the gap between the boundary being *decided* and being *true*.
+BSR-637 decided the boundary and BSR-638 made it enforceable. **90 tables are
+enforced today; 22 are still marked `pending`** in `supabase/tenancy-contract.mjs`
+— that gap is the difference between the boundary being *decided* and being
+*true*. It was 77/35 when this plan was written; Waves 1 and 2 closed 13.
+
+Those counts cover the **write** side only. The read side has its own gap, and
+locking a column does not close it — see BSR-729 at the end.
 
 This plan covers closing that gap. Companion docs:
 [backend-workspace-data-boundary-audit.md](./backend-workspace-data-boundary-audit.md)
@@ -277,7 +281,8 @@ and nothing here is urgent — see finding (1).
 - **Wave 1 Phase A** — done (BSR-710), plus BSR-720 for the 15 insert sites it
   missed and the production break one of them had already caused.
 - **The writer audit is automated** — `src/lib/db/workspace-writers.test.ts`,
-  every PR, keyed on `hasColumn`. Currently enforcing 31 tables / 78 insert sites.
+  every PR, keyed on `hasColumn`. Currently enforcing **36 tables / 90 insert
+  sites** (31/78 when Wave 1 landed).
 - **Wave 1 Phase B** — done (BSR-711, PR #885), prod-verified 2026-08-04: 8/8
   `NOT NULL`, 32 workspace policies, 0 stale org policies, 228 rows / 0 nulls,
   and a read *as a real workspace member* returned rows (a schema query cannot
@@ -292,9 +297,33 @@ and nothing here is urgent — see finding (1).
     backfill caught both. That is evidence the backfill handles the gap, **not**
     evidence the writers stamp — those rows predate the deploy. Still no
     post-deploy traffic, so the static audit remains the only real gate.
-- **Wave 2 Phase B** — BSR-713. One open decision: `agents` is workspace-owned but
-  still unique on `(org_id, key)` — equivalent today, wrong the day an org holds
-  two workspaces. A Phase A deliberately did not rewrite it.
+- **Wave 2 Phase B** — done (BSR-713, PR #898), prod-verified 2026-08-04: 5/5
+  `NOT NULL`, 5 workspace-member policies, 0 stale org policies, 103 rows / 0
+  nulls, and a read *as a real workspace member* returned 1 agent / 48 task
+  inputs / 1 run log. Supabase's security advisors flag none of the five.
+
+  Three things this wave established:
+  - **RLS shape differs per wave.** These five carried ONE policy each (a SELECT
+    for `authenticated`); writes reach them only through the service role. So the
+    lock replaced the select and deliberately added no insert/update/delete
+    policies — Wave 1's four-policy pattern would have *loosened* a closed
+    surface. Read the existing policies before mirroring the previous wave.
+  - ⚠️ **When verifying RLS "as a member", resolve the user id BEFORE
+    `set role authenticated`.** The other order makes the lookup itself
+    RLS-restricted, the jwt claim lands NULL, and every count reads 0 —
+    indistinguishable from a total lockout. It produced a convincing false alarm
+    on prod before the real check ran.
+  - **A Wave 1 read-path gap surfaced.** `agent-operations/read-model.ts` held a
+    *second, weaker* `applyOrgScope` beside the workspace-aware scoper, and four
+    dashboard queries used it — three of them on tables Wave 1 had already
+    locked. Wave 1's read-path change only reached `campaigns/read-model.ts`.
+    Fixed by deleting the weak scoper rather than its call sites. **Two scopers
+    in one file is the bug.**
+
+  Still open, deliberately: `agents` is workspace-owned but unique on
+  `(org_id, key)`. Equivalent today, wrong the day an org holds two workspaces;
+  moving it means changing the constraint and ~16 call sites for no observable
+  difference, so it belongs to whichever ticket builds multi-workspace-per-org.
 
   ⚠️ **"Phase B needs a Cloud Run runner deploy" was WRONG, and this plan said it
   twice.** Checked instead of assumed: `apps/arc-runner` has **no database access
@@ -309,9 +338,31 @@ and nothing here is urgent — see finding (1).
   `docs/` and the notes it came from: **a stated blocker gets verified before
   anything is sequenced around it.** This one would have parked Phase B behind an
   unrelated deploy nobody could check.
-- **Waves 3-4** — not started (BSR-714 through BSR-717).
+- **Waves 3-4** — not started (BSR-714 through BSR-717). **90 tables enforced,
+  22 pending.**
 
 One known gap is recorded in the audit test rather than hidden: three
 `arc_messages` writes in `arc-chat/persistence.ts` do not stamp yet, tied to
 Wave 4 / BSR-716. The test asserts they are *still* unstamped, so the entry
 cannot outlive the fix.
+
+## The other half of the boundary: reads (BSR-729)
+
+Everything above is the **write** side — columns, backfills, NOT NULL, RLS. A
+survey run during Wave 2 Phase B found **37 reads of workspace-owned tables that
+filter `org_id` alone**, across all four waves' tables.
+
+This matters more than it looks. **The service role bypasses RLS entirely**, so
+for every server-side read the app-layer filter *is* the boundary — the policies
+this plan installs do nothing there. Locking a column and narrowing its policy
+does not make a read model workspace-safe.
+
+Not a live leak today (one workspace per org, so both filters select the same
+rows), and not fixable inside a lock migration — some sites need signature
+changes across several call sites. Tracked as **BSR-729**, which is a hard
+prerequisite for any multi-workspace-per-org feature, alongside this plan.
+
+The finding also argues for how it should be closed: with a **check**, in the
+shape of `workspace-writers.test.ts`. The write-side audit found 15 sites a
+manual pass missed and 3 more on the next wave. A one-off read-side cleanup would
+rot the same way.
