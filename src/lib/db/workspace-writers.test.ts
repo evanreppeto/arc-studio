@@ -112,6 +112,28 @@ const KNOWN_GAPS: Record<string, string> = {
 type Site = { file: string; table: string; line: number; stamped: boolean; opaque: boolean };
 
 /**
+ * Replace every comment with spaces, preserving length and newlines.
+ *
+ * Comments must not participate in ANY part of this scan, and both ways they can
+ * corrupt it happened here for real:
+ *
+ *  - as evidence — a comment saying "…moved to workspace_id in BSR-715" above an
+ *    upsert made an unstamped write look stamped;
+ *  - as structure — a comment containing a SEMICOLON ("fails at runtime; a mocked
+ *    upsert cannot see that") ended the statement window early, so the `.upsert(`
+ *    fell outside it and the write site disappeared from the scan altogether.
+ *
+ * The second is the dangerous one: a prose semicolon silently removed a real
+ * insert from an audit whose whole job is to miss nothing. Blanking in place keeps
+ * every index and line number valid, so nothing downstream has to compensate.
+ */
+function blankComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/\/\/[^\n]*/g, (m) => " ".repeat(m.length));
+}
+
+/**
  * Is the `"table"` string literal at `index` part of an INSERT?
  *
  * WHY THIS IS NOT A REGEX ANY MORE. The original pattern hardcoded two helper
@@ -164,7 +186,7 @@ function scanInsertSites(tables: string[]): Site[] {
 
   const sites: Site[] = [];
   for (const file of files) {
-    const source = readFileSync(resolve(ROOT, file), "utf8");
+    const source = blankComments(readFileSync(resolve(ROOT, file), "utf8"));
     for (const table of tables) {
       // Every mention of the table name is a candidate; `isWriteSite` decides.
       // This used to be a single regex naming `insertOne|insertNoReturn` and
@@ -179,10 +201,23 @@ function scanInsertSites(tables: string[]): Site[] {
         // caught by the staleness check below, which is exactly its job.
         const rest = source.slice(match.index, match.index + 900);
         const end = rest.indexOf(";", 20);
-        const window = end === -1 ? rest : rest.slice(0, end);
+        const rawWindow = end === -1 ? rest : rest.slice(0, end);
+        // Strip comments before looking for evidence of stamping. A comment that
+        // merely MENTIONS workspace_id — "// the unique moved to workspace_id in
+        // BSR-715", written directly above an upsert — otherwise counts as proof
+        // that the write stamps it. That is a guard defeated by prose, and it
+        // happened here: the comment made a genuinely opaque payload read as
+        // stamped, which the allowlist-staleness check caught.
+        //
+        // `onConflict: "workspace_id"` goes too. A conflict target names the
+        // CONSTRAINT to upsert against, not a column in the payload — after
+        // BSR-715 moved business_profiles to UNIQUE (workspace_id), it made a
+        // genuinely opaque payload read as stamped. Both strips exist because
+        // each one turned a real unstamped write green.
+        const window = rawWindow.replace(/onConflict\s*:\s*"[^"]*"/g, " ");
         // Does the call take an object literal, or a prebuilt variable?
-        const arg = window.slice(window.indexOf("(", window.indexOf(table) + table.length));
-        const opaque = /^\(\s*[A-Za-z_$][\w$.]*\s*\)/.test(arg.replace(/^[^(]*/, "")) || /\.\s*(?:insert|upsert)\(\s*[A-Za-z_$][\w$.]*\s*\)/.test(window);
+        const arg = rawWindow.slice(rawWindow.indexOf("(", rawWindow.indexOf(table) + table.length));
+        const opaque = /^\(\s*[A-Za-z_$][\w$.]*\s*\)/.test(arg.replace(/^[^(]*/, "")) || /\.\s*(?:insert|upsert)\(\s*[A-Za-z_$][\w$.]*\s*\)/.test(rawWindow);
 
         sites.push({
           file,
