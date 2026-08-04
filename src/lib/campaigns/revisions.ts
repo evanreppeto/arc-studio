@@ -194,10 +194,10 @@ async function queueArcRevision(
     throw new Error("agent_tasks insert returned no id");
   }
 
-  // org_id only — agent_task_inputs has no workspace_id column, so `...tenant`
-  // would send one that doesn't exist.
+  // agent_task_inputs gained workspace_id in BSR-712; it now carries the same
+  // scope as the agent_tasks row above.
   const { error: inputError } = await client.from("agent_task_inputs").insert({
-    org_id: tenant.org_id,
+    ...workspaceScopeFields(tenant),
     task_id: task.id,
     input_type: "revision_instruction",
     source_table: "campaign_assets",

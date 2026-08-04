@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { buildOpportunityConversion, type OpportunityConversion, type OpportunityConversionFact } from "@/domain";
 import { getCurrentOrgId } from "@/lib/auth/org";
+import { notConfigured } from "@/lib/observability/unavailable";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { resolveTenantReadHandle } from "@/lib/supabase/tenant-client";
 
@@ -16,6 +17,8 @@ import { resolveTenantReadHandle } from "@/lib/supabase/tenant-client";
 export type OpportunityConversionReadModel =
   | { status: "live"; conversion: OpportunityConversion; windowDays: number }
   | { status: "empty" }
+  /** No backend configured — an answer, not an outage. See `notConfigured`. */
+  | { status: "not_configured" }
   | { status: "unavailable" };
 
 type OppRow = {
@@ -35,7 +38,10 @@ export async function getOpportunityConversion(
   client?: SupabaseClient,
   windowDays = 90,
 ): Promise<OpportunityConversionReadModel> {
-  if (!client && !isSupabaseAdminConfigured()) return { status: "unavailable" };
+  // Not an outage: there is no database to ask. Reporting this as a failed read
+  // put a red "Some analytics couldn't load" banner on every backend-less
+  // preview, naming a query that had never run.
+  if (!client && !isSupabaseAdminConfigured()) return notConfigured();
 
   const { client: db, orgId: handleOrgId } = client ? { client, orgId: null } : await resolveTenantReadHandle();
   const resolvedOrgId = orgId ?? handleOrgId ?? (await getCurrentOrgId());

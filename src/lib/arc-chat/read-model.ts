@@ -2,6 +2,7 @@ import "server-only";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getOperatorActor } from "@/lib/auth/operator";
+import { notConfigured } from "@/lib/observability/unavailable";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import {
@@ -28,8 +29,9 @@ const RUN_FRESHNESS_MS = 120_000;
  *                   (fresh workspace) → the UI shows its illustrative mock.
  * - "error"       — a configured workspace could not load chat history. Keep
  *                   the real composer visible; never masquerade as demo data.
- * - "unavailable" — no Supabase backend (local demo preview) → the UI shows
- *                   its illustrative mock.
+ * - "not_configured" — no Supabase backend (local demo preview) → the UI shows
+ *                   its illustrative mock. Named apart from a failure on
+ *                   purpose: nothing broke, so nothing should be reported.
  */
 export type ArcChatModel =
   | {
@@ -44,13 +46,15 @@ export type ArcChatModel =
     }
   | { status: "empty"; operator: string }
   | { status: "error"; message: string }
-  | { status: "unavailable" };
+  /** No backend configured (the local backend-less preview). An answer, not
+   *  an outage — `/arc` reads this to fall back to the mock conversation. */
+  | { status: "not_configured" };
 
 export async function getArcChatModel(
   requestedConversationId?: string | null,
   opts?: { startBlank?: boolean },
 ): Promise<ArcChatModel> {
-  if (!isSupabaseAdminConfigured()) return { status: "unavailable" };
+  if (!isSupabaseAdminConfigured()) return notConfigured();
 
   try {
     const [viewer, operator] = await Promise.all([getShareViewer(), getOperatorActor()]);
