@@ -5,6 +5,8 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState, useTransition }
 
 import { type CreativeLayoutOverride } from "@/domain";
 
+import { hasRepliedToLastMessage } from "@/lib/arc-chat/thread-state";
+
 import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
 import { generateStudioAsset, pollStudioVideo, startStudioVideo } from "../actions";
@@ -149,6 +151,25 @@ const SESSION: { id: string; tag: string; item: Item }[] = [
   { id: "v4", tag: "9:16", item: { s: SC.video, l: "Crew 9:16", p: "real" } },
 ];
 
+/**
+ * Split the "(From Studio · …)" preamble off a message for display.
+ *
+ * askArc appends the canvas state to the body it SENDS so Arc knows the format,
+ * mode and headline. That preamble is machine context, not something the operator
+ * typed — rendering it inside the bubble put "(From Studio · Draft · image · 1:1)"
+ * in their own words, and made the message visibly change the moment the canonical
+ * thread replaced the optimistic copy (which never had it).
+ */
+export function splitStudioContext(body: string): { body: string; context: string | null } {
+  const match = body.match(/\n*\((From Studio · [^)]*)\)\s*$/);
+  if (!match || match.index === undefined) return { body, context: null };
+  return { body: body.slice(0, match.index).trim(), context: match[1] };
+}
+
+/** Terms that mean "put words or branding in the picture" — which generation
+ *  refuses by design (hardenImagePrompt's NO_TEXT_DIRECTIVE strips all of it). */
+const BAKED_TEXT_RE = /\b(logo|logos|watermark|branding|brand name|signage|sign|text|words|lettering|caption)\b/i;
+
 type CampaignRef = { id: string; name: string; href: string };
 type StudioDraft = { campaignId: string; assetId: string; url: string; source: string; format: string; title: string; status: string; kind?: "image" | "video" };
 
@@ -259,9 +280,33 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [awaitingReply, setAwaitingReply] = useState(false);
   const [streamBody, setStreamBody] = useState<string | null>(null);
   const [reconcileTick, setReconcileTick] = useState(0);
-  /** When the last message was sent, so a reply from BEFORE it can't be mistaken
-   *  for the answer to it on a follow-up turn. */
-  const sentAtRef = useRef<string | null>(null);
+  const threadEndRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * What the transcript actually shows. The runner writes the reply row BEFORE it
+   * has a body, so mapping the raw thread rendered an empty bordered bubble above
+   * "Arc is thinking…" — the same pending reply drawn twice, once as a blank pill.
+   */
+  const visibleThread = useMemo(
+    () =>
+      thread.filter((m) => {
+        if (m.role === "operator") return true;
+        if (!m.body.trim()) return false;
+        // While waiting, the live bubble below already represents the in-flight
+        // reply; showing the pending row too would duplicate it mid-stream.
+        return !(awaitingReply && m.status === "pending");
+      }),
+    [thread, awaitingReply],
+  );
+
+  const replied = useMemo(() => hasRepliedToLastMessage(thread), [thread]);
+
+  /** The operator asked for baked-in text/branding, which generation strips by
+   *  design. Say so instead of letting the result quietly not contain it. */
+  const logoHint = useMemo(() => {
+    const lastOperator = [...thread].reverse().find((m) => m.role === "operator");
+    return Boolean(lastOperator && BAKED_TEXT_RE.test(splitStudioContext(lastOperator.body).body));
+  }, [thread]);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
@@ -283,7 +328,6 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     startSend(async () => {
       const result = await sendArcMessageAction({ conversationId: convId, body: text + context });
       if (result.ok) {
-        sentAtRef.current = new Date().toISOString();
         setConvId(result.conversationId);
         setAwaitingReply(true);
       } else {
@@ -331,10 +375,8 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
       const result = await getArcConversationTailAction({ conversationId: convId });
       if (cancelled || !result.ok) return;
       setThread(result.messages);
-      const replied = result.messages.some(
-        (m) => m.role === "arc" && m.status !== "pending" && m.body.trim() && (!sentAtRef.current || m.createdAt >= sentAtRef.current),
-      );
-      if (replied) {
+      // Decided by POSITION, not by clock — see hasRepliedToLastMessage.
+      if (hasRepliedToLastMessage(result.messages)) {
         setAwaitingReply(false);
         setStreamBody(null);
       }
@@ -360,6 +402,13 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
       window.clearInterval(interval);
     };
   }, [convId, awaitingReply, reconcileTick]);
+
+  // Keep the newest message in view. Without this the reply streams in below the
+  // fold and the panel looks like nothing happened.
+  useEffect(() => {
+    if (tab !== "arc") return;
+    threadEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [visibleThread.length, streamBody, awaitingReply, tab]);
 
   // Import art: reuse the wired Library upload (real media_assets rows, provenance-
   // tagged, held for review before Arc may reuse). New assets appear under Imported.
@@ -1043,21 +1092,44 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     </div>
                   ) : (
                     <div className="arcthread">
-                      {thread.map((m) => (
-                        <div key={m.id} className={`arcmsg ${m.role === "operator" ? "me" : "arc"}`}>
-                          {m.body}
-                        </div>
-                      ))}
-                      {awaitingReply && (
+                      {visibleThread.map((m) => {
+                        const { body, context } = splitStudioContext(m.body);
+                        return (
+                          <div key={m.id} className={`arcmsg ${m.role === "operator" ? "me" : "arc"}`}>
+                            {body}
+                            {/* The Studio context is appended to what we SEND so Arc
+                                knows the canvas state — but it is machine preamble,
+                                not something the operator typed. Showing it inside
+                                the bubble also made the message visibly change once
+                                the canonical thread replaced the optimistic copy. */}
+                            {context ? <span className="arcctx">{context}</span> : null}
+                          </div>
+                        );
+                      })}
+                      {/* `&& !replied` is deliberate belt-and-braces: the reconcile
+                          clears awaitingReply, but if it ever fails to, this stops
+                          the finished answer being drawn twice. */}
+                      {awaitingReply && !replied && (
                         <div className="arcmsg arc">
                           {streamBody ? streamBody : <span className="arcdots">Arc is thinking…</span>}
                         </div>
                       )}
+                      {logoHint ? (
+                        <div className="arcnote" role="note">
+                          <b>Your logo goes on top of the picture, not into it.</b> Arc strips text and
+                          branding out of every generated image on purpose, then composites your real Brand
+                          kit logo as a corner lockup. It can&rsquo;t paint the logo onto an object in the
+                          scene — a door, a van panel, a sign — because that would mean inventing branded
+                          property you don&rsquo;t have. For a branded vehicle in shot, upload a real photo
+                          of it to the <b>Library</b> and use that as the background.
+                        </div>
+                      ) : null}
                       {convId && (
                         <a className="arcopen" href={`/arc?c=${convId}`}>
                           Open the full conversation in Arc →
                         </a>
                       )}
+                      <div ref={threadEndRef} />
                     </div>
                   )}
                 </div>
