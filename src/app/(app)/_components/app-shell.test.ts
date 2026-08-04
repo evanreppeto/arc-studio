@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const APP_SHELL = readFileSync(new URL("./app-shell.tsx", import.meta.url), "utf8");
 const ACCOUNT_MENU = readFileSync(new URL("./account-menu.tsx", import.meta.url), "utf8");
 const WORKSPACE_SWITCHER = readFileSync(new URL("./workspace-switcher.tsx", import.meta.url), "utf8");
+const RAIL_RECENTS = readFileSync(new URL("./rail-recents.tsx", import.meta.url), "utf8");
 const APP_SHELL_CSS = readFileSync(new URL("../arc-app.css", import.meta.url), "utf8");
 
 describe("app shell navigation contract", () => {
@@ -52,7 +53,10 @@ describe("app shell navigation contract", () => {
   it("separates workspace identity from navigation and surfaces recent Arc work", () => {
     expect(APP_SHELL).toContain('className="rail-divider"');
     expect(APP_SHELL).toContain('id="rail-recents-title"');
-    expect(APP_SHELL).toContain('href={`/arc?c=${encodeURIComponent(conversation.id)}`}');
+    expect(APP_SHELL).toContain("<RailRecents");
+    // The rows moved into their own component when the list gained campaign
+    // grouping and a per-chat menu; the shell still owns the section around them.
+    expect(RAIL_RECENTS).toContain('href={`/arc?c=${encodeURIComponent(conversation.id)}`}');
     expect(APP_SHELL).toContain('href="/arc?new=1"');
     expect(APP_SHELL_CSS).toContain("& .rail-divider");
     expect(APP_SHELL_CSS).toContain("& .rail-recents");
