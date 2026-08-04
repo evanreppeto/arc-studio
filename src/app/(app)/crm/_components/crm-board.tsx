@@ -9,6 +9,7 @@ import { type CrmObjectKey } from "@/lib/crm/read-model";
 import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord, searchCrmRecords } from "../actions";
 import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-record-modal";
 import { pageRangeLabel, pageWindow } from "./pagination";
+import { createStoredPreference } from "./stored-preference";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
 import type { CustomFieldDefinition } from "@/domain";
 
@@ -119,60 +120,143 @@ export function readStoredDensity(raw: string | null): Density {
   return raw === "compact" || raw === "comfortable" ? raw : "comfortable";
 }
 
+const densityPref = createStoredPreference<Density>({
+  key: DENSITY_KEY,
+  fallback: "comfortable",
+  parse: readStoredDensity,
+  // A bare string, not JSON — it predates this helper and is already in real
+  // browsers' localStorage.
+  serialize: (value) => value,
+});
+
 /**
- * A tiny external store rather than `useState` + a read in `useEffect`.
+ * Column visibility, per object (BSR-749).
  *
- * The effect version calls setState synchronously on mount, which is a
- * cascading render (and eslint's `react-hooks` rules reject it). Reading
- * localStorage in the useState initializer instead would hydrate-mismatch: the
- * server always renders "comfortable".
- *
- * `useSyncExternalStore` is built for exactly this — a server snapshot that is
- * always the default, a client snapshot read on demand — and cross-tab sync
- * falls out of the `storage` event for free.
+ * Per object because the columns differ per object: hiding "Tier" on companies
+ * says nothing about leads, which has no such column. Stored as the HIDDEN set
+ * rather than the visible one, so a column added to `COLS` later shows up by
+ * default instead of being invisible to everyone who ever opened this menu.
  */
-const densityListeners = new Set<() => void>();
-let densityCache: Density | null = null;
+const COLUMNS_KEY = "arc.crm.hiddenColumns";
+export type HiddenColumns = Record<string, string[]>;
 
-function densitySnapshot(): Density {
-  if (densityCache === null) {
-    try {
-      densityCache = readStoredDensity(window.localStorage.getItem(DENSITY_KEY));
-    } catch {
-      densityCache = "comfortable";
-    }
-  }
-  return densityCache;
-}
+/**
+ * Columns that structure the row rather than describe the record: the select
+ * checkbox, the name, and the trailing chevron. Hiding any of them breaks the
+ * row rather than simplifying it, so they are never offered.
+ */
+export const LOCKED_COLUMNS = new Set(["sel", "primary", "act"]);
 
-/** The server has no preference to read, and must render the default. */
-function densityServerSnapshot(): Density {
-  return "comfortable";
-}
-
-function subscribeDensity(onChange: () => void): () => void {
-  densityListeners.add(onChange);
-  const onStorage = (event: StorageEvent) => {
-    if (event.key !== DENSITY_KEY) return;
-    densityCache = null;
-    onChange();
-  };
-  window.addEventListener("storage", onStorage);
-  return () => {
-    densityListeners.delete(onChange);
-    window.removeEventListener("storage", onStorage);
-  };
-}
-
-function writeDensity(next: Density): void {
-  densityCache = next;
+/** Total: any stored shape, including one written by an older build, yields a map. */
+export function readStoredColumns(raw: string | null): HiddenColumns {
+  if (!raw) return {};
+  let parsed: unknown;
   try {
-    window.localStorage.setItem(DENSITY_KEY, next);
+    parsed = JSON.parse(raw);
   } catch {
-    // Private mode / quota. The choice still applies for this session; a
-    // display preference is not worth surfacing an error for.
+    return {};
   }
-  for (const listener of densityListeners) listener();
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const out: HiddenColumns = {};
+  for (const [objectKey, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!Array.isArray(value)) continue;
+    // A locked column in storage would silently break the row; drop it on read
+    // rather than trusting a value a user can edit by hand.
+    const keys = value.filter((k): k is string => typeof k === "string" && !LOCKED_COLUMNS.has(k));
+    if (keys.length > 0) out[objectKey] = keys;
+  }
+  return out;
+}
+
+const columnsPref = createStoredPreference<HiddenColumns>({
+  key: COLUMNS_KEY,
+  fallback: {},
+  parse: readStoredColumns,
+});
+
+/** The columns actually rendered, given what this object has hidden. */
+export function visibleColumns(cols: Col[], hidden: readonly string[]): Col[] {
+  if (hidden.length === 0) return cols;
+  return cols.filter((c) => LOCKED_COLUMNS.has(c.k) || !hidden.includes(c.k));
+}
+
+/**
+ * Which columns to show. Multi-select, so unlike every other menu here it stays
+ * open on choose — hiding three columns should be three clicks, not three
+ * round-trips through the trigger.
+ */
+function ColumnsMenu({
+  cols,
+  hidden,
+  onToggle,
+  onShowAll,
+}: {
+  cols: Col[];
+  hidden: readonly string[];
+  onToggle: (key: string) => void;
+  onShowAll: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const optional = cols.filter((c) => !LOCKED_COLUMNS.has(c.k) && c.t);
+  // Nothing to choose between — every column on this object is structural.
+  if (optional.length === 0) return null;
+
+  const hiddenHere = optional.filter((c) => hidden.includes(c.k)).length;
+  return (
+    <span className="fbtn-wrap" ref={ref}>
+      <button
+        type="button"
+        className={`iconf${hiddenHere > 0 ? " active" : ""}`}
+        title={hiddenHere > 0 ? `Columns: ${optional.length - hiddenHere} of ${optional.length} shown` : "Columns"}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 4v16" /></svg>
+      </button>
+      {open && (
+        <div className="fmenu fmenu-right" role="menu">
+          {optional.map((c) => {
+            const shown = !hidden.includes(c.k);
+            return (
+              <button
+                key={c.k}
+                type="button"
+                className={`fmenu-item${shown ? " on" : ""}`}
+                role="menuitemcheckbox"
+                aria-checked={shown}
+                onClick={() => onToggle(c.k)}
+              >
+                <span>{c.t}</span>
+              </button>
+            );
+          })}
+          {hiddenHere > 0 && (
+            <button type="button" className="fmenu-foot" onClick={onShowAll}>
+              Show all columns
+            </button>
+          )}
+        </div>
+      )}
+    </span>
+  );
 }
 
 function DensityMenu({ value, onChange }: { value: Density; onChange: (v: Density) => void }) {
@@ -312,54 +396,6 @@ const COLS: Record<string, Col[]> = {
   jobs: [{ k: "sel" }, { k: "primary", t: "Job" }, { k: "status", t: "Status" }, { k: "value", t: "Est. value" }, { k: "last", t: "Scheduled" }, { k: "act" }],
   outcomes: [{ k: "sel" }, { k: "primary", t: "Outcome" }, { k: "status", t: "Status" }, { k: "value", t: "Revenue" }, { k: "last", t: "Closed" }, { k: "act" }],
 };
-
-/** Columns that carry selection and row actions — hiding either breaks the row. */
-const LOCKED_COLS = ["sel", "act"];
-const HIDDEN_COLS_KEY = "arc:crm:hidden-columns";
-
-/**
- * Hidden columns per object, kept at module scope behind useSyncExternalStore —
- * the same shape support-view.tsx uses for browser-only context.
- *
- * Not useState + an effect, for two reasons. The snapshot must be a STABLE
- * reference or the store re-renders forever on a fresh object each read; and
- * the server snapshot has to be the empty one so the first paint matches the
- * server's, with the stored preference applied after hydration. Reading
- * localStorage during render instead would make the server emit one set of
- * columns and the client another.
- */
-type HiddenCols = Record<string, string[]>;
-const NO_HIDDEN_COLS: HiddenCols = {};
-let hiddenColsCache: HiddenCols | null = null;
-const hiddenColsListeners = new Set<() => void>();
-
-function readHiddenCols(): HiddenCols {
-  if (!hiddenColsCache) {
-    try {
-      const raw = window.localStorage.getItem(HIDDEN_COLS_KEY);
-      hiddenColsCache = raw ? (JSON.parse(raw) as HiddenCols) : NO_HIDDEN_COLS;
-    } catch {
-      // Malformed or unavailable storage means "no preference", never a crash.
-      hiddenColsCache = NO_HIDDEN_COLS;
-    }
-  }
-  return hiddenColsCache;
-}
-
-function writeHiddenCols(next: HiddenCols): void {
-  hiddenColsCache = next;
-  try {
-    window.localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify(next));
-  } catch {
-    // The preference is lost on reload rather than the toggle failing.
-  }
-  hiddenColsListeners.forEach((notify) => notify());
-}
-
-function subscribeHiddenCols(onChange: () => void): () => void {
-  hiddenColsListeners.add(onChange);
-  return () => hiddenColsListeners.delete(onChange);
-}
 
 function nx(v: string) {
   return v ? v : "—";
@@ -589,39 +625,18 @@ export function CrmBoard({
   const [statusF, setStatusF] = useState("");
   const [ownerF, setOwnerF] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("recent");
-  const density = useSyncExternalStore(subscribeDensity, densitySnapshot, densityServerSnapshot);
-
-  // Which columns the operator has hidden, per object. Local to the browser on
-  // purpose: this is a view preference, not workspace configuration, and two
-  // people looking at the same CRM should not fight over each other's columns.
-  // `sel` and `act` are never hideable — they carry selection and row actions.
-  const hiddenCols = useSyncExternalStore(subscribeHiddenCols, readHiddenCols, () => NO_HIDDEN_COLS);
-  const [colsOpen, setColsOpen] = useState(false);
-  const colsRef = useRef<HTMLDivElement>(null);
-
-  // A menu you can only close by re-clicking its own button is a menu people
-  // leave open by accident.
-  useEffect(() => {
-    if (!colsOpen) return;
-    function onDocClick(event: MouseEvent) {
-      if (!colsRef.current?.contains(event.target as Node)) setColsOpen(false);
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setColsOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [colsOpen]);
+  const density = useSyncExternalStore(densityPref.subscribe, densityPref.getSnapshot, densityPref.getServerSnapshot);
+  const hiddenColumns = useSyncExternalStore(
+    columnsPref.subscribe,
+    columnsPref.getSnapshot,
+    columnsPref.getServerSnapshot,
+  );
 
   const active = objects.find((o) => o.key === activeKey) ?? objects[0];
   const localRows = localByKey[active.key] ?? [];
   const totalRows = localRows.length + (rowsByKey[active.key] ?? []).length;
   // Splice the tenant's custom columns in just before the trailing actions cell.
-  const cols = (() => {
+  const allCols = (() => {
     const base = COLS[active.key] ?? COLS.contacts;
     const custom = customColumnsByKey[active.key] ?? [];
     if (custom.length === 0) return base;
@@ -630,22 +645,22 @@ export function CrmBoard({
     if (actIdx < 0) return [...base, ...extra];
     return [...base.slice(0, actIdx), ...extra, ...base.slice(actIdx)];
   })();
-  const hiddenForObject = hiddenCols[active.key] ?? [];
-  // What the table actually renders. Header and body both map over this, so a
-  // hidden column cannot leave a body cell behind and shift every row.
-  const visibleCols = cols.filter((c) => LOCKED_COLS.includes(c.k) || !hiddenForObject.includes(c.k));
-  const hideableCols = cols.filter((c) => !LOCKED_COLS.includes(c.k));
-
-  function toggleAllColsOn() {
-    writeHiddenCols({ ...hiddenCols, [active.key]: [] });
-  }
-
-  function toggleCol(key: string) {
-    const current = hiddenCols[active.key] ?? [];
-    const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
-    writeHiddenCols({ ...hiddenCols, [active.key]: next });
-  }
-
+  // What the operator chose to hide on THIS object. Both <thead> and <tbody>
+  // map over `cols`, so filtering here is the whole of column visibility.
+  const hiddenHere = hiddenColumns[active.key] ?? [];
+  const cols = visibleColumns(allCols, hiddenHere);
+  const toggleColumn = (key: string) => {
+    const next = hiddenHere.includes(key) ? hiddenHere.filter((k) => k !== key) : [...hiddenHere, key];
+    const merged = { ...hiddenColumns };
+    if (next.length > 0) merged[active.key] = next;
+    else delete merged[active.key];
+    columnsPref.set(merged);
+  };
+  const showAllColumns = () => {
+    const merged = { ...hiddenColumns };
+    delete merged[active.key];
+    columnsPref.set(merged);
+  };
   // o.count is the server's row count for the object; archived rows are soft-deleted
   // so they're netted out of the headline count and tab badges the same way they're
   // hidden from the list. Subtracting (rather than recomputing) keeps the count intact
@@ -1034,51 +1049,8 @@ export function CrmBoard({
         )}
         <span className="gspacer" />
         <SortMenu value={sortBy} onChange={setSortBy} />
-        {/* Columns, beside the density control BSR-748 shipped. This branch
-            had removed density as a duplicate of Settings -> Appearance; that
-            was wrong — the appearance setting scales app-wide type, this one
-            sets table ROW padding, and they are different controls. Main
-            shipped it for real, so it stays and columns joins it. */}
-        <div className="colsmenu" ref={colsRef}>
-          <button
-            type="button"
-            className={`iconf${hiddenForObject.length > 0 ? " on" : ""}`}
-            title={hiddenForObject.length > 0 ? `Columns — ${hiddenForObject.length} hidden` : "Columns"}
-            aria-haspopup="menu"
-            aria-expanded={colsOpen}
-            onClick={() => setColsOpen((o) => !o)}
-          >
-            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 4v16" /></svg>
-            {hiddenForObject.length > 0 && <span className="colsdot" aria-hidden="true" />}
-          </button>
-          {colsOpen && (
-            <div className="colspop" role="menu">
-              <div className="colshd">Columns shown</div>
-              {hideableCols.map((c) => {
-                const shown = !hiddenForObject.includes(c.k);
-                return (
-                  <button
-                    key={c.k}
-                    type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={shown}
-                    className={`colsrow${shown ? " on" : ""}`}
-                    onClick={() => toggleCol(c.k)}
-                  >
-                    <span className="colsbox">{shown ? CHECK : null}</span>
-                    {c.k === "primary" ? active.nameHeader : c.t ?? c.k}
-                  </button>
-                );
-              })}
-              {hiddenForObject.length > 0 && (
-                <button type="button" className="colsreset" onClick={() => toggleAllColsOn()}>
-                  Show all
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-        <DensityMenu value={density} onChange={writeDensity} />
+        <ColumnsMenu cols={allCols} hidden={hiddenHere} onToggle={toggleColumn} onShowAll={showAllColumns} />
+        <DensityMenu value={density} onChange={densityPref.set} />
       </div>
 
       <div className={`selbar${selected.size ? " show" : ""}${personaMenuOpen || taskMenuOpen || campaignMenuOpen ? " menuopen" : ""}`}>
@@ -1154,7 +1126,7 @@ export function CrmBoard({
         <table className="dt">
           <thead>
             <tr>
-              {visibleCols.map((c) => (
+              {cols.map((c) => (
                 <th key={c.k} className={cellClass(c.k)}>
                   {c.k === "sel" ? (
                     <span
@@ -1176,7 +1148,7 @@ export function CrmBoard({
           <tbody>
             {visible.length === 0 ? (
               <tr className="emptyrow">
-                <td colSpan={visibleCols.length}>
+                <td colSpan={cols.length}>
                   {totalRows === 0 ? (
                     // A brand-new workspace has no records at all, and every
                     // other screen stays empty until it does — so say where they
@@ -1210,7 +1182,7 @@ export function CrmBoard({
                     if (!r.id.startsWith("local-")) window.location.href = recordHref(r);
                   }}
                 >
-                  {visibleCols.map((c) => (
+                  {cols.map((c) => (
                     <td key={c.k} className={cellClass(c.k)}>
                       {c.k === "sel" ? (
                         <span

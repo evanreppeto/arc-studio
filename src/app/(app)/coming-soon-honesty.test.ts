@@ -39,27 +39,28 @@ const ARC_APP_CSS = readFileSync(join(APP_DIR, "arc-app.css"), "utf8");
 const BASELINE: Record<string, number> = {
   // Empty, and that is the assertion.
   //
-  // Six controls lived here: CRM columns / density / Arc-enrichment, campaign
-  // templates, the analytics "Draft it" button, and Studio's three audio rows.
-  // Each is resolved the way this file's own rule demands — wired, or removed —
-  // never left as a placeholder that looks live:
+  // Six controls lived here. Each is resolved the way this file's own rule
+  // demands — wired, or removed — never left as a placeholder that looks live:
   //
-  //   wired   CRM density      BSR-748, on main. Row padding, and it needed no
-  //                            backend — which is what made it worth building.
-  //   wired   CRM columns      a real per-object visibility picker
-  //   wired   analytics        points at kind='next_iteration' opportunities,
-  //                            which Arc already detects and the inbox already
-  //                            calls "Repeat a winner"
+  //   wired   CRM density      BSR-748. Table row padding.
+  //   wired   CRM columns      BSR-749. Per-object visibility.
+  //   wired   analytics        "Draft it" was inert beside a feature that
+  //                            works: detectNextIterationOpportunities already
+  //                            emits kind='next_iteration' and the inbox
+  //                            already calls it "Repeat a winner", so the
+  //                            button now goes there.
   //   removed CRM enrichment   enrichment exists only as a connector-backed
-  //                            import provider; there is no per-record
-  //                            on-demand write path to call.
-  //   removed campaign templates  no template model anywhere.
+  //                            import provider. There is no per-record
+  //                            on-demand write path, and no UI makes that
+  //                            honest.
+  //   removed campaign templates  no template model anywhere
+  //                            (`industry-templates` is personas).
   //   removed studio audio     no audio generation, in Higgsfield or elsewhere.
   //
-  // This branch had density in the REMOVED column, reasoning it duplicated
-  // Settings -> Appearance. That was wrong and BSR-748 is the correction: the
-  // appearance setting scales app-wide type, density here sets table row
-  // padding. Different controls; both belong.
+  // Density and columns needed no backend, which is exactly what made them
+  // worth building rather than leaving marked. The other four had no backend to
+  // reach, which is what made removal the honest answer rather than a UI that
+  // pretends.
   //
   // Adding an entry back is fine when something genuinely is unbuilt. Adding one
   // because a control is easier to mark than to finish is the thing to refuse.
