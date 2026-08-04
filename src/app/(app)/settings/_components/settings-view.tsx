@@ -2279,8 +2279,8 @@ function ConnectorModal({ view, configured, hubspotOAuthConfigured = false, goog
               <button className="btn gold" disabled={pending || !configured} onClick={() => { window.location.href = "/api/connectors/google-reviews/authorize"; }}>Connect with Google</button>
             ) : (
               <p className="cxm-hint" style={{ opacity: 0.85 }}>
-                Google sign-in isn&apos;t available on this deployment yet — it needs a Google Cloud OAuth app
-                (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) with Business Profile API access.
+                Google sign-in isn&apos;t switched on here yet. Ask us to enable it and we&apos;ll connect
+                Business Profile for your workspace.
               </p>
             )}
           </div>
