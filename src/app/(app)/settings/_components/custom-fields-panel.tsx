@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition } from "react";
+
+import { Field } from "./field";
 
 import { ScopedNotice } from "./scoped-notice";
 
@@ -309,16 +311,3 @@ function AddFieldForm({
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return (
-    <div>
-      <div className="cxm-label">{label}</div>
-      {children}
-      {hint && (
-        <div className="cxm-hint" style={{ marginTop: 4 }}>
-          {hint}
-        </div>
-      )}
-    </div>
-  );
-}
