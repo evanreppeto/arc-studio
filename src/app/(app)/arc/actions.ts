@@ -980,7 +980,7 @@ export async function generateExemplarSkillAction(input: {
       sourceAssetIds: result.sourceAssetIds,
       counterExampleAssetIds: result.counterExampleAssetIds,
       generatedAt: new Date().toISOString(),
-    }, client);
+    }, client, context.workspaceId);
 
     const skills = await listGeneratedSkills(context.orgId, client);
     revalidatePath("/arc");

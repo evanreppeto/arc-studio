@@ -335,11 +335,20 @@ async function createWorkspaceDefaults(
   // this path had an Arc that could not be given a single instruction.
   //
   // Distinct from arc_instances above, which is the per-workspace Arc identity;
-  // this is the org-scoped agent that agent_tasks.agent_id points at. The key
-  // must match DEFAULT_CONNECTION.agentKey in lib/agent/connection.ts.
+  // this is the agent that agent_tasks.agent_id points at. The key must match
+  // DEFAULT_CONNECTION.agentKey in lib/agent/connection.ts.
+  //
+  // `agents` is workspace-owned by the BSR-637 boundary (two workspaces in one
+  // company could legitimately want different approval policies) and gained
+  // workspace_id in BSR-712. NOTE the conflict target is still (org_id, key):
+  // equivalent today, since no product path puts a second workspace in an
+  // existing org, but it is the constraint that would have to move first if one
+  // ever did. Tracked on BSR-713 rather than changed here — a Phase A does not
+  // rewrite unique constraints.
   await client.from("agents").upsert(
     {
       org_id: org.id,
+      workspace_id: workspace.id,
       key: "arc",
       name: "Arc",
       description: "Marketing operator. Drafts and prepares; never sends without approval.",

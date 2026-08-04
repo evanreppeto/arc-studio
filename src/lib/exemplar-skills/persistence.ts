@@ -14,6 +14,7 @@ import { type EvidenceTier } from "@/domain";
 import { ARC_SKILL_IDS } from "@/lib/arc-skills/catalog";
 import { type WorkspaceArcSkill } from "@/lib/arc-skills/custom";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { soleWorkspaceIdForOrg } from "@/lib/tenancy/resolve-workspace";
 
 export const ARC_GENERATED_SKILLS_TABLE = "arc_generated_skills";
 
@@ -91,15 +92,25 @@ export function toWorkspaceArcSkill(record: GeneratedSkillRecord, workspaceName:
   };
 }
 
+/**
+ * `workspaceId` is optional because the caller's workspace context carries it as
+ * `string | null`. When it is absent this derives the org's sole workspace rather
+ * than writing an unscoped row — same precedence as BSR-712's backfill, so a row
+ * written now and a row backfilled then agree. If neither resolves, the column is
+ * left unset: nullable through Phase A, and a NULL is what BSR-713's gate is for.
+ */
 export async function saveGeneratedSkill(
   orgId: string,
   record: GeneratedSkillRecord,
   client?: SupabaseClient,
+  workspaceId?: string | null,
 ): Promise<void> {
   const supabase = client ?? getSupabaseAdminClient();
+  const resolved = workspaceId ?? (await soleWorkspaceIdForOrg(supabase, orgId));
   const { error } = await supabase.from(ARC_GENERATED_SKILLS_TABLE).upsert(
     {
       org_id: orgId,
+      ...(resolved ? { workspace_id: resolved } : {}),
       key: record.key,
       name: record.name,
       description: record.description,
