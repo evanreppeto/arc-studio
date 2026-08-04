@@ -100,34 +100,40 @@ export const TENANCY_CONTRACT = {
   approval_decisions: "workspace",
   approval_recommendations: "workspace",
   agent_outputs: "workspace",
-  knowledge_nodes: { category: "workspace", pending: GROUP_A, hasColumn: true },
-  knowledge_edges: { category: "workspace", pending: GROUP_A, hasColumn: true },
-  vault_notes: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  knowledge_nodes: "workspace",
+  knowledge_edges: "workspace",
+  vault_notes: "workspace",
   // Wave 2 locked in BSR-713: NOT NULL + workspace-member RLS.
   arc_generated_skills: "workspace",
   agents: "workspace",
   agent_task_inputs: "workspace",
   agent_task_events: "workspace",
   agent_run_logs: "workspace",
-  opportunities: { category: "workspace", pending: GROUP_A, hasColumn: true },
-  next_best_actions: { category: "workspace", pending: GROUP_A, hasColumn: true },
-  persona_snapshots: { category: "workspace", pending: GROUP_A, hasColumn: true },
-  persona_knowledge_entries: { category: "workspace", pending: GROUP_A, hasColumn: true },
-  competitor_campaigns: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  opportunities: "workspace",
+  next_best_actions: "workspace",
+  persona_snapshots: "workspace",
+  persona_knowledge_entries: "workspace",
+  competitor_campaigns: "workspace",
   // Creative brand identity that constrains generation — distinct from
   // workspaces.logo_url, which is UI chrome. Two brands, two profiles.
-  business_profiles: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  business_profiles: "workspace",
   // The named logo variants of that same profile, so they carry the same
-  // category and migrate in the same wave. Two brands disagreeing about their
-  // own wordmark is two brands being right, which is the test in the rule above.
+  // category. Two brands disagreeing about their own wordmark is two brands
+  // being right, which is the test in the rule above.
   //
-  // Created WITH workspace_id rather than org-only: Wave 3 Phase A gave
-  // business_profiles the column, and a new sibling of that table landing
-  // without one would be the single brand table left out of the wave — a second
-  // migration later, and a writer-audit gap in between.
+  // Created WITH workspace_id rather than org-only, so no writer-audit gap
+  // opens between this table landing and its lock. But it stays `pending`
+  // while its siblings above are locked, and that gap is deliberate rather
+  // than an oversight: Wave 3 Phase B (BSR-715) shipped the NOT NULL + RLS
+  // narrowing for the brand tables it knew about, and this table did not exist
+  // when it was written. The column here is still nullable and the policy is
+  // still org-member, so claiming "workspace" would assert a lock that no
+  // migration has actually applied — the precise failure this file exists to
+  // prevent. It is the last GROUP_A straggler, and the outstanding count the
+  // check prints on every run is what keeps it from becoming permanent.
   brand_logos: { category: "workspace", pending: GROUP_A, hasColumn: true },
-  media_assets: { category: "workspace", pending: GROUP_A, hasColumn: true },
-  media_folders: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  media_assets: "workspace",
+  media_folders: "workspace",
   arc_instances: "workspace",
   agent_tasks: "workspace",
   agent_connections: "workspace",
