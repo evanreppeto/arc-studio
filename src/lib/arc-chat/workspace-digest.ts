@@ -25,8 +25,12 @@ import { getToolKind } from "./tool-labels";
 export type ArcWorkspaceActivityRow = {
   id: string;
   label: string;
+  /** `retried` — this call failed and the same tool succeeded later in the run.
+   *  Distinct from `error` because red means "unresolved, look at this", and a
+   *  call Arc recovered from is resolved. Distinct from `done` because it is
+   *  worth seeing that Arc had to go around. */
+  status: "queued" | "running" | "done" | "retried" | "error";
   detail?: string;
-  status: "queued" | "running" | "done" | "error";
   kind: ArcStepKind;
 };
 
@@ -64,16 +68,16 @@ function settleRow(row: ArcWorkspaceActivityRow, settled: boolean): ArcWorkspace
 }
 
 /**
- * Does this run hold a tool error Arc never got past?
+ * Which errored calls did Arc go on to get right?
  *
  * A single errored call used to condemn the whole run, and Arc's normal recovery
  * makes that reading wrong far more often than right. Arc invokes a deferred MCP
  * tool before fetching its schema, guesses the arguments, is rejected by
- * validation, calls `ToolSearch`, and immediately succeeds. Prod run 7631013c is
- * the shape exactly: `emit_card`, `cite_sources` and `suggest_followups` all
- * failed on "expected …, received undefined", then all three completed four
- * calls later — the card, the citations and the composited creative all landed,
- * on a message whose own status is `complete`.
+ * validation, calls `ToolSearch`, and immediately succeeds (BSR-737 is the cause).
+ * Prod run 7631013c is the shape exactly: `emit_card`, `cite_sources` and
+ * `suggest_followups` all failed on "expected …, received undefined", then all
+ * three completed four calls later — the card, the citations and the composited
+ * creative all landed, on a message whose own status is `complete`.
  *
  * The panel called that run failed and offered "Retry failed step", whose prompt
  * asks Arc to redo work that had already succeeded — on a run that had just
@@ -81,20 +85,26 @@ function settleRow(row: ArcWorkspaceActivityRow, settled: boolean): ArcWorkspace
  * asset behind. Censused on prod: of 77 tool calls across 10 runs, every one of
  * the 3 errors ever recorded was superseded. The indicator had never been right.
  *
- * So an error counts only when that tool never went on to succeed in the same
- * run. `message.status === "failed"` is still honoured on its own, which keeps
- * the case this must not swallow: Arc abandoning a tool and finishing with a
- * caveat is a real failure, and it is the runner that says so, not the count.
+ * A recovered call is therefore its own state rather than either neighbour. Left
+ * as `error` it keeps a resolved run reading "Completed with limitations · 19/22"
+ * — the same false claim in a quieter voice, which is exactly what shipping only
+ * the run-level half of this left on prod. Folded into `done` it would hide that
+ * Arc had to go around, which is worth seeing.
  *
- * The individual rows stay red either way — the call did error, and run history
- * showing the retry is the point.
+ * Superseded by NAME and order: the retry is a fresh call, so there is no id to
+ * pair on. Two genuinely distinct failures of one tool in a run would collapse
+ * into "recovered" if the last attempt worked — which is the right answer anyway,
+ * since the operator has nothing left to act on.
  */
-function hasUnresolvedToolError(toolCalls: ArcToolCall[]): boolean {
-  return toolCalls.some((tool, index) =>
-    tool.status === "error"
-    && !toolCalls.some((later, laterIndex) =>
-      laterIndex > index && later.name === tool.name && later.status === "complete"),
-  );
+function supersededErrorIndexes(toolCalls: ArcToolCall[]): Set<number> {
+  const out = new Set<number>();
+  toolCalls.forEach((tool, index) => {
+    if (tool.status !== "error") return;
+    const recovered = toolCalls.some((later, laterIndex) =>
+      laterIndex > index && later.name === tool.name && later.status === "complete");
+    if (recovered) out.add(index);
+  });
+  return out;
 }
 
 export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[] {
@@ -110,6 +120,7 @@ export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[]
 
     const toolCalls = message.toolCalls ?? [];
     const settled = message.status === "complete" || message.status === "failed";
+    const superseded = supersededErrorIndexes(toolCalls);
     const rows: ArcWorkspaceActivityRow[] = [
       ...message.steps.map((step, index) => settleRow({
         id: `${message.id}-step-${index}`,
@@ -124,12 +135,17 @@ export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[]
         // A one-line summary, not the raw payload — the panel is a digest, and
         // the payload is available on the run page behind a disclosure (BSR-724).
         detail: summarizeToolPayload(tool.output ?? tool.input) || undefined,
-        status: tool.status === "complete" ? "done" : tool.status === "error" ? "error" : "running",
+        status: tool.status === "complete"
+          ? "done"
+          : tool.status === "error"
+            ? (superseded.has(index) ? "retried" : "error")
+            : "running",
         kind: getToolKind(tool.name),
       }, settled && tool.status !== "error")),
     ];
 
-    const failed = message.status === "failed" || hasUnresolvedToolError(toolCalls);
+    const unresolvedError = toolCalls.some((tool, index) => tool.status === "error" && !superseded.has(index));
+    const failed = message.status === "failed" || unresolvedError;
     runs.push({
       id: message.id,
       index: runs.length + 1,

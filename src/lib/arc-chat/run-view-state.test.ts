@@ -56,4 +56,37 @@ describe("resolveArcRunViewState", () => {
       hasWarnings: true,
     });
   });
+
+  it("calls a run whose every failure was retried simply complete", () => {
+    // Prod run 7631013c after the run-level fix still read "Completed with
+    // limitations · 19/22": the verdict was right and the label was not, because
+    // three recovered calls were still counted as failures. There were no
+    // limitations — Arc reloaded the schemas and every activity resolved.
+    expect(resolveArcRunViewState({
+      pending: false,
+      messageStatus: "complete",
+      rows: [{ status: "done" }, { status: "retried" }, { status: "retried" }, { status: "retried" }],
+      hasContent: true,
+    })).toMatchObject({
+      state: "complete",
+      label: "Run complete",
+      progressLabel: "4/4 activities",
+      hasWarnings: false,
+    });
+  });
+
+  it("still says limitations when a failure was never recovered", () => {
+    expect(resolveArcRunViewState({
+      pending: false,
+      messageStatus: "complete",
+      rows: [{ status: "done" }, { status: "retried" }, { status: "error" }],
+      hasContent: true,
+    })).toMatchObject({
+      state: "complete",
+      label: "Completed with limitations",
+      // The retry counts as resolved; the unrecovered error does not.
+      progressLabel: "2/3 activities",
+      hasWarnings: true,
+    });
+  });
 });
