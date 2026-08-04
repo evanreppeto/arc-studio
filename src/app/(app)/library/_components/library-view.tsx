@@ -814,7 +814,9 @@ export function LibraryView({
             onBlur={(e) => saveFolderRename(F.f, e.currentTarget.value)}
           />
         ) : (
-          <span className="fn">{F.name}</span>
+          // `title` so a name too long even for the wider rail is still
+          // recoverable on hover, rather than being an unreadable dead end.
+          <span className="fn" title={F.name}>{F.name}</span>
         )}
         <span className="fc">{rcountLive(F.f)}</span>
         {F.f !== "all" && renamingFolder !== F.f && (
@@ -876,7 +878,11 @@ export function LibraryView({
       </div>
 
       <div className="oband">
-        <div className="obig"><span className="ov">{totals.total}</span><span className="ol">assets</span></div>
+        {/* `obigv`, not `ov`: `.ov` is the card hover OVERLAY (absolute, inset 0,
+            opacity 0). It applied to this number too, so the headline asset count
+            rendered invisible AND stretched a 1204x58 transparent box across the
+            band that swallowed clicks on the Arc-ready / need-you filters. */}
+        <div className="obig"><span className="obigv">{totals.total}</span><span className="ol">assets</span></div>
         <div className="obars">
           <span className="obar"><i style={{ background: "#7fb89a" }} />{totals.byk.image} images</span>
           <span className="obar"><i style={{ background: "#bd6a58" }} />{totals.byk.video} videos</span>
