@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { derivedShortLabel, type BillingNotice } from "@/domain";
@@ -182,7 +182,17 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const language = getProductLanguage(industry, objectLabels);
+  // Which recent chat is on screen. Only /arc can have one open, and `?new=1`
+  // means a blank composer — so neither of those marks a row. Everywhere else
+  // the rail shows recents as plain links, which is what they are.
+  const openConversationId = (() => {
+    if (pathname !== "/arc" || searchParams.get("new") === "1") return null;
+    const requested = searchParams.get("c");
+    if (requested) return requested;
+    return recentConversations.find((conversation) => conversation.defaultActive)?.id ?? null;
+  })();
   const navGroups = navGroupsFor(language.crmLabel);
   // Mobile nav drawer. Below the shell breakpoint the rail is an off-canvas
   // drawer toggled from the top bar; on desktop `navOpen` is inert (the rail is
@@ -396,27 +406,41 @@ export function AppShell({
                 <h2 id="rail-recents-title">Recent chats</h2>
                 <Link
                   href="/arc?new=1"
+                  className="rail-recents-new"
+                  title="Start a new Arc chat"
                   prefetch={false}
                   onClick={() => closeMobileNav(false)}
                 >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                   New
                 </Link>
               </div>
               {recentConversations.length > 0 ? (
                 <div className="rail-recents-list">
-                  {recentConversations.map((conversation) => (
-                    <Link
-                      key={conversation.id}
-                      href={`/arc?c=${encodeURIComponent(conversation.id)}`}
-                      className="rail-recent"
-                      prefetch={false}
-                      onClick={() => closeMobileNav(false)}
-                    >
-                      <span className="rail-recent-dot" aria-hidden="true" />
-                      <span className="rail-recent-title">{conversation.title}</span>
-                      <time>{conversation.when}</time>
-                    </Link>
-                  ))}
+                  {recentConversations.map((conversation) => {
+                    const open = conversation.id === openConversationId;
+                    return (
+                      <Link
+                        key={conversation.id}
+                        href={`/arc?c=${encodeURIComponent(conversation.id)}`}
+                        className={`rail-recent${open ? " on" : ""}${conversation.running ? " working" : ""}`}
+                        aria-current={open ? "page" : undefined}
+                        // Rail titles ellipsize at this width; the tooltip is the
+                        // only way to read a long one without opening the chat.
+                        title={conversation.title}
+                        prefetch={false}
+                        onClick={() => closeMobileNav(false)}
+                      >
+                        <span className="rail-recent-dot" aria-hidden="true" />
+                        <span className="rail-recent-title">{conversation.title}</span>
+                        {conversation.running ? (
+                          <span className="rail-recent-working">Working</span>
+                        ) : (
+                          <time>{conversation.when}</time>
+                        )}
+                      </Link>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="rail-recents-empty">Start a chat to keep active work close by.</p>
