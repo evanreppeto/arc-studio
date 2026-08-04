@@ -315,22 +315,30 @@ async function taskBelongsToScope(
 }
 
 /**
- * A message belongs to the org that owns its conversation. Derived rather than
- * passed in by callers: arc_messages.org_id has a DEFAULT hardcoded to one org's
- * slug, so an omitted org_id silently misfiles the row into that tenant instead
- * of failing. Total by construction — arc_messages.conversation_id and
- * arc_conversations.org_id are both NOT NULL, so every message has exactly one
- * conversation with exactly one org.
+ * A message belongs to the org AND workspace that own its conversation. Derived
+ * rather than passed in by callers: arc_messages.org_id has a DEFAULT hardcoded to
+ * one org's slug, so an omitted org_id silently misfiles the row into that tenant
+ * instead of failing.
+ *
+ * Total by construction for the org — arc_messages.conversation_id and
+ * arc_conversations.org_id are both NOT NULL. The workspace is derived the same
+ * way (BSR-716): arc_conversations.workspace_id is populated on every row on prod,
+ * so all 128 unstamped arc_messages resolve through their conversation rather than
+ * needing the org fallback. That makes these rows correct under any future
+ * org/workspace topology, not just today's.
  */
-async function conversationOrgId(client: SupabaseClient, conversationId: string): Promise<string> {
+async function conversationTenant(
+  client: SupabaseClient,
+  conversationId: string,
+): Promise<{ org_id: string; workspace_id: string | null }> {
   const { data, error } = await client
     .from("arc_conversations")
-    .select("org_id")
+    .select("org_id,workspace_id")
     .eq("id", conversationId)
-    .single<{ org_id: string }>();
-  assertOk("arc_conversations org lookup", error);
+    .single<{ org_id: string; workspace_id: string | null }>();
+  assertOk("arc_conversations tenant lookup", error);
   if (!data?.org_id) throw new Error(`arc_conversations ${conversationId} has no org_id`);
-  return data.org_id;
+  return { org_id: data.org_id, workspace_id: data.workspace_id };
 }
 
 /**
@@ -797,11 +805,12 @@ export async function insertOperatorMessage(
   if (input.command) metadata.command = input.command;
   if (input.skillId) metadata.skill_id = input.skillId;
   if (input.contextScopes && input.contextScopes.length > 0) metadata.context_scopes = input.contextScopes;
+  const tenant = await conversationTenant(client, input.conversationId);
   const { data, error } = await client
     .from("arc_messages")
     .insert({
       conversation_id: input.conversationId,
-      org_id: await conversationOrgId(client, input.conversationId),
+      ...tenant,
       role: "operator",
       body: input.body,
       status: "sent",
@@ -820,11 +829,12 @@ export async function insertPendingArcMessage(
   input: { conversationId: string; agentTaskId: string },
   client: SupabaseClient = getSupabaseAdminClient(),
 ): Promise<ArcMessage> {
+  const tenant = await conversationTenant(client, input.conversationId);
   const { data, error } = await client
     .from("arc_messages")
     .insert({
       conversation_id: input.conversationId,
-      org_id: await conversationOrgId(client, input.conversationId),
+      ...tenant,
       role: "arc",
       body: "",
       status: "pending",
@@ -841,10 +851,10 @@ export async function insertFailedArcMessage(
   input: { conversationId: string; body: string },
   client: SupabaseClient = getSupabaseAdminClient(),
 ): Promise<ArcMessage> {
-  const orgId = await conversationOrgId(client, input.conversationId);
+  const tenant = await conversationTenant(client, input.conversationId);
   const { data, error } = await client
     .from("arc_messages")
-    .insert({ conversation_id: input.conversationId, org_id: orgId, role: "arc", body: input.body, status: "failed" })
+    .insert({ conversation_id: input.conversationId, ...tenant, role: "arc", body: input.body, status: "failed" })
     .select(MESSAGE_COLUMNS)
     .single<MessageRow>();
   assertOk("arc_messages failed insert", error);
