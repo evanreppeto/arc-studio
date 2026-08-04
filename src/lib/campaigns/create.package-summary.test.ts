@@ -32,6 +32,39 @@ function spyClient() {
 const tenant = { org_id: "org-1", workspace_id: "ws-1" };
 
 describe("recordCampaignPackageSummary", () => {
+  it("writes objective and audience_summary on an EXISTING campaign", async () => {
+    // These were previously reachable only when a campaign was CREATED from an
+    // opportunity. Measured on prod: a run that documented campaign 7bef0d89
+    // filled handoff_note and considered_audiences and left both of these null,
+    // because the update path could not reach them.
+    const { client, calls } = spyClient();
+    const wrote = await recordCampaignPackageSummary({
+      campaignId: "camp_1",
+      objective: "  Capture post-flood calls  ",
+      audienceSummary: "Cook County homeowners",
+      client,
+      tenant,
+    });
+    expect(wrote).toBe(true);
+    expect(calls.update).toEqual({
+      objective: "Capture post-flood calls",
+      audience_summary: "Cook County homeowners",
+    });
+  });
+
+  it("reports whether anything was written, so a caller can tell a no-op from a write", async () => {
+    const a = spyClient();
+    expect(await recordCampaignPackageSummary({ campaignId: "c", handoffNote: "x", client: a.client, tenant })).toBe(true);
+    const b = spyClient();
+    expect(await recordCampaignPackageSummary({ campaignId: "c", handoffNote: "  ", client: b.client, tenant })).toBe(false);
+  });
+
+  it("treats a blank objective as nothing to write", async () => {
+    const { client, calls } = spyClient();
+    await recordCampaignPackageSummary({ campaignId: "camp_1", objective: "   ", client, tenant });
+    expect(calls.update).toBeUndefined();
+  });
+
   it("writes both fields, normalized to the shape the read model parses", async () => {
     const { client, calls } = spyClient();
     await recordCampaignPackageSummary({
