@@ -276,6 +276,72 @@ export function mergeBrandPalette(
   };
 }
 
+/** The five colour slots, in the order the Brand screen shows them. */
+export const BRAND_COLOR_SLOTS = ["primary", "secondary", "accent", "dark", "light"] as const;
+export type BrandColorSlot = (typeof BRAND_COLOR_SLOTS)[number];
+
+/** One slot as the operator's editor submits it. An empty `hex` clears the slot. */
+export type BrandColorEdit = { label?: string; hex?: string };
+
+export type BrandPaletteEdit = {
+  colors?: Partial<Record<BrandColorSlot, BrandColorEdit>>;
+  headingFont?: string;
+  bodyFont?: string;
+};
+
+export type BrandPaletteEditResult =
+  | { ok: true; palette: BrandPalette }
+  | { ok: false; errors: string[] };
+
+/**
+ * Apply an operator's palette edit. Deliberately NOT `mergeBrandPalette`, which
+ * exists for machine extraction and has keep-or-fill semantics: it refuses to
+ * overwrite a set slot and silently drops anything it can't parse.
+ *
+ * A person editing their own palette needs the opposite of both. They must be
+ * able to change a colour they already set, and to clear one back to empty. And
+ * a hex they typed wrong has to come back as an error — silently keeping the old
+ * value would show them a saved-looking screen with the previous colour still on
+ * it, which is the failure that makes someone approve creative in the wrong brand.
+ *
+ * Slots absent from `colors` are left exactly as they were, so a caller can send
+ * one slot without restating the rest.
+ */
+export function applyBrandPaletteEdit(
+  current: BrandPalette,
+  edit: BrandPaletteEdit,
+): BrandPaletteEditResult {
+  const errors: string[] = [];
+  const next: BrandPalette = { ...current };
+
+  for (const slot of BRAND_COLOR_SLOTS) {
+    const incoming = edit.colors?.[slot];
+    if (!incoming) continue; // untouched slot
+
+    const rawHex = (incoming.hex ?? "").trim();
+    const label = (incoming.label ?? current[slot].label).trim();
+
+    if (rawHex.length === 0) {
+      // An explicit clear. The label goes with it — a named slot with no colour
+      // would render as a gap the operator can't see the cause of.
+      next[slot] = { label: "", hex: "" };
+      continue;
+    }
+
+    const hex = normalizeHex(rawHex);
+    if (!hex) {
+      errors.push(`${slot}: "${rawHex}" isn't a 6-digit hex colour.`);
+      continue;
+    }
+    next[slot] = { label, hex };
+  }
+
+  if (edit.headingFont !== undefined) next.headingFont = edit.headingFont.trim();
+  if (edit.bodyFont !== undefined) next.bodyFont = edit.bodyFont.trim();
+
+  return errors.length === 0 ? { ok: true, palette: next } : { ok: false, errors };
+}
+
 export type IndustryTemplate = {
   id: string;
   label: string;

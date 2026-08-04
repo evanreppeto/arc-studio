@@ -30,6 +30,8 @@ const SHIPPED_CAPABILITIES: Array<{ action: string; claims: RegExp; label: strin
   { action: "updateBrandIdentity", claims: /note|voice|tone|identity|tagline|field/i, label: "brand identity & voice editing" },
   { action: "uploadBrandDocuments", claims: /document|\bfiles?\b/i, label: "document upload" },
   { action: "analyzeBrandWebsite", claims: /website|url/i, label: "website analysis" },
+  { action: "updateBrandPalette", claims: /palette|colou?rs?\b/i, label: "palette editing" },
+  { action: "updateBrandTypography", claims: /typography|font|typeface/i, label: "typeface selection" },
 ];
 
 describe("brand page tells the truth about what it can do", () => {
@@ -50,28 +52,66 @@ describe("brand page tells the truth about what it can do", () => {
   );
 
   /**
-   * The other half of honesty: what IS still unbuilt must keep saying so. There
-   * is no palette or typography editor — `upsertBusinessProfile` writes those
-   * columns, but nothing in the UI or actions layer sets them — so those two
-   * labels are correct and must not be removed just to make the page look
-   * finished.
+   * The other half of honesty. Palette and typography both used to be asserted
+   * here as *correctly* marked coming-soon; both moved to SHIPPED_CAPABILITIES
+   * as their write paths landed. The claim is about the write path, so when one
+   * appears the assertion flips rather than being deleted.
+   *
+   * Nothing on /brand is unbuilt now, so this asserts the page carries no
+   * coming-soon marks at all. Add one back only alongside a genuine gap — and
+   * put it in SHIPPED_CAPABILITIES the moment it stops being a gap.
    */
-  it("keeps the coming-soon marker on palette and typography, which have no write path", () => {
-    const messages = comingSoonMessages(BRAND_VIEW);
-    expect(messages.some((m) => /palette/i.test(m))).toBe(true);
-    expect(messages.some((m) => /typography/i.test(m))).toBe(true);
-    expect(BRAND_ACTIONS).not.toMatch(/export async function (updateBrandPalette|updateBrandTypography)/);
+  it("carries no coming-soon marks, because nothing on the page is unbuilt", () => {
+    expect(comingSoonMessages(BRAND_VIEW)).toEqual([]);
   });
 
-  it("routes every logo entry point through the one write path", () => {
-    // Three ways in — the header button, the card's browse button, and dropping a
-    // file on the card — and all of them must reach `saveBrandLogo`. The picker
-    // paths share `onLogoPicked`; the drop path is its own handler. A fourth
-    // uploader that wrote the logo somewhere else is the thing to prevent.
-    expect(BRAND_VIEW).toContain('onLogoPicked(e.target.files?.[0] ?? null, e, "header")');
-    expect(BRAND_VIEW).toContain('onLogoPicked(e.target.files?.[0] ?? null, e, "card")');
-    expect(BRAND_VIEW).toContain("onDrop={onLogoDropped}");
-    // Exactly two: the shared picker handler, and the drop handler.
-    expect([...BRAND_VIEW.matchAll(/saveBrandLogo\(formData\)/g)]).toHaveLength(2);
+  /**
+   * Typeface selection is only honest because the renderer can draw every font
+   * the picker offers. `loadCreativeFonts` used to pick between exactly two
+   * files via a serif/sans guess on the name, which meant every workspace's
+   * creative rendered as Inter or one serif whatever their brand kit said.
+   *
+   * The catalog is now the shared source of truth for both sides, and
+   * brand-fonts.test.ts checks the static files are actually on disk. This
+   * guards the wiring: the renderer must resolve through the catalog, never
+   * back to a two-file guess.
+   */
+  it("renders creative through the font catalog, not a serif/sans guess", () => {
+    const loader = readFileSync(new URL("../../../../lib/media/compose/fonts.ts", import.meta.url), "utf8");
+    expect(loader).toMatch(/resolveBrandFont/);
+    expect(loader, "the renderer fell back to the old two-file heuristic").not.toMatch(/resolveFontRole/);
+  });
+
+  /**
+   * Originally: three entry points (header button, card browse, card drop) that
+   * all had to reach `saveBrandLogo`. The card is gone — per-role tiles in the
+   * logo set replaced it — so the shape of the guard changes, but its subject
+   * does not. What must never happen is a second writer of the logo.
+   *
+   * `business_profiles.logo_url` is now DERIVED from the variant set, so an
+   * action that set it directly would be overwritten by the next variant change
+   * with nothing on screen saying so. Every write goes through
+   * `@/lib/brand-kit/logos`, whose `syncPrimaryLogoMirror` owns the column.
+   */
+  it("keeps one writer of the logo, with the mirror column derived from the set", () => {
+    // The header's single-logo control still exists and still reaches the action.
+    expect(BRAND_VIEW).toContain("onLogoPicked(e.target.files?.[0] ?? null, e)");
+    expect(BRAND_VIEW).toMatch(/saveBrandLogo\(formData\)/);
+
+    // ...and the action writes a variant rather than the column.
+    expect(BRAND_ACTIONS).toMatch(/saveBrandLogoVariant\(/);
+    expect(BRAND_ACTIONS).toMatch(/removeBrandLogoVariant\(/);
+
+    // `saveProfileLogo` was the direct writer. Nothing may call it any more:
+    // that is precisely the second writer this guard exists to prevent.
+    const directWrites = [...BRAND_ACTIONS.matchAll(/saveProfileLogo\(/g)];
+    expect(directWrites, "brand/actions.ts writes logo_url directly — the set must own it").toHaveLength(0);
+  });
+
+  it("gives every logo role a tile, so no stored variant is unreachable", () => {
+    const logoSet = readFileSync(new URL("./logo-set.tsx", import.meta.url), "utf8");
+    // Driven off BRAND_LOGO_ROLES rather than a hand-written list — a sixth role
+    // added to the domain must not silently have nowhere to be uploaded.
+    expect(logoSet).toMatch(/BRAND_LOGO_ROLES\.map/);
   });
 });
