@@ -286,6 +286,23 @@
   justify-content: space-between;
   gap: 12px;
 }
+/* What the call actually returned, in a line. The raw payload is still here —
+   this page is the inspector — but behind a toggle rather than as the default
+   view (BSR-724). */
+.arc-run .runtool-sum {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.arc-run .runtools summary {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  width: fit-content;
+}
+.arc-run .runtools summary:hover { color: var(--text-2); }
 .arc-run .runtools pre {
   margin: 8px 0 0;
   padding: 8px 10px;

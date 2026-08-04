@@ -17,7 +17,7 @@
  * Pure: no I/O, no view types, no React.
  */
 
-import { arcToolLabel, type ArcActionCard, type ArcStepKind } from "@/domain";
+import { arcToolLabel, summarizeToolPayload, type ArcActionCard, type ArcStepKind } from "@/domain";
 
 import type { ArcMessage } from "./persistence";
 import { getToolKind } from "./tool-labels";
@@ -87,7 +87,9 @@ export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[]
       ...toolCalls.map((tool, index) => settleRow({
         id: `${message.id}-tool-${index}`,
         label: arcToolLabel(tool.name),
-        detail: tool.output ?? tool.input,
+        // A one-line summary, not the raw payload — the panel is a digest, and
+        // the payload is available on the run page behind a disclosure (BSR-724).
+        detail: summarizeToolPayload(tool.output ?? tool.input) || undefined,
         status: tool.status === "complete" ? "done" : tool.status === "error" ? "error" : "running",
         kind: getToolKind(tool.name),
       }, settled && tool.status !== "error")),
