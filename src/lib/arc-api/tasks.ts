@@ -30,9 +30,12 @@ type AgentJoin = { key: string | null; name: string | null } | null;
 type TaskRow = {
   id: string;
   agent_id: string;
-  // NOT NULL on agent_tasks, so this is always present on a read row. Child
-  // agent_run_logs rows must carry it explicitly — that column has no default.
+  // Both NOT NULL on agent_tasks, so both are always present on a read row (
+  // TASK_SELECT is `*`). Child agent_run_logs rows must carry them explicitly —
+  // neither column has a default. Deriving the workspace from the task row rather
+  // than from `scope` is deliberate: scope is optional, the task row is not.
   org_id: string;
+  workspace_id: string;
   objective: string | null;
   status: string | null;
   priority: string | null;
@@ -337,6 +340,7 @@ export async function blockAgentTask(
     task_id: taskId,
     agent_id: row.agent_id,
     org_id: row.org_id,
+    workspace_id: row.workspace_id,
     run_status: "failed",
     error_message: reason,
     reasoning_summary: "Arc blocked the task pending human input.",
@@ -415,6 +419,7 @@ export async function moveAgentTask(
     task_id: taskId,
     agent_id: row.agent_id,
     org_id: row.org_id,
+    workspace_id: row.workspace_id,
     run_status: toStatus === "completed" ? "completed" : toStatus === "blocked" ? "failed" : "running",
     reasoning_summary: `Operator moved task to ${toStatus} from the board.`,
     metadata: { source: "operator_board_move", from_status: row.status, to_status: toStatus },
@@ -450,7 +455,7 @@ export async function appendAgentRunLog(
   const taskQuery = applyAgentTaskScope(
     client
     .from("agent_tasks")
-    .select("agent_id, org_id")
+    .select("agent_id, org_id, workspace_id")
       .eq("id", taskId),
     scope,
   );
@@ -463,7 +468,7 @@ export async function appendAgentRunLog(
     return { ok: false, reason: "not_found" };
   }
 
-  const task = taskRow as { agent_id: string; org_id: string };
+  const task = taskRow as { agent_id: string; org_id: string; workspace_id: string };
   const rawSummary = input.reasoningSummary ?? input.message ?? null;
   const reasoningSummary = rawSummary === null ? null : redactSecrets(rawSummary);
   const { data, error } = await client
@@ -472,6 +477,7 @@ export async function appendAgentRunLog(
       task_id: taskId,
       agent_id: task.agent_id,
       org_id: task.org_id,
+      workspace_id: task.workspace_id,
       run_status: input.runStatus ?? "running",
       reasoning_summary: reasoningSummary,
       model_provider: input.modelProvider ?? null,

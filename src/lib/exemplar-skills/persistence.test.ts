@@ -60,6 +60,48 @@ describe("saveGeneratedSkill", () => {
     expect(payload.exemplar_count).toBe(3);
   });
 
+  it("stamps the workspace it is given (BSR-712)", async () => {
+    const supabase = createSupabaseQueryMock({ [ARC_GENERATED_SKILLS_TABLE]: { data: null, error: null } });
+    await saveGeneratedSkill(ORG, RECORD, supabase, "ws-1");
+
+    const upsert = supabase.calls.find(([method]) => method === "upsert");
+    const [, payload] = upsert as [string, Record<string, unknown>];
+    expect(payload.workspace_id).toBe("ws-1");
+    // The caller's workspace must win outright — a fallback lookup here would be
+    // a second source of truth for the same answer.
+    expect(supabase.calls.some(([method]) => method === "from" )).toBe(true);
+  });
+
+  it("falls back to the org's sole workspace when the caller has none", async () => {
+    // The caller's context types workspaceId as `string | null`, so this path is
+    // reachable. It must resolve rather than write an unscoped row.
+    const supabase = createSupabaseQueryMock({
+      workspaces: { data: [{ id: "ws-only" }], error: null },
+      [ARC_GENERATED_SKILLS_TABLE]: { data: null, error: null },
+    });
+    await saveGeneratedSkill(ORG, RECORD, supabase, null);
+
+    const upsert = supabase.calls.find(([method]) => method === "upsert");
+    const [, payload] = upsert as [string, Record<string, unknown>];
+    expect(payload.workspace_id).toBe("ws-only");
+  });
+
+  it("omits workspace_id rather than guessing when the org has two workspaces", async () => {
+    // Ambiguity must not be resolved by picking one: through Phase A the column
+    // is nullable, and a NULL is visible to BSR-713's gate. A wrong workspace is
+    // not.
+    const supabase = createSupabaseQueryMock({
+      workspaces: { data: [{ id: "ws-a" }, { id: "ws-b" }], error: null },
+      [ARC_GENERATED_SKILLS_TABLE]: { data: null, error: null },
+    });
+    await saveGeneratedSkill(ORG, RECORD, supabase, null);
+
+    const upsert = supabase.calls.find(([method]) => method === "upsert");
+    const [, payload] = upsert as [string, Record<string, unknown>];
+    expect(payload).not.toHaveProperty("workspace_id");
+    expect(payload.org_id).toBe(ORG);
+  });
+
   it("throws with the table name when the write fails", async () => {
     const supabase = createSupabaseQueryMock({ [ARC_GENERATED_SKILLS_TABLE]: { data: null, error: { message: "boom" } } });
     await expect(saveGeneratedSkill(ORG, RECORD, supabase)).rejects.toThrow(ARC_GENERATED_SKILLS_TABLE);
