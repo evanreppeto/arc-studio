@@ -202,7 +202,16 @@ export async function executeResendDispatch(
       credential_ref: string | null;
     }>();
   assertOk("connections lookup", connectionError);
-  if (!connection?.enabled) {
+  // Two different states, two different remedies. `!connection?.enabled` covers
+  // both, and reporting them as one told a workspace that has never connected
+  // Resend that it was "connected but disabled" — false, and it points at a
+  // toggle that does not exist for them. This is the FIRST error a workspace
+  // hits on its first send, so it is the worst place to describe the wrong
+  // problem (BSR-757).
+  if (!connection) {
+    return { ok: false, message: "Resend isn't connected for this workspace. Connect it in Settings → Connections." };
+  }
+  if (!connection.enabled) {
     return { ok: false, message: "Resend is connected but disabled. Enable it in Settings → Connections." };
   }
 
