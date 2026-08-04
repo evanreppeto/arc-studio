@@ -5,6 +5,12 @@ import {
   countOf,
   WORK_STATE_LABEL, personaAccent,} from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+
+// The review queue opens from this screen as well as from a campaign, and every
+// rule it needs — .rqwrap, and the .cbtn/.pill/.review it reuses — lives here.
+// A route-scoped stylesheet stopped being right when the component stopped
+// belonging to one route: without this the queue renders as an unstyled block.
+import "./campaign.css";
 import { getCampaignWorkspaceList, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
@@ -173,5 +179,16 @@ export default async function CampaignsPage() {
       ? parts.join(" · ")
       : "Arc drafts campaigns here as opportunities come in — nothing sends until you approve it";
 
-  return <CampaignsBoard rows={rows} arcNote={arcNote} personaOptions={personaOptions} loadError={loadError} />;
+  // Passed as a NUMBER, not read back out of arcNote. Deriving a count from a
+  // rendered label is the exact bug BSR-726 was: the footer regexed its own
+  // text and disagreed with the tab above it.
+  return (
+    <CampaignsBoard
+      rows={rows}
+      arcNote={arcNote}
+      undecidedCount={pendingAssets}
+      personaOptions={personaOptions}
+      loadError={loadError}
+    />
+  );
 }

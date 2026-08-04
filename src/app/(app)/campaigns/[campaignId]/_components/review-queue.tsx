@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { type CampaignAssetFinding, type CampaignWorkspaceAsset } from "@/lib/campaigns/read-model";
+import { type CampaignAssetFinding, type CampaignWorkspaceAsset, type ReviewQueueEntry } from "@/lib/campaigns/read-model";
 
 import { OverlayPortal } from "../../../_components/overlay-portal";
 
@@ -23,7 +23,7 @@ import { summarizeReview } from "./review-summary";
  * there is no separate "move on" step to get out of sync with the decision.
  */
 export function ReviewQueue({
-  campaignName,
+  title,
   queue,
   pending,
   error,
@@ -32,9 +32,13 @@ export function ReviewQueue({
   onApplyFix,
   onEdit,
   onClose,
+  closeLabel = "Back to the campaign",
 }: {
-  campaignName: string;
-  queue: CampaignWorkspaceAsset[];
+  /** Names the queue itself — one campaign, or everything on your desk. The
+   *  campaign each deliverable belongs to is carried per entry, because a
+   *  cross-campaign queue moves between them as you work. */
+  title: string;
+  queue: ReviewQueueEntry[];
   pending: boolean;
   error: string | null;
   onDecide: (asset: CampaignWorkspaceAsset, decision: "approved" | "declined") => void;
@@ -44,6 +48,7 @@ export function ReviewQueue({
    *  owns the editor, rather than growing a second one in here. */
   onEdit: (asset: CampaignWorkspaceAsset) => void;
   onClose: () => void;
+  closeLabel?: string;
 }) {
   const [index, setIndex] = useState(0);
   const [openFindings, setOpenFindings] = useState<Set<string>>(new Set());
@@ -61,7 +66,8 @@ export function ReviewQueue({
   const [startedWith] = useState(queue.length);
 
   const clamped = Math.min(index, Math.max(queue.length - 1, 0));
-  const asset = queue[clamped];
+  const entry = queue[clamped];
+  const asset = entry?.asset;
 
   useEffect(() => {
     if (revising) reviseRef.current?.focus();
@@ -174,7 +180,7 @@ export function ReviewQueue({
     return (
       <OverlayPortal>
         <div className="arc-campaign rq-scope">
-        <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${campaignName}`}>
+        <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${title}`}>
           <div className="rqdone">
             <span className="rqtick" aria-hidden="true">
               {svg('<path d="M5 12l4 4L19 6"/>')}
@@ -182,11 +188,11 @@ export function ReviewQueue({
             <b>Everything here has a decision.</b>
             <p>
               {startedWith > 0
-                ? `You worked through ${startedWith} deliverable${startedWith === 1 ? "" : "s"}. Nothing has gone out — approved work stays locked until you launch the campaign.`
-                : "Nothing on this campaign is waiting on you."}
+                ? `You worked through ${startedWith} deliverable${startedWith === 1 ? "" : "s"}. Nothing has gone out — approved work stays locked until launch.`
+                : `Nothing in ${title} is waiting on you.`}
             </p>
             <button type="button" className="cbtn gold" onClick={onClose}>
-              Back to the campaign
+              {closeLabel}
             </button>
           </div>
         </div>
@@ -204,11 +210,11 @@ export function ReviewQueue({
   return (
     <OverlayPortal>
       <div className="arc-campaign rq-scope">
-      <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${campaignName}`}>
+      <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${title}`}>
         <div className="rqbar">
           <div className="rqcount">
             <b>{clamped + 1}</b> of {queue.length}
-            <span className="rqname">{campaignName}</span>
+            <span className="rqname">{entry.campaignName}</span>
           </div>
           <div
             className="rqtrack"
@@ -245,6 +251,8 @@ export function ReviewQueue({
               openFindings={openFindings}
               onFocusFinding={focusFinding}
               onEditCopy={() => onEdit(asset)}
+              onApplyFix={(finding, value) => onApplyFix(asset, finding, value)}
+              pending={pending}
               canEdit
             />
             <DeliverableCopy

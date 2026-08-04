@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { CAMPAIGN_NOUN, countOf, WORK_STATE_LABEL, personaAccent,} from "@/domain";
 
-import { createCampaign, type NewCampaignInput } from "../actions";
+import { createCampaign, loadReviewQueueAction, type NewCampaignInput } from "../actions";
+import { applyFindingFixAction, decideCampaignAsset, requestCampaignRevision } from "../[campaignId]/actions";
+import { ReviewQueue } from "../[campaignId]/_components/review-queue";
+import { type ReviewQueueEntry } from "@/lib/campaigns/read-model";
 import { NewCampaignModal } from "./new-campaign-modal";
 import { needsOperatorAttention, type CampaignDeskState, type CampaignTone } from "./tone";
 
@@ -127,14 +130,20 @@ function CampaignAvatar({ thumbnailUrl, mediaCount }: { thumbnailUrl: string | n
   );
 }
 
+const svgIcon = (d: string) => <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: d }} />;
+
 export function CampaignsBoard({
   rows,
   arcNote,
+  undecidedCount = 0,
   personaOptions,
   loadError = null,
 }: {
   rows: CampaignRow[];
   arcNote: string;
+  /** Deliverables with no decision recorded, across every campaign — the size of
+   *  the queue the button below opens. A number, not a substring of arcNote. */
+  undecidedCount?: number;
   /** The org's own personas for the New-campaign picker. */
   personaOptions?: { key: string; label: string }[];
   /**
@@ -154,6 +163,49 @@ export function CampaignsBoard({
   const [localRows, setLocalRows] = useState<CampaignRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  // The cross-campaign queue. Null until asked for — see loadReviewQueueAction
+  // for why it is not loaded with the board.
+  const [queue, setQueue] = useState<ReviewQueueEntry[] | null>(null);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueError, setQueueError] = useState<string | null>(null);
+  const [queuePending, startQueueTransition] = useTransition();
+
+  async function openQueue() {
+    if (queueLoading) return;
+    setQueueLoading(true);
+    setQueueError(null);
+    try {
+      const res = await loadReviewQueueAction();
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      if (res.entries.length === 0) {
+        // The count and the queue disagreeing means something was decided while
+        // this page sat open. Say that, rather than opening an empty queue.
+        setError("Everything here has been decided since this page loaded.");
+        return;
+      }
+      setQueue(res.entries);
+    } finally {
+      setQueueLoading(false);
+    }
+  }
+
+  /** Drop a deliverable from the queue so the next one arrives, and put it back
+   *  if the write failed. The queue advances by the list shrinking. */
+  function settleQueueEntry(assetId: string, run: () => Promise<{ ok: boolean; error?: string }>) {
+    const snapshot = queue;
+    setQueue((current) => current?.filter((e) => e.asset.id !== assetId) ?? current);
+    startQueueTransition(async () => {
+      const res = await run();
+      if (!res.ok) {
+        setQueue(snapshot);
+        setQueueError(res.error ?? "That did not save.");
+      }
+    });
+  }
 
   const allRows = useMemo(() => [...localRows, ...rows], [localRows, rows]);
 
@@ -388,12 +440,72 @@ export function CampaignsBoard({
           <i />
           {arcNote}
         </span>
+        {undecidedCount > 1 && (
+          <button type="button" className="cbtn ghost gqueue" onClick={openQueue} disabled={queueLoading}>
+            {svgIcon('<path d="M4 6h16M4 12h16M4 18h9"/>')}
+            {queueLoading ? "Loading…" : `Review all ${undecidedCount}`}
+          </button>
+        )}
         <div className="pager">
           <span className="pgnum">
             {visible.length === 0 ? "0 of 0" : `1–${visible.length} of ${visible.length}`}
           </span>
         </div>
       </div>
+
+      {/* Mounted while `queue` is non-null, NOT while it has entries: draining the
+          last one is the moment the reviewer has earned the "everything here has
+          a decision" panel, and unmounting on empty would swallow it. */}
+      {queue && (
+        <ReviewQueue
+          title="everything waiting on you"
+          closeLabel="Back to campaigns"
+          queue={queue}
+          pending={queuePending}
+          error={queueError}
+          onDecide={(asset, decision) => {
+            const entry = queue.find((e) => e.asset.id === asset.id);
+            if (!entry) return;
+            settleQueueEntry(asset.id, () => decideCampaignAsset(entry.campaignId, asset.id, decision));
+          }}
+          onRevise={(asset, instruction) => {
+            const entry = queue.find((e) => e.asset.id === asset.id);
+            if (!entry) return;
+            // A revision request leaves the piece undecided, so it stays in the
+            // queue exactly as it does inside a campaign.
+            startQueueTransition(async () => {
+              const res = await requestCampaignRevision(entry.campaignId, asset.id, instruction);
+              if (!res.ok) setQueueError(res.error);
+            });
+          }}
+          onApplyFix={(asset, finding, value) => {
+            const entry = queue.find((e) => e.asset.id === asset.id);
+            if (!entry) return;
+            startQueueTransition(async () => {
+              const res = await applyFindingFixAction({ campaignId: entry.campaignId, findingId: finding.id, value });
+              if (!res.ok) {
+                setQueueError(res.error);
+                return;
+              }
+              setQueue((current) =>
+                current?.map((e) =>
+                  e.asset.id === asset.id
+                    ? { ...e, asset: { ...e.asset, findings: e.asset.findings.filter((f) => f.id !== finding.id) } }
+                    : e,
+                ) ?? current,
+              );
+            });
+          }}
+          // No editor on this screen. Editing hands off to the campaign that
+          // owns the deliverable rather than growing a second one here.
+          onEdit={(asset) => {
+            const entry = queue.find((e) => e.asset.id === asset.id);
+            setQueue(null);
+            if (entry) router.push(`/campaigns/${entry.campaignId}`);
+          }}
+          onClose={() => setQueue(null)}
+        />
+      )}
 
       <NewCampaignModal
         key={newOpen ? "open" : "closed"}

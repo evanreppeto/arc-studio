@@ -11,7 +11,7 @@ import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import { CampaignDetailView } from "./_components/campaign-detail-view";
 import { reportDegraded } from "@/lib/observability/report-degraded";
-import "./campaign.css";
+import "../campaign.css";
 
 export const metadata = { title: "Campaign — Arc Studio" };
 
