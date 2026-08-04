@@ -36,6 +36,14 @@ jobs:
       - name: Test (app)
         run: pnpm test
 
+      # Reads the report the step above just wrote, so the timings are CI's own
+      # — a contended runner, which is the environment the timeout has to
+      # absorb. Measuring this locally would report a margin CI does not have
+      # (BSR-739). `always()` so a suite failure does not hide a timing warning.
+      - name: Test timing headroom (app)
+        if: always()
+        run: pnpm test:timing
+
       - name: Build (app)
         run: pnpm build
 
