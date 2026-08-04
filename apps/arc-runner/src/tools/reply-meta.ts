@@ -15,6 +15,8 @@ export function suggestFollowupsTool(addSuggestion: (text: string) => void) {
       for (const p of kept) addSuggestion(p);
       return textResult(`Suggested ${kept.length} follow-up(s).`);
     },
+    // Never deferred behind tool search: see ALWAYS_LOADED_REPLY_TOOLS in ./index.
+    { alwaysLoad: true },
   );
 }
 
@@ -39,6 +41,8 @@ export function citeSourcesTool(addSource: (mention: ArcMention) => void) {
       for (const s of args.sources) addSource({ type: s.type, id: s.id, label: s.label, href: s.href });
       return textResult(`Cited ${args.sources.length} source(s).`);
     },
+    // Never deferred behind tool search: see ALWAYS_LOADED_REPLY_TOOLS in ./index.
+    { alwaysLoad: true },
   );
 }
 

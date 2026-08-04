@@ -138,10 +138,90 @@ describe("listOpenOpportunities (snooze wake-up)", () => {
   });
 
   it("counts woken snoozes too, so the /arc chip agrees with the inbox it links to", async () => {
-    const supabase = createSupabaseQueryMock({ opportunities: { data: [], error: null, count: 4 } });
+    const rows = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];
+    const supabase = createSupabaseQueryMock({ opportunities: { data: rows, error: null, count: 4 } });
 
     await expect(countPendingOpportunities(supabase)).resolves.toBe(4);
     expect(snoozeFilter(supabase)).toContain("and(status.eq.snoozed,snoozed_until.lte.");
+  });
+});
+
+/**
+ * BSR-727. Expiry was enforced when opportunities were WRITTEN and never when
+ * they were READ, so a weather card created while its advisory was live stayed
+ * in the inbox after the advisory ended. The live workspace was showing a Flood
+ * Advisory that ended three days earlier, at 55% confidence, under a headline
+ * reading "while advisories are live", with a working "Draft with Arc" button.
+ */
+describe("listOpenOpportunities (closed signal windows)", () => {
+  const HOUR = 3600_000;
+  const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
+
+  const row = (id: string, endsAt?: string) => ({
+    id,
+    subject_type: "weather_event",
+    subject_id: `subj-${id}`,
+    title: `Flood Advisory ${id}`,
+    summary: "",
+    confidence: 55,
+    urgency: "low",
+    status: "pending",
+    recommended_action: "",
+    campaign_id: null,
+    evidence: endsAt ? { endsAt } : {},
+  });
+
+  it("drops an opportunity whose window closed before now", async () => {
+    const supabase = createSupabaseQueryMock({
+      opportunities: { data: [row("expired", iso(-72 * HOUR)), row("live", iso(+12 * HOUR))], error: null },
+    });
+
+    const records = await listOpenOpportunities(supabase, "org-1");
+
+    expect(records.map((r) => r.id)).toEqual(["live"]);
+  });
+
+  it("keeps an opportunity with no window at all", async () => {
+    // A cold lead or competitor move has no endsAt. This must never hide those.
+    const supabase = createSupabaseQueryMock({
+      opportunities: { data: [row("no-window")], error: null },
+    });
+
+    await expect(listOpenOpportunities(supabase, "org-1")).resolves.toHaveLength(1);
+  });
+
+  it("keeps an opportunity whose endsAt is unparseable rather than hiding work", async () => {
+    const supabase = createSupabaseQueryMock({
+      opportunities: { data: [row("garbled", "not-a-date")], error: null },
+    });
+
+    await expect(listOpenOpportunities(supabase, "org-1")).resolves.toHaveLength(1);
+  });
+
+  it("compares instants, not strings — an offset timestamp is not lexicographic", async () => {
+    // 2026-08-04T11:15:00-05:00 and 2026-08-04T16:15:00Z are the same instant and
+    // sort apart as text. A string comparison would get exactly one of these two
+    // rows wrong.
+    const future = new Date(Date.now() + 6 * HOUR);
+    const offsetIso = future.toISOString().replace("Z", "+00:00");
+    const supabase = createSupabaseQueryMock({
+      opportunities: { data: [row("offset-future", offsetIso)], error: null },
+    });
+
+    await expect(listOpenOpportunities(supabase, "org-1")).resolves.toHaveLength(1);
+  });
+
+  it("does not count a closed window on the chip either", async () => {
+    const supabase = createSupabaseQueryMock({
+      opportunities: {
+        data: [row("expired", iso(-HOUR)), row("live", iso(+HOUR))],
+        error: null,
+        count: 2,
+      },
+    });
+
+    // The chip must not read 2 above an inbox showing 1.
+    await expect(countPendingOpportunities(supabase)).resolves.toBe(1);
   });
 });
 

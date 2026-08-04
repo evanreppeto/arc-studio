@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ArcClient } from "../arc-client";
 import { resolveArcSkill } from "../skills";
-import { allowedToolNames, toolsForMode } from "./index";
+import { ALWAYS_LOADED_REPLY_TOOLS, allowedToolNames, toolsForMode } from "./index";
 
 // A stub client — the assembler only wires tools, it never calls these in the test.
 const stubClient = {
@@ -140,5 +140,45 @@ describe("allowedToolNames", () => {
       expect(allowed).toContain("mcp__arc__get_app_map");
       expect(allowed).toContain("mcp__arc__get_workspace_settings");
     }
+  });
+});
+
+/**
+ * BSR-737. The SDK applies `tool({ alwaysLoad: true })` as
+ * `_meta["anthropic/alwaysLoad"]`, which is why this asserts on the wire shape
+ * rather than on an option we passed — a future SDK that renamed the key would
+ * silently stop pinning these, and nothing else in the suite would notice.
+ */
+const alwaysLoaded = (t: { _meta?: Record<string, unknown> }) =>
+  t._meta?.["anthropic/alwaysLoad"] === true;
+
+describe("reply-assembly tools are never deferred behind tool search", () => {
+  it("pins emit_card, cite_sources and suggest_followups in every mode", () => {
+    // Drop the flag from any one of them and Arc calls it from the prompt's prose
+    // with no schema loaded, gets an argument-validation error, and burns a
+    // ToolSearch round-trip recovering — on the critical path to the reply.
+    for (const mode of ["ask", "scan", "act", "draft"] as const) {
+      const byName = new Map(toolsForMode(mode, stubClient, step, sink).map((t) => [t.name, t]));
+      for (const name of ALWAYS_LOADED_REPLY_TOOLS) {
+        expect(byName.get(name), `${name} missing in ${mode} mode`).toBeDefined();
+        expect(alwaysLoaded(byName.get(name)!), `${name} not pinned in ${mode} mode`).toBe(true);
+      }
+    }
+  });
+
+  it("leaves everything else deferred, so tool search still earns its keep", () => {
+    // The failure this catches is the over-correction: pinning the whole server
+    // (or reaching for the server-level `alwaysLoad`) puts ~50 schemas in every
+    // prompt and makes tool search pointless.
+    const pinned = toolsForMode("act", stubClient, step, sink).filter(alwaysLoaded).map((t) => t.name).sort();
+    expect(pinned).toEqual([...ALWAYS_LOADED_REPLY_TOOLS].sort());
+  });
+
+  it("does not pin ask_operator", () => {
+    // It fires only when Arc needs a decision, so it is a genuine deferral
+    // candidate — unlike the three above, which run on essentially every turn.
+    const ask = toolsForMode("act", stubClient, step, sink).find((t) => t.name === "ask_operator");
+    expect(ask).toBeDefined();
+    expect(alwaysLoaded(ask!)).toBe(false);
   });
 });

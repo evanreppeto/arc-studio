@@ -37,12 +37,28 @@
  */
 
 /**
+ * A UUID, anywhere in a string. Exported because two different questions need
+ * it: "does this text contain one" (the leak check) and "is this whole value
+ * one" (a renderer deciding whether a value is worth showing).
+ */
+export const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
+
+/**
  * Shapes that are identifiers in any codebase, and that a person writing UI copy
  * would never produce.
  */
 const IDENTIFIER_SHAPES: { name: string; pattern: RegExp }[] = [
   // Protocol-prefixed tool names: mcp__arc__search_contacts.
   { name: "MCP tool name", pattern: /\bmcp__\w+/ },
+  // Primary keys. Added after a live audit found them on the front page: the
+  // Home hero card read `"Suburban Home Background Asset" (campaign 0bd41cb3-
+  // ff30-4548-92e6-4ba431b61c8d)`, and the Opportunities evidence panel — the
+  // one surface whose whole job is proving a claim to a human — answered
+  // "Active flood advisories" with two bare UUIDs (BSR-740).
+  //
+  // The existing shapes could not catch these: a UUID is neither snake_case nor
+  // CONSTANT_CASE, so every check here passed while the ids shipped.
+  { name: "UUID", pattern: UUID_PATTERN },
   // snake_case with at least two segments: needs_review, crm_lead, proof_point.
   // Requires lowercase both sides so CONSTANT_CASE and Mixed_Case fall to the
   // rules below rather than matching here twice.
