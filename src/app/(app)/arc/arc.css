@@ -812,6 +812,14 @@
 .arc-run-copy { min-width: 0; display: flex; flex-direction: column; }
 .arc-run-copy b { color: currentColor; font-size: 11.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-run-copy small { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+/* The tool's own payload, one click away. Default is the summary line above;
+   this is here so evidence stays reachable without the row being a wall of JSON
+   (BSR-724). Text wraps and scrolls inside itself so a 400-char blob cannot
+   stretch the trace. */
+.arc-run-raw { margin-top: 3px; }
+.arc-run-raw summary { color: var(--muted); font-size: 10px; cursor: pointer; width: fit-content; }
+.arc-run-raw summary:hover { color: var(--text-2); }
+.arc-run-raw pre { margin: 4px 0 0; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 10px; line-height: 1.5; color: var(--muted); background: var(--inset); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
 .arc-run-state { color: var(--ok); }
 .arc-live-dots { display: inline-flex; align-items: center; gap: 3px; padding: 0 2px; }
 .arc-live-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); animation: arc-dot 1.05s ease-in-out infinite; }

@@ -46,6 +46,8 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import {
   arcToolLabel,
+  redactToolPayload,
+  summarizeToolPayload,
   ASSET_NOUN,
   countOf,
   summarizeSteps,
@@ -172,6 +174,17 @@ export function RunContract({ contract, outcome = "complete" }: { contract: ArcR
   );
 }
 
+/**
+ * A tool label dropped into the middle of a sentence. Blanket `.toLowerCase()`
+ * turned "CRM search" into "Running crm search", one line under a label reading
+ * "CRM search" — so an acronym keeps its case and everything else lowers.
+ */
+function midSentence(label: string): string {
+  const first = label.split(" ")[0] ?? "";
+  if (first && first === first.toUpperCase()) return label;
+  return label.charAt(0).toLowerCase() + label.slice(1);
+}
+
 export function RunTrace({
   pending,
   responding = false,
@@ -253,8 +266,14 @@ export function RunTrace({
       // trace — the protocol prefix is how Arc reaches the tool, not what it did.
       // Found by the dev identifier check, not by reading the screen (BSR-709).
       label: arcToolLabel(tool.name),
-      detail: tool.input ?? `Running ${arcToolLabel(tool.name).toLowerCase()}`,
-      result: tool.output,
+      // One line by default, the payload behind a disclosure. This used to print
+      // the tool's raw input and output into the row — `{"limit":0} ·
+      // {"contacts":[],"total":243}` — and two of prod's payloads carried a
+      // phone number, because a tool that reads contacts returns contact rows
+      // (BSR-724).
+      detail: summarizeToolPayload(tool.input) || `Running ${midSentence(arcToolLabel(tool.name))}`,
+      result: summarizeToolPayload(tool.output) || undefined,
+      payload: [tool.input, tool.output].filter(Boolean).map((p) => redactToolPayload(p!)).join("\n\n") || undefined,
       isTool: true,
       status: tool.status === "complete" ? "done" as const : tool.status === "error" ? "error" as const : "running" as const,
       kind: getToolKind(tool.name),
@@ -331,13 +350,20 @@ export function RunTrace({
             {sourceRows.map((row) => (
               <div className={`arc-run-row is-${row.status}`} key={row.id}>
                 <span className="arc-run-kind"><RunIcon kind={row.kind} /></span>
-                {/* `detail`/`result` are a tool's own input and output, passed
-                    through verbatim — JSON payloads, ids, and the tool's own
-                    argument names. That is payload, not vocabulary we chose, so
-                    the dev identifier check skips it the same way it skips the
-                    <pre> the run page renders the same content into. The label
-                    beside it is ours and stays checked (BSR-709). */}
-                <span className="arc-run-copy"><b>{row.label}</b>{row.detail || row.result ? <small data-identifiers-ok>{[row.detail, row.result].filter(Boolean).join(" · ")}</small> : null}</span>
+                {/* The summary line is ours and stays checked by the dev
+                    identifier check. The raw payload inside the disclosure is
+                    the tool's own text — ids and argument names — so it carries
+                    the same exemption the run page's <pre> gets (BSR-709/724). */}
+                <span className="arc-run-copy">
+                  <b>{row.label}</b>
+                  {row.detail || row.result ? <small>{[row.detail, row.result].filter(Boolean).join(" · ")}</small> : null}
+                  {row.payload ? (
+                    <details className="arc-run-raw">
+                      <summary>Show raw</summary>
+                      <pre data-identifiers-ok>{row.payload}</pre>
+                    </details>
+                  ) : null}
+                </span>
                 {row.status === "error" ? <X size={14} className="arc-run-state" aria-label="Failed" /> : <Check size={14} className="arc-run-state" aria-label="Complete" />}
               </div>
             ))}
