@@ -1,4 +1,4 @@
--- supabase/migrations/20260804230000_brand_logos.sql
+-- supabase/migrations/20260805000000_brand_logos.sql
 --
 -- A workspace's logo SET, replacing the single `business_profiles.logo_url`.
 --
@@ -22,22 +22,26 @@
 -- in src/domain/brand-logos.ts and a test pins the two lists against each other
 -- so they cannot drift silently.
 --
--- Scoped exactly like `business_profiles`, whose variants these are: org_id NOT
--- NULL plus a nullable workspace_id, registered in supabase/tenancy-contract.mjs
--- as `{ category: "workspace", pending: GROUP_A, hasColumn: true }`.
+-- Scoped exactly like `business_profiles`, whose variants these are, and BORN
+-- LOCKED because it lands after Wave 3 Phase B (20260804230000) rather than
+-- before it: workspace_id NOT NULL, is_workspace_member RLS, contract entry a
+-- plain "workspace". A new sibling of a just-locked table arriving unlocked
+-- would be the one brand table needing a Phase C of its own.
 --
--- It carries workspace_id from birth rather than waiting for a later wave.
--- Wave 3 Phase A (20260804220000) gave business_profiles, media_assets and
--- media_folders that column; a new sibling of those tables landing without one
--- would be the single brand table left out of the wave, needing a second
--- migration later and leaving a writer-audit gap in between —
--- src/lib/db/workspace-writers.test.ts keys on `hasColumn`, so from this
--- migration on every insert site must stamp it.
+-- UNIQUE (workspace_id, role), NOT (org_id, role). This is the same trap Phase B
+-- called out when it moved business_profiles from UNIQUE (org_id): keyed on the
+-- org, the constraint would not merely fail to express workspace ownership, it
+-- would FORBID it — two workspaces in one org could never each have their own
+-- primary logo, which is precisely what "a workspace owns its brand identity"
+-- means. The upsert in src/lib/brand-kit/logos.ts targets the same pair; a
+-- conflict target with no matching unique fails at RUNTIME and no mocked test
+-- can see it, which is the BSR-720 outage exactly, so it is exercised against
+-- real Postgres rather than asserted.
 --
--- ORDERED AFTER Wave 3 deliberately. The backfill below derives workspace_id
--- from business_profiles, and that column does not exist until 20260804220000
--- has run. This file was originally timestamped 21:00, which would have placed
--- it before the column it reads.
+-- ORDERING. The backfill derives workspace_id from business_profiles, which only
+-- has that column after Phase A (22:00) and only has it NOT NULL after Phase B
+-- (23:00). This file was timestamped 21:00, then 23:00 — the latter colliding
+-- with Phase B itself — before landing here.
 --
 -- ADDITIVE AND REVERSIBLE. `business_profiles.logo_url` is deliberately left in
 -- place and kept in sync with the primary role by the application
@@ -55,9 +59,9 @@
 create table if not exists public.brand_logos (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
-  -- Nullable and un-locked, matching business_profiles after Wave 3 Phase A.
-  -- Phase B narrows both together.
-  workspace_id uuid references public.workspaces(id) on delete cascade,
+  -- NOT NULL from birth: business_profiles.workspace_id is NOT NULL as of Phase
+  -- B, so the derivation below cannot produce a null.
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
   role text not null,
   url text not null,
   file_name text,
@@ -74,11 +78,12 @@ create table if not exists public.brand_logos (
   constraint brand_logos_url_not_blank check (btrim(url) <> '')
 );
 
--- One image per role per org: uploading a new "on dark" replaces the old one
--- rather than silently stacking a second row the renderer would pick between at
--- random. The application upserts on this constraint.
-create unique index if not exists brand_logos_org_role_key
-  on public.brand_logos (org_id, role);
+-- One image per role per WORKSPACE: uploading a new "on dark" replaces the old
+-- one rather than silently stacking a second row the renderer would pick between
+-- at random, while leaving a sibling workspace free to have its own. The
+-- application upserts on exactly this pair.
+create unique index if not exists brand_logos_workspace_role_key
+  on public.brand_logos (workspace_id, role);
 
 create index if not exists brand_logos_org_id_idx
   on public.brand_logos (org_id);
@@ -95,9 +100,13 @@ create index if not exists brand_logos_org_id_idx
 -- runs through an operator-gated server action.
 alter table public.brand_logos enable row level security;
 
-create policy brand_logos_org_member_select on public.brand_logos
+-- is_workspace_member, matching business_profiles after Phase B — and a SELECT
+-- policy only. Phase B is explicit that adding write policies here would open a
+-- surface currently closed to authenticated clients; every write runs through an
+-- operator-gated server action on the service-role client.
+create policy brand_logos_workspace_member_select on public.brand_logos
   as permissive for select to authenticated
-  using ((select app_private.is_org_member(brand_logos.org_id)));
+  using ((select app_private.is_workspace_member(brand_logos.workspace_id)));
 
 grant select, insert, update, delete on public.brand_logos to service_role;
 
@@ -109,11 +118,11 @@ comment on table public.brand_logos is
 -- org/workspace topology, which an assigned one does not — the same reasoning
 -- Wave 3 applies to its own tiers.
 insert into public.brand_logos (org_id, workspace_id, role, url, uploaded_by)
-select bp.org_id, bp.workspace_id, 'primary', btrim(bp.logo_url), 'migration:20260804230000'
+select bp.org_id, bp.workspace_id, 'primary', btrim(bp.logo_url), 'migration:20260805000000'
 from public.business_profiles bp
 where bp.logo_url is not null
   and btrim(bp.logo_url) <> ''
-on conflict (org_id, role) do nothing;
+on conflict (workspace_id, role) do nothing;
 
 create index if not exists brand_logos_workspace_id_idx
   on public.brand_logos (workspace_id);

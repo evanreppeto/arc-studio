@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   try {
     const [profile, brandLogos] = await Promise.all([
       getBusinessProfile(allowed.scope.orgId),
-      listBrandLogos(allowed.scope.orgId),
+      listBrandLogos(allowed.scope.orgId, allowed.scope.workspaceId),
     ]);
     const brand = toBrandTokens(profile, brandLogos);
     const { bytes, contentType } = await renderCreative({ template, format, brand, copy, backgroundUrl });

@@ -20,12 +20,12 @@ import { NEUTRAL_DEFAULTS, type BusinessProfile } from "@/domain";
 const saveVariant = vi.fn(async (_input: { orgId: string; role: string; url: string }) => {});
 const removeVariant = vi.fn(async (_orgId: string, _role: string) => {});
 const upload = vi.fn(async (_prefix: string, _file: File) => ({ ok: true as const, url: "https://cdn.example/branding/logo.png" }));
-const state = { configured: true, orgId: "org-1" as string | null };
+const state = { configured: true, orgId: "org-1" as string | null, workspaceId: "ws-1" as string | null };
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/operator", () => ({ requireOperator: vi.fn(async () => {}), getOperatorActor: vi.fn(async () => "evan") }));
 vi.mock("@/lib/auth/org", () => ({ getCurrentOrgId: vi.fn(async () => "org-1") }));
-vi.mock("@/lib/auth/workspace", () => ({ getCurrentWorkspaceContext: vi.fn(async () => ({ orgId: state.orgId })) }));
+vi.mock("@/lib/auth/workspace", () => ({ getCurrentWorkspaceContext: vi.fn(async () => ({ orgId: state.orgId, workspaceId: state.workspaceId })) }));
 vi.mock("@/lib/branding/images", () => ({ uploadBrandingImage: upload }));
 vi.mock("@/lib/brand-kit/logos", () => ({
   saveBrandLogoVariant: saveVariant,
@@ -58,6 +58,7 @@ beforeEach(() => {
   upload.mockClear();
   state.configured = true;
   state.orgId = "org-1";
+  state.workspaceId = "ws-1";
 });
 
 describe("saveBrandLogo", () => {
@@ -69,7 +70,14 @@ describe("saveBrandLogo", () => {
     expect(upload.mock.calls[0][0]).toBe("org/org-1/brand");
     // Through the set, as the primary variant — the mirror column follows from it.
     expect(saveVariant).toHaveBeenCalledWith(
-      expect.objectContaining({ orgId: "org-1", role: "primary", url: "https://cdn.example/branding/logo.png" }),
+      expect.objectContaining({
+        orgId: "org-1",
+        // Stamped, not optional: brand_logos.workspace_id is NOT NULL as of
+        // Wave 3 Phase B, so an unstamped write is unstorable.
+        workspaceId: "ws-1",
+        role: "primary",
+        url: "https://cdn.example/branding/logo.png",
+      }),
     );
   });
 
@@ -99,6 +107,13 @@ describe("saveBrandLogo", () => {
     state.configured = true;
     state.orgId = null;
     expect(await saveBrandLogo(form(new File(["x"], "logo.png", { type: "image/png" })))).toEqual({ ok: false, error: "No active workspace." });
+
+    // An org without a resolved workspace is refused for the same reason: the
+    // column is NOT NULL, so the write would fail at the constraint. Better a
+    // readable refusal than a Postgres error surfaced to the operator.
+    state.orgId = "org-1";
+    state.workspaceId = null;
+    expect(await saveBrandLogo(form(new File(["x"], "logo.png", { type: "image/png" })))).toEqual({ ok: false, error: "No active workspace." });
     expect(upload).not.toHaveBeenCalled();
   });
 });
@@ -106,7 +121,7 @@ describe("saveBrandLogo", () => {
 describe("removeBrandLogo", () => {
   it("clears the primary variant, letting the mirror demote rather than blank", async () => {
     expect(await removeBrandLogo()).toEqual({ ok: true, url: null });
-    expect(removeVariant).toHaveBeenCalledWith("org-1", "primary");
+    expect(removeVariant).toHaveBeenCalledWith("org-1", "ws-1", "primary");
   });
 
   it("reports a write failure rather than claiming success", async () => {

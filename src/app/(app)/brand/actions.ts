@@ -178,7 +178,7 @@ export async function saveBrandLogo(formData: FormData): Promise<BrandLogoResult
   if (!(image instanceof File) || image.size === 0) return { ok: false, error: "Choose an image first." };
 
   const ctx = await getCurrentWorkspaceContext();
-  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+  if (!ctx.orgId || !ctx.workspaceId) return { ok: false, error: "No active workspace." };
 
   const uploaded = await uploadBrandingImage(`org/${ctx.orgId}/brand`, image);
   if (!uploaded.ok) return { ok: false, error: uploaded.error };
@@ -213,8 +213,8 @@ export type BrandLogoSetResult =
   | { ok: true; persisted: boolean; logos: BrandLogo[] }
   | { ok: false; error: string };
 
-async function currentLogoSet(orgId: string): Promise<BrandLogo[]> {
-  return listBrandLogos(orgId);
+async function currentLogoSet(orgId: string, workspaceId: string): Promise<BrandLogo[]> {
+  return listBrandLogos(orgId, workspaceId);
 }
 
 /**
@@ -230,7 +230,10 @@ export async function saveBrandLogoVariants(formData: FormData): Promise<BrandLo
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect a workspace to upload logos." };
 
   const ctx = await getCurrentWorkspaceContext();
-  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+  // Both ids are required now: brand_logos.workspace_id is NOT NULL as of Wave 3
+  // Phase B, so a write without one is not storable — better to refuse here than
+  // to fail at the insert with a constraint message.
+  if (!ctx.orgId || !ctx.workspaceId) return { ok: false, error: "No active workspace." };
   const uploadedBy = await getOperatorActor();
 
   // Paired as files[] + roles[], index-aligned, so one submit can carry several
@@ -266,7 +269,7 @@ export async function saveBrandLogoVariants(formData: FormData): Promise<BrandLo
     }
   }
 
-  const logos = await currentLogoSet(ctx.orgId);
+  const logos = await currentLogoSet(ctx.orgId, ctx.workspaceId);
   revalidateBrandSurfaces();
 
   // Nothing landed at all → a failure, not a success with an empty set.
@@ -283,14 +286,14 @@ export async function removeBrandLogoVariantAction(role: string): Promise<BrandL
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect a workspace first." };
 
   const ctx = await getCurrentWorkspaceContext();
-  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+  if (!ctx.orgId || !ctx.workspaceId) return { ok: false, error: "No active workspace." };
 
   try {
-    await removeBrandLogoVariant(ctx.orgId, role);
+    await removeBrandLogoVariant(ctx.orgId, ctx.workspaceId, role);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not remove that logo." };
   }
-  const logos = await currentLogoSet(ctx.orgId);
+  const logos = await currentLogoSet(ctx.orgId, ctx.workspaceId);
   revalidateBrandSurfaces();
   return { ok: true, persisted: true, logos };
 }
@@ -307,12 +310,12 @@ export async function removeBrandLogo(): Promise<BrandLogoResult> {
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "Connect a workspace first." };
 
   const ctx = await getCurrentWorkspaceContext();
-  if (!ctx.orgId) return { ok: false, error: "No active workspace." };
+  if (!ctx.orgId || !ctx.workspaceId) return { ok: false, error: "No active workspace." };
 
   try {
     // Removes the `primary` variant; the mirror then demotes to the next-best
     // lockup rather than going blank while other variants still exist.
-    await removeBrandLogoVariant(ctx.orgId, "primary");
+    await removeBrandLogoVariant(ctx.orgId, ctx.workspaceId, "primary");
     revalidateBrandSurfaces();
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not remove the logo." };

@@ -194,7 +194,7 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       // knocked-out version.
       const [profile, brandLogos] = await Promise.all([
         getBusinessProfile(ctx.orgId),
-        listBrandLogos(ctx.orgId),
+        listBrandLogos(ctx.orgId, ctx.workspaceId),
       ]);
       // The workspace's brand kit is the base; the operator's accent pick in Studio
       // overrides it so the rendered creative matches the canvas they approved by

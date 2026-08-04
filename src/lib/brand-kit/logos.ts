@@ -33,13 +33,18 @@ function toBrandLogo(row: Row): BrandLogo | null {
  * both call this, and a read failure should cost the logo set, not the page or
  * the render. It is reported rather than swallowed.
  */
-export async function listBrandLogos(orgId: string): Promise<BrandLogo[]> {
+export async function listBrandLogos(orgId: string, workspaceId?: string | null): Promise<BrandLogo[]> {
   if (!isSupabaseAdminConfigured()) return [];
   try {
-    const { data, error } = await getSupabaseAdminClient()
+    // Scoped to the workspace when the caller knows it. This client is
+    // service-role and bypasses RLS, so the policy is not what keeps one
+    // workspace's logos out of another's Brand screen — this filter is.
+    let query = getSupabaseAdminClient()
       .from("brand_logos")
       .select("role, url, file_name, updated_at")
       .eq("org_id", orgId);
+    if (workspaceId) query = query.eq("workspace_id", workspaceId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return ((data ?? []) as Row[]).map(toBrandLogo).filter((l): l is BrandLogo => l !== null);
   } catch (error) {
@@ -65,7 +70,7 @@ export async function saveBrandLogoVariant(input: {
    * after the Wave 1 columns landed, one of which had already broken Arc's
    * campaign runs in production.
    */
-  workspaceId?: string | null;
+  workspaceId: string;
   role: BrandLogoRole;
   url: string;
   fileName?: string | null;
@@ -76,27 +81,31 @@ export async function saveBrandLogoVariant(input: {
     .upsert(
       {
         org_id: input.orgId,
-        workspace_id: input.workspaceId ?? null,
+        workspace_id: input.workspaceId,
         role: input.role,
         url: input.url,
         file_name: input.fileName ?? null,
         uploaded_by: input.uploadedBy ?? null,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "org_id,role" },
+      // Must name exactly the columns of brand_logos_workspace_role_key. A
+      // conflict target with no matching unique fails at RUNTIME, and a mocked
+      // upsert cannot see it — the BSR-720 shape.
+      { onConflict: "workspace_id,role" },
     );
   if (error) throw new Error(error.message);
-  await syncPrimaryLogoMirror(input.orgId);
+  await syncPrimaryLogoMirror(input.orgId, input.workspaceId);
 }
 
-export async function removeBrandLogoVariant(orgId: string, role: BrandLogoRole): Promise<void> {
+export async function removeBrandLogoVariant(orgId: string, workspaceId: string, role: BrandLogoRole): Promise<void> {
   const { error } = await getSupabaseAdminClient()
     .from("brand_logos")
     .delete()
     .eq("org_id", orgId)
+    .eq("workspace_id", workspaceId)
     .eq("role", role);
   if (error) throw new Error(error.message);
-  await syncPrimaryLogoMirror(orgId);
+  await syncPrimaryLogoMirror(orgId, workspaceId);
 }
 
 /**
@@ -112,7 +121,7 @@ export async function removeBrandLogoVariant(orgId: string, role: BrandLogoRole)
  * next-best lockup, and a mirror that kept pointing at a deleted image would
  * 404 in the rail.
  */
-async function syncPrimaryLogoMirror(orgId: string): Promise<void> {
-  const logos = await listBrandLogos(orgId);
+async function syncPrimaryLogoMirror(orgId: string, workspaceId: string): Promise<void> {
+  const logos = await listBrandLogos(orgId, workspaceId);
   await setWorkspaceLogo(orgId, primaryBrandLogo(logos)?.url ?? null);
 }

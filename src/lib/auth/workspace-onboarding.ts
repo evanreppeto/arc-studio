@@ -359,9 +359,9 @@ async function createWorkspaceDefaults(
   );
 
   // The brand identity a workspace creates from (BSR-714) — distinct from
-  // workspaces.logo_url, which is shell chrome. NOTE the conflict target is still
-  // (org_id): business_profiles has a bare UNIQUE (org_id), which does not merely
-  // fail to express workspace ownership, it forbids it. Flagged for BSR-715.
+  // workspaces.logo_url, which is shell chrome. The unique moved from (org_id) to
+  // (workspace_id) in BSR-715: the old constraint did not merely fail to express
+  // workspace ownership, it forbade it. Conflict target follows the constraint.
   await client.from("business_profiles").upsert(
     {
       org_id: org.id,
@@ -372,7 +372,7 @@ async function createWorkspaceDefaults(
       industry,
       status: "draft",
     },
-    { onConflict: "org_id" },
+    { onConflict: "workspace_id" },
   );
 
   await seedDefaultMediaFolders({ orgId: org.id, client });

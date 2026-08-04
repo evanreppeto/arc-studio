@@ -197,7 +197,7 @@ const DEMO_SOURCES: BrandSourceItem[] = [
   { ext: "PDF", name: "product-onepager.pdf", facts: "7 facts", when: "analyzed 6d ago", stale: false },
 ];
 
-export async function getBrandProfileView(orgId: string, fallbackName: string): Promise<BrandProfileView> {
+export async function getBrandProfileView(orgId: string, fallbackName: string, workspaceId?: string | null): Promise<BrandProfileView> {
   if (isSupabaseAdminConfigured()) {
     // `null` from this read meant two different things — "no profile saved yet"
     // and "the read failed" — and both fell through to the neutral defaults
@@ -216,7 +216,7 @@ export async function getBrandProfileView(orgId: string, fallbackName: string): 
       const [sources, logoUrl, logos] = await Promise.all([
         loadLiveSources(orgId),
         resolveLegacyLogo(orgId, profile.logoUrl),
-        listBrandLogos(orgId),
+        listBrandLogos(orgId, workspaceId),
       ]);
       return toBrandProfileView({ ...profile, logoUrl }, sources, false, fallbackName, logos);
     }
