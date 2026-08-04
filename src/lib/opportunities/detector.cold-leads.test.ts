@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 import { type OpportunityCandidate } from "@/domain";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { runColdLeadDetection } from "./detector";
+
 /**
  * runColdLeadDetection is what writes the Opportunity Inbox — 64 of prod's 82 open
  * cards came from it. Every test that mentioned it mocked it with vi.fn(), so its
@@ -31,7 +37,6 @@ vi.mock("@/lib/supabase/server", () => ({
   },
 }));
 
-const { runColdLeadDetection } = await import("./detector");
 
 const NOW = "2026-07-16T13:00:00.000Z";
 const QUIET = "2026-06-06T13:00:00.000Z"; // 40 days before NOW

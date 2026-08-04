@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createSupabaseQueryMock, type MockResponse } from "@/lib/repos/__tests__/test-helpers";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { getAnalyticsOverview } from "./overview";
+
 const state: { configured: boolean; responses: Record<string, MockResponse> } = {
   configured: true,
   responses: {},
@@ -12,7 +18,6 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseAdminClient: () => createSupabaseQueryMock(state.responses),
 }));
 
-const { getAnalyticsOverview } = await import("./overview");
 
 const ok = (data: unknown): MockResponse => ({ data, error: null });
 const boom = (message: string): MockResponse => ({ data: null, error: { message } });
