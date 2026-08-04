@@ -1,6 +1,7 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 
 import { GOLDEN_QUESTIONS, gradeGoldenAnswer } from "../src/domain/arc-eval";
+import { WORK_STATE_LABEL } from "../src/domain/vocabulary";
 
 /**
  * NIGHTLY PROD SMOKE (BSR-478).
@@ -26,6 +27,27 @@ import { GOLDEN_QUESTIONS, gradeGoldenAnswer } from "../src/domain/arc-eval";
  * The seeded data is frozen (the org is archived and nothing writes to it but
  * this run), which is exactly what makes the known-fact assertions stable.
  */
+
+/**
+ * What step 4's revision asks for, and the label it then expects to see.
+ *
+ * The instruction is a FIXTURE MARKER, not just copy. Requesting a revision
+ * queues an `agent_tasks` row that nothing consumes (see step 4's own comment),
+ * so the nightly would otherwise strand one task per run forever — and since
+ * BSR-708 the stranded-task check fails the build on exactly that, meaning the
+ * smoke would fail every night on work it created itself (BSR-722).
+ *
+ * The "Release the nightly's own revision fixture" step in
+ * .github/workflows/prod-nightly.yml cancels these rows by matching
+ * `objective LIKE 'Nightly smoke check%'`. Keep that prefix if you reword this.
+ * Drift is not silent: a changed prefix stops matching, the fixture strands, and
+ * the stranded-task check reddens the next night.
+ */
+const REVISION_FIXTURE_INSTRUCTION =
+  "Nightly smoke check — no action needed; this asset is reopened immediately.";
+
+/** The state an asset lands in once a revision is requested (BSR-656). */
+const NEEDS_CHANGES_LABEL = WORK_STATE_LABEL.needs_changes;
 
 const EMAIL = process.env.E2E_EMAIL || "owner@bsr.test";
 // No fallback — this signs in to PRODUCTION. Unset ⇒ the run skips visibly
@@ -195,7 +217,7 @@ test.describe("nightly prod smoke", () => {
     await revise.click();
     const instruction = page.getByPlaceholder(/tell arc what to change/i);
     await expect(instruction, "step 4: the revision composer should open").toBeVisible();
-    await instruction.fill("Nightly smoke check — no action needed; this asset is reopened immediately.");
+    await instruction.fill(REVISION_FIXTURE_INSTRUCTION);
     await page.getByRole("button", { name: /send to arc/i }).click();
 
     // The assertion below is PERSISTENCE, not the optimistic UI: the view flips
@@ -203,9 +225,9 @@ test.describe("nightly prod smoke", () => {
     // would pass even if the write never landed.
     //
     // Know what this does NOT prove, because for six nights it was mistaken for
-    // proof (BSR-708). "revision requested" surviving a reload says the row was
-    // written. It says nothing about whether anything CONSUMED it — and it did
-    // not: `queueArcRevision` never woke the runner, nothing polls `agent_tasks`,
+    // proof (BSR-708). The state surviving a reload says the row was written. It
+    // says nothing about whether anything CONSUMED it — and it did not:
+    // `queueArcRevision` never woke the runner, nothing polls `agent_tasks`,
     // and every revision this test filed sat `queued` forever while this step
     // reported success (BSR-695). Persistence was never the thing in doubt.
     //
@@ -214,12 +236,20 @@ test.describe("nightly prod smoke", () => {
     // fails the run. It lives there rather than here because a real revision is
     // an Opus turn plus possible media generation: far past this test's budget,
     // and not something to pay for inside a page assertion.
+    //
+    // Read the expected label from the vocabulary rather than hardcoding it
+    // (BSR-723). This assertion used to look for "revision requested" — the raw
+    // stored value, which reached the screen unlabelled until BSR-656 routed the
+    // lifecycle through `domain/vocabulary`. So it was pinned to exactly the
+    // defect BSR-656 and BSR-709 exist to remove, and fixing the leak broke the
+    // test. Sourcing the string here means the next rename moves the assertion
+    // with the product instead of reddening the nightly.
     await expect(async () => {
       await page.reload({ waitUntil: "domcontentloaded" });
       await expect(
         page.locator("body"),
-        "step 4: the revision should still be recorded after a reload",
-      ).toContainText(/revision requested/i);
+        `step 4: the revision should still be recorded after a reload (expected the ${NEEDS_CHANGES_LABEL} state)`,
+      ).toContainText(NEEDS_CHANGES_LABEL);
     }).toPass({ timeout: 30_000, intervals: [2_000] });
 
     // --- repeatable without a restore ---
