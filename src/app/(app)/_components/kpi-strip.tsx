@@ -45,8 +45,53 @@ export type KpiCell = {
  * or fewer is the intent; five is the ceiling, and only because Analytics and
  * Journeys genuinely track five things.
  */
+export type KpiStripTone = "quiet" | "full";
+
+/** A value that is present but reports nothing: "0", "$0", "0%", "—", "". */
+function isZeroish(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "—") return true;
+  // Strip currency, separators and units, then ask whether anything is left.
+  const digits = trimmed.replace(/[^0-9.]/g, "");
+  return digits === "" || Number.parseFloat(digits) === 0;
+}
+
+/**
+ * How loudly this strip should speak (BSR-738).
+ *
+ * Follows BSR-703's rule for the Studio spend strip: change VOLUME, not
+ * visibility. A strip whose every cell reads zero, with no movement behind any
+ * of them, has nothing to report — and on a live workspace with 243 contacts it
+ * was three big serif zeros with flat sparklines occupying the top of both Home
+ * and CRM, which reads as broken rather than as empty.
+ *
+ * Quiet still states every number. It just stops shouting them.
+ *
+ * Pure and exported so the threshold is assertable — a silent drift back to
+ * always-loud is exactly the change nobody would notice.
+ */
+export function kpiStripTone(items: KpiCell[]): KpiStripTone {
+  if (items.length === 0) return "full";
+  const everyValueEmpty = items.every((m) => isZeroish(m.value));
+  const anyMovement = items.some((m) => (m.spark?.points ?? []).some((point) => point !== 0));
+  return everyValueEmpty && !anyMovement ? "quiet" : "full";
+}
+
 export function KpiStrip({ items, className }: { items: KpiCell[]; className?: string }) {
   if (items.length === 0) return null;
+
+  if (kpiStripTone(items) === "quiet") {
+    return (
+      <div className={`kpistrip is-quiet${className ? ` ${className}` : ""}`}>
+        {items.map((m) => (
+          <span key={m.label}>
+            {m.label} <b>{m.value || "—"}</b>
+          </span>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className={`kpistrip${className ? ` ${className}` : ""}`} data-count={Math.min(items.length, 5)}>
       {items.map((m) => (

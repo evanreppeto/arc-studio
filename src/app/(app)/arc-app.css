@@ -621,6 +621,24 @@
 .arc-app .kpistrip[data-count="4"] { grid-template-columns: 1.5fr 1fr 1fr 1fr; }
 .arc-app .kpistrip[data-count="5"] { grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; }
 
+/* Quiet MEANS quiet (BSR-738, following BSR-703's spend strip). Every number is
+   still stated; the card treatment — grid, borders, 23px serif, sparkline rail —
+   is held back until one of them has something to say. Overrides the grid above
+   rather than sitting beside it, so the per-page margin rules still apply. */
+.arc-app .kpistrip.is-quiet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+  font-size: 12px;
+  color: var(--muted);
+}
+.arc-app .kpistrip.is-quiet b { font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
 /* Per-page spacing only — the strip itself owns no outer margin. */
 .arc-app .arc-outbox .kpistrip.okpis { margin: 12px clamp(20px, 2.6vw, 30px) 0; flex-shrink: 0; }
 .arc-app .arc-personas .kpistrip.pstats { margin-top: 16px; animation: personasHeaderIn .5s cubic-bezier(.16, 1, .3, 1) both; }

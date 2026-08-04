@@ -2,7 +2,7 @@ import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { getCurrentOrgId } from "@/lib/auth/org";
-import { isDismissReason, type DismissReasonTally } from "@/domain";
+import { hasSignalWindowClosed, isDismissReason, type DismissReasonTally } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { resolveTenantReadHandle } from "@/lib/supabase/tenant-client";
@@ -112,8 +112,22 @@ export function crmRecordHref(subjectType: string, subjectId: string): string | 
 }
 
 /**
+ * Drop opportunities whose own signal window has closed (BSR-727).
+ *
+ * Applied in JS rather than SQL because `endsAt` lives in the `evidence` JSONB as
+ * an ISO string with an offset, and ISO strings with offsets do not compare
+ * correctly as text — `…T11:15:00-05:00` and `…T16:15:00Z` are the same instant
+ * and sort apart. A `::timestamptz` cast in the filter would compare correctly
+ * and throw the whole query on the first malformed value; parsing per row cannot.
+ */
+function stillOpen<T extends { evidence?: OpportunityEvidence | null }>(rows: T[], nowIso: string): T[] {
+  return rows.filter((row) => !hasSignalWindowClosed(row.evidence?.endsAt, nowIso));
+}
+
+/**
  * Open opportunities for the inbox — pending/drafting/drafted, plus any snoozed
- * card whose snooze has expired. Empty when unconfigured.
+ * card whose snooze has expired, minus any whose signal window has closed.
+ * Empty when unconfigured.
  */
 export async function listOpenOpportunities(
   client?: SupabaseClient,
@@ -123,37 +137,51 @@ export async function listOpenOpportunities(
   // `getSupabaseAdminClient()` would throw during arg evaluation, before this
   // guard could run, crashing the page in demo/unconfigured mode.
   if (!client && !isSupabaseAdminConfigured()) {
-    return isDemoDataEnabled() ? buildDemoOpportunities() : [];
+    const nowIso = new Date().toISOString();
+    return isDemoDataEnabled() ? stillOpen(buildDemoOpportunities(), nowIso) : [];
   }
+  const nowIso = new Date().toISOString();
   const { client: db, orgId: handleOrgId } = client ? { client, orgId: null } : await resolveTenantReadHandle();
   const resolvedOrgId = orgId ?? handleOrgId ?? (await getCurrentOrgId());
   const { data, error } = await db
     .from("opportunities")
     .select("id, subject_type, subject_id, title, summary, confidence, urgency, status, recommended_action, campaign_id, evidence")
     .eq("org_id", resolvedOrgId)
-    .or(openOrWokenFilter(OPEN_STATUSES, new Date().toISOString()))
+    .or(openOrWokenFilter(OPEN_STATUSES, nowIso))
     .order("created_at", { ascending: false })
     .limit(INBOX_LIMIT);
   if (error) return [];
-  return (data ?? []) as OpportunityRecord[];
+  return stillOpen((data ?? []) as OpportunityRecord[], nowIso);
 }
 
 /**
  * Count of un-triaged opportunities, for the /arc chip. Counts woken snoozes
- * alongside pending ones so the chip can't disagree with the inbox it links to.
+ * alongside pending ones — and drops closed signal windows — so the chip can't
+ * disagree with the inbox it links to.
+ *
+ * Fetches `evidence` rather than using a `head` count because the expiry test is
+ * per row (see `stillOpen`). Bounded by the same INBOX_LIMIT the inbox uses, so
+ * the chip counts exactly the set the inbox would show.
  */
 export async function countPendingOpportunities(client?: SupabaseClient): Promise<number> {
+  const nowIso = new Date().toISOString();
   if (!client && !isSupabaseAdminConfigured()) {
-    return isDemoDataEnabled() ? buildDemoOpportunities().filter((o) => o.status === "pending").length : 0;
+    return isDemoDataEnabled()
+      ? stillOpen(buildDemoOpportunities(), nowIso).filter((o) => o.status === "pending").length
+      : 0;
   }
   const { client: db, orgId } = client ? { client, orgId: await getCurrentOrgId() } : await resolveTenantReadHandle();
-  const { count, error } = await db
+  const { data, count, error } = await db
     .from("opportunities")
-    .select("id", { count: "exact", head: true })
+    .select("id, evidence", { count: "exact" })
     .eq("org_id", orgId)
-    .or(openOrWokenFilter(["pending"], new Date().toISOString()));
-  // null count = missing/inaccessible relation, not zero rows (BSR-575).
-  return requireCount("opportunities", { count, error });
+    .or(openOrWokenFilter(["pending"], nowIso))
+    .limit(INBOX_LIMIT);
+  // null count = missing/inaccessible relation, not zero rows (BSR-575). Checked
+  // before the rows are read, so a broken relation still throws rather than
+  // counting as zero.
+  requireCount("opportunities", { count, error });
+  return stillOpen((data ?? []) as { evidence?: OpportunityEvidence | null }[], nowIso).length;
 }
 
 export type OpportunityForDraft = {
