@@ -4,6 +4,7 @@
  * template a given creative uses. Consumed by the server-only renderer in
  * `src/lib/media/compose/` and the `/api/v1/arc/media/compose` route.
  */
+import type { BrandLogo } from "./brand-logos";
 import type { BusinessProfile } from "./brand-kit";
 
 export type CreativeFormat = "1:1" | "4:5" | "9:16" | "16:9";
@@ -30,6 +31,13 @@ export type BrandTokens = {
   headingFont: string;
   bodyFont: string;
   logoUrl: string | null;
+  /**
+   * The workspace's named logo variants. The renderer picks from these per
+   * background (`pickLogoForBackground`); `logoUrl` above stays the single
+   * mirror image for surfaces that render exactly one, and as the fallback for
+   * a workspace that has not uploaded any variants.
+   */
+  logos: BrandLogo[];
   shortMark: string;
   displayName: string;
 };
@@ -85,6 +93,7 @@ const NEUTRAL_TOKENS: BrandTokens = {
   headingFont: "sans-serif",
   bodyFont: "sans-serif",
   logoUrl: null,
+  logos: [],
   shortMark: "—",
   displayName: "Your Brand",
 };
@@ -92,8 +101,8 @@ const NEUTRAL_TOKENS: BrandTokens = {
 const pick = (hex: string | undefined, fallback: string) => (hex && hex.trim() ? hex : fallback);
 
 /** Flatten a Brand Kit into render tokens, falling back to neutral defaults. */
-export function toBrandTokens(profile: BusinessProfile | null): BrandTokens {
-  if (!profile) return { ...NEUTRAL_TOKENS };
+export function toBrandTokens(profile: BusinessProfile | null, logos: BrandLogo[] = []): BrandTokens {
+  if (!profile) return { ...NEUTRAL_TOKENS, logos };
   const p = profile.brandPalette;
   const mark =
     (profile.shortMark && profile.shortMark.trim()) ||
@@ -107,6 +116,7 @@ export function toBrandTokens(profile: BusinessProfile | null): BrandTokens {
     headingFont: pick(p?.headingFont, NEUTRAL_TOKENS.headingFont),
     bodyFont: pick(p?.bodyFont, NEUTRAL_TOKENS.bodyFont),
     logoUrl: profile.logoUrl ?? null,
+    logos,
     shortMark: mark,
     displayName: pick(profile.displayName, NEUTRAL_TOKENS.displayName),
   };

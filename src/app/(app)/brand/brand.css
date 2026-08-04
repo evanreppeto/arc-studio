@@ -277,3 +277,74 @@
   .arc-brand .bbody { animation: brandRiseIn 0.55s var(--ease) 0.12s both; }
   .arc-brand .bc-bar i { animation: brandRiseIn 0.5s var(--ease) both; }
 }
+
+/* Empty-state call to action — a real button, because "no palette yet" is the
+   one moment the operator most needs a way in, and a paragraph offers none. */
+.arc-brand .bsempty { display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); margin: 0 16px 4px; padding: 14px 16px; border: 1px dashed var(--line-2); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; line-height: 1.5; text-align: left; cursor: pointer; transition: border-color 0.15s var(--ease), background 0.15s var(--ease), color 0.15s var(--ease); }
+.arc-brand .bsempty:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text-2); }
+.arc-brand .bsempty b { color: var(--text); }
+.arc-brand .bsempty svg { width: 16px; height: 16px; flex: 0 0 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+/* Palette editor rows (edit-palette-modal.tsx) */
+.palform .palrow { display: flex; flex-direction: column; gap: 6px; }
+.palform .palrow-h { display: flex; flex-direction: column; gap: 1px; }
+.palform .palrole { font-size: 12px; font-weight: 600; color: var(--text); }
+.palform .palhint { font-size: 11px; line-height: 1.45; color: var(--muted); }
+.palform .palctl { display: grid; grid-template-columns: 34px 108px minmax(0, 1fr); gap: 8px; align-items: center; }
+/* Strip the native color input's chrome so it reads as a swatch, not a widget. */
+.palform .palswatch { width: 34px; height: 34px; padding: 0; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; cursor: pointer; }
+.palform .palswatch::-webkit-color-swatch-wrapper { padding: 2px; }
+.palform .palswatch::-webkit-color-swatch { border: 0; border-radius: 6px; }
+.palform .palhex { font-family: var(--mono); text-transform: lowercase; }
+.palform .palhex.bad { border-color: var(--red-border, rgba(204, 102, 102, 0.5)); }
+.palform .palbad { font-size: 11px; color: var(--red-text); }
+
+@media (max-width: 560px) {
+  .palform .palctl { grid-template-columns: 34px minmax(0, 1fr); }
+  .palform .pallabel { grid-column: 1 / -1; }
+}
+
+/* Typeface picker (edit-typography-modal.tsx) */
+.typform .typtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.typform .typtab { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 9px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s var(--ease), background 0.15s var(--ease), color 0.15s var(--ease); }
+.typform .typtab:hover { border-color: var(--line-3); color: var(--text); }
+.typform .typtab.on { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
+.typform .typtab-t { font-size: 12px; font-weight: 600; }
+.typform .typtab-v { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.typform .typtab.on .typtab-v { color: var(--accent); }
+.typform .typhint { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.typform .fontlist { display: grid; gap: 7px; }
+.typform .fontopt { display: flex; flex-direction: column; gap: 5px; padding: 11px 13px; border: 1px solid var(--line-2); border-radius: 10px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s var(--ease), background 0.15s var(--ease); }
+.typform .fontopt:hover { border-color: var(--line-3); background: rgba(255, 255, 255, 0.02); }
+.typform .fontopt.on { border-color: var(--accent-border); background: var(--accent-soft); }
+.typform .fontopt-h { display: flex; align-items: baseline; gap: 8px; }
+.typform .fontopt-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.typform .fontopt-cat { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+/* The sample is the control's whole job — give it room and real size. */
+.typform .fontopt-sample { font-size: 17px; line-height: 1.35; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.typform .fontopt-hint { font-size: 11px; line-height: 1.45; color: var(--muted); }
+
+/* Logo set (logo-set.tsx) — one tile per named role. */
+.arc-brand .logoset { display: flex; flex-direction: column; gap: 12px; }
+.arc-brand .logoset-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.arc-brand .logoset-t { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.arc-brand .logoset-s { margin-top: 2px; max-width: 52ch; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.arc-brand .logoset-err { padding: 8px 11px; border: 1px solid var(--red-border, rgba(204, 102, 102, 0.4)); border-radius: 8px; color: var(--red-text); font-size: 11.5px; line-height: 1.45; }
+.arc-brand .logogrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+.arc-brand .logotile { display: flex; flex-direction: column; gap: 7px; }
+.arc-brand .logodrop { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 10; padding: 12px; border: 1px dashed var(--line-2); border-radius: 10px; background: var(--inset); cursor: pointer; transition: border-color 0.15s var(--ease), background 0.15s var(--ease); }
+.arc-brand .logodrop:hover:not(:disabled) { border-color: var(--accent-border); background: var(--accent-soft); }
+.arc-brand .logotile.over .logodrop { border-color: var(--accent); background: var(--accent-soft); }
+.arc-brand .logotile.filled .logodrop { border-style: solid; }
+.arc-brand .logodrop img { max-width: 100%; max-height: 100%; object-fit: contain; }
+/* The on-dark tile previews on a dark field — the only way to see whether a
+   knocked-out mark actually reads is to put it on the background it's for. */
+.arc-brand .logotile.ondark .logodrop { background: #14181f; }
+.arc-brand .logotile.ondark .logodrop:hover:not(:disabled) { background: #1b2029; }
+.arc-brand .logoempty { display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; text-align: center; }
+.arc-brand .logoempty svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+.arc-brand .logometa { display: flex; flex-direction: column; gap: 1px; }
+.arc-brand .logorole { font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+.arc-brand .logohint { font-size: 10.5px; line-height: 1.4; color: var(--muted); }
+.arc-brand .logorm { align-self: flex-start; margin-top: 3px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 10.5px; text-decoration: underline; cursor: pointer; }
+.arc-brand .logorm:hover { color: var(--red-text); }

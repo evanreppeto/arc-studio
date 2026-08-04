@@ -11,6 +11,7 @@ import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/ht
 import { resolveMediaGeneration } from "@/lib/media/enablement";
 import { renderCreative } from "@/lib/media/compose/renderer";
 import { storeGeneratedMedia } from "@/lib/media/storage";
+import { listBrandLogos } from "@/lib/brand-kit/logos";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 
 // satori + custom font file reads need the Node runtime, not edge.
@@ -59,8 +60,11 @@ export async function POST(request: Request) {
   const template = selectCreativeTemplate({ hint: str(body.template) || null, seed: str(body.seed) || backgroundUrl });
 
   try {
-    const profile = await getBusinessProfile(allowed.scope.orgId);
-    const brand = toBrandTokens(profile);
+    const [profile, brandLogos] = await Promise.all([
+      getBusinessProfile(allowed.scope.orgId),
+      listBrandLogos(allowed.scope.orgId, allowed.scope.workspaceId),
+    ]);
+    const brand = toBrandTokens(profile, brandLogos);
     const { bytes, contentType } = await renderCreative({ template, format, brand, copy, backgroundUrl });
 
     const objectPath = `arc-composite/${allowed.scope.orgId}/${allowed.scope.workspaceId}/${randomUUID()}.png`;

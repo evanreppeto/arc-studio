@@ -73,7 +73,7 @@ export default async function StudioPage() {
   // The workspace's real brand palette drives Studio's accent swatches — the picker
   // used to show a hardcoded list under a note claiming it came from the Brand kit.
   const brandPalette = ctx?.orgId
-    ? await getBrandProfileView(ctx.orgId, brandName)
+    ? await getBrandProfileView(ctx.orgId, brandName, ctx.workspaceId)
         // On a failed read the palette is NEUTRAL_DEFAULTS, and Studio presents
         // these swatches as coming from the Brand kit. Showing someone else's
         // colours under that label is the false claim this note already warns
