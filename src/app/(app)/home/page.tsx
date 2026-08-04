@@ -21,6 +21,7 @@ import { QuickActions } from "./_components/quick-actions";
 import { SetupChecklist } from "./_components/setup-checklist";
 import { Define } from "../_components/define";
 import { KpiStrip } from "../_components/kpi-strip";
+import { humanizeArcProse } from "../opportunities/prose";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
 
@@ -37,8 +38,13 @@ function relativeTime(iso: string): string {
   return `${Math.round(hr / 24)}d ago`;
 }
 
+// Home renders the SAME Arc-written opportunity prose the inbox does — the hero
+// card read `"Suburban Home Background Asset" (campaign 0bd41cb3-…)` — so it
+// goes through the same sanitizer rather than a second one that would drift
+// (#908, BSR-740). Cleaned before truncating, so removing a token can win back
+// room for words.
 function concise(value: string, maxLength: number): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
+  const normalized = humanizeArcProse(value).replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
   const clipped = normalized.slice(0, maxLength + 1);
   const lastSpace = clipped.lastIndexOf(" ");
@@ -107,10 +113,13 @@ export default async function HomePage() {
     source: signalLabel[o.urgency] ?? "Source-backed signal",
     time: relativeTime(o.evidence?.lastActivityAt ?? ""),
   }));
+  // This feed renders `<b>{actor}</b> {text}`, so `text` has to be a PREDICATE —
+  // handed the entry's title it read "You Approval Revision Requested" four
+  // times down the front page (BSR-734).
   const activityItems = summary.activity.slice(0, 5).map((a) => ({
     at: relativeTime(a.occurredAt),
     actor: a.actorType === "arc" || a.actorType === "sub_agent" ? "Arc" : a.actorType === "human" ? "You" : "System",
-    text: a.title || a.detail,
+    text: a.predicate,
   }));
 
   const now = new Date();
