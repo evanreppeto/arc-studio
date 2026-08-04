@@ -22,6 +22,19 @@ export type ChatReplyInput = {
 
 export type QueryParams = Record<string, string | number | undefined | null>;
 
+/**
+ * The result of trying to claim a task, with the two failures kept apart.
+ *
+ *  - `already-claimed` — another worker holds it. Skipping is correct.
+ *  - `refused` — the app would not let us claim it (tenancy rejected, app
+ *    unreachable, anything else). Nobody else is running it, so skipping loses
+ *    the work. The caller must run it and report why the claim failed.
+ */
+export type ClaimOutcome =
+  | { claimed: true }
+  | { claimed: false; reason: "already-claimed"; detail: string }
+  | { claimed: false; reason: "refused"; detail: string };
+
 function toQuery(params: QueryParams | undefined): string {
   if (!params) return "";
   const qs = new URLSearchParams();
@@ -206,18 +219,31 @@ export function createArcClient(config: Config, identity?: WakeTenantIdentity) {
    * task that is mid-run and a task whose wake was dropped are indistinguishable
    * in the database, and nothing downstream can safely re-dispatch either one.
    */
-  async function claimTask(agentTaskId: string): Promise<boolean> {
+  async function claimTask(agentTaskId: string): Promise<ClaimOutcome> {
     const res = await fetch(`${config.appApiBaseUrl}/api/v1/arc/tasks/${agentTaskId}/claim`, {
       method: "POST",
       headers,
       body: "{}",
     });
-    if (res.status === 409) return false;
-    if (!res.ok) {
-      const json = (await res.json().catch(() => ({}))) as { message?: string };
-      throw new Error(`POST /api/v1/arc/tasks/${agentTaskId}/claim -> ${res.status} ${json?.message ?? ""}`.trim());
+    if (res.ok) return { claimed: true };
+
+    const json = (await res.json().catch(() => ({}))) as { status?: string; message?: string };
+    const detail = `${res.status} ${json.status ?? ""} ${json.message ?? ""}`.replace(/\s+/g, " ").trim();
+
+    // 409 is TWO different answers, and treating them alike silently dropped
+    // real work on prod. The claim route says `rejected` when another worker
+    // holds the task — the only case where skipping is correct. `arcGuard`
+    // returns the SAME status code for `workspace_required` / `workspace_mismatch`,
+    // which means our tenancy assertion was refused: nobody else is running this,
+    // and skipping loses it with a log line that says "duplicate run" (BSR-695
+    // follow-up).
+    if (res.status === 409) {
+      return json.status === "rejected"
+        ? { claimed: false, reason: "already-claimed", detail }
+        : { claimed: false, reason: "refused", detail };
     }
-    return true;
+
+    return { claimed: false, reason: "refused", detail };
   }
 
   return { apiGet, apiPost, apiPut, claimTask, postChatReply, postStep, postChatChunk, postChatThinking, postUsage };

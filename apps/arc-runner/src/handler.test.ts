@@ -42,7 +42,7 @@ function client() {
     postChatReply: vi.fn(async () => {}),
     apiPost: vi.fn(async () => ({})),
     postUsage: vi.fn(async () => {}),
-    claimTask: vi.fn(async () => true),
+    claimTask: vi.fn(async () => ({ claimed: true })),
   } as unknown as ArcClient & {
     postChatReply: ReturnType<typeof vi.fn>;
     apiPost: ReturnType<typeof vi.fn>;
@@ -123,7 +123,7 @@ describe("handleCampaignTask", () => {
   /** A wake racing an operator's Retry: exactly one may run the instruction. */
   it("skips the run entirely when another worker already claimed the task", async () => {
     const fakeClient = client();
-    fakeClient.claimTask.mockResolvedValueOnce(false);
+    fakeClient.claimTask.mockResolvedValueOnce({ claimed: false, reason: "already-claimed", detail: "409 rejected" });
     vi.mocked(runArcCampaignTask).mockClear();
 
     await handleCampaignTask(fakeClient, {} as Config, {
@@ -139,6 +139,40 @@ describe("handleCampaignTask", () => {
     expect(runArcCampaignTask).not.toHaveBeenCalled();
     expect(fakeClient.apiPost).not.toHaveBeenCalled();
     expect(fakeClient.postChatReply).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The prod regression this test exists for.
+   *
+   * `arcGuard` answers 409 for `workspace_required` / `workspace_mismatch` — the
+   * same status the claim route uses for a real conflict. The first version of
+   * the claim treated every 409 as "already claimed" and returned, so two
+   * campaign tasks were dropped on prod under a log line reading "skipping
+   * duplicate run" when there was no duplicate.
+   *
+   * A refused claim means NOBODY is running it. The work has to go ahead, or the
+   * operator's request is lost.
+   */
+  it.each([
+    { label: "workspace_required", detail: "409 workspace_required No active workspace is available" },
+    { label: "workspace_mismatch", detail: "409 workspace_mismatch scoped to a different workspace" },
+    { label: "an unexpected status", detail: "502 failed Failed to claim task." },
+  ])("still runs the task when the claim is refused with $label", async ({ detail }) => {
+    const fakeClient = client();
+    fakeClient.claimTask.mockResolvedValueOnce({ claimed: false, reason: "refused", detail });
+    vi.mocked(runArcCampaignTask).mockClear();
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-1",
+      campaignId: "campaign-1",
+      conversationId: null,
+      message: "Add the truck.",
+      operator: "Operator",
+      taskType: "campaign_asset_revision",
+    });
+
+    expect(runArcCampaignTask, "a refused claim must not be mistaken for a duplicate").toHaveBeenCalled();
   });
 
   /**
