@@ -4,6 +4,13 @@ import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
 import { queueCampaignBuildTask } from "./queue";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { notifyArcCampaignTask } from "@/lib/arc-chat/notify";
+import { insertPendingArcMessage } from "@/lib/arc-chat/persistence";
+
 vi.mock("@/lib/arc-chat/notify", () => ({
   notifyArcCampaignTask: vi.fn(async () => true),
 }));
@@ -14,8 +21,6 @@ vi.mock("@/lib/arc-chat/persistence", () => ({
 
 describe("queueCampaignBuildTask", () => {
   it("inserts a campaign_brief_draft task, creates a pending chat reply, and wakes Arc", async () => {
-    const { notifyArcCampaignTask } = await import("@/lib/arc-chat/notify");
-    const { insertPendingArcMessage } = await import("@/lib/arc-chat/persistence");
     const supabase = createSupabaseQueryMock({
       agents: { data: { id: "agent-1" }, error: null },
       agent_tasks: { data: { id: "task-1" }, error: null },
