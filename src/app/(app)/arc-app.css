@@ -236,9 +236,11 @@
      started in a chat stays visible after you navigate away from it. */
   & .rail-recent.working .rail-recent-dot { background: var(--accent); opacity: 1; }
   & .rail-recent-working { color: var(--accent); font: 600 9.5px/1 var(--mono); letter-spacing: 0.04em; }
-  @media (prefers-reduced-motion: no-preference) {
-    & .rail-recent.working .rail-recent-dot { animation: arcBreathe 2.2s var(--ease) infinite; }
-  }
+  /* No pulse. DESIGN.md §6 allows at most ONE arcBreathe dot per view, and this
+     one lives in the rail — persistent chrome on every screen — so it competed
+     with whatever live dot the page itself had. Measured on /crm: two breathing
+     at once, this and `.arcnote i`. The gold "Working" label already carries
+     the meaning; the pulse was only decorating it. */
   /* The row is a link plus an options button, so the wrapper positions the menu
      without the button living inside the anchor. */
   & .rail-recent-wrap { position: relative; display: block; }
