@@ -1,3 +1,4 @@
+import { isMachineText, isProcessKey } from "./prose";
 import type { OpportunityVM } from "./_components/opportunity-inbox";
 
 /**
@@ -40,7 +41,10 @@ const RENDERED_EVIDENCE_KEYS = new Set([
 ]);
 
 /** Tokens that read as shouted acronyms rather than words once title-cased. */
-const ACRONYMS = new Set(["crm", "cta", "roi", "seo", "sms", "url", "urls", "id", "ids", "nws", "kpi", "ai", "ugc"]);
+const ACRONYMS = new Set([
+  "crm", "cta", "roi", "seo", "sms", "url", "urls", "id", "ids", "nws", "kpi", "ai", "ugc",
+  "usd", "roas", "cpl", "ctr", "gc", "hvac",
+]);
 
 /**
  * Turn an evidence key into a row label: `advisory_area` → "Advisory area",
@@ -119,17 +123,38 @@ export function formatEvidenceValue(value: unknown): string | null {
 }
 
 /**
+ * Count of entries when an array is nothing but opaque ids, so the fact survives
+ * its own unreadability: "Active flood advisories — 2" instead of a pair of
+ * UUIDs the operator cannot look up anywhere in the product.
+ */
+function countIfOpaque(raw: unknown): string | null {
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const allOpaque = raw.every((item) => typeof item === "string" && isMachineText(item));
+  return allOpaque ? String(raw.length) : null;
+}
+
+/**
  * Generic rows for every evidence key the bespoke rows didn't claim. Pure, so the
  * mapping can be tested without rendering the page.
+ *
+ * Rows whose content is machinery rather than evidence are withheld — a tool-call
+ * string filed under "Source", a key naming Arc's own lookup. That is a narrowing
+ * of the earlier pass here, which surfaced every unclaimed key precisely because
+ * an allowlist had been dropping Arc's reasoning; the line now runs between
+ * REASONING (always shown) and PLUMBING (never was evidence), not between keys we
+ * anticipated and keys we didn't.
  */
 export function extraEvidenceRows(evidence: Record<string, unknown>): OpportunityVM["evidence"] {
   const rows: OpportunityVM["evidence"] = [];
   for (const [key, raw] of Object.entries(evidence)) {
     if (RENDERED_EVIDENCE_KEYS.has(key)) continue;
+    if (isProcessKey(key)) continue;
     const label = humanizeEvidenceKey(key);
     if (!label) continue;
-    const value = formatEvidenceValue(raw);
-    if (value) rows.push({ label, value });
+    const value = countIfOpaque(raw) ?? formatEvidenceValue(raw);
+    if (!value) continue;
+    if (typeof raw === "string" && isMachineText(raw)) continue;
+    rows.push({ label, value });
   }
   return rows;
 }
