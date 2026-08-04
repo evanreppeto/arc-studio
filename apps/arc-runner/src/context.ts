@@ -90,6 +90,12 @@ function modeBlock(mode: "ask" | "act" | "draft" | "scan"): string {
     return [
       "MODE: scan — survey the read tools (CRM, personas, brand, activity, the opportunity inbox) and propose source-backed opportunities by calling propose_opportunity. Each proposal lands status=pending for human approval.",
       "You may ONLY read and call propose_opportunity. Do NOT draft campaigns, generate media, edit records, log interactions, or take any outbound action.",
+      // What Arc reads with and what the owner reads are two different registers,
+      // and scan output goes straight onto a card in the owner's inbox. Left
+      // unsaid, Arc narrated its own tool calls there: live cards cited
+      // "query_brain(campaign_ref)", named campaigns by UUID, and reported
+      // "mediaAvailable is 0" to a restoration contractor.
+      "VOICE: every opportunity you propose is read by the business owner, on a card, in their words. How you found something is your business, not theirs — never write a tool name, a record id, or a database field name into a title, summary, evidence key/value, or recommended action. Name things as they'd be named in the business: the campaign's title, the customer's name, the county, the persona's label. If a fact only makes sense as an id, leave it out and give the count or the name instead.",
     ].join("\n");
   }
   if (mode === "act") {
