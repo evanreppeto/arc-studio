@@ -49,9 +49,22 @@
 // Arc's campaign runs in production, because campaigns.workspace_id was NOT NULL
 // by then. Waiting for Phase B to check writers is too late.
 
-/** Shared reason for the tables awaiting the Group A / Group B boundary migration. */
-const GROUP_A = "BSR-637 Group A — gains workspace_id in the boundary migration";
-const GROUP_B = "BSR-637 Group B — workspace_id/org_id exists but is still nullable";
+/**
+ * There is no `pending` marker left to define.
+ *
+ * `GROUP_A` and `GROUP_B` lived here from BSR-638 until BSR-717 and named the
+ * reason a classified table was not yet enforced. Every one of them is now
+ * migrated — 112 enforced, 0 pending — so the constants are gone rather than
+ * kept "just in case": an unused excuse is the thing a future table gets
+ * attached to without anyone deciding it should be.
+ *
+ * A new table that genuinely needs a phased migration should declare its own
+ * reason string naming its ticket, so the wait is attributable.
+ *
+ * NOTE this covers the WRITE side only. Reads of workspace-owned tables that
+ * still filter org_id alone are tracked in BSR-729; the service role bypasses
+ * RLS, so a locked column does not make a read model workspace-safe.
+ */
 
 export const TENANCY_CONTRACT = {
   // ── Category 1: org-owned — the customer record layer ────────────────────
@@ -141,18 +154,17 @@ export const TENANCY_CONTRACT = {
   agent_api_tokens: "workspace",
   workspace_invites: "workspace",
   workspace_memberships: "workspace",
-  arc_conversations: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  arc_messages: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  arc_projects: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  arc_saved_items: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  audit_events: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  support_requests: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  ai_usage_events: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  connector_usage_events: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  connector_spend_budgets: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  workspace_connectors: { category: "workspace", pending: GROUP_B, hasColumn: true },
-  workspace_media_config: { category: "workspace", pending: GROUP_B, hasColumn: true },
-
+  arc_conversations: "workspace",
+  arc_messages: "workspace",
+  arc_projects: "workspace",
+  arc_saved_items: "workspace",
+  audit_events: "workspace",
+  support_requests: "workspace",
+  ai_usage_events: "workspace",
+  connector_usage_events: "workspace",
+  connector_spend_budgets: "workspace",
+  workspace_connectors: "workspace",
+  workspace_media_config: "workspace",
   // Import provenance (BSR-640). An import artifact belongs to the workspace that
   // triggered the run — the connector is configured per workspace even though the
   // CRM rows it writes are org-owned, so the run is the only place that answers
