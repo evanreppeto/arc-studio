@@ -278,13 +278,14 @@ async function createRevisionTask(input: {
   }
 
   // Hoisted above the agents lookup: `key` is only unique per-org, so the
-  // lookup must filter by org_id or it can return another tenant's agent.
+  // lookup must filter by tenant or it can return another tenant's agent.
   const tenant = await getCurrentAgentTaskTenantFields();
 
   const { data: agent, error: agentError } = await input.client
     .from("agents")
     .select("id")
     .eq("org_id", tenant.org_id)
+    .eq("workspace_id", tenant.workspace_id)
     .eq("key", "arc-demo")
     .maybeSingle<{ id: string }>();
 
