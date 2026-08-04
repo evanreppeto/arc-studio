@@ -443,6 +443,69 @@ function connectorStatusLabel(status: DrawerConnectorStatus): string {
   return "Not set up";
 }
 
+/** The Arc pane's box in viewport coordinates. */
+type PaneBox = { top: number; left: number; width: number; height: number };
+
+/**
+ * Track an element's viewport rect while `active`.
+ *
+ * The drawer portals to the shell so its scrim can cover the whole window
+ * (#955) — but once portaled it has no pane to be `position: absolute` inside,
+ * and the pane's offsets are not constant: the rail is 236px and the top bar
+ * 55px, but the demo-data banner and the billing notice bar move the pane down
+ * only when they are showing. Hardcoding those offsets is how this drifts.
+ * Measuring is the only version that stays right.
+ *
+ * `useLayoutEffect` so the first measurement lands before paint — the drawer
+ * must not appear at the CSS fallback position for a frame and then jump.
+ * ResizeObserver catches a banner appearing or the window resizing; both change
+ * the pane's own size, which is what it fires on.
+ */
+function usePaneBox(ref: React.RefObject<HTMLElement | null>, active: boolean): PaneBox | null {
+  const [box, setBox] = useState<PaneBox | null>(null);
+
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!active || !node) {
+      // Don't hold a stale box across closes — the pane may move while the
+      // drawer is shut, and a stale box would place the next open wrongly.
+      setBox(null);
+      return;
+    }
+    const measure = () => {
+      const r = node.getBoundingClientRect();
+      setBox((prev) =>
+        prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height
+          ? prev // same box → same object, so this never re-renders the drawer
+          : { top: r.top, left: r.left, width: r.width, height: r.height },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    window.addEventListener("resize", measure);
+
+    // The pane sits inside `.page-enter`, whose entrance animation carries a
+    // translateY that decays to 0 over 420ms — and getBoundingClientRect
+    // includes ancestor transforms. Opening the drawer during that window would
+    // measure the pane 9px low and stay there, because a transform changes no
+    // box and so fires no ResizeObserver. Re-measure when that animation ends.
+    // Cheap and exact: animation events bubble, and the name is unique.
+    const onPageEnterEnd = (event: AnimationEvent) => {
+      if (event.animationName === "pageEnter") measure();
+    };
+    document.addEventListener("animationend", onPageEnterEnd, true);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("animationend", onPageEnterEnd, true);
+    };
+  }, [ref, active]);
+
+  return box;
+}
+
 function ThreadDrawer({
   live,
   groups,
@@ -470,6 +533,7 @@ function ThreadDrawer({
   liveSendEnabled,
   onClose,
   onDismiss,
+  paneBox,
 }: {
   live: boolean;
   groups: ArcThreadGroupVM[];
@@ -502,6 +566,12 @@ function ThreadDrawer({
   /** The operator dismissed the drawer (Escape, the ✕, the scrim). Focus goes
    *  back to the control that opened it. */
   onDismiss: () => void;
+  /** Where to sit, in viewport coordinates — see usePaneBox. The drawer is
+   *  portaled to the shell (so its scrim can cover the whole window) but is
+   *  still meant to look like it lives inside the Arc pane, and a portaled
+   *  element has no pane to be `absolute` inside any more. Null before the
+   *  first measurement; the CSS fallback covers that frame. */
+  paneBox: PaneBox | null;
 }) {
   const router = useRouter();
   const drawerRef = useRef<HTMLElement | null>(null);
@@ -957,7 +1027,7 @@ function ThreadDrawer({
   };
 
   return (
-    <motion.aside ref={drawerRef} className="arc-history" initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} role="dialog" aria-modal="true" aria-label="Arc workspace">
+    <motion.aside ref={drawerRef} className="arc-history" style={paneBox ? { top: paneBox.top, left: paneBox.left, height: paneBox.height, width: Math.min(386, paneBox.width - 28) } : undefined} initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} role="dialog" aria-modal="true" aria-label="Arc workspace">
       <div className="arc-history-topline"><span className="arc-history-eyebrow">Your Arc workspace</span><button type="button" className="arc-icon-button" onClick={onDismiss} aria-label="Close Arc workspace" autoFocus><X size={17} /></button></div>
       <nav className="arc-drawer-nav" aria-label="Arc workspace sections">
         <button type="button" className={view === "conversations" ? "is-active" : ""} aria-current={view === "conversations" ? "page" : undefined} onClick={() => setView("conversations")}><MessageSquareText size={14} /><span>Conversations</span></button>
@@ -1469,6 +1539,10 @@ export function ArcView({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
   const chatRootRef = useRef<HTMLDivElement | null>(null);
+  // Measured only while the drawer is open — see usePaneBox. `.arc-chat` is the
+  // element the drawer used to be `position: absolute` inside, so its rect is
+  // exactly the box the drawer should keep occupying now that it is portaled.
+  const drawerPaneBox = usePaneBox(chatRootRef, historyOpen);
   // Bottom-follow tracking. `guard()` covers the deliberate scroll-to-top calls
   // (opening a thread at its start, a new chat) that move scrollTop up exactly
   // like a reader would, so the tracker doesn't read them as "the reader left
@@ -2432,7 +2506,7 @@ export function ArcView({
             match — and a portaled scrim left behind a pane-scoped drawer would
             paint over the drawer it belongs to, since .page-enter's transform
             makes the page a single stacking context. See overlay-portal.tsx. */}
-        {historyOpen ? <Fragment key="arc-workspace"><OverlayPortal><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismissHistory} aria-label="Close Arc workspace" /><ThreadDrawer live={live} groups={threadGroups} activeConversationId={visibleConversationId} selectedDemoId={selectedDemoId} needsReviewCount={needsReviewCards.length} onSelectDemo={selectDemoThread} onStartNew={startNewConversation} onOpenReview={() => { setHistoryOpen(false); openReview(needsReviewCards); }} onUseSkill={applyDrawerSkill} onUseSaved={useSavedItem} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} campaignItems={mentionGroups.find((group) => group.type === "campaign")?.items ?? []} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} onDismiss={dismissHistory} /></OverlayPortal></Fragment> : null}
+        {historyOpen ? <Fragment key="arc-workspace"><OverlayPortal><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismissHistory} aria-label="Close Arc workspace" /><ThreadDrawer live={live} groups={threadGroups} activeConversationId={visibleConversationId} selectedDemoId={selectedDemoId} needsReviewCount={needsReviewCards.length} onSelectDemo={selectDemoThread} onStartNew={startNewConversation} onOpenReview={() => { setHistoryOpen(false); openReview(needsReviewCards); }} onUseSkill={applyDrawerSkill} onUseSaved={useSavedItem} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} campaignItems={mentionGroups.find((group) => group.type === "campaign")?.items ?? []} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} onDismiss={dismissHistory} paneBox={drawerPaneBox} /></OverlayPortal></Fragment> : null}
         {shareOpen ? <ShareDialog key="share-dialog" conversationId={visibleConversationId} onClose={() => setShareOpen(false)} /> : null}
       </AnimatePresence>
     </div>
