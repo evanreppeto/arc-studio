@@ -88,10 +88,11 @@ describe("storage that misbehaves must not take the chat down", () => {
 });
 
 describe("which sections the operator left open", () => {
-  it("defaults to evidence open and run history closed", () => {
-    // Evidence answers "where did that come from", which is why the panel gets
-    // reopened. Run history is reference material and stays out of the way.
-    expect(DEFAULT_WORK_SECTIONS).toEqual({ evidence: true, runs: false });
+  it("defaults to both reference sections closed", () => {
+    // Evidence answers "where did that come from" — a question asked ABOUT a
+    // deliverable, so it opens on demand rather than pushing 65 rows of records
+    // and recall between the operator and the campaign work.
+    expect(DEFAULT_WORK_SECTIONS).toEqual({ evidence: false, runs: false });
     expect(readWorkSectionPreference()).toBeNull();
   });
 
@@ -105,7 +106,7 @@ describe("which sections the operator left open", () => {
     // operator never touched into `false`.
     const storage = stubStorage();
     storage.setItem("arc.workPanel.sections", JSON.stringify({ runs: true }));
-    expect(readWorkSectionPreference()).toEqual({ evidence: true, runs: true });
+    expect(readWorkSectionPreference()).toEqual({ evidence: false, runs: true });
   });
 
   it("ignores junk rather than throwing", () => {
