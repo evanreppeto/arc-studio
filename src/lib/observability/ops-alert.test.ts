@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { __resetOpsAlertCooldown, alertOpsFailure, isOpsAlertingConfigured } from "./ops-alert";
+
 const postSlackWebhook = vi.fn(async () => ({ ok: true as const }));
 vi.mock("@/lib/integrations/slack/notify", () => ({
   postSlackWebhook: (...args: unknown[]) => postSlackWebhook(...(args as [])),
 }));
 
-const { alertOpsFailure, isOpsAlertingConfigured, __resetOpsAlertCooldown } = await import("./ops-alert");
 
 const URL_VAR = "ALERT_SLACK_WEBHOOK_URL";
 const WEBHOOK = "https://hooks.slack.com/services/T/B/xxx";
