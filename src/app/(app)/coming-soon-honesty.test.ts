@@ -41,22 +41,25 @@ const BASELINE: Record<string, number> = {
   //
   // Six controls lived here: CRM columns / density / Arc-enrichment, campaign
   // templates, the analytics "Draft it" button, and Studio's three audio rows.
-  // Each was resolved the way this file's own rule demands — wired, or removed —
+  // Each is resolved the way this file's own rule demands — wired, or removed —
   // never left as a placeholder that looks live:
   //
+  //   wired   CRM density      BSR-748, on main. Row padding, and it needed no
+  //                            backend — which is what made it worth building.
   //   wired   CRM columns      a real per-object visibility picker
   //   wired   analytics        points at kind='next_iteration' opportunities,
   //                            which Arc already detects and the inbox already
   //                            calls "Repeat a winner"
-  //   removed CRM density      NOT unbuilt — a duplicate. Settings -> Appearance
-  //                            writes html[data-density], which resizes .arc-app
-  //                            and therefore this very table. Two density
-  //                            concepts is worse than one.
   //   removed CRM enrichment   enrichment exists only as a connector-backed
   //                            import provider; there is no per-record
   //                            on-demand write path to call.
   //   removed campaign templates  no template model anywhere.
   //   removed studio audio     no audio generation, in Higgsfield or elsewhere.
+  //
+  // This branch had density in the REMOVED column, reasoning it duplicated
+  // Settings -> Appearance. That was wrong and BSR-748 is the correction: the
+  // appearance setting scales app-wide type, density here sets table row
+  // padding. Different controls; both belong.
   //
   // Adding an entry back is fine when something genuinely is unbuilt. Adding one
   // because a control is easier to mark than to finish is the thing to refuse.

@@ -105,6 +105,126 @@ const SORT_LABELS: Record<SortKey, string> = { recent: "Recent", name: "Name", s
  *  rows we ever render at once is unchanged from before paging existed. */
 const PAGE_SIZES = [25, 50, 100] as const;
 
+/**
+ * Row height. Was a `data-soon` placeholder; a table that routinely holds 243
+ * contacts is exactly where this earns its place, and it needs no backend —
+ * which is what made it worth building rather than leaving marked (BSR-748).
+ */
+export type Density = "comfortable" | "compact";
+const DENSITY_LABELS: Record<Density, string> = { comfortable: "Comfortable", compact: "Compact" };
+/** Survives navigation and reload; a display preference the operator sets once. */
+const DENSITY_KEY = "arc.crm.density";
+
+export function readStoredDensity(raw: string | null): Density {
+  return raw === "compact" || raw === "comfortable" ? raw : "comfortable";
+}
+
+/**
+ * A tiny external store rather than `useState` + a read in `useEffect`.
+ *
+ * The effect version calls setState synchronously on mount, which is a
+ * cascading render (and eslint's `react-hooks` rules reject it). Reading
+ * localStorage in the useState initializer instead would hydrate-mismatch: the
+ * server always renders "comfortable".
+ *
+ * `useSyncExternalStore` is built for exactly this — a server snapshot that is
+ * always the default, a client snapshot read on demand — and cross-tab sync
+ * falls out of the `storage` event for free.
+ */
+const densityListeners = new Set<() => void>();
+let densityCache: Density | null = null;
+
+function densitySnapshot(): Density {
+  if (densityCache === null) {
+    try {
+      densityCache = readStoredDensity(window.localStorage.getItem(DENSITY_KEY));
+    } catch {
+      densityCache = "comfortable";
+    }
+  }
+  return densityCache;
+}
+
+/** The server has no preference to read, and must render the default. */
+function densityServerSnapshot(): Density {
+  return "comfortable";
+}
+
+function subscribeDensity(onChange: () => void): () => void {
+  densityListeners.add(onChange);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== DENSITY_KEY) return;
+    densityCache = null;
+    onChange();
+  };
+  window.addEventListener("storage", onStorage);
+  return () => {
+    densityListeners.delete(onChange);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function writeDensity(next: Density): void {
+  densityCache = next;
+  try {
+    window.localStorage.setItem(DENSITY_KEY, next);
+  } catch {
+    // Private mode / quota. The choice still applies for this session; a
+    // display preference is not worth surfacing an error for.
+  }
+  for (const listener of densityListeners) listener();
+}
+
+function DensityMenu({ value, onChange }: { value: Density; onChange: (v: Density) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <span className="fbtn-wrap" ref={ref}>
+      <button
+        type="button"
+        className={`iconf${value !== "comfortable" ? " active" : ""}`}
+        title={`Row height: ${DENSITY_LABELS[value]}`}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+      </button>
+      {open && (
+        <div className="fmenu fmenu-right" role="menu">
+          {(Object.keys(DENSITY_LABELS) as Density[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              className={`fmenu-item${k === value ? " on" : ""}`}
+              role="menuitemradio"
+              aria-checked={k === value}
+              onClick={() => { onChange(k); setOpen(false); }}
+            >
+              <span>{DENSITY_LABELS[k]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
 function SortMenu({ value, onChange }: { value: SortKey; onChange: (v: SortKey) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -469,6 +589,7 @@ export function CrmBoard({
   const [statusF, setStatusF] = useState("");
   const [ownerF, setOwnerF] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("recent");
+  const density = useSyncExternalStore(subscribeDensity, densitySnapshot, densityServerSnapshot);
 
   // Which columns the operator has hidden, per object. Local to the browser on
   // purpose: this is a view preference, not workspace configuration, and two
@@ -913,11 +1034,11 @@ export function CrmBoard({
         )}
         <span className="gspacer" />
         <SortMenu value={sortBy} onChange={setSortBy} />
-        {/* Columns. The density control that used to sit beside this is gone
-            rather than wired: the app already HAS a working density setting
-            (Settings -> Appearance writes html[data-density], which resizes
-            .arc-app and therefore this table), so a second CRM-local one would
-            have been a competing concept, not a missing feature. */}
+        {/* Columns, beside the density control BSR-748 shipped. This branch
+            had removed density as a duplicate of Settings -> Appearance; that
+            was wrong — the appearance setting scales app-wide type, this one
+            sets table ROW padding, and they are different controls. Main
+            shipped it for real, so it stays and columns joins it. */}
         <div className="colsmenu" ref={colsRef}>
           <button
             type="button"
@@ -957,6 +1078,7 @@ export function CrmBoard({
             </div>
           )}
         </div>
+        <DensityMenu value={density} onChange={writeDensity} />
       </div>
 
       <div className={`selbar${selected.size ? " show" : ""}${personaMenuOpen || taskMenuOpen || campaignMenuOpen ? " menuopen" : ""}`}>
@@ -1028,7 +1150,7 @@ export function CrmBoard({
         <span className="clr" onClick={() => setSelected(new Set())}>Clear</span>
       </div>
 
-      <div className="tablewrap">
+      <div className="tablewrap" data-density={density}>
         <table className="dt">
           <thead>
             <tr>

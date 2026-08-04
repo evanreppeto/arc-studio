@@ -44,8 +44,14 @@ beforeEach(() => {
   readConnectorCredential.mockResolvedValue(OAUTH_BUNDLE);
 });
 
+// Imported once here rather than inside `resolve()`. It has to stay DYNAMIC —
+// the mock factories above close over consts declared below the import block,
+// and a static import is hoisted past them into a TDZ error — but at module
+// scope the transform is paid during collection instead of being charged to
+// whichever test called `resolve()` first (BSR-739).
+const { resolveRemoteConnectorsForRunner } = await import("./runner-connectors");
+
 async function resolve() {
-  const { resolveRemoteConnectorsForRunner } = await import("./runner-connectors");
   return resolveRemoteConnectorsForRunner({} as never, "ws-1");
 }
 

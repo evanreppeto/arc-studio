@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type OpportunityCandidate } from "@/domain";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { runWeatherEventDetection } from "./detector";
+
 /**
  * `runWeatherEventDetection` passed NO config to the detector: no persona, no
  * event categories. It runs in the same scan as the `weather-signals` connector,
@@ -42,7 +48,6 @@ vi.mock("@/lib/connectors/config", () => ({
   getConnectorConfig: () => getConnectorConfig(),
 }));
 
-const { runWeatherEventDetection } = await import("./detector");
 
 const NOW = "2026-07-29T13:00:00.000Z";
 
