@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { type CampaignWorkspaceAsset } from "@/lib/campaigns/read-model";
+import { type CampaignAssetFinding, type CampaignWorkspaceAsset } from "@/lib/campaigns/read-model";
 
 import { OverlayPortal } from "../../../_components/overlay-portal";
 
@@ -29,6 +29,7 @@ export function ReviewQueue({
   error,
   onDecide,
   onRevise,
+  onApplyFix,
   onEdit,
   onClose,
 }: {
@@ -38,6 +39,7 @@ export function ReviewQueue({
   error: string | null;
   onDecide: (asset: CampaignWorkspaceAsset, decision: "approved" | "declined") => void;
   onRevise: (asset: CampaignWorkspaceAsset, instruction: string) => void;
+  onApplyFix: (asset: CampaignWorkspaceAsset, finding: CampaignAssetFinding, value: string) => void;
   /** Editing is a different mode of work — it hands back to the list, which
    *  owns the editor, rather than growing a second one in here. */
   onEdit: (asset: CampaignWorkspaceAsset) => void;

@@ -35,10 +35,18 @@ import type { DraftForReview } from "./types";
 
 export type CriticVerdict = "grounded" | "unsupported" | "fabricated";
 
+export type CriticFix = {
+  target: string;
+  label: string;
+  kind: "text" | "phone" | "url" | "date" | "address";
+};
+
 export type CriticFinding = {
   claim: string;
   verdict: CriticVerdict;
   note: string;
+  /** Set only when the whole problem is one missing value — see submit_review. */
+  fix?: CriticFix | null;
 };
 
 export type CriticReview = {
@@ -78,6 +86,15 @@ LENGTH IS PART OF THE JOB. A reviewer who has to read 300 words to find two prob
 
 Be specific and short. "The 60-minute response time is not in any proof point; performance shows a 3.2h median" beats "this may be inaccurate".
 
+WHEN THE PROBLEM IS ONE MISSING VALUE, ASK FOR IT. Some findings are judgement — a claim overstates what the evidence supports, and only a person rewriting the sentence can settle it. Others are a blank: the copy says "Call [24/7 line]" and the only thing wrong is that nobody has put the number in. For that second kind, attach a "fix" to the finding naming the exact text to replace and what to ask for, and the reviewer gets a box to type it into instead of a paragraph telling them to go and do it themselves.
+
+Only attach a fix when ALL of these hold, and leave it off otherwise — a fix that cannot be applied by typing one value into a box is worse than no fix at all:
+- the whole problem goes away once one value is supplied;
+- that value replaces a specific, literal run of text you can copy out of the draft character for character;
+- you are not guessing what the value should be. You are not filling it in; you are asking.
+
+"target" is that literal text and nothing more — "[24/7 line]", not the sentence around it. If the placeholder appears more than once, every copy is replaced, so name the placeholder rather than one occurrence of it.
+
 You are ADVISORY. You never approve, decline, send, or unlock anything — you tell the human what you found. Do not comment on style, tone, or formatting unless it creates a factual or compliance risk.`;
 
 /** The critic's read-only surface: workspace evidence only.
@@ -106,6 +123,24 @@ function submitReviewTool(collect: (review: CriticReview) => void) {
             verdict: z
               .enum(["grounded", "unsupported", "fabricated"])
               .describe("grounded = you found the evidence; unsupported = you could not; fabricated = it contradicts evidence."),
+            fix: z
+              .object({
+                target: z
+                  .string()
+                  .describe(
+                    "The literal text in the draft to replace, copied out character for character — \"[24/7 line]\", not the sentence containing it. Every occurrence is replaced.",
+                  ),
+                label: z
+                  .string()
+                  .describe("What to ask the operator for, in their words: \"The number to call\". Under 6 words; it labels an input box."),
+                kind: z
+                  .enum(["text", "phone", "url", "date", "address"])
+                  .describe("What sort of value this is. Chooses the keyboard on a phone; never used as validation."),
+              })
+              .optional()
+              .describe(
+                "ONLY when the entire problem is one missing value that replaces a literal run of text — a placeholder phone number, a missing address or date. Omit for anything needing judgement or a rewrite: a fix the operator cannot complete by typing one value is worse than none.",
+              ),
             note: z
               .string()
               .describe(
@@ -131,7 +166,7 @@ function submitReviewTool(collect: (review: CriticReview) => void) {
     },
     async (args) => {
       collect({
-        findings: args.findings,
+        findings: args.findings.map((f) => ({ ...f, fix: f.fix ?? null })),
         recommendation: args.recommendation,
         rationale: args.rationale,
         suggestedEdits: args.suggested_edits ?? "",
@@ -260,7 +295,12 @@ export async function reviewAndRecordDraft(
       rationale: review.rationale,
       risk_flags: riskFlagsFromFindings(review.findings),
       suggested_edits: review.suggestedEdits,
-      findings: review.findings.map((f) => ({ claim: f.claim, verdict: f.verdict, note: f.note })),
+      findings: review.findings.map((f) => ({
+        claim: f.claim,
+        verdict: f.verdict,
+        note: f.note,
+        fix: f.fix ?? null,
+      })),
     });
   } catch (error) {
     console.error(`[arc-runner] draft critic failed for asset ${draft.assetId}:`, error);

@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { redactSecrets } from "@/domain";
+import { isFixKind, redactSecrets, type FixKind } from "@/domain";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
 import { addApprovalRecommendation } from "./approvals";
 import { type ArcTenantScope } from "./drafts";
@@ -19,10 +19,19 @@ import { type ArcTenantScope } from "./drafts";
 
 export type DraftReviewVerdict = "grounded" | "unsupported" | "fabricated";
 
+/** The one value a finding is asking for (BSR-743). Null for the ordinary case:
+ *  most findings are judgement, not a blank to fill in. */
+export type DraftReviewFix = {
+  target: string;
+  label: string;
+  kind: FixKind;
+};
+
 export type DraftReviewFinding = {
   claim: string;
   verdict: DraftReviewVerdict;
   note: string;
+  fix?: DraftReviewFix | null;
 };
 
 export type RecordDraftReviewInput = {
@@ -39,6 +48,23 @@ export type RecordDraftReviewInput = {
 export type RecordDraftReviewResult =
   | { ok: true; approvalItemId: string; riskLevel: string; findingsRecorded: number }
   | { ok: false; reason: "not_found" };
+
+/**
+ * The fix columns, or nulls. Trimmed and length-capped like the other text the
+ * critic supplies, and dropped entirely unless both halves survive that — the
+ * database would reject a target with a blank label, and failing the whole
+ * review insert over an optional extra would lose the findings with it.
+ */
+function fixColumns(fix: DraftReviewFix | null | undefined): {
+  fix_target: string | null;
+  fix_label: string | null;
+  fix_kind: string | null;
+} {
+  const target = fix?.target?.trim().slice(0, 500) ?? "";
+  const label = fix?.label?.trim().slice(0, 120) ?? "";
+  if (!target || !label) return { fix_target: null, fix_label: null, fix_kind: null };
+  return { fix_target: target, fix_label: label, fix_kind: isFixKind(fix?.kind) ? fix.kind : "text" };
+}
 
 /** A grounded claim is the absence of a finding, so only problems become rows. */
 const SEVERITY_BY_VERDICT: Record<DraftReviewVerdict, "info" | "warning" | "blocker" | null> = {
@@ -89,6 +115,12 @@ export async function recordDraftReview(
         matched_text: redactSecrets(finding.claim).slice(0, 2000),
         finding_message: redactSecrets(finding.note).slice(0, 2000) || `Claim is ${finding.verdict}.`,
         metadata: { verdict: finding.verdict, reviewer: "draft-critic" },
+        // All three or nothing — the CHECK constraint rejects a half-fix, so
+        // the guard here is the same shape rather than a looser one. A target
+        // the critic quoted but that is not in the copy is left for the apply
+        // path to refuse: it reads the draft as it stands, and this write does
+        // not.
+        ...fixColumns(finding.fix),
       })),
     );
     if (findingsError) throw new Error(`guardrail_findings insert failed: ${findingsError.message}`);
