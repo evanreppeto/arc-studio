@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, isPipelineObjectKey, personaAccent, statusTone } from "@/domain";
@@ -421,7 +422,18 @@ function cellContent(k: string, r: CrmRowVM) {
         <div className="pcell">
           <span className={`pav${r.isCompany ? " co" : ""}`}>{r.initials}</span>
           <div style={{ minWidth: 0 }}>
-            <div className="pnm">{r.name}</div>
+            {/* The row's own onClick is a convenience target, not the control.
+                Opening a record was previously ONLY possible by clicking the
+                <tr>, which no keyboard can reach, no screen reader announces as
+                a link, and no cmd-click can open in a new tab. The name is the
+                link; the row just forwards to it. */}
+            {r.id.startsWith("local-") ? (
+              <div className="pnm">{r.name}</div>
+            ) : (
+              <Link className="pnm pnmlink" href={recordHref(r)} onClick={(e) => e.stopPropagation()}>
+                {r.name}
+              </Link>
+            )}
             {r.detail && <div className="psub">{r.detail}</div>}
           </div>
         </div>
@@ -587,6 +599,7 @@ export function CrmBoard({
   /** Full definitions per object, for the Add-record form. */
   customFieldDefsByKey?: Record<string, CustomFieldDefinition[]>;
 }) {
+  const router = useRouter();
   const [activeKey, setActiveKey] = useState(defaultKey);
   const [q, setQ] = useState("");
   /**
@@ -1119,7 +1132,7 @@ export function CrmBoard({
             </>
           )}
         </div>
-        <span className="clr" onClick={() => setSelected(new Set())}>Clear</span>
+        <button type="button" className="clr" onClick={() => setSelected(new Set())}>Clear</button>
       </div>
 
       <div className="tablewrap" data-density={density}>
@@ -1179,7 +1192,10 @@ export function CrmBoard({
                   className={r.id.startsWith("local-") ? "freshrow" : undefined}
                   onClick={() => {
                     // Optimistic (unsaved) rows have no live record page yet.
-                    if (!r.id.startsWith("local-")) window.location.href = recordHref(r);
+                    // router.push, not window.location: a document reload here
+                    // threw away the client cache and the nav progress bar on
+                    // the app's most-used interaction.
+                    if (!r.id.startsWith("local-")) router.push(recordHref(r));
                   }}
                 >
                   {cols.map((c) => (
