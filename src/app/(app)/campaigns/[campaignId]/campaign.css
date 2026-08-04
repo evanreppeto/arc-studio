@@ -533,3 +533,18 @@
   .arc-campaign .rqnav { margin-left: 0; }
   .arc-campaign .rqname { display: none; }
 }
+
+/* The one value a finding is asking for, collected where the finding is
+   (BSR-743). Sits inside the finding's own row so the question and the answer
+   are never in two places. */
+.arc-campaign .rvfix { margin: 2px 0 8px; padding: 8px 9px 8px 11px; border-left: 2px solid transparent; }
+.arc-campaign .rvrow.blk .rvfix { border-left-color: var(--red); }
+.arc-campaign .rvrow:not(.blk) .rvfix { border-left-color: var(--warn); }
+.arc-campaign .rvfixlabel { display: block; font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
+.arc-campaign .rvfixrow { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.arc-campaign .rvfixinput { flex: 1; min-width: 160px; height: 30px; padding: 0 9px; font: inherit; font-size: 12px; color: var(--text); background: var(--raised); border: 1px solid var(--line-2); border-radius: 7px; }
+.arc-campaign .rvfixinput::placeholder { color: var(--muted); }
+.arc-campaign .rvfixinput:focus { outline: none; border-color: var(--accent-border); }
+.arc-campaign .rvfixgo { height: 30px; flex: none; font-size: 11.5px; }
+.arc-campaign .rvfixnote { font-size: 10.5px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
+.arc-campaign .rvfixnote code { font-family: var(--mono); font-size: 10px; color: var(--text-2); background: var(--raised); border-radius: 4px; padding: 1px 4px; }

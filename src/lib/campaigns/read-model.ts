@@ -3,6 +3,8 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
   parseConsideredAudiences,
   humanizeArcProse,
+  isFixKind,
+  type InlineFix,
   normalizeHandoffNote,
   toWorkState,
   WORK_STATE_LABEL,
@@ -25,7 +27,8 @@ const OUTPUT_SELECT =
 const AGENT_TASK_SELECT = "id,objective,task_type,status,priority,metadata,created_at,updated_at";
 const DECISION_SELECT = "id,approval_item_id,decision,decided_by,decided_at,decision_notes,previous_status,next_status";
 const RECOMMENDATION_SELECT = "id,approval_item_id,agent,recommendation,rationale,risk_flags,suggested_edits,created_at";
-const FINDING_SELECT = "id,campaign_asset_id,severity,status,matched_text,finding_message,created_at";
+const FINDING_SELECT =
+  "id,campaign_asset_id,severity,status,matched_text,finding_message,created_at,fix_target,fix_label,fix_kind";
 
 export type CampaignWorkspaceAssetCategory = "physical" | "virtual" | "ads" | "media" | "other";
 
@@ -238,9 +241,15 @@ export type CampaignAssetRecommendation = {
 };
 
 export type CampaignAssetFinding = {
+  /** Needed to apply the fix below — the operator's click has to name a row. */
+  id: string;
   claim: string;
   severity: string;
   message: string;
+  /** The one value this finding is asking for, when it reduces to one (BSR-743).
+   *  Null is the ordinary case: most findings are judgement, not a blank to fill,
+   *  and every finding written before this existed has none. */
+  fix: InlineFix | null;
 };
 
 export type CampaignWorkspaceReasoning = {
@@ -551,6 +560,9 @@ type GuardrailFindingRow = {
   matched_text: string | null;
   finding_message: string;
   created_at: string;
+  fix_target: string | null;
+  fix_label: string | null;
+  fix_kind: string | null;
 };
 
 type CompanyRow = {
@@ -1225,6 +1237,8 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
       "",
       "We answer within the hour, every time — no exceptions.",
       "",
+      "Call [phone number] — a real person picks up.",
+      "",
       `${action} →`,
       "",
       "Or reply to this email and someone will call you back.",
@@ -1307,16 +1321,30 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
           },
           findings: [
             {
+              id: `${id}-finding-placeholder`,
+              claim: "Call [phone number] — a real person picks up.",
+              severity: "blocker",
+              message:
+                "This is still the placeholder, so the call-to-action points at nothing. It cannot go out until the real number is in it.",
+              // The shape this whole feature exists for: one missing value, and
+              // the exact text to put it in place of.
+              fix: { target: "[phone number]", label: "The number to call", kind: "phone" },
+            },
+            {
+              id: `${id}-finding-response-time`,
               claim: "We answer within the hour, every time — no exceptions.",
               severity: "blocker",
               message:
                 "Nothing in this workspace's evidence sets a response-time commitment, and \"no exceptions\" turns it into a promise the business has to keep on every single inbound. Point it at a documented commitment or soften it before this goes out.",
+              fix: null,
             },
             {
+              id: `${id}-finding-callback`,
               claim: "Or reply to this email and someone will call you back.",
               severity: "warning",
               message:
                 "No proof point or process note describes a reply-to-callback workflow. Plausible operationally, but unsubstantiated here — worth confirming with whoever owns the inbox.",
+              fix: null,
             },
           ],
           media: [{ id: `${id}-hero`, type: "image", title: `${name} campaign creative`, seed: id, lineage: [["ai", "Made in Higgsfield · seedream"], ["ai", "Source job · hf_20260722_0917"]], prompt: "Campaign hero creative in the workspace brand style, photoreal, no embedded text." }],
@@ -2033,9 +2061,13 @@ export async function getCampaignWorkspaceDetail(
         workspaceId,
       ).catch(() => []),
     );
-    // NB no org scope: guardrail_findings has no org_id column, so passing one
-    // would query a column that doesn't exist. It's scoped transitively by
-    // campaign_asset_id, and these ids are already this org's assets.
+    // The comment that used to sit here said guardrail_findings has no org_id
+    // column and that passing one would query a column that doesn't exist. That
+    // stopped being true when BSR-653 made org_id and workspace_id NOT NULL on
+    // this table; the read simply never caught up. Scoped explicitly now —
+    // transitive scoping through campaign_asset_id was correct but relied on
+    // every caller passing ids it had already filtered, which is a property of
+    // the callers rather than of this query.
     const findings = groupFindingsByAsset(
       await selectIn<GuardrailFindingRow>(
         supabase,
@@ -2044,6 +2076,8 @@ export async function getCampaignWorkspaceDetail(
         "campaign_asset_id",
         assetIds,
         "created_at",
+        resolvedOrgId,
+        workspaceId,
       ).catch(() => []),
     );
     const relatedIds = collectRelatedIds(campaign, approvals);
@@ -2720,6 +2754,7 @@ function groupFindingsByAsset(rows: GuardrailFindingRow[]): Map<string, Campaign
   for (const row of rows) {
     if (!row.campaign_asset_id || row.status !== "open") continue;
     const finding: CampaignAssetFinding = {
+      id: row.id,
       claim: row.matched_text ?? "",
       severity: row.severity,
       // The claims reviewer had been narrating its own lookups into this field —
@@ -2728,6 +2763,13 @@ function groupFindingsByAsset(rows: GuardrailFindingRow[]): Map<string, Campaign
       // written, which no prompt change ever can. Removes plumbing only: every
       // claim, number and caveat survives.
       message: humanizeArcProse(row.finding_message) || row.finding_message,
+      // All three or none — the CHECK constraint makes a half-populated fix
+      // unrepresentable, so a missing target here means "no fix", never
+      // "a fix we failed to read".
+      fix:
+        row.fix_target && row.fix_label
+          ? { target: row.fix_target, label: row.fix_label, kind: isFixKind(row.fix_kind) ? row.fix_kind : "text" }
+          : null,
     };
     const group = byAsset.get(row.campaign_asset_id);
     if (group) group.push(finding);
@@ -3107,6 +3149,9 @@ const WORKSPACE_SCOPED_TABLES = new Set([
   "approval_recommendations",
   "agent_outputs",
   "agent_tasks",
+  // Has had workspace_id NOT NULL since BSR-653; it was simply never added
+  // here, so passing a workspace id for this table did nothing at all.
+  "guardrail_findings",
 ]);
 
 /**

@@ -2,7 +2,8 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
-import { recordDraftReview, type DraftReviewFinding, type DraftReviewVerdict } from "@/lib/arc-api/draft-review";
+import { isFixKind } from "@/domain";
+import { recordDraftReview, type DraftReviewFinding, type DraftReviewFix, type DraftReviewVerdict } from "@/lib/arc-api/draft-review";
 
 /**
  * The draft critic records an independent claims review of a campaign asset.
@@ -20,6 +21,24 @@ import { recordDraftReview, type DraftReviewFinding, type DraftReviewVerdict } f
 const VERDICTS = new Set<DraftReviewVerdict>(["grounded", "unsupported", "fabricated"]);
 const CRITIC_RISK_LEVELS = new Set(["low", "medium", "high"]);
 
+/**
+ * The optional one-value fix (BSR-743).
+ *
+ * Dropped rather than rejected when it is malformed: a review whose findings
+ * are sound should not 400 because an optional extra came back the wrong shape.
+ * The finding still lands, just as prose — which is exactly what every finding
+ * was before this existed.
+ */
+function parseFix(value: unknown): DraftReviewFix | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  const target = typeof row.target === "string" ? row.target.trim() : "";
+  const label = typeof row.label === "string" ? row.label.trim() : "";
+  if (!target || !label) return null;
+  const kind = typeof row.kind === "string" ? row.kind : "";
+  return { target, label, kind: isFixKind(kind) ? kind : "text" };
+}
+
 function parseFindings(value: unknown): DraftReviewFinding[] | null {
   if (!Array.isArray(value)) return null;
   const findings: DraftReviewFinding[] = [];
@@ -30,7 +49,7 @@ function parseFindings(value: unknown): DraftReviewFinding[] | null {
     const verdict = typeof row.verdict === "string" ? row.verdict : "";
     const note = typeof row.note === "string" ? row.note.trim() : "";
     if (!claim || !VERDICTS.has(verdict as DraftReviewVerdict)) return null;
-    findings.push({ claim, verdict: verdict as DraftReviewVerdict, note });
+    findings.push({ claim, verdict: verdict as DraftReviewVerdict, note, fix: parseFix(row.fix) });
   }
   return findings;
 }

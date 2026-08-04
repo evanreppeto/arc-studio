@@ -17,6 +17,7 @@ import {
 } from "@/domain";
 import { type AttachableMediaItem } from "@/lib/campaigns/attach-media";
 import {
+  type CampaignAssetFinding,
   type CampaignMediaAsset,
   type CampaignWorkspaceAsset,
   type CampaignWorkspaceAssetCategory,
@@ -39,7 +40,7 @@ import {
   summarizeReview,
   type ReviewSummary,
 } from "./review-summary";
-import { attachCampaignMediaAction, decideCampaignAsset, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision, retryCampaignRevision } from "../actions";
+import { applyFindingFixAction, attachCampaignMediaAction, decideCampaignAsset, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision, retryCampaignRevision } from "../actions";
 import {
   getCampaignSharingStateAction,
   setCampaignSharingAction,
@@ -779,6 +780,36 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     setAssets((as) => as.map((a) => (a.id === assetId ? { ...a, status, approval: a.approval ? { ...a.approval, status } : a.approval } : a)));
   }
 
+  /**
+   * Fill in the one value a finding is asking for (BSR-743).
+   *
+   * No optimistic update. Everything else here can predict its own result — a
+   * status flips to a value we already know. This one cannot: the substitution
+   * happens server-side against the copy as it stands now, and it legitimately
+   * refuses when the placeholder has been rewritten since the review. Guessing
+   * the new body locally would show the operator an edit that did not happen.
+   */
+  function applyFix(assetId: string, finding: CampaignAssetFinding, value: string) {
+    if (pending) return;
+    setErr(null);
+    startTransition(async () => {
+      const res = await applyFindingFixAction({ campaignId: campaign.id, findingId: finding.id, value });
+      if (!res.ok) {
+        setErr(res.error);
+        return;
+      }
+      if (!res.persisted) {
+        setErr("Not connected to a workspace, so nothing was saved.");
+        return;
+      }
+      // The server revalidates; drop the finding locally so the row does not sit
+      // there asking for a value it already has.
+      setAssets((as) =>
+        as.map((a) => (a.id === assetId ? { ...a, findings: a.findings.filter((f) => f.id !== finding.id) } : a)),
+      );
+    });
+  }
+
   function toggleCard(assetId: string) {
     setOpenCards((current) => {
       const next = new Set(current);
@@ -1232,6 +1263,8 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                           onFocusFinding={focusFinding}
                           onEditCopy={() => openEdit(asset)}
                           canEdit={actionable}
+                          onApplyFix={actionable ? (finding, value) => applyFix(asset.id, finding, value) : undefined}
+                          pending={pending}
                         />
                         <DeliverableCopy asset={asset} expanded={copyOpen} onToggle={() => toggleFullCopy(asset.id)} />
                         {assetMedia.length > 0 && (
@@ -1693,6 +1726,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
           error={err}
           onDecide={decide}
           onRevise={requestRevisionFor}
+          onApplyFix={(asset, finding, value) => applyFix(asset.id, finding, value)}
           // Editing leaves the queue for the list's editor, opened on the piece
           // that was on screen — one editor, not two that can disagree.
           onEdit={(asset) => { setQueueOpen(false); setOpenCards((c) => new Set(c).add(asset.id)); openEdit(asset); }}
