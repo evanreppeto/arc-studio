@@ -158,7 +158,7 @@
 .arc-library .uptile .ut { font-size: 12px; font-weight: 600; }
 .arc-library .uptile .ud { font-size: 10px; line-height: 1.4; }
 .arc-library .acard { border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; background: var(--panel); cursor: pointer; transition: border-color 0.15s, transform 0.15s var(--ease), box-shadow 0.15s; }
-.arc-library .acard:hover { border-color: var(--accent-border); transform: translateY(-2px); box-shadow: 0 18px 40px -28px rgba(0, 0, 0, 0.9); }
+.arc-library .acard:hover { border-color: var(--accent-border); }
 .arc-library .acard.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
 .arc-library .athumb { position: relative; height: 128px; background: #222a30; overflow: hidden; }
 .arc-library .athumb > svg { position: absolute; inset: 0; width: 100%; height: 100%; }

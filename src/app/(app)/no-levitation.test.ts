@@ -40,16 +40,27 @@ const APP_DIR = new URL(".", import.meta.url).pathname;
 /** Classes that ARE buttons, whatever they are called. */
 const BUTTON_LIKE = /\.(btn|gbtn|mbtn|ibtn|qbtn|cbtn|ucta|[a-z-]*button|[a-z-]*-cta|sendbtn)\b|\bbutton\b/;
 
-/** Per-file count of hover rules that lift a non-button. Lower these, never raise. */
-const BASELINE: Record<string, number> = {
-  "arc-app.css": 5,
-  "settings/settings.css": 2,
-  "studio/studio.css": 3,
-  "brand/brand.css": 2,
-  "library/library.css": 1,
-  "campaigns/[campaignId]/campaign.css": 1,
-};
-
+/**
+ * Empty, and that is the assertion.
+ *
+ * This shipped as a ratchet with fourteen entries across six stylesheets,
+ * because converting that many visual rules unchecked trades a style bug for a
+ * layout one. They are done now, and they were cheaper than feared: twelve of
+ * the fourteen ALREADY carried a `border-color` step, so removing the transform
+ * and its glow left a working hover cue untouched.
+ *
+ * Only `.wsid-sw` — a 26px accent swatch in the workspace identity modal — had
+ * the lift as its sole cue, and it took the same `border-color` step the brand
+ * swatches beside it already used, rather than losing hover feedback.
+ *
+ * Five carried a glow as well (`.card.link`, `.lanecards .card`, `.ccard`,
+ * `.isrc`, `.acard`); those went with them, since the rule bans both.
+ *
+ * Adding an entry back is fine when a lift is genuinely right. Adding one
+ * because a card looked flat without it is the thing to refuse — `.btn` is the
+ * element that lifts, and DESIGN.md is unambiguous that ordinary cards are not.
+ */
+const BASELINE: Record<string, number> = {};
 function cssFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);

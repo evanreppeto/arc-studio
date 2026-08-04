@@ -63,7 +63,7 @@
 .arc-brand .swrow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
 @media (max-width: 520px) { .arc-brand .swrow { grid-template-columns: repeat(2, 1fr); } }
 .arc-brand .sw { border: 1px solid var(--line-2); border-radius: 11px; overflow: hidden; cursor: pointer; transition: 0.16s var(--ease); background: var(--inset); }
-.arc-brand .sw:hover { transform: translateY(-2px); border-color: var(--line-3); }
+.arc-brand .sw:hover { border-color: var(--line-3); }
 .arc-brand .sw.on { border-color: #fff; box-shadow: 0 0 0 1px #fff, 0 10px 26px -14px rgba(0, 0, 0, 0.8); }
 /* display/width/padding are set explicitly to defeat the broadly-scoped
    `.arc-app .chip` (Home task chip: inline-flex + padding) which otherwise
@@ -198,7 +198,7 @@
   .arc-brand .sources { grid-template-columns: 1fr; }
 }
 .arc-brand .isrc { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 13px; display: flex; flex-direction: column; gap: 10px; min-height: 128px; transition: 0.16s var(--ease); position: relative; }
-.arc-brand .isrc:hover { border-color: var(--accent-border); transform: translateY(-2px); box-shadow: 0 16px 36px -24px rgba(0, 0, 0, 0.8); }
+.arc-brand .isrc:hover { border-color: var(--accent-border); }
 .arc-brand .isrc .si { display: flex; align-items: flex-start; gap: 10px; }
 .arc-brand .isrc .ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; transition: transform 0.16s var(--ease), background 0.16s; }
 .arc-brand .isrc:hover .ic { transform: scale(1.07); }
