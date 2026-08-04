@@ -201,14 +201,30 @@ export async function handleCampaignTask(
   //     tell the two apart, which is why stranded revisions were unrecoverable
   //     rather than merely retryable (BSR-695).
   //
-  // A claim failure is NOT a reason to skip the work: if the app is briefly
-  // unreachable the operator's revision still matters more than the bookkeeping,
-  // and the retry path is guarded by its own re-read. So log and continue.
+  // ONLY "another worker holds it" is a reason to skip. Everything else — the
+  // app refusing the claim, the app being unreachable — means nobody is running
+  // this, so skipping loses the operator's work.
+  //
+  // The first version of this treated any 409 as "already claimed", and
+  // `arcGuard` returns 409 for `workspace_required` / `workspace_mismatch` too.
+  // Two campaign tasks were dropped on prod under a log line reading "skipping
+  // duplicate run" when there was no duplicate — the same shape of lie this
+  // whole fix exists to remove.
   try {
-    const claimed = await client.claimTask(payload.agentTaskId);
-    if (!claimed) {
-      console.log(`[arc-runner] campaign task ${payload.agentTaskId} already claimed elsewhere — skipping duplicate run`);
+    const claim = await client.claimTask(payload.agentTaskId);
+    if (!claim.claimed && claim.reason === "already-claimed") {
+      console.log(`[arc-runner] campaign task ${payload.agentTaskId} is already running elsewhere — skipping duplicate`);
       return;
+    }
+    if (!claim.claimed) {
+      // Loud: this is a misconfiguration, and the run's own callbacks are likely
+      // to fail the same way. Running anyway leaves the task `queued` and
+      // retryable rather than silently consumed.
+      console.error(`[arc-runner] claim REFUSED for campaign task ${payload.agentTaskId} (${claim.detail}) — running anyway`);
+      captureRunnerError(new Error(`claim refused: ${claim.detail}`), {
+        run: "campaign-task",
+        agentTaskId: payload.agentTaskId,
+      });
     }
   } catch (error) {
     console.warn(`[arc-runner] could not claim campaign task ${payload.agentTaskId}, running anyway:`, error);
