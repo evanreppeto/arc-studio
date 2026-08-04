@@ -1,4 +1,4 @@
--- supabase/migrations/20260804210000_brand_logos.sql
+-- supabase/migrations/20260804230000_brand_logos.sql
 --
 -- A workspace's logo SET, replacing the single `business_profiles.logo_url`.
 --
@@ -22,11 +22,22 @@
 -- in src/domain/brand-logos.ts and a test pins the two lists against each other
 -- so they cannot drift silently.
 --
--- Scoped exactly like `business_profiles`, whose variants these are: org_id
--- today, and registered in supabase/tenancy-contract.mjs as
--- `{ category: "workspace", pending: GROUP_A }` so it gains workspace_id in the
--- same wave as the profile rather than ahead of it. A logo set scoped narrower
--- than the profile it belongs to would strand rows no brand screen could reach.
+-- Scoped exactly like `business_profiles`, whose variants these are: org_id NOT
+-- NULL plus a nullable workspace_id, registered in supabase/tenancy-contract.mjs
+-- as `{ category: "workspace", pending: GROUP_A, hasColumn: true }`.
+--
+-- It carries workspace_id from birth rather than waiting for a later wave.
+-- Wave 3 Phase A (20260804220000) gave business_profiles, media_assets and
+-- media_folders that column; a new sibling of those tables landing without one
+-- would be the single brand table left out of the wave, needing a second
+-- migration later and leaving a writer-audit gap in between —
+-- src/lib/db/workspace-writers.test.ts keys on `hasColumn`, so from this
+-- migration on every insert site must stamp it.
+--
+-- ORDERED AFTER Wave 3 deliberately. The backfill below derives workspace_id
+-- from business_profiles, and that column does not exist until 20260804220000
+-- has run. This file was originally timestamped 21:00, which would have placed
+-- it before the column it reads.
 --
 -- ADDITIVE AND REVERSIBLE. `business_profiles.logo_url` is deliberately left in
 -- place and kept in sync with the primary role by the application
@@ -44,6 +55,9 @@
 create table if not exists public.brand_logos (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
+  -- Nullable and un-locked, matching business_profiles after Wave 3 Phase A.
+  -- Phase B narrows both together.
+  workspace_id uuid references public.workspaces(id) on delete cascade,
   role text not null,
   url text not null,
   file_name text,
@@ -72,10 +86,16 @@ create index if not exists brand_logos_org_id_idx
 comment on table public.brand_logos is
   'Named logo variants per org. Read by pickLogoForBackground so generated creative uses a mark that is actually visible on the background it lands on. business_profiles.logo_url mirrors the primary role for the nav rail and other single-image consumers.';
 
--- Backfill the existing single logo as each org's primary.
-insert into public.brand_logos (org_id, role, url, uploaded_by)
-select bp.org_id, 'primary', btrim(bp.logo_url), 'migration:20260804210000'
+-- Backfill the existing single logo as each org's primary, deriving workspace_id
+-- from the profile it came from. A derived value stays correct under any future
+-- org/workspace topology, which an assigned one does not — the same reasoning
+-- Wave 3 applies to its own tiers.
+insert into public.brand_logos (org_id, workspace_id, role, url, uploaded_by)
+select bp.org_id, bp.workspace_id, 'primary', btrim(bp.logo_url), 'migration:20260804230000'
 from public.business_profiles bp
 where bp.logo_url is not null
   and btrim(bp.logo_url) <> ''
 on conflict (org_id, role) do nothing;
+
+create index if not exists brand_logos_workspace_id_idx
+  on public.brand_logos (workspace_id);

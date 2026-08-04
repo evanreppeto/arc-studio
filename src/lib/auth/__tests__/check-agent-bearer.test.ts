@@ -23,12 +23,12 @@ describe("checkAgentBearer", () => {
   });
 
   it("401s on a bad token when something is configured", async () => {
-    const res = await checkAgentBearer(req("nope"), { verify: async () => ({ ok: false }), anyConfigured: async () => true });
+    const res = await checkAgentBearer(req("nope"), { verify: async () => ({ ok: false, reason: "not_found" }), anyConfigured: async () => true });
     expect(res).toMatchObject({ ok: false, status: 401 });
   });
 
   it("503s when nothing is configured at all", async () => {
-    const res = await checkAgentBearer(req("nope"), { verify: async () => ({ ok: false }), anyConfigured: async () => false });
+    const res = await checkAgentBearer(req("nope"), { verify: async () => ({ ok: false, reason: "not_found" }), anyConfigured: async () => false });
     expect(res).toMatchObject({ ok: false, status: 503 });
   });
 });

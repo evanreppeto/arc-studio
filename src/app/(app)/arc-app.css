@@ -211,6 +211,28 @@
   @media (prefers-reduced-motion: no-preference) {
     & .rail-recent.working .rail-recent-dot { animation: arcBreathe 2.2s var(--ease) infinite; }
   }
+  /* The row is a link plus an options button, so the wrapper positions the menu
+     without the button living inside the anchor. */
+  & .rail-recent-wrap { position: relative; display: block; }
+  & .rail-recent-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  & .rail-recent-campaign { color: var(--muted); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .rail-recent-more { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: var(--panel); color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
+  & .rail-recent-wrap:hover .rail-recent-more, & .rail-recent-more[aria-expanded="true"] { display: inline-flex; }
+  & .rail-recent-more:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+  & .rail-recent-menu { position: absolute; top: calc(100% - 2px); right: 4px; z-index: 60; min-width: 152px; padding: 4px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); display: grid; gap: 1px; }
+  & .rail-recent-menu button { width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
+  & .rail-recent-menu button:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+  & .rail-recent-menu button.danger:hover { color: var(--red-text); background: var(--red-soft); }
+  /* A campaign that owns two or more chats. Collapsible, open by default —
+     closing it is the operator tidying, not a state we choose for them. */
+  & .rail-recent-group { display: grid; gap: 1px; }
+  & .rail-recent-group > summary { display: flex; align-items: center; gap: 6px; padding: 4px 5px; border-radius: 6px; color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; list-style: none; }
+  & .rail-recent-group > summary::-webkit-details-marker { display: none; }
+  & .rail-recent-group > summary::before { content: "\25B8"; font-size: 8px; transition: transform 0.15s var(--ease); }
+  & .rail-recent-group[open] > summary::before { transform: rotate(90deg); }
+  & .rail-recent-group > summary:hover { color: var(--text-2); background: rgba(255, 255, 255, 0.03); }
+  & .rail-recent-group .rail-recent-count { margin-left: auto; font: 500 9px/1 var(--mono); }
+  & .rail-recent-group .rail-recent-wrap { padding-left: 10px; }
   & .rail-recents-empty { margin: 0; padding: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; }
   & .nav-more { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding: 7px 10px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; transition: color 0.15s var(--ease); }
   & .nav-more:hover { color: var(--text-2); }
@@ -1734,11 +1756,14 @@
 .arc-app .arc-opps .orow .ot { font-size: 13px; font-weight: 600; letter-spacing: -.005em; display: flex; align-items: baseline; gap: 7px; }
 .arc-app .arc-opps .orow .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-app .arc-opps .orow .pct { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
-.arc-app .arc-opps .orow .om { font-size: 10.5px; color: var(--muted); margin-top: 3px; display: flex; align-items: center; gap: 7px; }
+/* The part of the title the row's short name cuts. Two live flood advisories over
+   different counties are otherwise two rows both reading "Flood Advisory". */
+.arc-app .arc-opps .orow .oq { font-size: 11px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-app .arc-opps .orow .om { font-size: 10.5px; color: var(--muted); margin-top: 5px; display: flex; align-items: center; gap: 7px; }
 .arc-app .arc-opps .orow .src { border: 1px solid var(--line-2); background: var(--inset); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; color: var(--text-2); }
 .arc-app .arc-opps .orow .stale { font-family: var(--mono); font-size: 9.5px; color: var(--muted); white-space: nowrap; }
 .arc-app .arc-opps .orow .ostat { border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; font-weight: 600; color: var(--accent-contrast); }
-.arc-app .arc-opps .odetail { min-width: 0; overflow: auto; padding: 30px clamp(22px, 3.2vw, 44px) 56px; }
+.arc-app .arc-opps .odetail { min-width: 0; overflow: auto; padding: 30px clamp(22px, 3.2vw, 44px) 56px; container-type: inline-size; container-name: oppdetail; }
 .arc-app .arc-opps .odetail .inner { max-width: 1000px; }
 .arc-app .arc-opps .metarow { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; flex-wrap: wrap; }
 .arc-app .arc-opps .tchip { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 11px; border: 1px solid var(--line-2); background: var(--inset); border-radius: 7px; font-size: 11px; color: var(--text-2); }
@@ -1752,17 +1777,28 @@
 .arc-app .arc-opps .dttl { font-family: var(--serif); font-weight: 500; font-size: clamp(1.5rem, 2.5vw, 2.05rem); line-height: 1.1; letter-spacing: -.018em; margin: 0; }
 .arc-app .arc-opps .opp-quick-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .arc-app .arc-opps .dgrid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 30px; margin-top: 24px; align-items: start; }
-@media (max-width: 1080px) { .arc-app .arc-opps .dgrid { grid-template-columns: 1fr; } }
+/* Two columns only while the detail pane is genuinely wide enough for two.
+   The rule this replaces was keyed to the VIEWPORT (max-width: 1080px), but the
+   pane is what has to fit the columns: the nav rail and the 362px inbox take
+   ~600px before the detail pane starts, so a 1280px laptop — the common case —
+   left the reading column 259px wide and the evidence values 35px, and the
+   viewport query never fired because 1280 > 1080. A container query asks the
+   question the layout actually depends on. */
+@container oppdetail (max-width: 760px) { .arc-app .arc-opps .dgrid { grid-template-columns: minmax(0, 1fr); gap: 22px; } }
 .arc-app .arc-opps .lab { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--muted); text-transform: uppercase; margin-bottom: 11px; }
 .arc-app .arc-opps .summary { font-size: 13.5px; color: var(--text-2); line-height: 1.6; margin: 0 0 4px; max-width: 68ch; }
 .arc-app .arc-opps .blk { margin-top: 26px; }
-.arc-app .arc-opps .evrow { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); cursor: pointer; transition: border-color .15s, transform .15s var(--ease); margin-bottom: 9px; }
-.arc-app .arc-opps .evrow:hover { border-color: var(--accent-border); transform: translateX(2px); }
-.arc-app .arc-opps .evrow .n { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; font-family: var(--mono); font-size: 10px; color: var(--accent); }
-.arc-app .arc-opps .evrow .es { font-size: 12.5px; font-weight: 600; }
-.arc-app .arc-opps .evrow .ed { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-.arc-app .arc-opps .evrow .go { color: var(--muted); font-size: 14px; }
-.arc-app .arc-opps .evrow:hover .go { color: var(--accent); }
+/* Evidence reads as a fact table: hairline rows, label left, value right. It was
+   a stack of numbered cards — nested panels inside the detail pane, numbered as
+   though the facts were steps, each with a pointer cursor and hover nudge for a
+   row nothing has ever been able to click. */
+.arc-app .arc-opps .evlist { margin: 0; max-width: 76ch; border-top: 1px solid var(--line-2); }
+/* Proportional, not a fixed 200px: the label must never starve the value it
+   labels, however narrow the pane gets. */
+.arc-app .arc-opps .evitem { display: grid; grid-template-columns: minmax(0, 0.42fr) minmax(0, 1fr); gap: 18px; align-items: baseline; padding: 11px 2px; border-bottom: 1px solid var(--line-2); }
+.arc-app .arc-opps .evitem dt { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.arc-app .arc-opps .evitem dd { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 620px) { .arc-app .arc-opps .evitem { grid-template-columns: minmax(0, 1fr); gap: 3px; } }
 .arc-app .arc-opps .recpanel { border: 1px solid var(--line-2); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent); padding: 18px 20px; }
 .arc-app .arc-opps .recpanel .rl { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--accent); text-transform: uppercase; }
 .arc-app .arc-opps .recpanel .rtxt { font-size: 13.5px; color: var(--text); line-height: 1.6; margin-top: 9px; }
@@ -1777,6 +1813,10 @@
 .arc-app .arc-opps .btn.ghost:hover { border-color: var(--line-3); color: var(--text); }
 .arc-app .arc-opps .btn:disabled { opacity: .6; cursor: default; transform: none; filter: none; }
 .arc-app .arc-opps .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; }
+/* Stacked under the content there is nothing to stick to, and sticky on the last
+   child only makes the block lag the scroll. Declared after the rule it overrides
+   — same specificity, so source order is what decides it. */
+@container oppdetail (max-width: 760px) { .arc-app .arc-opps .side { position: static; } }
 .arc-app .arc-opps .card { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 16px; }
 .arc-app .arc-opps .card .cl { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
 .arc-app .arc-opps .bignum { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -.02em; color: var(--accent-contrast); line-height: 1; }

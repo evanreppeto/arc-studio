@@ -190,6 +190,7 @@ export async function saveBrandLogo(formData: FormData): Promise<BrandLogoResult
     // would silently overwrite whatever this had put there.
     await saveBrandLogoVariant({
       orgId: ctx.orgId,
+      workspaceId: ctx.workspaceId,
       role: "primary",
       url: uploaded.url,
       fileName: image.name,
@@ -254,6 +255,7 @@ export async function saveBrandLogoVariants(formData: FormData): Promise<BrandLo
     try {
       await saveBrandLogoVariant({
         orgId: ctx.orgId,
+        workspaceId: ctx.workspaceId,
         role,
         url: uploaded.url,
         fileName: file.name,

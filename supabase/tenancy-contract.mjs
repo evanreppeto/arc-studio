@@ -100,33 +100,34 @@ export const TENANCY_CONTRACT = {
   approval_decisions: "workspace",
   approval_recommendations: "workspace",
   agent_outputs: "workspace",
-  knowledge_nodes: { category: "workspace", pending: GROUP_A },
-  knowledge_edges: { category: "workspace", pending: GROUP_A },
-  vault_notes: { category: "workspace", pending: GROUP_A },
+  knowledge_nodes: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  knowledge_edges: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  vault_notes: { category: "workspace", pending: GROUP_A, hasColumn: true },
   // Wave 2 locked in BSR-713: NOT NULL + workspace-member RLS.
   arc_generated_skills: "workspace",
   agents: "workspace",
   agent_task_inputs: "workspace",
   agent_task_events: "workspace",
   agent_run_logs: "workspace",
-  opportunities: { category: "workspace", pending: GROUP_A },
-  next_best_actions: { category: "workspace", pending: GROUP_A },
-  persona_snapshots: { category: "workspace", pending: GROUP_A },
-  persona_knowledge_entries: { category: "workspace", pending: GROUP_A },
-  competitor_campaigns: { category: "workspace", pending: GROUP_A },
+  opportunities: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  next_best_actions: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  persona_snapshots: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  persona_knowledge_entries: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  competitor_campaigns: { category: "workspace", pending: GROUP_A, hasColumn: true },
   // Creative brand identity that constrains generation — distinct from
   // workspaces.logo_url, which is UI chrome. Two brands, two profiles.
-  business_profiles: { category: "workspace", pending: GROUP_A },
+  business_profiles: { category: "workspace", pending: GROUP_A, hasColumn: true },
   // The named logo variants of that same profile, so they carry the same
   // category and migrate in the same wave. Two brands disagreeing about their
   // own wordmark is two brands being right, which is the test in the rule above.
-  // Created org-scoped to match business_profiles as it stands today; it gains
-  // workspace_id alongside it rather than ahead of it, because a logo set
-  // narrower than the profile it belongs to would strand rows no brand screen
-  // could reach.
-  brand_logos: { category: "workspace", pending: GROUP_A },
-  media_assets: { category: "workspace", pending: GROUP_A },
-  media_folders: { category: "workspace", pending: GROUP_A },
+  //
+  // Created WITH workspace_id rather than org-only: Wave 3 Phase A gave
+  // business_profiles the column, and a new sibling of that table landing
+  // without one would be the single brand table left out of the wave — a second
+  // migration later, and a writer-audit gap in between.
+  brand_logos: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  media_assets: { category: "workspace", pending: GROUP_A, hasColumn: true },
+  media_folders: { category: "workspace", pending: GROUP_A, hasColumn: true },
   arc_instances: "workspace",
   agent_tasks: "workspace",
   agent_connections: "workspace",

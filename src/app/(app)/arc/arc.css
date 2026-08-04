@@ -812,6 +812,14 @@
 .arc-run-copy { min-width: 0; display: flex; flex-direction: column; }
 .arc-run-copy b { color: currentColor; font-size: 11.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-run-copy small { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+/* The tool's own payload, one click away. Default is the summary line above;
+   this is here so evidence stays reachable without the row being a wall of JSON
+   (BSR-724). Text wraps and scrolls inside itself so a 400-char blob cannot
+   stretch the trace. */
+.arc-run-raw { margin-top: 3px; }
+.arc-run-raw summary { color: var(--muted); font-size: 10px; cursor: pointer; width: fit-content; }
+.arc-run-raw summary:hover { color: var(--text-2); }
+.arc-run-raw pre { margin: 4px 0 0; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 10px; line-height: 1.5; color: var(--muted); background: var(--inset); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
 .arc-run-state { color: var(--ok); }
 .arc-live-dots { display: inline-flex; align-items: center; gap: 3px; padding: 0 2px; }
 .arc-live-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); animation: arc-dot 1.05s ease-in-out infinite; }
@@ -1855,6 +1863,25 @@ a.arc-work-evidence-item:hover > svg { color: var(--accent); }
 .arc-created-list > button.arc-created-item { cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast); }
 .arc-created-list > button.arc-created-item:hover { transform: translateY(-1px); border-color: var(--line-3); background: var(--panel); }
 .arc-created-icon { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--inset); }
+/* A deliverable that HAS creative shows the creative. The glyph is the fallback,
+   not the default — see DeliverableThumb. */
+.arc-created-icon.has-media { overflow: hidden; padding: 0; }
+.arc-created-icon.has-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.arc-created-list > button.arc-created-item:hover .arc-created-icon { border-color: var(--line-3); }
+
+/* "What Arc found" — cards with nothing to decide. Quieter than a deliverable
+   on purpose: they are context, and stamping them with a review badge was the
+   bug this section exists to fix. */
+.arc-work-findings { display: grid; gap: 2px; }
+.arc-work-finding { min-height: 40px; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 9px; border-radius: 8px; padding: 6px 7px; color: inherit; text-decoration: none; }
+a.arc-work-finding:hover { background: rgba(255, 255, 255, .035); }
+.arc-work-finding-icon { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: var(--inset); color: var(--muted); }
+.arc-work-finding > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.arc-work-finding b { color: var(--text-2); font-size: 11px; font-weight: 550; line-height: 1.4; }
+.arc-work-finding small { color: var(--muted); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-work-finding > svg { color: var(--muted); }
+a.arc-work-finding:hover b { color: var(--text); }
+a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-created-list > .arc-created-item > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .arc-created-list b { color: var(--text-2); font-size: 11px; font-weight: 580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-created-list small { color: var(--muted); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

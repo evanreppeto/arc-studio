@@ -40,10 +40,28 @@ export const DEMO_THREADS: ArcThreadGroupVM[] = [
 // Carries `running`/`active` straight off the thread fixtures so the offline
 // preview shows the same rail states a live workspace does — a fixture that
 // flattened them would make the preview lie about a field prod really sets.
+/** Names for the campaigns the demo threads belong to, so the preview shows the
+ *  rail's campaign label and grouping. The live path resolves these from the
+ *  campaigns table; dropping them here left the preview unable to render either,
+ *  which is how a fixture hides a feature rather than demonstrating it. */
+const DEMO_CAMPAIGN_NAMES: Record<string, string> = {
+  "demo-camp": "Pricing-Intent Fast Track",
+  "past-customer": "Past-customer win-back",
+  "property-partners": "Multi-seat expansion",
+};
+
 export const DEMO_RECENT_CONVERSATIONS: ArcRecentConversationVM[] = DEMO_THREADS
   .flatMap((group) => group.items)
   .slice(0, 5)
-  .map(({ id, title, when, running, active }) => ({ id, title, when, running, defaultActive: active }));
+  .map(({ id, title, when, running, active, campaignId }) => ({
+    id,
+    title,
+    when,
+    running,
+    defaultActive: active,
+    campaignId: campaignId ?? null,
+    campaignName: campaignId ? DEMO_CAMPAIGN_NAMES[campaignId] ?? null : null,
+  }));
 
 export const DEMO_STEPS: ArcStep[] = [
   { label: "Read the pricing-intent brief", status: "done", at: "9:38 AM", kind: "think" },
@@ -115,7 +133,11 @@ export const DEMO_PACKAGE_CARDS: ArcActionCard[] = [
     status: "draft",
     preview: "Comparing options? The right workflow can save your team hours every week — book a personalized demo while it's top of mind.",
     rows: [{ name: "Headline", meta: "See Meridian tailored to your team" }, { name: "CTA", meta: "Book now" }],
-    flags: [{ tone: "ok", label: "Brand voice" }, { tone: "warn", label: "Needs image" }],
+    flags: [{ tone: "ok", label: "Brand voice" }],
+    // Prod attaches media to a draft card whenever the asset has real creative
+    // (three such cards exist live today, all Supabase storage urls). Without one
+    // here the workspace panel's thumbnail would only ever be exercised in prod.
+    media: { kind: "image", url: "/brand/login-background-v2.png", alt: "Paid social creative", source: "ai_generated", format: "1:1" },
     approval: { kind: "campaign", campaignId: "demo-campaign", assetId: "demo-asset-social" },
   },
   {
@@ -128,6 +150,25 @@ export const DEMO_PACKAGE_CARDS: ArcActionCard[] = [
     rows: [{ name: "Destination", meta: "Campaign-matched" }],
     flags: [{ tone: "ok", label: "No overclaim" }],
     approval: { kind: "campaign", campaignId: "demo-campaign", assetId: "demo-asset-landing" },
+  },
+];
+
+/**
+ * What the workspace panel holds, which is more than the approval package.
+ *
+ * Arc is told to emit a `result` card whenever it presents records it found, and
+ * prod is full of them — "5 CRM contacts (live read, Aug 3)" sitting beside four
+ * drafts. They are not deliverables and cannot be approved, so the panel lists
+ * them separately; the demo carries one so the preview shows the same split.
+ */
+export const DEMO_WORKSPACE_CARDS: ArcActionCard[] = [
+  ...DEMO_PACKAGE_CARDS,
+  {
+    kind: "result",
+    title: "142 high-intent accounts (live read)",
+    rows: [{ name: "Source", meta: "CRM · companies" }],
+    flags: [],
+    href: "/crm/companies",
   },
 ];
 

@@ -57,6 +57,15 @@ export async function listBrandLogos(orgId: string): Promise<BrandLogo[]> {
  */
 export async function saveBrandLogoVariant(input: {
   orgId: string;
+  /**
+   * Stamped on every write. `brand_logos` carries workspace_id from birth
+   * (Wave 3 Phase A gave business_profiles the same column), and
+   * src/lib/db/workspace-writers.test.ts fails any insert site that omits it —
+   * deliberately, because BSR-720 found 15 sites still writing org_id alone
+   * after the Wave 1 columns landed, one of which had already broken Arc's
+   * campaign runs in production.
+   */
+  workspaceId?: string | null;
   role: BrandLogoRole;
   url: string;
   fileName?: string | null;
@@ -67,6 +76,7 @@ export async function saveBrandLogoVariant(input: {
     .upsert(
       {
         org_id: input.orgId,
+        workspace_id: input.workspaceId ?? null,
         role: input.role,
         url: input.url,
         file_name: input.fileName ?? null,

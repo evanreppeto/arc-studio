@@ -8,6 +8,7 @@ import { canonicalIndustryKey } from "@/lib/product-language";
 
 import { classify } from "./classify";
 import { extraEvidenceRows } from "./evidence";
+import { humanizeArcProse, isMachineText, rowName, rowQualifier } from "./prose";
 import { OpportunityInbox, type OpportunityVM } from "./_components/opportunity-inbox";
 
 export const metadata = { title: "Opportunities — Arc Studio" };
@@ -22,11 +23,6 @@ function humanizePersona(persona: string): string {
   return /^unassigned/i.test(label) ? "" : label;
 }
 
-
-function shortName(title: string): string {
-  const first = title.split(/\s+[—–-]\s+/)[0].trim() || title.trim();
-  return first.length > 46 ? `${first.slice(0, 44).trim()}…` : first;
-}
 
 function urgencyTone(urgency: OpportunityRecord["urgency"]): OpportunityVM["urgencyTone"] {
   return urgency === "high" ? "red" : urgency === "medium" ? "amber" : "info";
@@ -83,7 +79,12 @@ function buildRouting(status: string): OpportunityVM["routing"] {
 function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): OpportunityVM {
   const ev = rec.evidence ?? {};
   const persona = humanizePersona(ev.persona ?? "");
+  // Arc's generative scan writes titles and summaries carrying ids, tool names,
+  // and column names. Strip those tokens before display — the claims themselves
+  // are left exactly as Arc wrote them. Classification reads the ORIGINAL text,
+  // so cleaning it can never move a card into a different bucket.
   const { icon, typeLabel } = classify(`${rec.title} ${rec.summary}`, rec.subject_type);
+  const title = humanizeArcProse(rec.title) || rec.title;
   const urgencyLabel = humanize(rec.urgency) || "Medium";
   // "feed_item" humanizes to "Feed item", which reads as jargon in the list row —
   // give it the same friendly name the detail's type chip uses.
@@ -121,8 +122,10 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
     evidence.push({ label: "Active creatives", value: `${ev.creativeCount}${ev.activityLevel ? ` (${humanize(ev.activityLevel)} activity)` : ""}` });
   }
   if (Array.isArray(ev.keywords) && ev.keywords.length) evidence.push({ label: "Keywords", value: ev.keywords.slice(0, 4).join(", ") });
-  // Feed/news signals (kind='news_signal').
-  if (ev.source) evidence.push({ label: "Source", value: ev.source });
+  // Feed/news signals (kind='news_signal'). Arc's generative scan reuses `source`
+  // for the tools it happened to call — "read_recent_activity + query_brain(…)" —
+  // which is not a source an operator can go and check.
+  if (ev.source && !isMachineText(ev.source)) evidence.push({ label: "Source", value: ev.source });
   if (Array.isArray(ev.matchedKeywords) && ev.matchedKeywords.length) {
     evidence.push({ label: "Matched terms", value: ev.matchedKeywords.slice(0, 4).join(", ") });
   }
@@ -158,10 +161,13 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
 
   // Deterministic seed for the "Create campaign" confirm modal (persona enum,
   // inferred focus, name). Computed server-side so the modal can pre-fill it.
+  // Seeded from the cleaned text: the draft's default name is derived from the
+  // title, and a campaign called "…(campaign 0bd41cb3-ff30…)" is a name nobody
+  // would keep.
   const seed = buildCampaignSeedFromOpportunity({
-    title: rec.title,
-    summary: rec.summary,
-    recommendedAction: rec.recommended_action,
+    title,
+    summary: humanizeArcProse(rec.summary) || rec.summary,
+    recommendedAction: humanizeArcProse(rec.recommended_action) || rec.recommended_action,
     urgency: rec.urgency,
     persona: ev.persona,
     recommendedCampaignType: null,
@@ -169,8 +175,11 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
 
   return {
     id: rec.id,
-    name: shortName(rec.title),
-    title: rec.title,
+    name: rowName(title),
+    // The staleness field already says "last contacted 30d ago"; repeating the
+    // title's own "— quiet 30 days" tail beside it is noise.
+    qualifier: staleLabel ? null : rowQualifier(title),
+    title,
     confidence,
     urgencyTone: urgencyTone(rec.urgency),
     urgencyLabel,
@@ -178,8 +187,8 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
     icon,
     sourceLabel,
     staleLabel,
-    summary: rec.summary,
-    recommendedAction: rec.recommended_action,
+    summary: humanizeArcProse(rec.summary) || rec.summary,
+    recommendedAction: humanizeArcProse(rec.recommended_action) || rec.recommended_action,
     persona,
     personaHref: persona ? "/personas" : null,
     recordHref,

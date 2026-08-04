@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { buildPersonaProfile, type LeadIngestionResult, type ParsedLeadIngestionInput, type PersonaProfile } from "../../domain";
 import { type PersistedLeadIngestion } from "../lead-ingestion/persistence";
+import { workspaceIdFields } from "../tenancy/resolve-workspace";
 
 type AcceptedLeadIngestionResult = Extract<LeadIngestionResult, { ok: true }>;
 
@@ -44,8 +45,10 @@ export async function persistPersonaIntelligenceForLead({
   orgId,
 }: PersistPersonaIntelligenceInput): Promise<PersistedPersonaIntelligence> {
   const profile = buildProfile(input, result);
+  const workspaceFields = await workspaceIdFields(supabase, orgId);
   const personaSnapshotId = await insertAndReturnId(supabase, "persona_snapshots", {
     org_id: orgId,
+    ...workspaceFields,
     persona: result.persona,
     company_id: persisted.companyId,
     contact_id: persisted.contactId,
@@ -136,6 +139,7 @@ export async function persistPersonaIntelligenceForLead({
 
   const nextBestActionId = await insertAndReturnId(supabase, "next_best_actions", {
     org_id: orgId,
+    ...workspaceFields,
     persona_snapshot_id: personaSnapshotId,
     company_id: persisted.companyId,
     contact_id: persisted.contactId,

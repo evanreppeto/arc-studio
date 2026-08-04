@@ -61,7 +61,14 @@ export default async function StudioPage() {
   // approval gate) and the media-generation master flag, threaded into StudioView.
   const campaigns = ctx?.orgId && isSupabaseAdminConfigured() ? await listCampaignNames(ctx.orgId, undefined, ctx.workspaceId).catch(() => []) : [];
   // Per-workspace: the gemini-media connector (legacy env flag still honored).
-  const mediaEnabled = (await resolveMediaGeneration(ctx?.workspaceId ?? null)).enabled;
+  // Keep the REASON, not just the flag: `resolveMediaGeneration` already writes
+  // an operator-actionable sentence naming Settings → Connections, and Studio
+  // used to discard it and hand-write "set ARC_MEDIA_ENABLED + GEMINI_API_KEY"
+  // instead — two env var names shown to someone who came to make an ad, for a
+  // switch that is legacy anyway (BSR-731).
+  const mediaAccess = await resolveMediaGeneration(ctx?.workspaceId ?? null);
+  const mediaEnabled = mediaAccess.enabled;
+  const mediaOffReason = mediaAccess.enabled ? null : mediaAccess.reason;
 
   // The workspace's real brand palette drives Studio's accent swatches — the picker
   // used to show a hardcoded list under a note claiming it came from the Brand kit.
@@ -99,6 +106,7 @@ export default async function StudioPage() {
       live={live}
       campaigns={campaigns}
       mediaEnabled={mediaEnabled}
+      mediaOffReason={mediaOffReason}
       brandPalette={brandPalette}
       />
     </>

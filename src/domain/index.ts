@@ -150,3 +150,7 @@ export * from "./dismissal-reasons";
 
 // What the operator sent back, and why — corrections Arc should learn (BSR-685).
 export * from "./correction-feedback";
+
+// What a tool call's input/output looks like on screen: redacted, and summarised
+// with the raw text behind a disclosure (BSR-724).
+export * from "./tool-payload";
