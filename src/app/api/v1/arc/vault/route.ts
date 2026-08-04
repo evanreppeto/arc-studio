@@ -14,11 +14,11 @@ export async function GET(request: Request) {
   const slug = new URL(request.url).searchParams.get("slug");
   try {
     if (slug) {
-      const note = await getVaultNote(slug, allowed.scope.orgId);
+      const note = await getVaultNote(slug, allowed.scope.orgId, allowed.scope.workspaceId);
       if (!note) return fail("not_found", `No vault note for slug "${slug}".`, 404);
       return ok({ note });
     }
-    const model = await getVaultNotes(allowed.scope.orgId);
+    const model = await getVaultNotes(allowed.scope.orgId, allowed.scope.workspaceId);
     return ok({ notes: model.notes });
   } catch (error) {
     return fail("failed", error instanceof Error ? error.message : "Failed to read the vault.", 502);

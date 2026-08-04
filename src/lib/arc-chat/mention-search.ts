@@ -80,7 +80,7 @@ export async function getMentionables(): Promise<MentionGroup[]> {
   const [campaignRefs, crmSamples, vaultNotes, orgPersonas, appSettings, businessProfile] = await Promise.all([
     listCampaignNames(orgId, undefined, workspaceId).catch(() => []),
     getCrmMentionSamples().catch(() => ({}) as Awaited<ReturnType<typeof getCrmMentionSamples>>),
-    orgId ? listVaultNotes(client, orgId).catch(() => []) : Promise.resolve([]),
+    orgId && workspaceId ? listVaultNotes(client, { orgId, workspaceId }).catch(() => []) : Promise.resolve([]),
     listPersonas().catch(() => []),
     orgId ? getAppSettings(orgId).catch(() => null) : Promise.resolve(null),
     orgId ? getBusinessProfile(orgId).catch(() => null) : Promise.resolve(null),
