@@ -4,6 +4,8 @@
  * review (never auto-contacted). Deterministic so it stays unit-testable.
  */
 
+import { countOf, DAY_NOUN } from "./vocabulary";
+
 export type ColdLeadInput = {
   id: string;
   /** Human label (contact/company name or lead id) for the card. */
@@ -11,8 +13,17 @@ export type ColdLeadInput = {
   persona: string;
   leadScore: number; // 0–100
   status: string; // lead_status value
-  /** ISO timestamp of the lead's most recent activity (latest event, else received_at). */
+  /** ISO timestamp of the lead's most recent activity, else when it arrived. */
   lastActivityAt: string;
+  /**
+   * Whether `lastActivityAt` is a real recorded interaction, or the fallback to
+   * the lead's arrival date because nothing has been logged against it.
+   *
+   * These are different facts and the card must not state the second as the
+   * first. "No activity in 90 days" asserts that someone checked; "nothing
+   * recorded since it arrived 90 days ago" is what we actually know.
+   */
+  activityKnown: boolean;
   hasActiveCampaign: boolean;
 };
 
@@ -193,11 +204,24 @@ export function detectColdLeadOpportunities(leads: ColdLeadInput[], config: Dete
       kind: "crm_inactivity",
       subjectType: "lead",
       subjectId: lead.id,
-      title: `${lead.label} — quiet ${daysCold} days`,
-      summary: `Open lead (score ${lead.leadScore}) with no live campaign and no activity in ${daysCold} days.`,
+      // PERSISTED. These two are written to the opportunity row, so they are
+      // what the card shows and what Arc reads back — a count disagreeing with
+      // its noun is stored, not just rendered (BSR-690).
+      title: lead.activityKnown
+        ? `${lead.label} — quiet ${countOf(daysCold, DAY_NOUN)}`
+        : `${lead.label} — nothing recorded in ${countOf(daysCold, DAY_NOUN)}`,
+      summary: lead.activityKnown
+        ? `Open lead (score ${lead.leadScore}) with no live campaign and no activity in ${countOf(daysCold, DAY_NOUN)}.`
+        : `Open lead (score ${lead.leadScore}) with no live campaign. Nothing has been recorded against it since it arrived ${countOf(daysCold, DAY_NOUN)} ago — that is not the same as knowing nobody has worked it.`,
       confidence,
       urgency,
-      evidence: { daysCold, leadScore: lead.leadScore, persona: lead.persona, lastActivityAt: lead.lastActivityAt },
+      evidence: {
+        daysCold,
+        leadScore: lead.leadScore,
+        persona: lead.persona,
+        lastActivityAt: lead.lastActivityAt,
+        activitySource: lead.activityKnown ? "recorded_activity" : "lead_arrival_date",
+      },
       recommendedAction: "Re-engage with a persona-tailored campaign",
       recommendedCampaignType: "re_engagement",
     });
@@ -294,10 +318,11 @@ export function isPropertyDamageWeather(eventType: string | null | undefined): b
  * demand it creates, never who gets called — Arc cannot know a workspace's trade,
  * and the operator opting in is what supplies that knowledge.
  */
-export type WeatherCategory = "property_damage" | "extreme_heat" | "air_quality" | "marine_coastal";
+export type WeatherCategory = "property_damage" | "fire_weather" | "extreme_heat" | "air_quality" | "marine_coastal";
 
 export const WEATHER_CATEGORIES: readonly WeatherCategory[] = [
   "property_damage",
+  "fire_weather",
   "extreme_heat",
   "air_quality",
   "marine_coastal",
@@ -311,11 +336,16 @@ export const WEATHER_CATEGORIES: readonly WeatherCategory[] = [
  * inboxes that never asked for them, which is the invisible-default failure that
  * put Illinois storm opportunities in front of tenants in Phoenix.
  */
-export const DEFAULT_WEATHER_CATEGORIES: readonly WeatherCategory[] = ["property_damage"] as const;
+export const DEFAULT_WEATHER_CATEGORIES: readonly WeatherCategory[] = ["property_damage", "fire_weather"] as const;
 
 // Matched word-boundaried on the NWS event name, most specific first: an
 // "Excessive Heat Warning" is heat, and must not fall through to anything else.
 const HEAT_EVENT = /\b(heat|hot)\b/i;
+// NWS's fire-weather products: "Red Flag Warning" (which contains no "fire" at
+// all), "Fire Weather Watch", "Extreme Fire Danger". Keyed on the product name
+// rather than the word, because matching only "fire" catches the second and
+// silently drops the first.
+const FIRE_WEATHER_EVENT = /\bred flag\b|\bfire\b/i;
 const AIR_QUALITY_EVENT = /\b(air quality|air stagnation|smoke|dust)\b/i;
 const MARINE_EVENT = /\b(beach|rip current|surf|marine|small craft|lakeshore|coastal)\b/i;
 
@@ -335,6 +365,9 @@ export function weatherCategoryOf(eventType: string | null | undefined): Weather
   if (HEAT_EVENT.test(name)) return "extreme_heat";
   if (AIR_QUALITY_EVENT.test(name)) return "air_quality";
   if (MARINE_EVENT.test(name)) return "marine_coastal";
+  // Before the property_damage fallback, which also matches `red flag` and
+  // `fire` and would otherwise claim a fire FORECAST had already caused damage.
+  if (FIRE_WEATHER_EVENT.test(name)) return "fire_weather";
   if (isPropertyDamageWeather(name)) return "property_damage";
   return null;
 }
@@ -370,6 +403,18 @@ const WEATHER_CATEGORY_COPY: Record<
       `a geo-targeted campaign reaches affected property owners before competitors do.`,
     action: (area) => `Launch a geo-targeted damage-response campaign for ${area}`,
     campaignType: "storm_response",
+  },
+  fire_weather: {
+    // A Red Flag Warning forecasts fire RISK. Nothing has burned, so there are no
+    // "affected property owners" and no damage to respond to — the demand it
+    // drives is prevention before the window, not restoration after it. Saying
+    // otherwise is a fabricated claim wearing a real NWS alert id.
+    demand: () =>
+      `Fire risk is elevated while the alert is in effect, and property owners act on ` +
+      `prevention — defensible space, clearing gutters and vents, readiness checks — ` +
+      `during the window rather than after it.`,
+    action: (area) => `Launch a geo-targeted fire-preparedness campaign for ${area}`,
+    campaignType: "fire_preparedness",
   },
   extreme_heat: {
     demand: () =>

@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
+import { WORK_STATE_LABEL } from "@/domain";
+
+import { KpiStrip } from "../../_components/kpi-strip";
 import { type DispatchStatus } from "@/lib/dispatch/status";
 
 import { sendDispatchAction, transitionDispatchAction } from "../actions";
@@ -60,10 +63,13 @@ const CHANNELS: { key: string; label: string }[] = [
 ];
 
 export function OutboxBoard({
+  loadError = null,
   groups,
   kpis,
   channelCounts,
 }: {
+  /** Why the read FAILED, vs returning nothing. Null when it succeeded. */
+  loadError?: string | null;
   groups: OutboxGroups;
   kpis: KpiVM[];
   channelCounts: Record<string, number>;
@@ -73,6 +79,7 @@ export function OutboxBoard({
   const [busyId, setBusyId] = useState<string | null>(null);
   // A real send is a two-step confirm: the first click arms this, the second sends.
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [cancelId, setCancelId] = useState<string | null>(null);
   const [failed, setFailed] = useState<{ id: string; message: string } | null>(null);
   const [, startTransition] = useTransition();
 
@@ -156,14 +163,26 @@ export function OutboxBoard({
           (card.action || card.canCancel) && (
             <div className="cactions">
               {card.canCancel && (
-                <button
-                  type="button"
-                  className="ccancel"
-                  onClick={() => run(card, "transition", "canceled")}
-                  disabled={busyId !== null}
-                >
-                  {busyId === card.id ? "…" : "Cancel"}
-                </button>
+                cancelId === card.id ? (
+                  <span className="ccancelconfirm" role="group" aria-label={`Take ${card.title} out of the queue?`}>
+                    <span>Take it out of the queue? Arc keeps the draft.</span>
+                    <button type="button" className="ccancel" onClick={() => setCancelId(null)} disabled={busyId !== null}>
+                      Keep it
+                    </button>
+                    <button
+                      type="button"
+                      className="ccancel is-confirm"
+                      onClick={() => { setCancelId(null); run(card, "transition", "canceled"); }}
+                      disabled={busyId !== null}
+                    >
+                      {busyId === card.id ? "…" : "Take it out"}
+                    </button>
+                  </span>
+                ) : (
+                  <button type="button" className="ccancel" onClick={() => setCancelId(card.id)} disabled={busyId !== null}>
+                    Don&rsquo;t send
+                  </button>
+                )
               )}
               {card.action && card.actionTo && (
                 <button
@@ -197,10 +216,20 @@ export function OutboxBoard({
 
   return (
     <div className="arc-outbox">
+      {/* A failed read is NOT an empty result. Rendering them the same is how a
+          live outage hid behind a normal-looking page (BSR-542). */}
+      {loadError && (
+        <div className="crm-error" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <b>Couldn&rsquo;t load the send queue.</b> An empty queue here would mean nothing is waiting to send — don&rsquo;t read it that way until this clears.
+            <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
+          </span>
+        </div>
+      )}
       <div className="ohead">
         <div className="otitle">
           <div>
-            <h1 className="pt">Outbox</h1>
+            <h2 className="pt">Outbox</h2>
             <div className="psub">Review approved sends, then confirm exactly what goes out.</div>
           </div>
           <div style={{ display: "flex", gap: 9 }}>
@@ -212,15 +241,15 @@ export function OutboxBoard({
         </div>
       </div>
 
-      <div className="okpis">
-        {kpis.map((k, i) => (
-          <div className={`kpi${k.alert ? " alert" : ""}`} key={i}>
-            <div className="kv">{k.value}</div>
-            <div className="kl">{k.label}</div>
-            <div className="ks">{k.sub}</div>
-          </div>
-        ))}
-      </div>
+      <KpiStrip
+        className="okpis"
+        items={kpis.map((k) => ({
+          label: k.label,
+          value: k.value,
+          sublabel: k.sub,
+          tone: k.alert ? ("attention" as const) : undefined,
+        }))}
+      />
 
       <div className="tabbar">
         <div className="ofilters">
@@ -236,7 +265,7 @@ export function OutboxBoard({
       <div className="oq">
         <section className="oq-section oq-hero">
           <div className="oq-head">
-            <span className="oq-label">Needs your confirmation</span>
+            <span className="oq-label">{WORK_STATE_LABEL.needs_you}</span>
             <span className="oq-count">{view.needsYou.length}</span>
           </div>
           {view.needsYou.length === 0 ? (

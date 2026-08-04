@@ -61,6 +61,13 @@ export type PersonaIntelligenceData =
       personas: PersonaTrackerRow[];
       contentSignals: PersonaContentSignal[];
       guardrailSignals: PersonaContentSignal[];
+      /** Whether the tables behind the two signal lists are populated at all, so
+       *  a consumer can tell "none found" from "nothing records this". */
+      coverage: {
+        knowledgeEntries: "recorded" | "not_recorded";
+        guardrailRules: "recorded" | "not_recorded";
+        note: string | null;
+      };
     }
   | {
       status: "unavailable";
@@ -254,12 +261,26 @@ export async function getPersonaIntelligenceData(
         { label: "Tracked personas", value: personas.length, delta: "Records with a current persona snapshot" },
         { label: "Ready to convert", value: personas.filter((persona) => persona.score >= 85).length, delta: "High confidence" },
         { label: "Partner candidates", value: personas.filter((persona) => persona.segment === "Partner").length, delta: "Referral focus" },
-        { label: "Content briefs", value: knowledgeRows.filter((entry) => isContentSignal(entry.entry_type)).length, delta: "Knowledge feed" },
+        // Same trap as "Tracked personas" above, one table over: nothing has
+        // ever written persona_knowledge_entries (BSR-671), so this is always
+        // 0. Say which zero it is — "Knowledge feed: 0" reads as "we looked and
+        // the workspace has nothing", which is a claim we cannot make.
+        {
+          label: "Content briefs",
+          value: knowledgeRows.filter((entry) => isContentSignal(entry.entry_type)).length,
+          delta: knowledgeRows.length ? "Knowledge feed" : "No knowledge entries recorded yet",
+        },
       ],
       roster,
       personas,
       contentSignals: knowledgeRows.filter((entry) => isContentSignal(entry.entry_type)).slice(0, 8).map(mapKnowledgeSignal),
       guardrailSignals: guardrailRows.slice(0, 8).map(mapGuardrailSignal),
+      // Arc consumes this response. `persona_knowledge_entries` and
+      // `guardrail_rules` have never been written by anything (BSR-671), so an
+      // empty array here is not "this workspace has no guardrail rules" — it is
+      // "nothing records them". An agent cannot tell those apart from `[]`, and
+      // it reasons from whichever one it assumes.
+      coverage: personaIntelligenceCoverage(knowledgeRows.length, guardrailRows.length),
     };
   } catch (error) {
     // Degrade, but not silently — this read IS the screen, so an empty
@@ -519,3 +540,21 @@ function titleize(value: string) {
 function isString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
+
+
+/** Whether the two signal tables are populated at all. Pure, so the distinction
+ *  that matters — "none found" vs "nothing records this" — is testable without
+ *  standing up a database. */
+export function personaIntelligenceCoverage(knowledgeCount: number, guardrailCount: number) {
+  return {
+    knowledgeEntries: (knowledgeCount > 0 ? "recorded" : "not_recorded") as "recorded" | "not_recorded",
+    guardrailRules: (guardrailCount > 0 ? "recorded" : "not_recorded") as "recorded" | "not_recorded",
+    note:
+      knowledgeCount > 0 || guardrailCount > 0
+        ? null
+        : "No source writes persona knowledge or guardrail rules yet — absence here is missing instrumentation, not a finding about the workspace.",
+  };
+}
+
+/** Test-only alias. */
+export const getPersonaIntelligenceCoverageForTest = personaIntelligenceCoverage;

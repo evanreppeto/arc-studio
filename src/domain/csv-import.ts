@@ -49,7 +49,7 @@ export function parseCsv(text: string): string[][] {
 // --- Column mapping ----------------------------------------------------------
 
 /** The lead fields a CSV column can feed. `name` is a full name split downstream. */
-export type CsvField = "firstName" | "lastName" | "name" | "email" | "phone" | "company" | "city" | "state" | "zip" | "persona";
+export type CsvField = "firstName" | "lastName" | "name" | "email" | "phone" | "company" | "city" | "state" | "zip" | "persona" | "lastContactedAt";
 
 /** Header aliases → canonical field. Lowercased, non-alphanumerics stripped, so
  *  "First Name", "first_name" and "GivenName" all collapse to the same key. */
@@ -64,7 +64,57 @@ const HEADER_ALIASES: Record<string, CsvField> = {
   state: "state", province: "state", region: "state",
   zip: "zip", zipcode: "zip", postalcode: "zip", postcode: "zip",
   persona: "persona", segment: "persona", personakey: "persona",
+  // When someone was last contacted is the single most valuable column in a
+  // typical CRM export: without it every imported lead is "received" today, so
+  // cold-lead detection can't fire for 30 days and a new workspace sees an empty
+  // Opportunities screen right after being told to import records.
+  lastcontacted: "lastContactedAt", lastcontact: "lastContactedAt", lastcontacteddate: "lastContactedAt",
+  lastactivity: "lastContactedAt", lastactivitydate: "lastContactedAt", lasttouched: "lastContactedAt",
+  lastemailed: "lastContactedAt", lastinteraction: "lastContactedAt", lastengaged: "lastContactedAt",
+  lastseen: "lastContactedAt", lastcontactedon: "lastContactedAt",
 };
+
+/**
+ * Parse a spreadsheet date to an ISO timestamp — conservatively.
+ *
+ * A wrong date here is worse than none: it manufactures false urgency ("quiet
+ * 200 days") on a lead someone spoke to last week, and that lands in an
+ * evidence-cited opportunity card the operator is meant to trust. So only
+ * unambiguous forms are accepted, and anything in the future or absurdly old is
+ * dropped rather than guessed at.
+ *
+ * Accepts ISO (2026-01-15, with or without a time) and US M/D/YYYY, which is
+ * what HubSpot, Salesforce and Excel exports emit. Ambiguous 2-digit years and
+ * D/M/Y are deliberately NOT guessed.
+ */
+export function parseCsvDate(value: string | undefined, now = new Date()): string | undefined {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+
+  let parsed: Date | null = null;
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(raw);
+  if (iso) {
+    parsed = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T00:00:00.000Z`);
+  } else {
+    const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(raw);
+    if (us) {
+      const [, m, d, y] = us;
+      // Reject a "month" over 12 rather than silently reading it as D/M/Y — a
+      // file in that format would misdate every row, so no date beats wrong ones.
+      if (Number(m) >= 1 && Number(m) <= 12 && Number(d) >= 1 && Number(d) <= 31) {
+        parsed = new Date(`${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T00:00:00.000Z`);
+      }
+    }
+  }
+
+  if (!parsed || Number.isNaN(parsed.getTime())) return undefined;
+  // A future date can't be a last contact, and a pre-2000 one is almost always a
+  // parsing artefact (Excel serial numbers, empty-cell placeholders).
+  if (parsed.getTime() > now.getTime()) return undefined;
+  if (parsed.getUTCFullYear() < 2000) return undefined;
+  return parsed.toISOString();
+}
 
 function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -84,7 +134,7 @@ export function detectColumnMapping(header: string[]): ColumnMapping {
   return mapping;
 }
 
-export type CsvContactRow = { firstName?: string; lastName?: string; email?: string; phone?: string; company?: string; city?: string; state?: string; zip?: string; persona?: string };
+export type CsvContactRow = { firstName?: string; lastName?: string; email?: string; phone?: string; company?: string; city?: string; state?: string; zip?: string; persona?: string; lastContactedAt?: string };
 
 const cell = (row: string[], i: number): string | undefined => {
   const v = row[i]?.trim();
@@ -152,7 +202,10 @@ export function csvRowToContact(c: CsvContactRow): HubspotContact | null {
   if (c.state) properties.state = c.state;
   if (c.zip) properties.zip = c.zip;
   if (c.persona) properties.persona = c.persona;
-  return { id: csvRowId(c), properties };
+  // Rides on `updatedAt`, which the import run threads to the lead's received_at
+  // so the lead arrives with its real recency instead of today's date.
+  const lastContactedAt = parseCsvDate(c.lastContactedAt);
+  return { id: csvRowId(c), properties, ...(lastContactedAt ? { updatedAt: lastContactedAt } : {}) };
 }
 
 export type CsvParseSummary = {
@@ -162,7 +215,36 @@ export type CsvParseSummary = {
   totalRows: number;
   /** Rows dropped for having no name/email/phone. */
   skipped: number;
+  /** Every header in the file, in order — including the ones nothing matched. */
+  headers: string[];
+  /**
+   * Headers the detector did not recognise. Listing them is the difference
+   * between the operator choosing to drop a column and never learning it existed;
+   * BSR-645 turns the accepted ones into custom fields.
+   */
+  unmappedColumns: string[];
+  /**
+   * Every value under each unmapped header, in row order — what type inference
+   * reads. Kept out of `contacts` deliberately: these are not part of the lead
+   * contract, and mixing them in would let an unrecognised column reach the
+   * ingest payload.
+   */
+  unmappedValues: Record<string, string[]>;
+  /**
+   * Unmapped values keyed by the contact id the row produced, so the importer can
+   * attach them to the record that row actually became. Rows the parser dropped
+   * are absent, because there is nothing to attach them to.
+   */
+  extraValuesByContactId: Record<string, Record<string, string>>;
 };
+
+/**
+ * An operator's corrections to the detected mapping: header name → field, or
+ * `null` to drop a column the detector claimed. Auto-detection is a first guess;
+ * without a way to override it, a column named something unusual is dropped with
+ * no way to say otherwise.
+ */
+export type CsvColumnOverrides = Record<string, CsvField | null>;
 
 /** The persona column key contacts carry, wired to the engine's personaProperty. */
 export const CSV_PERSONA_PROPERTY = "persona";
@@ -172,17 +254,53 @@ export const CSV_PERSONA_PROPERTY = "persona";
  * which columns it recognised and how many rows it dropped, so the import UI can show
  * the operator what it understood before anything is written.
  */
-export function parseCsvContacts(text: string): CsvParseSummary {
+export function parseCsvContacts(text: string, overrides?: CsvColumnOverrides): CsvParseSummary {
   const rows = parseCsv(text);
-  if (rows.length === 0) return { contacts: [], mappedColumns: {}, totalRows: 0, skipped: 0 };
+  if (rows.length === 0) {
+    return {
+      contacts: [], mappedColumns: {}, totalRows: 0, skipped: 0, headers: [],
+      unmappedColumns: [], unmappedValues: {}, extraValuesByContactId: {},
+    };
+  }
   const [header, ...dataRows] = rows;
   const mapping = detectColumnMapping(header);
 
+  // Apply the operator's corrections on top of detection, by header NAME rather
+  // than index — the UI shows names, and an index would silently mis-target the
+  // moment the same file is re-uploaded with a column reordered.
+  if (overrides) {
+    for (const [name, field] of Object.entries(overrides)) {
+      const index = header.findIndex((h) => h.trim() === name.trim());
+      if (index < 0) continue;
+      if (field === null) {
+        delete mapping[index];
+        continue;
+      }
+      // An explicit choice is authoritative: release the field from any OTHER
+      // column detection had claimed it for. Without this, mapping "Notes" to
+      // company while "Account" is also detected as company leaves two columns
+      // fighting over one field, and which one wins depends on their order in the
+      // file — so the same override would behave differently on a re-export.
+      for (const [otherIndex, otherField] of Object.entries(mapping)) {
+        if (otherField === field && Number(otherIndex) !== index) delete mapping[Number(otherIndex)];
+      }
+      mapping[index] = field;
+    }
+  }
+
   const mappedColumns: Partial<Record<CsvField, string>> = {};
   for (const [idxStr, field] of Object.entries(mapping)) mappedColumns[field] = header[Number(idxStr)];
+  const unmappedColumns = header.filter((_, index) => !(index in mapping)).map((h) => h.trim()).filter(Boolean);
+
+  const unmappedIndexes = header
+    .map((name, index) => ({ name: name.trim(), index }))
+    .filter((h) => h.name && !(h.index in mapping));
 
   const contacts: HubspotContact[] = [];
   const seen = new Set<string>();
+  const unmappedValues: Record<string, string[]> = {};
+  const extraValuesByContactId: Record<string, Record<string, string>> = {};
+  for (const h of unmappedIndexes) unmappedValues[h.name] = [];
   let skipped = 0;
   for (const row of dataRows) {
     const contact = csvRowToContact(mapCsvRow(row, mapping));
@@ -190,6 +308,23 @@ export function parseCsvContacts(text: string): CsvParseSummary {
     if (seen.has(contact.id)) continue; // in-file dedup (same email twice in one paste)
     seen.add(contact.id);
     contacts.push(contact);
+
+    const extras: Record<string, string> = {};
+    for (const h of unmappedIndexes) {
+      const value = (row[h.index] ?? "").trim();
+      unmappedValues[h.name].push(value);
+      if (value) extras[h.name] = value;
+    }
+    if (Object.keys(extras).length > 0) extraValuesByContactId[contact.id] = extras;
   }
-  return { contacts, mappedColumns, totalRows: dataRows.length, skipped };
+  return {
+    contacts,
+    mappedColumns,
+    totalRows: dataRows.length,
+    skipped,
+    headers: header.map((h) => h.trim()),
+    unmappedColumns,
+    unmappedValues,
+    extraValuesByContactId,
+  };
 }

@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel } from "@/domain";
+import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, isPipelineObjectKey, personaAccent, statusTone } from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
-import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord } from "../actions";
+import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord, searchCrmRecords } from "../actions";
 import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-record-modal";
+import { pageRangeLabel, pageWindow } from "./pagination";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
 import type { CustomFieldDefinition } from "@/domain";
 
@@ -28,12 +29,15 @@ function FilterMenu({
   options,
   value,
   onChange,
+  footer,
 }: {
   icon: React.ReactNode;
   label: string;
   options: FilterOption[];
   value: string;
   onChange: (value: string) => void;
+  /** Optional link below the choices — where the choices themselves are defined. */
+  footer?: { href: string; label: string };
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -81,6 +85,13 @@ function FilterMenu({
               <span className="fmenu-c">{o.count}</span>
             </button>
           ))}
+          {footer && (
+            // Reading the list of stages is when you notice one is missing or
+            // misnamed. Nothing else in CRM says where they come from.
+            <Link className="fmenu-foot" href={footer.href}>
+              {footer.label}
+            </Link>
+          )}
         </div>
       )}
     </span>
@@ -89,6 +100,10 @@ function FilterMenu({
 
 type SortKey = "recent" | "name" | "score";
 const SORT_LABELS: Record<SortKey, string> = { recent: "Recent", name: "Name", score: "Score" };
+
+/** Rows-per-page choices. The largest is the old hard display cap, so the most
+ *  rows we ever render at once is unchanged from before paging existed. */
+const PAGE_SIZES = [25, 50, 100] as const;
 
 function SortMenu({ value, onChange }: { value: SortKey; onChange: (v: SortKey) => void }) {
   const [open, setOpen] = useState(false);
@@ -289,28 +304,6 @@ function bumpTasksLabel(current: string, delta: number): string {
   return total > 0 ? `${total} open` : "";
 }
 
-function personaDotOf(persona: string): string {
-  const p = (persona || "").toLowerCase();
-  if (/emergency|urgent|storm|hail|flood|fire|burst|water\s*damage/.test(p)) return "#cc6a6a";
-  if (/insurance|adjuster|agent/.test(p)) return "#88b6d8";
-  if (/plumb|partner|contractor|referral|vendor|trade|sub/.test(p)) return "#7fb89a";
-  if (/preventative|preventive|maintenance|monitor|inspection/.test(p)) return "#6fae9e";
-  if (/rebuild|restoration|reconstruct|remodel|renov/.test(p)) return "#d8a24a";
-  if (/hoa|board|association|landlord|tenant/.test(p)) return "#9678c8";
-  if (/past|repeat|existing|customer|reactivat/.test(p)) return "#b58fd0";
-  return "#c8a24a";
-}
-function statusToneOf(status: string): string {
-  const t = (status || "").toLowerCase();
-  if (/lost|dead|cancel|churn/.test(t)) return "lost";
-  if (/won|complete|closed.?won|paid/.test(t)) return "won";
-  if (/qualified/.test(t)) return "qualified";
-  if (/schedul|booked|dispatch/.test(t)) return "sched";
-  if (/review|pending|needs|hold/.test(t)) return "review";
-  if (/new|open|fresh|inbound|prospect/.test(t)) return "new";
-  if (/active|live|engaged|in progress/.test(t)) return "active";
-  return "inactive";
-}
 function titleCase(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -319,18 +312,28 @@ function titleCase(value: string): string {
  *  drops out of the default list and the counts, and is reachable only by asking
  *  for it explicitly via Status → Archived. Matches the `archived` status titleCased. */
 const ARCHIVED_LABEL = "Archived";
-function buildOptimisticRow(objectKey: CrmObjectKey, id: string, v: AddRecordValue): CrmRowVM {
+function buildOptimisticRow(
+  objectKey: CrmObjectKey,
+  id: string,
+  v: AddRecordValue,
+  stages: { key: string; label: string }[] = [],
+): CrmRowVM {
   const detail = objectKey === "properties" ? [v.city, v.state].filter(Boolean).join(", ") : v.detail || "";
+  // Label the row with the tenant's own word, the same one the server will send
+  // back on refresh — otherwise a just-added record briefly reads "Conflicts
+  // Check" (titleCased key) and then changes to "Conflicts check" under the eye.
+  const stageLabel = stages.find((s) => s.key === v.status)?.label;
+  const label = stageLabel ?? (v.status ? titleCase(v.status) : "");
   return {
     id,
     name: v.name,
     detail,
     initials: initialsOf(v.name),
     isCompany: objectKey === "companies",
-    statusLabel: v.status ? titleCase(v.status) : "—",
-    statusTone: statusToneOf(v.status || ""),
+    statusLabel: label || "—",
+    statusTone: statusTone(label),
     persona: personaLabelOf(v.persona || ""),
-    dot: personaDotOf(v.persona || ""),
+    dot: personaAccent(v.persona || ""),
     score: null,
     scoreColor: "var(--muted)",
     owner: "You",
@@ -346,6 +349,7 @@ function buildOptimisticRow(objectKey: CrmObjectKey, id: string, v: AddRecordVal
 }
 
 export function CrmBoard({
+  loadError = null,
   objects,
   rowsByKey,
   defaultKey,
@@ -354,7 +358,10 @@ export function CrmBoard({
   campaigns = [],
   customColumnsByKey = {},
   customFieldDefsByKey = {},
+  stageOptions = {},
 }: {
+  /** Why the read FAILED, vs returning nothing. Null when it succeeded. */
+  loadError?: string | null;
   objects: CrmObjectVM[];
   rowsByKey: Record<string, CrmRowVM[]>;
   defaultKey: string;
@@ -363,6 +370,8 @@ export function CrmBoard({
   personaOptions?: { key: string; label: string }[];
   /** The org's campaigns, for the bulk "Add to campaign" picker (contacts only). */
   campaigns?: { id: string; name: string; href: string }[];
+  /** The org's own pipeline stages per object, in its own words. */
+  stageOptions?: Record<string, { key: string; label: string }[]>;
   /**
    * Custom-field columns per object, already ordered and capped by the server.
    * Only a couple are shown: the table has a fixed set of built-in columns, and
@@ -376,6 +385,20 @@ export function CrmBoard({
 }) {
   const [activeKey, setActiveKey] = useState(defaultKey);
   const [q, setQ] = useState("");
+  /**
+   * Rows the SERVER matched, for the case the browser cannot answer (BSR-633).
+   *
+   * The board holds a 1,000-row recency window. Past that, a record is not in
+   * the browser at all, so filtering locally returns nothing while the counter —
+   * a real COUNT — says it exists. When the window is incomplete the term goes
+   * to the server instead. Null means "the local set is authoritative".
+   */
+  const [serverRows, setServerRows] = useState<CrmRowVM[] | null>(null);
+  const [serverCapped, setServerCapped] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [personaMenuOpen, setPersonaMenuOpen] = useState(false);
   // Optimistic persona overlay by row id — a bulk assign flips the chips at once,
@@ -421,6 +444,49 @@ export function CrmBoard({
     (rowsByKey[o.key] ?? []).filter((r) => r.statusLabel === ARCHIVED_LABEL).length +
     (localByKey[o.key]?.length ?? 0);
 
+  // True when the browser holds every record of the active object, so a local
+  // filter can answer honestly. False once the 1,000-row window is exceeded.
+  const loadedComplete = (rowsByKey[active.key] ?? []).length >= active.count;
+
+  useEffect(() => {
+    const term = q.trim();
+    if (loadedComplete || term.length < 2) {
+      // Drop back to the local set. Guarded so this is a no-op on the common
+      // render where there was never a server result to clear.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- returning to the local set the moment the term or object stops needing a server search
+      if (serverRows !== null) setServerRows(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a stale error must not outlive the query that caused it
+      if (searchError !== null) setSearchError(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- an in-flight flag must not survive a cancelled search
+      if (searching) setSearching(false);
+      return;
+    }
+    // Debounced: the window being incomplete means every keystroke would
+    // otherwise be a round trip.
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the search IS starting; the spinner must reflect that before the await
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      const res = await searchCrmRecords(active.key, term);
+      if (cancelled) return;
+      setSearching(false);
+      if (!res.ok) {
+        // A failed search is NOT "no matches" — saying so is the difference
+        // between an outage and an empty result.
+        setSearchError(res.error);
+        setServerRows(null);
+        return;
+      }
+      setSearchError(null);
+      setServerRows(res.rows);
+      setServerCapped(res.capped);
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [q, active.key, active.count, loadedComplete, rowsByKey, serverRows, searchError, searching]);
+
   const allActiveRows = useMemo(
     () =>
       [...(localByKey[active.key] ?? []), ...(rowsByKey[active.key] ?? [])].map((r) => {
@@ -443,7 +509,7 @@ export function CrmBoard({
     setPersonaMenuOpen(false);
     if (ids.length === 0) return;
     setError(null);
-    const dot = personaDotOf(opt.label);
+    const dot = personaAccent(opt.label);
     const prev = personaEdits;
     setPersonaEdits((e) => {
       const next = { ...e };
@@ -534,13 +600,17 @@ export function CrmBoard({
 
   const filteredAll = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    let filtered = allActiveRows.filter((r) => {
+    // When the server answered, IT is the match set — the local rows are only a
+    // window and re-filtering them would drop the very records it went to find.
+    // The other facets still apply, and the text term is already satisfied.
+    const source = serverRows ?? allActiveRows;
+    let filtered = source.filter((r) => {
       // Soft-deleted records stay out of the default list; Status → Archived opts in.
       if (r.statusLabel === ARCHIVED_LABEL && statusF !== ARCHIVED_LABEL) return false;
       // Custom field values are searchable too — a tenant that tracks a matter
       // number expects to find the record by typing it.
       const customHay = r.customFields ? Object.values(r.customFields).join(" ") : "";
-      if (needle && !`${r.name} ${r.detail} ${r.persona} ${r.owner} ${customHay}`.toLowerCase().includes(needle)) return false;
+      if (!serverRows && needle && !`${r.name} ${r.detail} ${r.persona} ${r.owner} ${customHay}`.toLowerCase().includes(needle)) return false;
       if (personaF && r.persona !== personaF) return false;
       if (statusF && r.statusLabel !== statusF) return false;
       if (ownerF && r.owner !== ownerF) return false;
@@ -549,10 +619,35 @@ export function CrmBoard({
     if (sortBy === "name") filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
     else if (sortBy === "score") filtered = [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     return filtered;
-  }, [allActiveRows, q, personaF, statusF, ownerF, sortBy]);
-  // Display caps at 100 rows for perf; Export writes the WHOLE filtered set (never
-  // a silent 100-row slice).
-  const visible = useMemo(() => filteredAll.slice(0, 100), [filteredAll]);
+  }, [allActiveRows, serverRows, q, personaF, statusF, ownerF, sortBy]);
+  // Any change to WHICH rows are in play sends the pager back to page 1, so the
+  // operator never lands on a stale page 4 of a set that now has two pages. Done
+  // as a render-phase adjustment rather than an effect (same pattern as the
+  // Brain fact pager) — it applies before paint, so there is no flash of the
+  // wrong page. `q` is in the key because the debounced search swaps the whole
+  // set from under us; `pageSize` because 25→100 makes the old index meaningless.
+  const pageKey = `${active.key}|${q.trim()}|${personaF}|${statusF}|${ownerF}|${sortBy}|${pageSize}`;
+  const [seenPageKey, setSeenPageKey] = useState(pageKey);
+  if (pageKey !== seenPageKey) {
+    setSeenPageKey(pageKey);
+    setPage(1);
+  }
+
+  // Paged display. This used to be a flat `filteredAll.slice(0, 100)` with a
+  // pager whose buttons had no handler and whose rows-per-page select had no
+  // onChange — so on prod (254 contacts) the footer read "1–100 of 254" and the
+  // remaining 154 could not be reached by browsing at all (BSR-683).
+  //
+  // Paging is client-side because the board already holds the server's whole
+  // bundle for the object (CRM_TABLE_BUNDLE_LIMIT = 1,000 rows). Past that
+  // window a record is not in the browser and the search term goes to the
+  // server instead — that path is untouched here, and `serverCapped` still
+  // says so in the footer. Export writes the WHOLE filtered set, never a page.
+  // `safePage` guards a stale index when the set shrinks under us (a filter
+  // narrowed it, a search returned fewer rows) without needing an extra effect
+  // to chase it. Math lives in ./pagination so it can be unit-tested.
+  const { totalPages, safePage, start: pageStart, end: pageEnd } = pageWindow(filteredAll.length, page, pageSize);
+  const visible = useMemo(() => filteredAll.slice(pageStart, pageEnd), [filteredAll, pageStart, pageEnd]);
 
   const exportCsv = () => {
     if (filteredAll.length === 0) return;
@@ -575,7 +670,7 @@ export function CrmBoard({
     const objectKey = active.key as CrmObjectKey;
     const tempId = `local-${crypto.randomUUID()}`;
     setError(null);
-    setLocalByKey((prev) => ({ ...prev, [objectKey]: [buildOptimisticRow(objectKey, tempId, value), ...(prev[objectKey] ?? [])] }));
+    setLocalByKey((prev) => ({ ...prev, [objectKey]: [buildOptimisticRow(objectKey, tempId, value, stageOptions[objectKey] ?? []), ...(prev[objectKey] ?? [])] }));
 
     const res = await createCrmRecord({ objectKey, ...value });
 
@@ -615,15 +710,25 @@ export function CrmBoard({
 
   return (
     <div className="arc-grid arc-crm">
+      {/* A failed read is NOT an empty result. Rendering them the same is how a
+          live outage hid behind a normal-looking page (BSR-542). */}
+      {loadError && (
+        <div className="crm-error" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <b>Couldn&rsquo;t load your CRM counts.</b> The tiles below may read zero because a query failed, not because you have no records.
+            <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
+          </span>
+        </div>
+      )}
       <div className="chrow">
         <div>
-          <h1 className="ct">{active.label}</h1>
+          <h2 className="ct">{active.label}</h2>
           <div className="csub">
-            {countFor(active).toLocaleString()} {active.noun} · org-scoped · synced with Arc
+            {countFor(active).toLocaleString()} {active.noun} · kept up to date by Arc
           </div>
         </div>
         <div className="sp">
-          <Link className="gbtn" href="/settings?s=connections&c=csv-import" title="Import contacts from a CSV">
+          <Link className="gbtn" href="/crm/import" title="Import contacts from a CSV">
             <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
             Import
           </Link>
@@ -693,6 +798,15 @@ export function CrmBoard({
           options={options.status}
           value={statusF}
           onChange={setStatusF}
+          // Only the three pipeline objects draw their status from editable
+          // stages. For the rest it is a fixed field, so pointing at the stage
+          // editor would send you somewhere that cannot change what you're
+          // looking at.
+          footer={
+            isPipelineObjectKey(active.key)
+              ? { href: `/settings?s=records&t=Stages&o=${encodeURIComponent(active.key)}`, label: "Edit stages" }
+              : undefined
+          }
         />
         <FilterMenu
           icon={<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" /></svg>}
@@ -740,7 +854,7 @@ export function CrmBoard({
             )}
           </div>
         ) : (
-          <span className="sa" data-soon="Add contacts to a campaign from the People tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign</span>
+          <span className="sa is-inapplicable" title="Add contacts to a campaign from the People tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign</span>
         )}
         <div className="sa-wrap">
           <button type="button" className="sa" onClick={() => setPersonaMenuOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={personaMenuOpen}>
@@ -813,7 +927,29 @@ export function CrmBoard({
           <tbody>
             {visible.length === 0 ? (
               <tr className="emptyrow">
-                <td colSpan={cols.length}>{totalRows === 0 ? `No ${active.noun} yet.` : "No matches for this filter."}</td>
+                <td colSpan={cols.length}>
+                  {totalRows === 0 ? (
+                    // A brand-new workspace has no records at all, and every
+                    // other screen stays empty until it does — so say where they
+                    // come from and offer the action, rather than only stating
+                    // the absence.
+                    <>
+                      <strong>No {active.noun} yet.</strong> Arc works from these — it scans them for opportunities
+                      worth acting on.
+                      <div style={{ marginTop: 8 }}>
+                        {/* addLabel carries the workspace's own singular. Stripping a
+                            trailing "s" off the plural instead produced "Add peopl"
+                            for any irregular noun, and free-text object names make
+                            irregulars reachable rather than hypothetical. */}
+                        <button type="button" className="gbtn gold" onClick={() => setAddOpen(true)}>
+                          {active.addLabel}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    "No matches for this filter."
+                  )}
+                </td>
               </tr>
             ) : (
               visible.map((r) => (
@@ -852,24 +988,46 @@ export function CrmBoard({
       <div className="gfoot">
         <span className="arcnote">
           <i />
-          Arc keeps {active.noun} enriched and lead scores current
+          Arc keeps {active.noun} up to date, and keeps their lead scores current
         </span>
         <div className="pager">
           <span className="rpp">
-            Rows{" "}
-            <select defaultValue="25">
-              <option>25</option>
-              <option>50</option>
-              <option>100</option>
+            <label htmlFor="crm-rows-per-page">Rows</label>{" "}
+            <select
+              id="crm-rows-per-page"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
             </select>
           </span>
           <span className="pgnum">
-            {visible.length === 0 ? "0" : `1–${visible.length}`} of {countFor(active).toLocaleString()}
+            {/* The range is the page's real position in the set, not "1–N" of
+                whatever happens to be on screen. The total stays the object's
+                own COUNT unless a server search replaced the set, in which case
+                the match count IS the total. */}
+            {pageRangeLabel(pageStart, visible.length, serverRows ? filteredAll.length : countFor(active))}
+            {searching ? " · searching…" : ""}
+            {serverCapped && serverRows ? ` · first ${serverRows.length}, narrow to see more` : ""}
           </span>
-          <button className="pgbtn" type="button" aria-label="Previous page">
+          <button
+            className="pgbtn"
+            type="button"
+            aria-label="Previous page"
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, Math.min(p, totalPages) - 1))}
+          >
             <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" /></svg>
           </button>
-          <button className="pgbtn" type="button" aria-label="Next page">
+          <button
+            className="pgbtn"
+            type="button"
+            aria-label="Next page"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, Math.min(p, totalPages) + 1))}
+          >
             <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg>
           </button>
         </div>
@@ -882,6 +1040,7 @@ export function CrmBoard({
         singular={active.addLabel.replace(/^Add\s+/i, "")}
         linkOptions={linkOptions}
         personaOptions={personaOptions}
+        stageOptions={stageOptions[active.key]}
         customFieldDefs={customFieldDefsByKey[active.key] ?? []}
         onClose={() => setAddOpen(false)}
         onSubmit={handleCreate}

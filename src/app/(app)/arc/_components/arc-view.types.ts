@@ -18,6 +18,15 @@ export type RunRow = {
   isTool?: boolean;
   status: "queued" | "running" | "done" | "error";
   kind: RunKind;
+  /** A line of Arc's own prose rather than an action — rendered as text, with no
+   *  label and no status tick. */
+  isNarration?: boolean;
+  /**
+   * The tool's own input/output, verbatim, for the disclosure under a tool row.
+   * `detail` carries the one-line summary of it; this is the text behind the
+   * "Show raw" toggle. Redacted before it gets here (BSR-724).
+   */
+  payload?: string;
 };
 
 /** One turn in the backend-less demo conversation (no persistence). */
@@ -32,9 +41,6 @@ export type DemoTurn = {
 
 /** Which composer popover is open — null closed. */
 export type ComposerMenu = "tools" | "mode" | "model" | "mentions" | "commands" | null;
-
-/** The three tabs of the conversation work panel. */
-export type WorkPanelTab = "work" | "created" | "audience";
 
 /** Work waiting on the operator, surfaced in the launcher: approval + opportunity
  *  counts, plus the top opportunity nudges to greet them with. */

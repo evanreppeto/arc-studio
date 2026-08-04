@@ -1,3 +1,4 @@
+import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
 import { buildOutboxKpis } from "@/lib/dispatch/kpis";
 import { getOutboxList } from "@/lib/dispatch/read-model";
 import { type DispatchStatus, type DispatchView } from "@/lib/dispatch/status";
@@ -24,7 +25,9 @@ function normChannel(channel: string): OutboxChannel {
 const ACTION: Partial<Record<DispatchStatus, string>> = {
   queued: "Confirm send",
   scheduled: "Send now",
-  sent: "Mark delivered",
+  // Delivery normally arrives from the email provider's webhook; this is the
+  // manual fallback for when it has not been wired for a workspace (BSR-668).
+  sent: "Confirm it arrived",
   failed: "Retry",
 };
 
@@ -81,10 +84,16 @@ function toOutboxCard(d: DispatchView, sender: string | null): OutboxCardVM {
 
 export default async function OutboxPage() {
   const [outbox, emailConnection] = await Promise.all([
-    getOutboxList().catch(() => ({ status: "unavailable" }) as const),
+    getOutboxList().catch(unavailable("outbox.list")),
+    // Correctly silent (BSR-546): the queue is the page. Without the email
+    // connection the send controls disable and SAY they are unavailable, which
+    // is the honest degraded state rather than a hidden one.
     getEmailConnection().catch(() => null),
   ]);
   const sender = emailConnection?.fromEmail || process.env.RESEND_FROM || null;
+  // A failed read is NOT an empty send queue — the more dangerous direction
+  // here, since "nothing waiting to send" reads as reassuring.
+  const loadError = reasonIfUnavailable(outbox);
   const dispatches = outbox.status === "live" ? outbox.dispatches.map((dispatch) => toOutboxCard(dispatch, sender)) : [];
 
   // Priority-ordered send queue rather than one lane per lifecycle status: the
@@ -105,5 +114,5 @@ export default async function OutboxPage() {
   // Tiles: value counts dispatches, reach goes in the sub. See lib/dispatch/kpis.
   const kpis: KpiVM[] = buildOutboxKpis(outbox.status === "live" ? outbox.dispatches : []);
 
-  return <OutboxBoard groups={groups} kpis={kpis} channelCounts={channelCounts} />;
+  return <OutboxBoard loadError={loadError} groups={groups} kpis={kpis} channelCounts={channelCounts} />;
 }

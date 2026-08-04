@@ -4,7 +4,7 @@
 
 /* header + overview band */
 .arc-library .lhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 18px clamp(20px, 2.6vw, 30px) 0; flex-wrap: wrap; flex-shrink: 0; }
-.arc-library h1.pt { font-family: var(--serif); font-weight: 500; font-size: 26px; letter-spacing: -0.02em; margin: 0; }
+.arc-library h2.pt { font-family: var(--serif); font-weight: 500; font-size: 26px; letter-spacing: -0.02em; margin: 0; }
 .arc-library .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 .arc-library .lhead .acts { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
 .arc-library .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: 0.15s; }
@@ -98,7 +98,8 @@
 .arc-library .cdiv { width: 1px; height: 20px; background: var(--line-2); margin: 0 3px; }
 .arc-library .gspacer { margin-left: auto; }
 .arc-library .selwrap { display: flex; align-items: center; gap: 6px; height: 32px; padding: 2px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); }
-.arc-library .selwrap .sb { width: 28px; height: 26px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); cursor: pointer; transition: 0.14s; }
+.arc-library .selwrap .sb { width: 28px; height: 26px; padding: 0; border: 0; background: transparent; font: inherit; border-radius: 6px; display: grid; place-items: center; color: var(--muted); cursor: pointer; transition: 0.14s; }
+.arc-library .selwrap .sb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-library .selwrap .sb:hover { color: var(--text-2); }
 .arc-library .selwrap .sb.on { background: var(--panel); color: var(--accent-contrast); }
 .arc-library .selwrap .sb svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
@@ -110,8 +111,11 @@
 .arc-library .selbar { display: none; align-items: center; gap: 11px; padding: 0 clamp(14px, 1.8vw, 20px); height: 0; overflow: hidden; border-bottom: 1px solid var(--accent-border); background: linear-gradient(180deg, var(--accent-soft), transparent); transition: 0.18s var(--ease); }
 .arc-library .selbar.show { display: flex; height: 50px; }
 .arc-library .selbar .sc { font-size: 12.5px; font-weight: 600; color: var(--accent-contrast); }
-.arc-library .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 6px 10px; border-radius: 7px; transition: 0.14s; }
-.arc-library .selbar .sa:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+/* `.sa` is used on both <span>s and <button>s here — Download is a real button
+   now (BSR-687), so the reset keeps it visually identical to its siblings. */
+.arc-library .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 6px 10px; border: none; background: transparent; font-family: inherit; border-radius: 7px; transition: 0.14s; }
+.arc-library .selbar .sa:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+.arc-library .selbar .sa:disabled { opacity: 0.5; cursor: default; }
 .arc-library .selbar .sa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-library .selbar .clr { margin-left: auto; color: var(--muted); font-size: 11.5px; cursor: pointer; }
 .arc-library .selbar .clr:hover { color: var(--text); }
@@ -223,6 +227,20 @@
 .arc-library .riskbox .rt svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
 .arc-library .riskbox .rd { font-size: 11px; color: var(--text-2); margin-top: 5px; line-height: 1.45; }
 .arc-library .riskbox .rfix { margin-top: 9px; }
+/* The risk box's own confirm step (BSR-687). Approving a flagged asset requires
+   a written acknowledgement — `checkAssetApproval` enforces it server-side — so
+   the control has to collect words, not just a click. Laid out like the delete
+   confirm below it so the two read as the same kind of deliberate step. */
+.arc-library .riskbox .rack { margin-top: 9px; display: flex; flex-direction: column; gap: 7px; }
+.arc-library .riskbox .rackl { font-size: 11px; font-weight: 600; color: var(--warn-text); }
+.arc-library .riskbox .racki { width: 100%; resize: vertical; padding: 7px 9px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 11.5px; line-height: 1.45; }
+.arc-library .riskbox .racki:focus { outline: none; border-color: var(--accent-border); }
+.arc-library .riskbox .racki::placeholder { color: var(--muted); }
+.arc-library .riskbox .rackb { display: flex; gap: 7px; justify-content: flex-end; }
+.arc-library .riskbox .rackb .gbtn { height: 28px; font-size: 11.5px; }
+/* Reviewed state. Deliberately not celebratory and deliberately still inside the
+   warn-toned box: the flag is acknowledged, not gone. */
+.arc-library .riskbox .rdone { margin-top: 9px; font-size: 11px; color: var(--ok-text); line-height: 1.45; }
 .arc-library .usedrow { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); margin-bottom: 7px; cursor: pointer; font-size: 12px; transition: border-color 0.14s; }
 .arc-library .usedrow:hover { border-color: var(--accent-border); }
 .arc-library .usedrow svg { width: 14px; height: 14px; stroke: var(--accent); fill: none; stroke-width: 1.7; flex-shrink: 0; }
@@ -242,13 +260,13 @@
 /* provenance color classes */
 .arc-library .pv-real { background: var(--ok); }
 .arc-library .pv-ai { background: var(--accent); }
-.arc-library .pv-comp { background: var(--vio); }
+.arc-library .pv-comp { background: var(--slate); }
 .arc-library .pv-upload { background: var(--blue); }
 .arc-library .pv-logo { background: #9aa0ac; }
 .arc-library .pv-doc { background: #9aa0ac; }
 .arc-library .pvc-real { color: var(--ok-text); }
 .arc-library .pvc-ai { color: var(--accent-contrast); }
-.arc-library .pvc-comp { color: var(--vio-text); }
+.arc-library .pvc-comp { color: var(--slate-text); }
 .arc-library .pvc-upload { color: var(--blue-text); }
 .arc-library .pvc-logo { color: var(--text-2); }
 .arc-library .pvc-doc { color: var(--text-2); }
@@ -277,12 +295,46 @@
 .arc-library .selbar .sa-pick { position: relative; }
 .arc-library .pickscrim { position: fixed; inset: 0; z-index: 30; }
 .arc-library .pickmenu {
-  position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 31;
+  /* Opens DOWNWARD. It used to be `bottom: calc(100% + 8px)`, i.e. upward out
+     of the selection bar — and the bar sits near the top of the gallery, so the
+     menu's layout box landed at y≈54, behind the overview band and outside the
+     gallery's `overflow: hidden`. It was clipped rather than merely covered:
+     hit-testing its centre returned the band. Downward keeps it inside the
+     scrolling container, where there is far more room anyway (BSR-707). */
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 31;
   min-width: 220px; max-height: 260px; overflow: auto;
   display: flex; flex-direction: column; padding: 5px;
   border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel);
   box-shadow: 0 18px 40px -20px rgba(0, 0, 0, .85);
 }
 .arc-library .pickhd { font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 5px; }
-.arc-library .pickopt { padding: 7px 9px; border-radius: 7px; font-size: 12.5px; color: var(--text-2); cursor: pointer; transition: .12s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Used on both <span> (the campaign picker) and <button> (the folder picker,
+   BSR-707) — the reset keeps them identical while the newer one stays tabbable. */
+.arc-library .pickopt { display: block; width: 100%; text-align: left; border: none; background: none; font-family: inherit; padding: 7px 9px; border-radius: 7px; font-size: 12.5px; color: var(--text-2); cursor: pointer; transition: .12s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The folder picker's trigger is a real button inside the .sa chrome. */
+.arc-library .selbar .sa-pick-trigger { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 0; margin: 0; color: inherit; font: inherit; cursor: pointer; }
+.arc-library .selbar .sa-pick-trigger:disabled { cursor: default; opacity: 0.6; }
+.arc-library .selbar .sa-pick-trigger svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-library .pickopt:hover { background: var(--inset); color: var(--text); }
+
+/* Touch targets — see the note in arc-app.css. These per-asset quick actions
+   are the densest cluster in the app (three 27px squares stacked in the corner
+   of every tile, ~160 on a full page), so they are the worst offenders on a
+   phone. Coarse pointers only; the desktop hover overlay is unchanged. */
+@media (pointer: coarse) {
+  .arc-library .ov .qa { gap: 8px; bottom: 10px; right: 10px; }
+  .arc-library .ov .qa button { width: 44px; height: 44px; border-radius: 11px; }
+  .arc-library .ov .qa svg { width: 18px; height: 18px; }
+}
+
+/* Legend for the provenance dot on each card — colour that carries meaning gets
+   a key, or it teaches nothing (BSR-661). */
+.arc-library .pvlegend { display: inline-flex; align-items: center; gap: 12px; font-size: 10.5px; color: var(--muted); }
+.arc-library .pvlegend span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* The three readiness counts belong to one axis and sum to the total; usage is a
+   separate question and sits past a divider so nobody tries to add it in
+   (BSR-667). */
+.arc-library .ostatgrp { display: inline-flex; align-items: center; gap: 14px; }
+.arc-library .ostatsep { width: 1px; height: 14px; background: var(--line-2); margin: 0 4px; }
+.arc-library .ostat:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }

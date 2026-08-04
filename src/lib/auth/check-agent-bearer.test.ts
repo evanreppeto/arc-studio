@@ -54,7 +54,34 @@ describe("checkAgentBearer", () => {
 
   it("401s on a bad token when something is configured", async () => {
     const result = await checkAgentBearer(req("bad"), {
-      verify: async () => ({ ok: false }),
+      verify: async () => ({ ok: false, reason: "not_found" }),
+      anyConfigured: async () => true,
+      recordSeen: async () => undefined,
+    });
+
+    expect(result).toEqual({ ok: false, status: 401, reason: "unauthorized" });
+  });
+
+  // 2026-08-04: the runner finished an opportunity scan, then failed to mark the
+  // task complete with "401 ... requires a valid bearer token" — holding a token
+  // that was, and still is, perfectly valid. Every DB-issued token is verified
+  // against Supabase on EVERY request, and a failed lookup returned the same
+  // answer as a wrong token. The task stayed `queued` and the scan's work was
+  // stranded. "I could not check" must be retryable, not fatal.
+  it("503s when the token store cannot be reached, rather than calling the token bad", async () => {
+    const result = await checkAgentBearer(req("sk_live_db"), {
+      verify: async () => ({ ok: false, reason: "unavailable" }),
+      anyConfigured: async () => true,
+      recordSeen: async () => undefined,
+    });
+
+    expect(result).toEqual({ ok: false, status: 503, reason: "unavailable" });
+    expect(result).not.toMatchObject({ status: 401 });
+  });
+
+  it("still 401s an unverifiable-looking token that is simply not ours", async () => {
+    const result = await checkAgentBearer(req("bad"), {
+      verify: async () => ({ ok: false, reason: "not_found" }),
       anyConfigured: async () => true,
       recordSeen: async () => undefined,
     });
@@ -64,7 +91,7 @@ describe("checkAgentBearer", () => {
 
   it("503s when nothing is configured", async () => {
     const result = await checkAgentBearer(req("bad"), {
-      verify: async () => ({ ok: false }),
+      verify: async () => ({ ok: false, reason: "not_found" }),
       anyConfigured: async () => false,
       recordSeen: async () => undefined,
     });

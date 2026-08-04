@@ -10,6 +10,7 @@ import { getCurrentWorkspaceContext } from "./workspace";
 import { listWorkspaceActivity, type WorkspaceActivityEntry } from "./workspace-admin";
 import { listWorkspaceTeamAccess } from "./workspace-invites";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 export type { WorkspaceActivityEntry };
@@ -36,6 +37,19 @@ export type SettingsTeamView = {
   members: SettingsTeamMember[];
   invites: SettingsTeamInvite[];
   activity: WorkspaceActivityEntry[];
+  /**
+   * Why the read failed, or null when it succeeded (BSR-578).
+   *
+   * Non-null means members and invites are UNKNOWN, not empty. Those are very
+   * different statements to an operator: an empty team reads as "everyone left"
+   * and invites them to re-invite people who are already there.
+   *
+   * A marker rather than a `{ status: "unavailable" }` variant because this view
+   * is destructured field-by-field across the settings screen; a union would
+   * force every one of those call sites to narrow for a state they cannot act
+   * on. The view checks this once, at the top.
+   */
+  failed: string | null;
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -75,6 +89,7 @@ export function toTeamView(
   return {
     workspaceId,
     isDemo,
+    failed: null,
     activity,
     members: members.map((m) => ({
       id: m.id,
@@ -107,6 +122,7 @@ function demoTeamView(nowMs: number): SettingsTeamView {
   return {
     workspaceId: null,
     isDemo: true,
+    failed: null,
     members: [
       { id: "demo-owner", email: "owner@bigshouldersrestoration.com", role: "owner", roleLabel: "Owner", isOwner: true, pending: false },
       { id: "demo-admin", email: "dana@bigshouldersrestoration.com", role: "admin", roleLabel: "Admin", isOwner: false, pending: false },
@@ -118,7 +134,12 @@ function demoTeamView(nowMs: number): SettingsTeamView {
   };
 }
 
-const EMPTY: SettingsTeamView = { workspaceId: null, isDemo: false, members: [], invites: [], activity: [] };
+const EMPTY: SettingsTeamView = { workspaceId: null, isDemo: false, members: [], invites: [], activity: [], failed: null };
+
+/** The same empty shape, but saying it could not be read rather than that it is empty. */
+function unavailable(reason: string): SettingsTeamView {
+  return { ...EMPTY, failed: reason };
+}
 
 export async function getSettingsTeamView(): Promise<SettingsTeamView> {
   if (isSupabaseAdminConfigured()) {
@@ -132,9 +153,19 @@ export async function getSettingsTeamView(): Promise<SettingsTeamView> {
         if (access.ok) {
           return toTeamView(ctx.workspaceId, access.members, access.invites, false, Date.now(), activity);
         }
+        // Previously fell through silently, so a REFUSED permission check and a
+        // workspace with nobody in it produced byte-identical output.
+        reportDegraded(new Error(access.message ?? "Team access refused."), {
+          scope: "auth.getSettingsTeamView",
+          surface: "primary",
+        });
+        return unavailable(access.message ?? "Could not read this workspace's team.");
       }
-    } catch {
-      // fall through to demo/empty
+    } catch (error) {
+      // Was an empty catch with no report, no message and no log, so a failure
+      // rendered as "your team has no members" (BSR-578).
+      reportDegraded(error, { scope: "auth.getSettingsTeamView", surface: "primary" });
+      return unavailable(error instanceof Error ? error.message : "Could not read this workspace's team.");
     }
   }
 

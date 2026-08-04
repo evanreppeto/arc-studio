@@ -1,9 +1,14 @@
 "use client";
 
+import { definitionText, WORK_STATE_LABEL } from "@/domain";
+
+import { HowThisWorks } from "../../_components/define";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { archiveBrainNode, decideBrainNode, rebuildBrainMemoryAction, searchBrainFacts } from "../actions";
+import { Modal } from "../../_components/modal";
+import { archiveBrainNode, correctBrainFact, decideBrainNode, rebuildBrainMemoryAction, searchBrainFacts } from "../actions";
 import { KnowledgeGraph, type GraphEdge, type GraphNode } from "./knowledge-graph";
+import { KpiStrip } from "../../_components/kpi-strip";
 
 export type FactVM = {
   id: string;
@@ -40,7 +45,7 @@ const IconResync = <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-6.2-8.6" />
 // human is reviewing what Arc learned, not the graph eye-candy).
 const TABS = [
   { key: "facts", label: "What Arc knows", icon: <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10" /></svg> },
-  { key: "review", label: "Needs review", icon: <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8M4 12v7a1 1 0 001 1h14" /></svg> },
+  { key: "review", label: WORK_STATE_LABEL.needs_you, icon: <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8M4 12v7a1 1 0 001 1h14" /></svg> },
   { key: "learned", label: "Recently learned", icon: <svg viewBox="0 0 24 24"><path d="M12 8v4l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
   { key: "web", label: "Knowledge Web", icon: <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4" /><circle cx="18" cy="7" r="2.4" /><circle cx="12" cy="17" r="2.4" /><path d="M8 7l8 1M7.5 8l3.5 7M16.5 9l-3.5 6" /></svg> },
 ];
@@ -49,6 +54,32 @@ function tierClass(t: string): string {
   const s = t.toLowerCase();
   if (s === "trusted" || s === "core" || s === "proposed" || s === "observed") return s;
   return "observed";
+}
+
+/**
+ * Trust tier as a label. The tier is its own axis — how far Arc trusts a fact —
+ * but "proposed" is the same human moment as a draft waiting on you, and the
+ * page said it three ways at once: the tile read "Awaiting review", the pill
+ * read "proposed", and the tab read "Needs review" (BSR-656). The tier VALUE is
+ * untouched; only its wording joins the shared vocabulary.
+ */
+/** The tier's definition, for the pill's tooltip — "trusted" and "watching" are
+ *  invented words carrying a real rule about what Arc may write (BSR-659). */
+function tierHint(t: string): string | undefined {
+  const s = (t || "").toLowerCase();
+  if (s === "trusted" || s === "core") return definitionText("trusted");
+  if (s === "observed") return definitionText("watching");
+  if (s === "proposed") return "Arc found this but has not been cleared to use it. It stays out of your copy until you approve it.";
+  return undefined;
+}
+
+function tierLabel(t: string): string {
+  const s = (t || "").toLowerCase();
+  if (s === "proposed") return WORK_STATE_LABEL.needs_you;
+  if (s === "trusted") return "Trusted";
+  if (s === "core") return "Core";
+  if (s === "observed") return "Watching";
+  return t;
 }
 
 function Confidence({ value }: { value: number | null }) {
@@ -195,6 +226,40 @@ export function BrainView({
     }
   }
 
+  // The fact being corrected, and the edits in flight. `null` closes the dialog.
+  const [editing, setEditing] = useState<FactVM | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editSummary, setEditSummary] = useState("");
+  const [saving, setSaving] = useState(false);
+  // Corrections applied this session, so the row updates before the refetch.
+  const [corrections, setCorrections] = useState<Record<string, { label: string; summary: string }>>({});
+
+  function openCorrection(fact: FactVM) {
+    setError(null);
+    setEditing(fact);
+    setEditLabel(fact.label);
+    setEditSummary(fact.summary ?? "");
+  }
+
+  async function saveCorrection() {
+    if (!editing) return;
+    const label = editLabel.trim();
+    if (!label) {
+      setError("A fact needs a label.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const res = await correctBrainFact(editing.id, { label, summary: editSummary });
+    setSaving(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setCorrections((prev) => ({ ...prev, [editing.id]: { label, summary: editSummary.trim() } }));
+    setEditing(null);
+  }
+
   async function archive(nodeId: string) {
     setError(null);
     setPendingId(nodeId);
@@ -208,12 +273,54 @@ export function BrainView({
     }
   }
 
-  // Keep the header "Awaiting review" stat + coverage banner consistent with the
+  // Keep the header "Needs you" stat + coverage banner consistent with the
   // live review list (they're derived server-side from the proposed count).
-  const stats = data.stats.map((s) => (s.label === "Awaiting review" ? { ...s, value: review.length } : s));
+  const stats = data.stats.map((s) => (s.label === WORK_STATE_LABEL.needs_you ? { ...s, value: review.length } : s));
 
   return (
     <div className={`arc-brain${tab === "web" ? " graph" : ""}`}>
+      {/* Correcting a fact, not approving it: the trust tier is untouched, and
+          the write re-embeds so the fix reaches Arc's recall on the next turn. */}
+      <Modal
+        open={editing !== null}
+        onClose={() => !saving && setEditing(null)}
+        title="Correct this fact"
+        description="Arc will use the corrected wording from its next turn. The trust level is unchanged."
+        footer={
+          <>
+            <button type="button" className="mbtn" disabled={saving} onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+            <button type="button" className="mbtn primary" disabled={saving} onClick={saveCorrection}>
+              {saving ? "Saving…" : "Save correction"}
+            </button>
+          </>
+        }
+      >
+        <label className="fcorr-l" htmlFor="brain-correct-label">
+          Label
+          <input
+            id="brain-correct-label"
+            className="fcorr-i"
+            value={editLabel}
+            onChange={(e) => setEditLabel(e.target.value)}
+            placeholder="Short name for this fact"
+          />
+        </label>
+        <label className="fcorr-l" htmlFor="brain-correct-summary">
+          The fact, in plain words
+          <textarea
+            id="brain-correct-summary"
+            className="fcorr-i"
+            rows={4}
+            value={editSummary}
+            onChange={(e) => setEditSummary(e.target.value)}
+            placeholder="What Arc should believe about your business"
+          />
+          <small>This is what Arc recalls and quotes. Empty it to leave only the label.</small>
+        </label>
+      </Modal>
+
       {/* A failed read is NOT an empty Brain. Without this, a broken query looks
           identical to a workspace Arc hasn't learned anything about yet — the
           confusion that hid a live outage on /campaigns (BSR-542). */}
@@ -233,7 +340,7 @@ export function BrainView({
       <div className="bhead">
         <div className="bh1row">
           <div>
-            <h1 className="pt">Brain</h1>
+            <h2 className="pt">Brain</h2>
             <div className="psub">Arc&rsquo;s memory — everything it knows about your business, and how it&rsquo;s connected.</div>
           </div>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
@@ -244,21 +351,33 @@ export function BrainView({
             </button>
           </span>
         </div>
-        <div className="bstats">
-          {stats.map((s) => (
-            <div className="bstat" key={s.label}>
-              <div className="sl">{s.label}</div>
-              <div className="sv" style={s.color ? { color: s.color } : undefined}>{s.value.toLocaleString()}</div>
-              <div className="sd">{s.sub}</div>
-            </div>
-          ))}
-        </div>
+        <KpiStrip
+          className="bstats"
+          items={stats.map((s) => ({
+            label: s.label,
+            value: s.value.toLocaleString(),
+            sublabel: s.sub,
+            // The per-stat colour override becomes a tone: gold when something
+            // is waiting on you, green when Arc is cleared to use it.
+            tone: s.color === "var(--warn-text)" ? ("attention" as const) : s.color === "var(--ok-text)" ? ("ok" as const) : undefined,
+          }))}
+        />
         {data.coverageNote && review.length > 0 && (
           <div className="covbanner">
             {IconResync}
             <span className="ct">{data.coverageNote}</span>
           </div>
         )}
+        <HowThisWorks>
+          <p>
+            Everything Arc has learned about your business lives here — from your website, the documents you upload, and
+            what it sees happening in your records. Each thing it learns is one line you can read and correct.
+          </p>
+          <p>
+            <b>Trusted</b> facts are ones you approved, and Arc may state them in anything it writes. Anything it is only{" "}
+            <b>watching</b> stays out of your copy until you say otherwise — so a wrong guess never reaches a customer.
+          </p>
+        </HowThisWorks>
       </div>
 
       <div className="btabs">
@@ -283,7 +402,7 @@ export function BrainView({
           <div className="inner">
             {tab === "facts" && (
               <>
-                <h3 className="sh">All facts <span className="tg">wired · listNodes</span></h3>
+                <h3 className="sh">All facts</h3>
                 <div className="facttools">
                   <div className="factsearch">
                     <svg viewBox="0 0 24 24" aria-hidden><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
@@ -328,13 +447,25 @@ export function BrainView({
                           <tr key={f.id}>
                             <td><span className="kindchip"><span className="d" style={{ background: f.kindColor }} />{f.kindLabel}</span></td>
                             <td>
-                              <div className="fact-label">{f.label}</div>
-                              {f.summary && <div className="fact-sum">{f.summary}</div>}
+                              <div className="fact-label">{corrections[f.id]?.label ?? f.label}</div>
+                              {(corrections[f.id]?.summary ?? f.summary) && (
+                                <div className="fact-sum">{corrections[f.id]?.summary ?? f.summary}</div>
+                              )}
                             </td>
-                            <td><span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{f.trustTier}</span></td>
+                            <td><span className={`tier ${tierClass(f.trustTier)}`} title={tierHint(f.trustTier)}><span className="td" />{tierLabel(f.trustTier)}</span></td>
                             <td><Confidence value={f.confidence} /></td>
                             <td><span className="src">{f.source || "—"}</span></td>
                             <td className="factact">
+                              <button
+                                type="button"
+                                className="farch"
+                                disabled={pendingId === f.id}
+                                onClick={() => openCorrection(f)}
+                                title="Correct this fact"
+                                aria-label={`Correct: ${f.label}`}
+                              >
+                                <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" /></svg>
+                              </button>
                               <button
                                 type="button"
                                 className="farch"
@@ -375,7 +506,7 @@ export function BrainView({
 
             {tab === "review" && (
               <>
-                <h3 className="sh">Awaiting your approval <span className="tg">wired · trust gate</span></h3>
+                <h3 className="sh">Waiting on your approval</h3>
                 <p className="lead">Arc proposes brand facts, messaging angles, CTAs, proof points, and audience segments — but they stay <b>proposed</b> and out of all outbound copy until you approve them.</p>
                 {error && (
                   <div className="crm-error" role="alert">
@@ -392,7 +523,7 @@ export function BrainView({
                     <div className="qcard" key={f.id}>
                       <div className="qtop">
                         <span className="kindchip"><span className="d" style={{ background: f.kindColor }} />{f.kindLabel}</span>
-                        <span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{f.trustTier}</span>
+                        <span className={`tier ${tierClass(f.trustTier)}`} title={tierHint(f.trustTier)}><span className="td" />{tierLabel(f.trustTier)}</span>
                         <Confidence value={f.confidence} />
                       </div>
                       <div className="qlabel">{f.label}</div>
@@ -419,7 +550,7 @@ export function BrainView({
 
             {tab === "learned" && (
               <>
-                <h3 className="sh">Recently learned <span className="tg">wired · node created_at</span></h3>
+                <h3 className="sh">Recently learned</h3>
                 {data.learned.length === 0 ? (
                   <div className="empty">Nothing learned yet. New facts show up here as Arc discovers them.</div>
                 ) : (
@@ -431,7 +562,7 @@ export function BrainView({
                           <div className="tll">{f.label}</div>
                           <div className="tlk">
                             <span className="kindchip"><span className="d" style={{ background: f.kindColor }} />{f.kindLabel}</span>
-                            <span className={`tier ${tierClass(f.trustTier)}`}><span className="td" />{f.trustTier}</span>
+                            <span className={`tier ${tierClass(f.trustTier)}`} title={tierHint(f.trustTier)}><span className="td" />{tierLabel(f.trustTier)}</span>
                           </div>
                         </div>
                         <span className="tlt">{f.learnedAt}</span>

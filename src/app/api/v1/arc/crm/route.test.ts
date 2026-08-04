@@ -104,7 +104,13 @@ describe("Arc CRM routes", () => {
 
     const res = await getCompanies(request("companies", "wrong"));
 
-    expect(res.status).toBe(401);
+    // These tests point at an unreachable Supabase, so the token store cannot
+    // answer — and "I could not verify this" is now 503, distinct from the 401
+    // that means "this token is not ours". The security property under test is
+    // unchanged: the request is refused and nothing is read or written. The 401
+    // path is covered where the store can be made to answer (see the
+    // token-store test below, and src/lib/auth/check-agent-bearer.test.ts).
+    expect(res.status).toBe(503);
     expect(listCompaniesPage).not.toHaveBeenCalled();
   });
 });

@@ -35,6 +35,14 @@ export const leadIngestionSchema = z.object({
   persona: z.unknown(),
   source: stringField,
   externalLeadId: z.string().trim().min(1).optional(),
+  /**
+   * When this lead was actually last touched, for imports carrying history.
+   * Absent means "now" (the leads.received_at column default), which is right
+   * for a genuinely new lead and wrong for an imported one — without it every
+   * imported lead reads as zero days old and cold-lead detection can't fire for
+   * 30 days. Optional so no existing caller or response code changes.
+   */
+  receivedAt: z.string().trim().datetime().optional(),
   company: z
     .object({
       name: stringField,

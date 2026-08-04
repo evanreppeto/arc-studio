@@ -21,6 +21,13 @@ import { isMediaGenEnabled } from "@/lib/media";
 import { isLiveSendEnabled } from "@/lib/dispatch/live-send";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
+import {
+  ENV_CAPABILITIES,
+  isEnvVarSet,
+  reportCapabilities,
+  type CapabilityState,
+  type EnvRequirement,
+} from "@/domain";
 import { isPlatformAdmin } from "@/lib/waitlist/admin";
 
 import {
@@ -42,11 +49,17 @@ export type EnvFlag = {
   set: boolean;
   /** What breaks while it is unset. Shown verbatim to the operator. */
   purpose: string;
+  /** Whether being unset actually costs this capability anything. */
+  requirement: EnvRequirement;
 };
 
 export type EnvGroup = {
   capability: string;
   flags: EnvFlag[];
+  /** ready / partial / inert, from the required vars only. */
+  state: CapabilityState;
+  /** One line: what is off and what that costs. */
+  detail: string;
 };
 
 export type ConnectorHealthRow = {
@@ -107,59 +120,20 @@ const isSet = (value: string | undefined): boolean => Boolean(value?.trim());
  * whether the variable is present.
  */
 function readEnvGroups(env: NodeJS.ProcessEnv): EnvGroup[] {
-  return [
-    {
-      capability: "Persistence",
-      flags: [
-        { name: "NEXT_PUBLIC_SUPABASE_URL", set: isSet(env.NEXT_PUBLIC_SUPABASE_URL), purpose: "Without it nothing persists — the app degrades to read-only previews." },
-        { name: "SUPABASE_SERVICE_ROLE_KEY", set: isSet(env.SUPABASE_SERVICE_ROLE_KEY), purpose: "Server-side writes and every admin read." },
-      ],
-    },
-    {
-      capability: "Send loop",
-      flags: [
-        { name: "ARC_SEND_ENABLED", set: isSet(env.ARC_SEND_ENABLED), purpose: "Master kill switch. Dark means no mail leaves, however well configured." },
-        { name: "RESEND_WEBHOOK_SECRET", set: isSet(env.RESEND_WEBHOOK_SECRET), purpose: "Inbound delivery/open/click/reply events. Unset means sends look fire-and-forget." },
-      ],
-    },
-    {
-      capability: "Agent loop",
-      flags: [
-        { name: "ARC_AGENT_API_TOKEN", set: isSet(env.ARC_AGENT_API_TOKEN), purpose: "Bearer token the runner uses to call back into the app." },
-        { name: "ARC_RUNNER_URL", set: isSet(env.ARC_RUNNER_URL) || isSet(env.ARC_WEBHOOK_URL), purpose: "Where the app wakes the runner. Unset means queued work is never picked up." },
-        { name: "GEMINI_API_KEY", set: isSet(env.GEMINI_API_KEY), purpose: "Arc's model calls and the Brain's embeddings." },
-      ],
-    },
-    {
-      capability: "Scheduled work",
-      flags: [
-        { name: "CRON_SECRET", set: isSet(env.CRON_SECRET), purpose: "Authenticates Vercel Cron. Unset means every scheduled route rejects." },
-        { name: "OPPORTUNITY_SCAN_CRON_ENABLED", set: isSet(env.OPPORTUNITY_SCAN_CRON_ENABLED), purpose: "The daily opportunity scan." },
-        { name: "BILLING_NOTICES_CRON_ENABLED", set: isSet(env.BILLING_NOTICES_CRON_ENABLED), purpose: "Quota and trial-expiry notices." },
-      ],
-    },
-    {
-      capability: "Media loop",
-      flags: [
-        { name: "ARC_MEDIA_ENABLED", set: isSet(env.ARC_MEDIA_ENABLED), purpose: "Legacy deployment-wide media generation. Per-workspace connectors are the modern path." },
-      ],
-    },
-    {
-      capability: "Billing",
-      flags: [
-        { name: "STRIPE_SECRET_KEY", set: isSet(env.STRIPE_SECRET_KEY), purpose: "Checkout, portal, and webhook handling." },
-        { name: "ARC_BILLING_ENFORCEMENT", set: isSet(env.ARC_BILLING_ENFORCEMENT), purpose: "Whether quota overage actually blocks work, or is only measured." },
-      ],
-    },
-    {
-      capability: "Observability & access",
-      flags: [
-        { name: "NEXT_PUBLIC_SENTRY_DSN", set: isSet(env.NEXT_PUBLIC_SENTRY_DSN), purpose: "Error reporting. Unset means failures land nowhere a human looks." },
-        { name: "ARC_PLATFORM_ADMIN_EMAILS", set: isSet(env.ARC_PLATFORM_ADMIN_EMAILS), purpose: "Who may see this console and the waitlist. Unset means nobody." },
-        { name: "ARC_SELF_SERVE_SIGNUP", set: isSet(env.ARC_SELF_SERVE_SIGNUP), purpose: "Whether strangers can create accounts. Unset keeps signup invite-only." },
-      ],
-    },
-  ];
+  return reportCapabilities(env as Record<string, string | undefined>).map((report) => {
+    const spec = ENV_CAPABILITIES.find((c) => c.key === report.key);
+    return {
+      capability: report.label,
+      state: report.state,
+      detail: report.detail,
+      flags: (spec?.vars ?? []).map((varSpec) => ({
+        name: varSpec.name,
+        set: isEnvVarSet(env as Record<string, string | undefined>, varSpec),
+        purpose: varSpec.ifUnset,
+        requirement: varSpec.requirement,
+      })),
+    };
+  });
 }
 
 function minutesSince(iso: string | null | undefined, now: number): number | null {
@@ -192,6 +166,8 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
 
   let connectors: ConnectorHealthRow[] = [];
   let runnerCounts = { queued: 0, running: 0, oldestQueuedAt: null as string | null, failedLast24h: 0 };
+  // Whether those zeros are a reading or an absence of one (BSR-575).
+  let queueEvidenceMissing = false;
   let failures: RecentFailure[] = [];
   let lastOutboundAt: string | null = null;
   let lastInboundAt: string | null = null;
@@ -201,6 +177,56 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
   if (databaseConfigured) {
     const supabase = getSupabaseAdminClient();
     const since = new Date(now - FAILURE_WINDOW_HOURS * 3600_000).toISOString();
+
+    // Keep "this read failed" distinct from "there is nothing here" (BSR-575).
+    //
+    // Every read below used `.then((r) => r.data ?? [], () => [])`, which
+    // collapses both a PostgREST `{ error }` result and a thrown rejection into
+    // an empty list. For this console specifically that is self-defeating: zero
+    // queued tasks and zero recent failures is precisely what a healthy idle
+    // system looks like, so a database it could not read graded as `live` and
+    // told the operator "Runner reachable and the queue is moving."
+    //
+    // The grading module already models `unknown` as distinct from `live` — the
+    // information was simply being destroyed before it got there.
+    const readFailures = new Set<string>();
+    const rowsOf = <T>(table: string) =>
+      [
+        (r: { data: T[] | null; error: unknown }): T[] => {
+          if (r.error) readFailures.add(table);
+          return r.data ?? [];
+        },
+        (): T[] => {
+          readFailures.add(table);
+          return [];
+        },
+      ] as const;
+    const countOf = (table: string) =>
+      [
+        (r: { count: number | null; error: unknown }): number => {
+          // A null count with no error means the relation is missing or
+          // inaccessible — NOT zero rows (BSR-575). Reporting 0 here would put a
+          // confident number on the one screen whose job is saying whether prod
+          // works.
+          if (r.error || r.count === null) readFailures.add(table);
+          return r.count ?? 0;
+        },
+        (): number => {
+          readFailures.add(table);
+          return 0;
+        },
+      ] as const;
+    const oneOf = <T>(table: string) =>
+      [
+        (r: { data: T | null; error: unknown }): T | null => {
+          if (r.error) readFailures.add(table);
+          return r.data;
+        },
+        (): T | null => {
+          readFailures.add(table);
+          return null;
+        },
+      ] as const;
 
     const [
       connectorRows,
@@ -214,16 +240,16 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
       scanRow,
       embeddingRow,
     ] = await Promise.all([
-      supabase.from("workspace_connectors").select("workspace_id, connector_key, enabled, credential_ref, last_tested_at, last_test_ok, last_test_error").then((r) => r.data ?? [], () => []),
-      supabase.from("workspaces").select("id, name").then((r) => r.data ?? [], () => []),
-      supabase.from("agent_tasks").select("created_at").eq("status", "queued").order("created_at", { ascending: true }).then((r) => r.data ?? [], () => []),
-      supabase.from("agent_tasks").select("id", { count: "exact", head: true }).eq("status", "running").then((r) => r.count ?? 0, () => 0),
-      supabase.from("agent_tasks").select("id", { count: "exact", head: true }).eq("status", "failed").gte("updated_at", since).then((r) => r.count ?? 0, () => 0),
-      supabase.from("agent_tasks").select("objective, task_type, updated_at, metadata").eq("status", "failed").order("updated_at", { ascending: false }).limit(RECENT_FAILURE_LIMIT).then((r) => r.data ?? [], () => []),
-      supabase.from("journey_touchpoints").select("occurred_at").eq("direction", "outbound").order("occurred_at", { ascending: false }).limit(1).maybeSingle().then((r) => r.data, () => null),
-      supabase.from("journey_touchpoints").select("occurred_at").eq("direction", "inbound").order("occurred_at", { ascending: false }).limit(1).maybeSingle().then((r) => r.data, () => null),
-      supabase.from("agent_tasks").select("created_at").eq("task_type", "arc_opportunity_scan").order("created_at", { ascending: false }).limit(1).maybeSingle().then((r) => r.data, () => null),
-      supabase.from("knowledge_nodes").select("updated_at").not("embedding", "is", null).order("updated_at", { ascending: false }).limit(1).maybeSingle().then((r) => r.data, () => null),
+      supabase.from("workspace_connectors").select("workspace_id, connector_key, enabled, credential_ref, last_tested_at, last_test_ok, last_test_error").then(...rowsOf<Record<string, unknown>>("workspace_connectors")),
+      supabase.from("workspaces").select("id, name").then(...rowsOf<{ id: string; name: string | null }>("workspaces")),
+      supabase.from("agent_tasks").select("created_at").eq("status", "queued").order("created_at", { ascending: true }).then(...rowsOf<{ created_at: string }>("agent_tasks")),
+      supabase.from("agent_tasks").select("id", { count: "exact", head: true }).eq("status", "running").then(...countOf("agent_tasks")),
+      supabase.from("agent_tasks").select("id", { count: "exact", head: true }).eq("status", "failed").gte("updated_at", since).then(...countOf("agent_tasks")),
+      supabase.from("agent_tasks").select("objective, task_type, updated_at, metadata").eq("status", "failed").order("updated_at", { ascending: false }).limit(RECENT_FAILURE_LIMIT).then(...rowsOf<Record<string, unknown>>("agent_tasks")),
+      supabase.from("journey_touchpoints").select("occurred_at").eq("direction", "outbound").order("occurred_at", { ascending: false }).limit(1).maybeSingle().then(...oneOf<{ occurred_at?: string }>("journey_touchpoints")),
+      supabase.from("journey_touchpoints").select("occurred_at").eq("direction", "inbound").order("occurred_at", { ascending: false }).limit(1).maybeSingle().then(...oneOf<{ occurred_at?: string }>("journey_touchpoints")),
+      supabase.from("agent_tasks").select("created_at").eq("task_type", "arc_opportunity_scan").order("created_at", { ascending: false }).limit(1).maybeSingle().then(...oneOf<{ created_at?: string }>("agent_tasks")),
+      supabase.from("knowledge_nodes").select("updated_at").not("embedding", "is", null).order("updated_at", { ascending: false }).limit(1).maybeSingle().then(...oneOf<{ updated_at?: string }>("knowledge_nodes")),
     ]);
 
     const workspaceNames = new Map<string, string>();
@@ -251,6 +277,8 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
       oldestQueuedAt: queued[0]?.created_at ?? null,
       failedLast24h: failedCount as number,
     };
+    // The queue figures are only evidence if the queue was actually readable.
+    queueEvidenceMissing = readFailures.has("agent_tasks");
 
     failures = (failureRows as Array<Record<string, unknown>>).map((row) => {
       const metadata = (row.metadata ?? {}) as Record<string, unknown>;
@@ -295,6 +323,7 @@ export async function getHealthConsoleView(): Promise<HealthConsoleView | null> 
     lastError: runner.lastError,
     oldestQueuedMinutes: runner.oldestQueuedMinutes,
     failedRecently: runner.failedLast24h,
+    evidenceMissing: queueEvidenceMissing,
   });
 
   const media = gradeMediaLoop({

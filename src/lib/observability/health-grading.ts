@@ -61,6 +61,14 @@ export type AgentSignals = {
   /** Age of the oldest task still sitting in `queued`, in minutes. */
   oldestQueuedMinutes: number | null;
   failedRecently: number;
+  /**
+   * True when the queue/failure figures could not be read at all.
+   *
+   * Without this they arrive as zeros, and "no queued work, no recent failures"
+   * is exactly what a healthy idle system looks like — so a database this
+   * console cannot read graded as `live` (BSR-575).
+   */
+  evidenceMissing?: boolean;
 };
 
 /**
@@ -82,6 +90,14 @@ export function gradeAgentLoop(s: AgentSignals): LoopVerdict {
   }
   if (s.lastStatus === "error") {
     return { state: "degraded", detail: s.lastError?.trim() || "The runner's last call returned an error." };
+  }
+  // Checked after the runner-connection verdicts above, which come from the
+  // heartbeat rather than from the queue — a genuinely unreachable runner is
+  // still `down` even when the queue is unreadable. But everything BELOW this
+  // line reasons from figures that default to zero, so without evidence they
+  // must not be reasoned from at all.
+  if (s.evidenceMissing) {
+    return { state: "unknown", detail: "The task queue could not be read, so the runner's health is unproven." };
   }
   if (s.oldestQueuedMinutes !== null && s.oldestQueuedMinutes >= QUEUE_STALL_MINUTES) {
     return {

@@ -11,13 +11,18 @@
 .arc-studio .cxt .ci svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-studio .cxt .cl { font-size: 9px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; line-height: 1; }
 .arc-studio .cxt .cn { font-size: 12.5px; font-weight: 600; line-height: 1.25; margin-top: 2px; white-space: nowrap; }
-.arc-studio .cxt .cmeta { font-family: var(--mono); font-size: 9.5px; color: var(--accent); margin-top: 1px; }
+.arc-studio .cxt .cmeta { font-size: 10.5px; line-height: 1.4; color: var(--accent); margin-top: 2px; }
 .arc-studio .cxt .cv { color: var(--muted); font-size: 11px; margin-left: 3px; }
 .arc-studio .proj { font-size: 12px; color: var(--text-2); font-weight: 500; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .arc-studio .proj .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
 .arc-studio .studiobar .right { margin-left: auto; display: flex; align-items: center; gap: 9px; }
 .arc-studio .iconbtn { width: 32px; height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: 0.14s; }
-.arc-studio .iconbtn:hover { border-color: var(--accent-border); color: var(--text); }
+.arc-studio .iconbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
+/* Undo/Redo have no history to act on — the canvas keeps no edit stack. Shown
+   disabled rather than wired to a toast (BSR-688): these are the two controls a
+   user reaches for on muscle memory, and a no-op that merely explains itself is
+   still a no-op at the moment it matters. */
+.arc-studio .iconbtn:disabled { opacity: 0.4; cursor: default; }
 .arc-studio .iconbtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-studio .gbtn { height: 32px; padding: 0 13px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: 0.14s; }
 .arc-studio .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
@@ -52,7 +57,7 @@
 .arc-studio .mtile .mt .pv { position: absolute; top: 5px; left: 5px; font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 4px; backdrop-filter: blur(3px); }
 .arc-studio .pv.real { color: var(--ok-text); background: rgba(127, 184, 154, 0.22); }
 .arc-studio .pv.ai { color: var(--accent-contrast); background: rgba(200, 162, 74, 0.22); }
-.arc-studio .pv.comp { color: var(--vio-text); background: rgba(150, 120, 200, 0.22); }
+.arc-studio .pv.comp { color: var(--slate-text); background: var(--slate-soft); }
 .arc-studio .pv.upload { color: var(--blue-text); background: rgba(136, 182, 216, 0.22); }
 .arc-studio .pv.stock { color: var(--text-2); background: rgba(120, 120, 130, 0.28); }
 .arc-studio .mtile .ml { font-size: 10px; color: var(--text-2); padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -69,7 +74,7 @@
 
 /* stage */
 .arc-studio .stage { min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--canvas); }
-.arc-studio .toolbar { display: flex; align-items: center; gap: 5px; padding: 9px 14px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+.arc-studio .toolbar { display: flex; align-items: center; flex-wrap: wrap; row-gap: 7px; gap: 5px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
 .arc-studio .tgrp { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .arc-studio .tglabel { font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; padding: 0 5px 0 2px; flex-shrink: 0; }
 .arc-studio .tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 54px; height: 46px; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; color: var(--text-2); cursor: pointer; transition: 0.13s; flex-shrink: 0; position: relative; }
@@ -104,7 +109,9 @@
 .arc-studio .cspec b { color: var(--text-2); font-weight: 600; }
 .arc-studio .cspec .dotsep { width: 3px; height: 3px; border-radius: 50%; background: var(--line-3); }
 .arc-studio .cspec .draftpill { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 5px; padding: 1px 7px; font-weight: 600; letter-spacing: 0.02em; }
-.arc-studio .canvas { position: relative; aspect-ratio: 1 / 1; width: min(100%, 440px); height: auto; border-radius: 13px; overflow: hidden; box-shadow: 0 30px 80px -36px rgba(0, 0, 0, 0.95); background: #222a30; border: 1px solid var(--line-2); transition: aspect-ratio 0.3s var(--ease); }
+/* container-type makes 100cqw the artboard's own width, so a design unit
+   (n / 1080 * 100cqw) is exactly the n * u the renderer computes. */
+.arc-studio .canvas { container-type: inline-size; position: relative; aspect-ratio: 1 / 1; width: min(100%, 440px); height: auto; border-radius: 13px; overflow: hidden; box-shadow: 0 30px 80px -36px rgba(0, 0, 0, 0.95); background: #222a30; border: 1px solid var(--line-2); transition: aspect-ratio 0.3s var(--ease); }
 .arc-studio .canvas .cbg { position: absolute; inset: 0; }
 .arc-studio .canvas .cbg > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* Shown when a live workspace has no approved media and nothing uploaded yet —
@@ -115,17 +122,9 @@
 .arc-studio .cplay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 54px; height: 54px; border-radius: 50%; background: rgba(16, 16, 19, 0.5); border: 1px solid rgba(255, 255, 255, 0.32); backdrop-filter: blur(4px); display: none; place-items: center; cursor: pointer; transition: 0.15s; z-index: 3; }
 .arc-studio .canvas.video .cplay { display: grid; }
 .arc-studio .cplay svg { width: 22px; height: 22px; fill: #fff; margin-left: 3px; }
-.arc-studio .canvas .clogo { position: absolute; top: 16px; left: 16px; display: flex; align-items: center; gap: 7px; font-family: var(--serif); font-weight: 600; font-size: 14px; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
-.arc-studio .canvas .clogo .lm { width: 20px; height: 20px; border-radius: 5px; background: var(--accent); display: grid; place-items: center; color: #1a1505; font-size: 11px; transition: background 0.2s; }
 .arc-studio .canvas .cprov { position: absolute; top: 16px; right: 16px; font-size: 9.5px; font-weight: 600; color: var(--ok-text); background: rgba(16, 16, 19, 0.7); border: 1px solid var(--ok-border); border-radius: 6px; padding: 3px 8px; backdrop-filter: blur(4px); }
-.arc-studio .canvas .ctext { position: absolute; left: 24px; right: 24px; bottom: 22px; }
-.arc-studio .canvas .ckick { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-contrast); margin-bottom: 8px; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
-.arc-studio .canvas .chead { font-family: var(--serif); font-weight: 600; font-size: clamp(20px, 3.2vh, 29px); line-height: 1.05; color: #fff; letter-spacing: -0.01em; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); }
-.arc-studio .canvas .csub { font-size: 13px; color: rgba(255, 255, 255, 0.82); margin-top: 8px; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5); }
 /* An unwritten text layer: shows where the copy will sit without pretending
    it exists. Muted and italic so it never reads as real creative. */
-.arc-studio .canvas .cplace { color: rgba(255, 255, 255, 0.34); font-style: italic; text-shadow: none; }
-.arc-studio .canvas .ccta { display: inline-flex; margin-top: 14px; height: 34px; align-items: center; padding: 0 16px; border-radius: 8px; background: var(--accent); color: #1a1505; font-weight: 600; font-size: 12.5px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); transition: background 0.2s; }
 .arc-studio .canvas .safez { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
 .arc-studio .canvas.szon .safez { opacity: 1; }
 .arc-studio .canvas .safez .szb { position: absolute; left: 0; right: 0; height: 13%; background: repeating-linear-gradient(45deg, rgba(216, 162, 74, 0.1) 0 6px, transparent 6px 12px); }
@@ -168,7 +167,7 @@
 .arc-studio .brief { border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, var(--accent-soft), transparent 70%); padding: 13px; margin-bottom: 20px; }
 .arc-studio .brief .bh { display: flex; align-items: center; gap: 8px; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: var(--accent-contrast); text-transform: uppercase; }
 .arc-studio .brief .bn { font-family: var(--serif); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 7px 0 3px; }
-.arc-studio .brief .bmeta { font-family: var(--mono); font-size: 9.5px; color: var(--accent); }
+.arc-studio .brief .bmeta { font-size: 10.5px; line-height: 1.45; color: var(--accent); }
 .arc-studio .brief .brow { margin-top: 10px; font-size: 11px; color: var(--text-2); line-height: 1.5; }
 .arc-studio .brief .brow b { color: var(--text); font-weight: 600; }
 .arc-studio .bchips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
@@ -299,3 +298,60 @@
   .arc-studio .studio { animation: studioRise 0.5s var(--ease) both; }
 }
 @keyframes studioRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Touch targets — see the note in arc-app.css. `.iconbtn` is declared 32px
+   square but flex-shrinks narrower than that in the toolbar, so it needs the
+   min-width, not just the width. */
+@media (pointer: coarse) {
+  .arc-studio .iconbtn { width: 44px; height: 44px; min-width: 44px; flex-shrink: 0; border-radius: 10px; }
+  .arc-studio .iconbtn svg { width: 18px; height: 18px; }
+}
+
+/* --- Canvas editing (BSR-680) --------------------------------------------
+   Constrained direct manipulation: the copy block moves and the headline
+   scales. Selection chrome is deliberately quiet — this is a review surface
+   first, and a permanent blue outline would read as an error state. */
+.arc-studio .canvas .clayer { position: relative; cursor: pointer; border-radius: 3px; outline: 1px solid transparent; outline-offset: 2px; transition: outline-color 0.12s var(--ease); }
+.arc-studio .canvas .clayer:hover { outline-color: rgba(255, 255, 255, 0.35); }
+.arc-studio .canvas .clayer.sel { outline-color: var(--accent); }
+.arc-studio .canvas .clayer[contenteditable="plaintext-only"] { outline-color: var(--accent); cursor: text; }
+.arc-studio .canvas .cblock { position: relative; }
+.arc-studio .canvas .cblock.armed { touch-action: none; }
+/* The ring shows WHAT will move, which is the block, not the line you clicked. */
+.arc-studio .canvas .cblock-ring { position: absolute; inset: -8px; border: 1px dashed var(--accent-border); border-radius: 6px; pointer-events: none; }
+.arc-studio .canvas .cblock-handle { position: absolute; right: -14px; bottom: -14px; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--canvas-deep, #101013); cursor: ew-resize; touch-action: none; }
+.arc-studio .canvas .cblock-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .arc-studio .canvas .clayer { transition: none; }
+}
+
+/* --- Arc copilot thread, in the panel (BSR-681) ---------------------------
+   The panel used to be a permanent empty state that explained the reply would
+   appear somewhere else. It appears here now. */
+/* No padding here: .arcscroll already pads the pane, and both applying it put a
+   28px gutter around the transcript in a 320px column. */
+.arc-studio .arcthread { display: flex; flex-direction: column; gap: 10px; }
+.arc-studio .arcmsg { font-size: 12.5px; line-height: 1.55; border-radius: 10px; padding: 9px 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.arc-studio .arcmsg.me { align-self: flex-end; max-width: 88%; background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--text); }
+.arc-studio .arcmsg.arc { align-self: flex-start; max-width: 92%; background: var(--inset); border: 1px solid var(--line-2); color: var(--text-2); }
+/* The machine preamble we append to the sent body — present, but clearly not
+   part of what the operator typed. */
+.arc-studio .arcctx { display: block; margin-top: 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.02em; color: var(--muted); opacity: 0.85; }
+.arc-studio .arcdots { color: var(--muted); font-style: italic; }
+.arc-studio .arcnote { border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 10px; padding: 9px 11px; font-size: 11.5px; line-height: 1.6; color: var(--text-2); }
+.arc-studio .arcnote b { color: var(--text); font-weight: 600; }
+.arc-studio .arcopen { align-self: flex-start; margin-top: 2px; font-size: 11.5px; color: var(--muted); text-decoration: none; }
+.arc-studio .arcopen:hover { color: var(--accent-contrast); }
+
+/* Stacked (<=820px), .insp has no grid row to fill, so `flex: 1` on .ipane/.arc
+   resolves against auto height: the transcript collapsed to its content and the
+   composer floated mid-pane with dead space under it.
+
+   This block MUST stay at the end of the file. `.arc-studio .insp` above sets
+   `min-height: 0` at the same specificity, and a media query adds none — placed
+   any earlier, the later base rule silently wins and this does nothing. */
+@media (max-width: 820px) {
+  .arc-studio .insp { min-height: 78vh; }
+  .arc-studio .arcscroll { min-height: 42vh; }
+}

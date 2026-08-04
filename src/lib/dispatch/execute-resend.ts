@@ -18,6 +18,7 @@ import { readConnectorCredential } from "@/lib/connectors/credentials";
 
 import { getUnsubscribeSecret, isContactSuppressed, loadWorkspaceEmailIdentity } from "./email-identity";
 import { isLiveSendEnabled } from "./live-send";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 // The ONLY place the app performs a real send. It operates on an already-queued
 // (or operator-forced "send now" scheduled) approval-linked `campaign_dispatches`
@@ -70,6 +71,7 @@ async function logCampaignEvent(
   if (!campaignId) return;
   const { error } = await client.from("campaign_events").insert({
     org_id: orgId,
+    ...(await workspaceIdFields(client, orgId, { campaignId })),
     campaign_id: campaignId,
     event_type: eventType,
     actor,
@@ -314,10 +316,10 @@ export async function executeResendDispatch(
   assertOk("campaign_dispatches sent update", updateError);
 
   await recordConnectionUse(client, dispatch.org_id, "resend");
-  await logCampaignEvent(client, dispatch.org_id, dispatch.campaign_id, "dispatch_sent", operator, `Sent via Resend (${providerMessageId}).`);
+  await logCampaignEvent(client, dispatch.org_id, dispatch.campaign_id, "dispatch_sent", operator, `Sent by email (${providerMessageId}).`);
   await recordOutboundTouch(client, dispatch, providerMessageId);
 
-  return { ok: true, message: "Sent via Resend.", providerMessageId };
+  return { ok: true, message: "Sent by email.", providerMessageId };
 }
 
 /**
@@ -348,7 +350,7 @@ async function recordOutboundTouch(client: SupabaseClient, dispatch: DispatchRow
       campaign_id: dispatch.campaign_id,
       campaign_asset_id: dispatch.campaign_asset_id,
       contact_id: dispatch.contact_id,
-      summary: "Campaign email dispatched via Resend.",
+      summary: "Campaign email sent.",
       metadata: { provider: "resend" },
     });
     if (error) {

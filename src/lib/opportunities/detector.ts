@@ -6,6 +6,7 @@ import {
   detectCompetitorOpportunities,
   detectNextIterationOpportunities,
   detectWeatherEventOpportunities,
+  effectiveLeadQuality,
   normalizeNwsSeverity,
   type ColdLeadInput,
   type CompetitorSignalInput,
@@ -13,6 +14,9 @@ import {
   type WeatherEventInput,
 } from "@/domain";
 import { getCurrentOrgId } from "@/lib/auth/org";
+import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+import { getConnectorConfig } from "@/lib/connectors/config";
+import { parseWeatherCategories } from "@/domain";
 import { resolveCrmNames } from "@/lib/crm/names";
 import { buildPerformanceLearning, getCampaignPerformancePanel } from "@/lib/performance/campaign-panel";
 import { listLeads } from "@/lib/repos/leads";
@@ -25,33 +29,96 @@ import { upsertOpportunities, type PersistResult } from "./persistence";
 const ACTIVE_CAMPAIGN_STATUSES = ["draft", "briefing", "generating", "pending_approval", "approved", "active", "paused"];
 
 /**
+ * Most recent recorded interaction per lead.
+ *
+ * This used to read `public.events`, which NOTHING in the codebase, the runner,
+ * the scripts or a trigger has ever written (BSR-671). So every lead fell back
+ * to its arrival date and the card claimed "no activity in N days" about leads
+ * that had been worked that morning.
+ *
+ * The two tables that do record interactions:
+ *   - crm_activities — notes, tasks, logged touches. Keyed to the CONTACT, so a
+ *     lead inherits its contact's activity.
+ *   - engagement_events — sends, deliveries, replies. Carries lead_id when it
+ *     has one and contact_id otherwise, so both are consulted.
+ *
+ * A lead absent from the result has no recorded activity at all — the caller
+ * distinguishes that from "quiet" rather than papering over it.
+ */
+async function resolveLeadActivity(
+  db: SupabaseClient,
+  leadIds: string[],
+  contactIds: string[],
+  leadIdsByContact: Map<string, string[]>,
+): Promise<Map<string, string>> {
+  const latest = new Map<string, string>();
+  const note = (leadId: string, at: string | null | undefined) => {
+    if (!at) return;
+    const current = latest.get(leadId);
+    if (!current || at > current) latest.set(leadId, at);
+  };
+
+  const [crm, engagement, engagementByContact] = await Promise.all([
+    contactIds.length
+      ? db.from("crm_activities").select("entity_id, occurred_at").eq("entity_type", "contact").in("entity_id", contactIds)
+      : Promise.resolve({ data: [] }),
+    leadIds.length
+      ? db.from("engagement_events").select("lead_id, occurred_at").in("lead_id", leadIds)
+      : Promise.resolve({ data: [] }),
+    contactIds.length
+      ? db.from("engagement_events").select("contact_id, occurred_at").in("contact_id", contactIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  for (const row of ((crm.data ?? []) as Array<{ entity_id: string; occurred_at: string }>)) {
+    for (const leadId of leadIdsByContact.get(row.entity_id) ?? []) note(leadId, row.occurred_at);
+  }
+  for (const row of ((engagement.data ?? []) as Array<{ lead_id: string | null; occurred_at: string }>)) {
+    if (row.lead_id) note(row.lead_id, row.occurred_at);
+  }
+  for (const row of ((engagementByContact.data ?? []) as Array<{ contact_id: string | null; occurred_at: string }>)) {
+    if (!row.contact_id) continue;
+    for (const leadId of leadIdsByContact.get(row.contact_id) ?? []) note(leadId, row.occurred_at);
+  }
+
+  return latest;
+}
+
+/**
  * Run cold-lead detection over current CRM data and persist new opportunities.
  * Recency = the lead's latest `events` row, falling back to its received_at.
  */
 export async function runColdLeadDetection(
   client?: SupabaseClient,
   now: string = new Date().toISOString(),
+  /**
+   * Explicit tenant. Omit and the org is resolved from the ambient request, which
+   * only works when there IS one — a session-less caller (the cron) cannot resolve
+   * a tenant once a second active org exists. See runOpportunityScanAcrossWorkspaces.
+   */
+  orgId?: string,
 ): Promise<PersistResult> {
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "not_configured" };
   const db = client ?? getSupabaseAdminClient();
 
-  // Org-scope at the source: listLeads() (no client) applies the org filter, so the
-  // lead ids — and the events/campaigns queries bounded by them — stay org-scoped.
-  const leads = await listLeads({ limit: 500 });
+  // Org-scope at the source: listLeads() applies the org filter, so the lead ids —
+  // and the events/campaigns queries bounded by them — stay org-scoped.
+  const leads = await listLeads({ limit: 500, ...(orgId ? { orgId } : {}) });
   if (leads.length === 0) return { ok: true, count: 0 };
   const leadIds = leads.map((l) => l.id);
 
-  // Latest activity per lead from the events log (one query, newest first).
-  const { data: events } = await db
-    .from("events")
-    .select("subject_id, occurred_at")
-    .eq("subject_type", "lead")
-    .in("subject_id", leadIds)
-    .order("occurred_at", { ascending: false });
-  const latestActivity = new Map<string, string>();
-  for (const e of (events ?? []) as Array<{ subject_id: string; occurred_at: string }>) {
-    if (!latestActivity.has(e.subject_id)) latestActivity.set(e.subject_id, e.occurred_at);
+  // Contact ids first: a lead's activity is mostly logged against its contact,
+  // not the lead row, so recency needs them before it can be resolved.
+  const contactIds = leads.map((l) => l.contactId).filter((id): id is string => Boolean(id));
+  const leadIdsByContact = new Map<string, string[]>();
+  for (const lead of leads) {
+    if (!lead.contactId) continue;
+    const existing = leadIdsByContact.get(lead.contactId);
+    if (existing) existing.push(lead.id);
+    else leadIdsByContact.set(lead.contactId, [lead.id]);
   }
+
+  const latestActivity = await resolveLeadActivity(db, leadIds, contactIds, leadIdsByContact);
 
   // Leads that already have a non-terminal campaign.
   const { data: camps } = await db
@@ -66,6 +133,23 @@ export async function runColdLeadDetection(
   // lead ids as the queries above.
   const names = await resolveCrmNames(leads, null, db);
 
+  // Fit signals for records that arrived without intent signals. An imported
+  // contact never filled in a form, so calculateLeadScore gives it the base 10
+  // forever and it sits 20 points under the crm_inactivity floor — unreachable
+  // no matter how long it has been quiet. What we CAN judge is how well-formed
+  // and contactable it is. Bounded by the same org-scoped lead ids as the
+  // queries above.
+  const contactDetail = new Map<string, { email: string | null; phone: string | null; city: string | null }>();
+  if (contactIds.length > 0) {
+    const { data: contactRows } = await db
+      .from("contacts")
+      .select("id,email,phone,city")
+      .in("id", contactIds);
+    for (const row of (contactRows ?? []) as Array<{ id: string; email: string | null; phone: string | null; city: string | null }>) {
+      contactDetail.set(row.id, { email: row.email, phone: row.phone, city: row.city });
+    }
+  }
+
   const inputs: ColdLeadInput[] = leads.map((l) => ({
     id: l.id,
     label: buildColdLeadLabel({
@@ -75,9 +159,20 @@ export async function runColdLeadDetection(
       lossSummary: l.lossSummary,
     }),
     persona: l.persona,
-    leadScore: l.leadScore,
+    // Whichever quality figure is meaningful: an inbound lead keeps the score
+    // its intent signals earned, and only a record the intent model had nothing
+    // to say about can be raised by fit.
+    leadScore: effectiveLeadQuality(l.leadScore, {
+      // "unassigned" is the internal placeholder, not a persona anyone sells to.
+      hasPersona: Boolean(l.persona) && l.persona !== "unassigned_persona",
+      hasEmail: Boolean(l.contactId && contactDetail.get(l.contactId)?.email),
+      hasPhone: Boolean(l.contactId && contactDetail.get(l.contactId)?.phone),
+      hasCompany: Boolean(l.companyId),
+      hasLocation: Boolean(l.contactId && contactDetail.get(l.contactId)?.city),
+    }),
     status: l.status,
     lastActivityAt: latestActivity.get(l.id) ?? l.receivedAt,
+    activityKnown: latestActivity.has(l.id),
     hasActiveCampaign: leadsWithCampaign.has(l.id),
   }));
 
@@ -192,16 +287,40 @@ export async function runWeatherEventDetection(
   source?: WeatherEventSource,
   client?: SupabaseClient,
   now: string = new Date().toISOString(),
+  /** Explicit tenant; omit to resolve from the ambient request. */
+  scopedOrgId?: string,
 ): Promise<PersistResult> {
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "not_configured" };
   const db = client ?? getSupabaseAdminClient();
   const src = source ?? supabaseWeatherEventSource(db);
-  const orgId = await getCurrentOrgId();
+  const orgId = scopedOrgId ?? (await getCurrentOrgId());
 
   const events = await src.listActiveEvents(now);
   if (events.length === 0) return { ok: true, count: 0 };
 
-  const candidates = detectWeatherEventOpportunities(events, { now });
+  // Read the SAME per-workspace weather config the `weather-signals` connector
+  // reads (src/lib/connectors/builtin/weather-signal.ts).
+  //
+  // This path and the connector path both run inside one scan, over different
+  // sources: this one reads the stored `weather_events` table, the connector
+  // hits live NWS. Because `upsertOpportunities` dedups by skipping a subject
+  // that already has an open opportunity of the same kind, whichever finishes
+  // first wins — and they race inside a Promise.all. So when this path ignored
+  // the workspace's config, a weather opportunity would carry a persona (or
+  // respect the operator's event-category opt-in) only depending on who won
+  // that race. Reading the config here makes the two paths agree, whoever wins.
+  //
+  // Without a persona, `selectAutoDraftCandidates` skips the opportunity as
+  // `no_persona` — so the config gap silently made storm opportunities
+  // undraftable rather than visibly wrong.
+  const ctx = await getCurrentWorkspaceContext().catch(() => null);
+  const config: Record<string, unknown> = ctx?.workspaceId
+    ? await getConnectorConfig(db, ctx.workspaceId, "weather-signals").catch(() => ({}))
+    : {};
+  const persona = typeof config.persona === "string" && config.persona.trim() ? config.persona.trim() : null;
+  const categories = parseWeatherCategories(config.eventCategories);
+
+  const candidates = detectWeatherEventOpportunities(events, { now, persona, categories });
   return upsertOpportunities(candidates, db, { orgId });
 }
 
@@ -226,10 +345,14 @@ type CampaignRow = { id: string; name: string | null; persona: string | null; st
  * never disagree. Read-only — the draft it recommends stays approval-gated. The
  * upsert's per-subject dedup keeps one open "draft round two" per campaign.
  */
-export async function runNextIterationDetection(client?: SupabaseClient): Promise<PersistResult> {
+export async function runNextIterationDetection(
+  client?: SupabaseClient,
+  /** Explicit tenant; omit to resolve from the ambient request. */
+  scopedOrgId?: string,
+): Promise<PersistResult> {
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "not_configured" };
   const db = client ?? getSupabaseAdminClient();
-  const orgId = await getCurrentOrgId();
+  const orgId = scopedOrgId ?? (await getCurrentOrgId());
 
   const { data, error } = await db
     .from("campaigns")
@@ -246,7 +369,7 @@ export async function runNextIterationDetection(client?: SupabaseClient): Promis
     if (!c.id) continue;
     const name = c.name?.trim() || `Campaign ${c.id.slice(0, 8)}`;
     // Reuse the exact panel + learning the campaign detail renders.
-    const panel = await getCampaignPerformancePanel(c.id);
+    const panel = await getCampaignPerformancePanel(c.id, orgId);
     if (panel.status !== "live" || panel.channels.length === 0) continue;
     const learning = buildPerformanceLearning(panel, name);
     if (!learning) continue;
@@ -296,10 +419,12 @@ type CompetitorRow = {
 export async function runCompetitorSignalDetection(
   client?: SupabaseClient,
   now: string = new Date().toISOString(),
+  /** Explicit tenant; omit to resolve from the ambient request. */
+  scopedOrgId?: string,
 ): Promise<PersistResult> {
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "not_configured" };
   const db = client ?? getSupabaseAdminClient();
-  const orgId = await getCurrentOrgId();
+  const orgId = scopedOrgId ?? (await getCurrentOrgId());
 
   const { data, error } = await db
     .from("competitor_campaigns")

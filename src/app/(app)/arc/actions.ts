@@ -31,6 +31,7 @@ import {
   deleteConversation,
   deleteMessagesAfter,
   getArcMessage,
+  listMessages,
   getConversation,
   getMessageConversationId,
   getPrecedingOperatorMessage,
@@ -76,6 +77,17 @@ import { saveAppSettings } from "@/lib/settings/store";
 const MAX_MESSAGE_LENGTH = 8000;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const CONTEXT_SCOPES = new Set(["workspace", "brand", "crm", "campaigns"]);
+
+/** One message as an inline surface needs it — body and role, nothing else.
+ *  Deliberately narrower than ArcMessage: Studio's panel is not the chat view
+ *  and should not start carrying action cards, recall and feedback state. */
+export type ArcThreadMessage = {
+  id: string;
+  role: "operator" | "arc" | string;
+  body: string;
+  status: string;
+  createdAt: string;
+};
 
 export type SendArcMessageResult =
   | { ok: true; conversationId: string }
@@ -231,6 +243,8 @@ export async function sendArcMessageAction(input: {
     const command = typeof input.command === "string" ? input.command.trim().replace(/^\//, "") || null : null;
     // Only resolved when a slash command is in play — a generated skill's
     // publisher is the workspace's own name.
+    // Correctly silent (BSR-546): skill context is optional enrichment for a
+    // slash command. Without it the command still runs, just less informed.
     const skillContext = command ? await getCurrentWorkspaceContext().catch(() => null) : null;
     const [operator, workspaceSkills, agentName] = await Promise.all([
       getOperatorActor(),
@@ -457,8 +471,8 @@ export async function assignArcConversationCampaignAction(input: {
   try {
     await assertConversationAccess(input.conversationId, "collaborate");
     if (campaignId) {
-      const orgId = await getCurrentOrgId();
-      const campaign = (await listCampaignNames(orgId)).find((candidate) => candidate.id === campaignId);
+      const { orgId, workspaceId } = await getCurrentWorkspaceContext();
+      const campaign = (await listCampaignNames(orgId, undefined, workspaceId)).find((candidate) => candidate.id === campaignId);
       if (!campaign) return { ok: false, error: "That campaign is not available in this workspace." };
     }
     await assignConversationToCampaign(input.conversationId, campaignId);
@@ -566,7 +580,13 @@ export async function setArcMessageFeedbackAction(input: {
 }
 
 export type ArcDraftDecisionResult =
-  | { ok: true; persisted: boolean; status?: string }
+  | {
+      ok: true;
+      persisted: boolean;
+      status?: string;
+      /** Revision requests only — false when Arc has not actually started (see BSR-695). */
+      dispatched?: boolean;
+    }
   | { ok: false; error: string };
 
 const DRAFT_DECISIONS: ReadonlySet<string> = new Set(["approved", "declined"]);
@@ -598,6 +618,45 @@ export async function getArcAssetStatusesAction(
     return await getArcAssetStatuses(assetIds, ctx.orgId);
   } catch {
     return {};
+  }
+}
+
+/**
+ * The tail of a conversation, for a surface that renders Arc inline without
+ * owning the whole chat view — Studio's copilot panel (BSR-681).
+ *
+ * Studio's panel used to be a permanent empty state: `askArc` sent the message
+ * and then pushed the router at /arc, so the reply arrived on a different page
+ * and the operator lost the canvas they were editing. It needs the messages
+ * themselves, and it has no server component to refetch through.
+ *
+ * Access-checked like every other conversation read: being able to open Studio
+ * is not permission to read someone else's thread.
+ */
+export async function getArcConversationTailAction(input: {
+  conversationId: string;
+  limit?: number;
+}): Promise<{ ok: true; messages: ArcThreadMessage[] } | { ok: false; error: string }> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Arc chat needs a connected backend." };
+  const conversationId = input.conversationId?.trim();
+  if (!conversationId) return { ok: false, error: "No conversation." };
+  try {
+    await assertConversationAccess(conversationId, "view");
+    const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
+    const all = await listMessages(conversationId);
+    return {
+      ok: true,
+      messages: all.slice(-limit).map((message) => ({
+        id: message.id,
+        role: message.role,
+        body: message.body,
+        status: message.status,
+        createdAt: message.createdAt,
+      })),
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not load the conversation." };
   }
 }
 
@@ -644,9 +703,14 @@ export async function requestArcDraftRevisionAction(input: {
 
   try {
     const operator = await getOperatorActor();
-    await requestAssetRevision({ campaignId: input.campaignId, assetId: input.assetId, instruction: cleaned, operator });
+    const { dispatched } = await requestAssetRevision({
+      campaignId: input.campaignId,
+      assetId: input.assetId,
+      instruction: cleaned,
+      operator,
+    });
     revalidatePath("/arc");
-    return { ok: true, persisted: true, status: "revision_requested" };
+    return { ok: true, persisted: true, status: "revision_requested", dispatched };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Couldn't request that revision." };
   }
@@ -733,6 +797,13 @@ export type SavedArcItemVM = {
   kind: SavedKind;
   title: string;
   preview: string | null;
+  /**
+   * The full saved text. `preview` is capped at 160 characters for the card, so
+   * it is useless for the thing the Saved tab exists for — putting the item back
+   * to work. Without this the panel could only ever show a stub and send you
+   * back to the source conversation to copy the rest by hand.
+   */
+  body: string | null;
   note: string | null;
   mediaUrl: string | null;
   conversationHref: string | null;
@@ -746,6 +817,7 @@ function toSavedVM(item: SavedItem): SavedArcItemVM {
     kind: item.kind,
     title: item.title?.trim() || firstLine?.slice(0, 90) || "Saved response",
     preview: item.caption?.trim() || (item.body ? item.body.replace(/\s+/g, " ").trim().slice(0, 160) : null),
+    body: item.body,
     note: item.note,
     mediaUrl: item.mediaUrl,
     conversationHref: item.sourceConversationId ? `/arc?c=${encodeURIComponent(item.sourceConversationId)}` : null,
@@ -755,9 +827,9 @@ function toSavedVM(item: SavedItem): SavedArcItemVM {
 
 function buildDemoSavedItems(): SavedArcItemVM[] {
   return [
-    { id: "demo-saved-1", kind: "angle", title: "142 accounts hit pricing repeatedly", preview: "Demo-first outreach beat discount-led — lead with the free, no-pressure walkthrough angle for the high-intent segment.", note: "Saved from Arc chat", mediaUrl: null, conversationHref: "/arc?c=storm", createdAt: "2026-07-20T09:38:00Z" },
-    { id: "demo-saved-2", kind: "draft", title: "Demo follow-up email", preview: "Hi {first_name}, your team looked at pricing three times this week. We’re offering a free, no-pressure walkthrough this week.", note: "Saved from Arc chat", mediaUrl: null, conversationHref: "/arc?c=storm", createdAt: "2026-07-19T14:05:00Z" },
-    { id: "demo-saved-3", kind: "angle", title: "Active-trial segment books fastest", preview: "For active-trial, high-intent accounts a demo-first message converts fastest — worth reusing next surge.", note: "Saved from Arc chat", mediaUrl: null, conversationHref: null, createdAt: "2026-07-18T11:20:00Z" },
+    { id: "demo-saved-1", kind: "angle", title: "142 accounts hit pricing repeatedly", preview: "Demo-first outreach beat discount-led — lead with the free, no-pressure walkthrough angle for the high-intent segment.", body: "Demo-first outreach beat discount-led — lead with the free, no-pressure walkthrough angle for the high-intent segment.", note: "Saved from Arc chat", mediaUrl: null, conversationHref: "/arc?c=storm", createdAt: "2026-07-20T09:38:00Z" },
+    { id: "demo-saved-2", kind: "draft", title: "Demo follow-up email", preview: "Hi {first_name}, your team looked at pricing three times this week. We’re offering a free, no-pressure walkthrough this week.", body: "Hi {first_name},\n\nYour team looked at pricing three times this week. We're offering a free, no-pressure walkthrough — 20 minutes, your data, no slides.\n\nWorth a look?", note: "Saved from Arc chat", mediaUrl: null, conversationHref: "/arc?c=storm", createdAt: "2026-07-19T14:05:00Z" },
+    { id: "demo-saved-3", kind: "angle", title: "Active-trial segment books fastest", preview: "For active-trial, high-intent accounts a demo-first message converts fastest — worth reusing next surge.", body: "For active-trial, high-intent accounts a demo-first message converts fastest — worth reusing next surge.", note: "Saved from Arc chat", mediaUrl: null, conversationHref: null, createdAt: "2026-07-18T11:20:00Z" },
   ];
 }
 
@@ -908,7 +980,7 @@ export async function generateExemplarSkillAction(input: {
       sourceAssetIds: result.sourceAssetIds,
       counterExampleAssetIds: result.counterExampleAssetIds,
       generatedAt: new Date().toISOString(),
-    }, client);
+    }, client, context.workspaceId);
 
     const skills = await listGeneratedSkills(context.orgId, client);
     revalidatePath("/arc");

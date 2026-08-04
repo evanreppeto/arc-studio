@@ -1,14 +1,26 @@
 import Link from "next/link";
 
-import { humanizePersonaLabel as humanizePersona } from "@/domain";
+import {
+  humanizePersonaLabel as humanizePersona,
+  ASSET_NOUN,
+  definitionText,
+  countOf,
+  DAY_NOUN,
+  needsYouPhrase,
+  toWorkState,
+  WORK_STATE_LABEL,
+} from "@/domain";
 import { resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
+import { getActivationState } from "@/lib/activation/read-model";
 import { getAnalyticsOverview, type OverviewKpi, type TrendKey } from "@/lib/analytics/overview";
 import { promptForOpportunity } from "@/lib/arc-chat/waiting-opps";
 import { type OpportunityEvidence } from "@/lib/opportunities/read-model";
 
 import { QuickActions } from "./_components/quick-actions";
-import { Sparkline } from "../_components/sparkline";
+import { SetupChecklist } from "./_components/setup-checklist";
+import { Define } from "../_components/define";
+import { KpiStrip } from "../_components/kpi-strip";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
 
@@ -40,8 +52,14 @@ function pillTone(a: { status: string; statusLabel: string; riskLevel: string })
   return "ok";
 }
 
-// Friendlier task-pill labels than the raw approval status (mockup: "Needs you" / "Blocked").
-const PILL_LABEL: Record<"warn" | "red" | "ok", string> = { warn: "Needs you", red: "Blocked", ok: "Ready" };
+// Task-pill labels, resolved through the one vocabulary (BSR-656) rather than
+// spelled out here. "Blocked" used to sit in the red slot; a compliance hold is
+// work coming back to you, so it reads as "Needs changes" now.
+const PILL_LABEL: Record<"warn" | "red" | "ok", string> = {
+  warn: WORK_STATE_LABEL.needs_you,
+  red: WORK_STATE_LABEL.needs_changes,
+  ok: WORK_STATE_LABEL.approved,
+};
 
 // Cite chips for the top opportunity — each references a REAL evidence field on
 // the record, so the [1][2] badges are honest source pointers, not decoration.
@@ -49,8 +67,8 @@ function evidenceFacts(ev?: OpportunityEvidence | null): string[] {
   if (!ev) return [];
   const facts: string[] = [];
   for (const url of ev.evidence_urls ?? []) facts.push(`Source · ${url.replace(/^https?:\/\//, "")}`);
-  if (typeof ev.leadScore === "number") facts.push(`Lead score ${ev.leadScore}`);
-  if (typeof ev.daysCold === "number") facts.push(`${ev.daysCold} days since last activity`);
+  if (typeof ev.leadScore === "number") facts.push(`Lead score ${ev.leadScore} — ${definitionText("lead_score")}`);
+  if (typeof ev.daysCold === "number") facts.push(`${countOf(ev.daysCold, DAY_NOUN)} since last activity`);
   if (ev.lastActivityAt) facts.push(`Last activity ${relativeTime(ev.lastActivityAt)}`);
   if (!facts.length && ev.persona) facts.push(`Persona · ${humanizePersona(ev.persona)}`);
   return facts.slice(0, 3);
@@ -66,9 +84,13 @@ export default async function HomePage() {
   // One consistent snapshot for the whole screen: the hero line, the "waiting on
   // you" queue, the metrics, and the campaign rows all read from the same summary
   // so they can't disagree with each other.
-  const [summary, overview] = await Promise.all([
-    getWorkspaceSummary(ctx.orgId),
+  const [summary, overview, activation] = await Promise.all([
+    getWorkspaceSummary(ctx.orgId, "Arc", ctx.workspaceId),
     getAnalyticsOverview(ctx.orgId),
+    // First-run guidance. Hidden once the workspace has records and the owner
+    // has either finished or dismissed it, so an established workspace never
+    // sees this.
+    getActivationState(ctx.orgId, ctx.workspaceId ?? null),
   ]);
   const approvalCount = summary.approvals.length;
   const approvals = summary.approvals.slice(0, 3);
@@ -112,17 +134,19 @@ export default async function HomePage() {
     <div className="scroll">
       <section className="content">
         <div className="date">{dateLabel}</div>
-        <h1 className="greet">
+        <h2 className="greet">
           {greeting}
           {firstName ? `, ${firstName}` : ""}
-        </h1>
+        </h2>
         <div className="subline">
-          {approvalCount} {approvalCount === 1 ? "package" : "packages"} waiting
+          {needsYouPhrase(approvalCount)}
           <span className="dot">·</span>
           {openOppCount} open {openOppCount === 1 ? "opportunity" : "opportunities"}
           <span className="dot">·</span>
-          {liveCampaigns} live
+          {liveCampaigns} {liveCampaigns === 1 ? "campaign" : "campaigns"} sending
         </div>
+
+        <SetupChecklist checklist={activation.checklist} />
 
         {focal && (
           <div className="focal">
@@ -133,12 +157,14 @@ export default async function HomePage() {
                 <span className="cites">
                   <span className="cites-label">Evidence</span>
                   {evidenceFacts(focal.evidence).map((f, i) => (
-                    <span className="cite" key={i} title={f}>{i + 1}</span>
+                    <span className="cite" key={i} title={f} tabIndex={0} role="note" aria-label={`Evidence: ${f}`}>
+                      {i + 1}
+                    </span>
                   ))}
                 </span>
               )}
               <div className="conf">
-                <span className="cl">Confidence</span>
+                <span className="cl">Confidence<Define term="confidence" /></span>
                 <span className="track">
                   <span className="fill" style={{ width: `${focal.confidence}%` }} />
                 </span>
@@ -152,19 +178,19 @@ export default async function HomePage() {
                 className="btn ghost"
                 href={{ pathname: "/arc", query: { new: "1", prompt: promptForOpportunity(focal) } }}
               >
-                Ask Arc to draft it
+                Draft with Arc
               </Link>
             </div>
           </div>
         )}
 
         <div className="sech">
-          <h3>Waiting on you</h3>
-          <span className="ct">{approvalCount} to decide</span>
+          <h3>{WORK_STATE_LABEL.needs_you}</h3>
+          <span className="ct">{approvalCount}</span>
         </div>
         <div className="rule" />
         {approvals.length === 0 ? (
-          <p className="empty-note">Nothing needs your approval right now. Arc surfaces drafts here as it prepares them.</p>
+          <p className="empty-note">Nothing needs your approval right now. Arc puts drafts here as it finishes them.</p>
         ) : (
           approvals.map((a) => {
             const tone = pillTone(a);
@@ -182,38 +208,28 @@ export default async function HomePage() {
         )}
         {approvalCount > approvals.length ? (
           <Link className="more queue-more" href="/campaigns">
-            View all {approvalCount} waiting →
+            View all {approvalCount} →
           </Link>
         ) : null}
 
-        <div className="metrics">
-          {metrics.map((m) => {
-            const series = overview.trend[KPI_TREND[m.label]]?.cur ?? [];
-            return (
-              <div className="metric" key={m.label}>
-                <div className="ml">{m.label}</div>
-                <div className="mrow">
-                  <span className="mv">{m.value}</span>
-                  {m.deltaLabel && m.deltaLabel !== "—" ? (
-                    <span className={`delta ${m.dir}`} title={m.prevLabel}>{m.deltaLabel}</span>
-                  ) : null}
-                </div>
-                {series.length > 1 ? (
-                  <div className="spark">
-                    <Sparkline points={series} up={m.dir === "up"} />
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
+        <KpiStrip
+          items={metrics.map((m) => ({
+            label: m.label,
+            value: m.value,
+            delta: { label: m.deltaLabel, dir: m.dir },
+            // The window was only ever a hover title, so the delta read as a
+            // number with no baseline (BSR-659).
+            sublabel: `vs previous 30 days`,
+            spark: { points: overview.trend[KPI_TREND[m.label]]?.cur ?? [], up: m.dir === "up" },
+          }))}
+        />
 
         <div className="sech">
           <h3>Open opportunities</h3>
           <Link className="more" href="/opportunities">All opportunities →</Link>
         </div>
         {opps.length === 0 ? (
-          <p className="empty-note">No open opportunities yet. Arc watches your signals and surfaces source-backed ones here.</p>
+          <p className="empty-note">No open opportunities yet. Arc watches for signs of interest and lists the ones it can back up with evidence.</p>
         ) : (
           <div className="opps">
             {opps.map((o) => (
@@ -237,11 +253,11 @@ export default async function HomePage() {
         )}
 
         <div className="sech">
-          <h3>Campaigns in flight</h3>
+          <h3>Active campaigns</h3>
           <Link className="more" href="/campaigns">All campaigns →</Link>
         </div>
         {campaigns.length === 0 ? (
-          <p className="empty-note">No campaigns yet. Arc drafts approval-gated packages here as opportunities come in.</p>
+          <p className="empty-note">No campaigns yet. Arc drafts them here as opportunities come in — nothing sends until you approve it.</p>
         ) : (
           <div className="ctable">
             <div className="ch">
@@ -253,10 +269,10 @@ export default async function HomePage() {
               <Link key={camp.id} href={`/campaigns/${camp.id}`} className="cr">
                 <div>
                   <div className="cn">{camp.name}</div>
-                  {camp.pendingCount > 0 && <div className="csub">{camp.pendingCount} to approve</div>}
+                  {camp.pendingCount > 0 && <div className="csub">{countOf(camp.pendingCount, ASSET_NOUN)} to approve</div>}
                 </div>
                 <span>{humanizePersona(camp.persona)}</span>
-                <span className="cn" style={{ textTransform: "capitalize", fontWeight: 500 }}>{camp.status}</span>
+                <span className="cn" style={{ fontWeight: 500 }}>{WORK_STATE_LABEL[toWorkState(camp.status)]}</span>
               </Link>
             ))}
           </div>
@@ -268,15 +284,13 @@ export default async function HomePage() {
         <div className="rsub">Source-backed, watched by Arc</div>
         <div>
           {signals.length === 0 ? (
-            <p className="empty-note">No signals yet. Arc surfaces source-backed ones here.</p>
+            <p className="empty-note">No signals yet. Arc lists the ones it can back up with evidence here.</p>
           ) : (
-            signals.map((s, i) => (
+            signals.map((s) => (
               <Link className="sig" href={`/opportunities?selected=${encodeURIComponent(s.id)}`} key={s.id}>
                 <div className="st">{s.title}</div>
                 <div className="sm">
-                  <span className="src">
-                    <b>[{i + 1}]</b> {s.source}
-                  </span>
+                  <span className="src">{s.source}</span>
                   <span className="sa">{s.time}</span>
                 </div>
               </Link>
@@ -286,7 +300,7 @@ export default async function HomePage() {
 
         <div className="rsec">
           <h3 className="rh">Arc activity</h3>
-          <div className="rsub">Recent agent runs</div>
+          <div className="rsub">What Arc has been doing</div>
           <div>
             {activityItems.length === 0 ? (
               <p className="empty-note">No recent activity yet.</p>

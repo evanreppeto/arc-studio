@@ -84,12 +84,58 @@ describe("isPublicPath", () => {
     }
   });
 
+  it("keeps /compare and its comparison pages public in every mode", () => {
+    // Comparison pages are an organic search entry point — they are read by
+    // strangers who have no account and never will unless the page converts
+    // them. Gating them turns the highest-intent traffic we get into a 302.
+    for (const mode of ["open", "operator", "supabase"] as const) {
+      expect(isPublicPath("/compare", mode)).toBe(true);
+      expect(isPublicPath("/compare/vs-agency", mode)).toBe(true);
+      expect(isPublicPath("/compare/vs-hubspot", mode)).toBe(true);
+    }
+  });
+
+  it("keeps /industries and its industry pages public in every mode", () => {
+    // Same reasoning as /compare: these are organic search entry points read by
+    // people who do not have an account yet.
+    for (const mode of ["open", "operator", "supabase"] as const) {
+      expect(isPublicPath("/industries", mode)).toBe(true);
+      expect(isPublicPath("/industries/restoration", mode)).toBe(true);
+      expect(isPublicPath("/industries/hvac-plumbing", mode)).toBe(true);
+    }
+  });
+
+  it("keeps /legal public in every mode", () => {
+    // Terms and Privacy have to be readable by someone deciding whether to sign
+    // up, and by Stripe's review. Gating them turns a compliance requirement
+    // into a 302.
+    for (const mode of ["open", "operator", "supabase"] as const) {
+      expect(isPublicPath("/legal", mode)).toBe(true);
+      expect(isPublicPath("/legal/terms", mode)).toBe(true);
+      expect(isPublicPath("/legal/privacy", mode)).toBe(true);
+      expect(isPublicPath("/legal/subprocessors", mode)).toBe(true);
+    }
+  });
+
   it("does not let a public marketing path leak neighbouring routes by prefix", () => {
     // The exposure this guards against: a bare-prefix match on a page name also
     // exempts every route that merely STARTS with it, so an unrelated gated page
     // silently renders to signed-out visitors. Only the exact path and real
     // sub-paths may be public.
-    for (const pathname of ["/pricing-internal", "/pricingsecret", "/pricing-admin/rates"]) {
+    for (const pathname of [
+      "/pricing-internal",
+      "/pricingsecret",
+      "/pricing-admin/rates",
+      "/compare-internal",
+      "/comparesecret",
+      "/compare-admin/tenants",
+      "/industries-internal",
+      "/industriessecret",
+      "/industries-admin/tenants",
+      "/legal-internal",
+      "/legalsecret",
+      "/legal-admin/contracts",
+    ]) {
       expect(isPublicPath(pathname, "supabase")).toBe(false);
     }
   });

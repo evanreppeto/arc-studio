@@ -133,7 +133,7 @@ function buildRestorationDemoOpportunities(): OpportunityRecord[] {
       subject_id: "demo-spring-storm-prep",
       title: "Spring Storm Prep is converting — draft the next iteration",
       summary:
-        "Email booked 6 jobs from 45 leads. For the next iteration, lead with Email, reuse “Storm-watch SMS nudge”. Arc can draft round two now — approval-gated, nothing sends until you approve.",
+        "Email booked 6 jobs from 45 leads. Next time, lead with Email and reuse “Storm-watch SMS nudge”. Arc can draft round two now — nothing sends until you approve it.",
       confidence: 90,
       urgency: "high",
       status: "pending",
@@ -147,7 +147,7 @@ function buildRestorationDemoOpportunities(): OpportunityRecord[] {
         leads: 45,
         topAsset: "Storm-watch SMS nudge",
         arcPrompt:
-          "Draft the next iteration of the Spring Storm Prep campaign based on what worked: For the next iteration, lead with Email, reuse “Storm-watch SMS nudge”. Keep it approval-gated.",
+          "Draft the next iteration of the Spring Storm Prep campaign based on what worked: For the next iteration, lead with Email, reuse “Storm-watch SMS nudge”. Keep it a draft for my approval.",
       },
     },
     {

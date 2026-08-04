@@ -1,18 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { derivedShortLabel, type BillingNotice } from "@/domain";
 import type { ArcRecentConversationVM } from "@/lib/arc-chat/read-model";
-import { getProductLanguage } from "@/lib/product-language";
+import { getProductLanguage, type ObjectLabelSettings } from "@/lib/product-language";
 
 import { AccountMenu } from "./account-menu";
 import { BillingNoticeBar } from "./billing-notice";
+import { DemoDataBar } from "./demo-data-bar";
 import { ComingSoonToasts } from "./coming-soon";
 import { CommandPalette, type CommandItem } from "./command-palette";
+import { IdentifierLeakCheck } from "./identifier-leak-check";
 import { NavProgress } from "./nav-progress";
+import { RailRecents } from "./rail-recents";
 import { RoutePrewarm } from "./route-prewarm";
 import { WorkspaceSwitcher, type WorkspaceOption } from "./workspace-switcher";
 
@@ -51,33 +54,37 @@ const IconLibrary = <NavIcon src="/brand/nav-icons/sidebar-v2/library.png" />;
 const IconBrand = <NavIcon src="/brand/nav-icons/sidebar-v2/brand.png" />;
 const IconOutbox = <NavIcon src="/brand/nav-icons/sidebar-v2/outbox.png" />;
 
-type NavGroup = { group: string; items: { label: string; href: string; icon: React.ReactNode }[] };
+type NavItem = { label: string; href: string; icon: React.ReactNode; hint: string };
+type NavGroup = { group: string; items: NavItem[] };
 
-const PRIMARY_NAV_ITEMS: NavGroup["items"] = [
-  { label: "Arc Chat", href: "/arc", icon: IconArc },
-  { label: "Home", href: "/home", icon: IconHome },
-  { label: "Campaigns", href: "/campaigns", icon: IconCampaigns },
-  { label: "Relationships", href: "/crm", icon: IconCrm },
-  { label: "Opportunities", href: "/opportunities", icon: IconOpp },
+const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { label: "Arc Chat", href: "/arc", icon: IconArc, hint: "Ask Arc to find work or draft something" },
+  { label: "Home", href: "/home", icon: IconHome, hint: "What needs you today" },
+  { label: "Campaigns", href: "/campaigns", icon: IconCampaigns, hint: "Everything Arc has drafted, and its approval state" },
+  { label: "Relationships", href: "/crm", icon: IconCrm, hint: "Your contacts, companies and leads" },
+  { label: "Opportunities", href: "/opportunities", icon: IconOpp, hint: "Chances Arc found, with the evidence behind them" },
 ];
 
 const ADVANCED_NAV_GROUPS: NavGroup[] = [
-  { group: "Measure", items: [{ label: "Analytics", href: "/analytics", icon: IconAnalytics }] },
   {
-    group: "Intelligence",
+    group: "Performance",
+    items: [{ label: "Analytics", href: "/analytics", icon: IconAnalytics, hint: "Leads, jobs and revenue over time" }],
+  },
+  {
+    group: "Knowledge",
     items: [
-      { label: "Journeys", href: "/journeys", icon: IconJourneys },
-      { label: "Brain", href: "/brain", icon: IconBrain },
-      { label: "Personas", href: "/personas", icon: IconPersonas },
+      { label: "Journeys", href: "/journeys", icon: IconJourneys, hint: "How each customer got to you" },
+      { label: "Brain", href: "/brain", icon: IconBrain, hint: "What Arc knows about your business" },
+      { label: "Personas", href: "/personas", icon: IconPersonas, hint: "The customer types you sell to" },
     ],
   },
   {
-    group: "Create & manage",
+    group: "Create & send",
     items: [
-      { label: "Studio", href: "/studio", icon: IconStudio },
-      { label: "Library", href: "/library", icon: IconLibrary },
-      { label: "Brand", href: "/brand", icon: IconBrand },
-      { label: "Outbox", href: "/outbox", icon: IconOutbox },
+      { label: "Studio", href: "/studio", icon: IconStudio, hint: "Design ads and images" },
+      { label: "Library", href: "/library", icon: IconLibrary, hint: "Your photos, logos and files" },
+      { label: "Brand", href: "/brand", icon: IconBrand, hint: "Your colours, voice and proof points" },
+      { label: "Outbox", href: "/outbox", icon: IconOutbox, hint: "Approved messages waiting to go out" },
     ],
   },
 ];
@@ -150,10 +157,12 @@ export function AppShell({
   logoUrl = null,
   avatarUrl = null,
   industry = "general",
+  objectLabels = null,
   workspaces = [],
   navBadges = {},
   recentConversations = [],
   billingNotice = null,
+  demoData = false,
   children,
 }: {
   workspaceName: string;
@@ -167,14 +176,28 @@ export function AppShell({
   logoUrl?: string | null;
   avatarUrl?: string | null;
   industry?: string | null;
+  /** The workspace's own object names. Renames the CRM section in the rail. */
+  objectLabels?: ObjectLabelSettings | null;
   workspaces?: WorkspaceOption[];
   navBadges?: Record<string, number>;
   recentConversations?: ArcRecentConversationVM[];
   billingNotice?: BillingNotice | null;
+  /** Console-wide: the numbers on screen are illustrative, not the viewer's. */
+  demoData?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const language = getProductLanguage(industry);
+  const searchParams = useSearchParams();
+  const language = getProductLanguage(industry, objectLabels);
+  // Which recent chat is on screen. Only /arc can have one open, and `?new=1`
+  // means a blank composer — so neither of those marks a row. Everywhere else
+  // the rail shows recents as plain links, which is what they are.
+  const openConversationId = (() => {
+    if (pathname !== "/arc" || searchParams.get("new") === "1") return null;
+    const requested = searchParams.get("c");
+    if (requested) return requested;
+    return recentConversations.find((conversation) => conversation.defaultActive)?.id ?? null;
+  })();
   const navGroups = navGroupsFor(language.crmLabel);
   // Mobile nav drawer. Below the shell breakpoint the rail is an off-canvas
   // drawer toggled from the top bar; on desktop `navOpen` is inert (the rail is
@@ -273,6 +296,10 @@ export function AppShell({
     <div className={embedded ? "arc-app is-embedded" : "arc-app"}>
       <NavProgress />
       <RoutePrewarm hrefs={PREWARM_HREFS} />
+      {/* First thing in the tab order, invisible until focused. Without it a
+          keyboard user tabs through the whole rail on every page before
+          reaching content. */}
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <div className="app" data-nav-open={navOpen}>
         {/* Backdrop behind the mobile drawer — tap to dismiss. Inert on desktop
             (the rail is docked, so this never covers content there). */}
@@ -338,6 +365,7 @@ export function AppShell({
                       href={it.href}
                       className={`nav${active ? " on" : ""}`}
                       aria-current={active ? "page" : undefined}
+                      title={it.hint}
                       onClick={() => closeMobileNav(false)}
                     >
                       {active && <span className="tick" />}
@@ -366,6 +394,7 @@ export function AppShell({
                       href={it.href}
                       className={`nav${active ? " on" : ""}`}
                       aria-current={active ? "page" : undefined}
+                      title={it.hint}
                       onClick={() => closeMobileNav(false)}
                     >
                       {active && <span className="tick" />}
@@ -382,31 +411,20 @@ export function AppShell({
                 <h2 id="rail-recents-title">Recent chats</h2>
                 <Link
                   href="/arc?new=1"
+                  className="rail-recents-new"
+                  title="Start a new Arc chat"
                   prefetch={false}
                   onClick={() => closeMobileNav(false)}
                 >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                   New
                 </Link>
               </div>
-              {recentConversations.length > 0 ? (
-                <div className="rail-recents-list">
-                  {recentConversations.map((conversation) => (
-                    <Link
-                      key={conversation.id}
-                      href={`/arc?c=${encodeURIComponent(conversation.id)}`}
-                      className="rail-recent"
-                      prefetch={false}
-                      onClick={() => closeMobileNav(false)}
-                    >
-                      <span className="rail-recent-dot" aria-hidden="true" />
-                      <span className="rail-recent-title">{conversation.title}</span>
-                      <time>{conversation.when}</time>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="rail-recents-empty">Start a chat to keep active work close by.</p>
-              )}
+              <RailRecents
+                conversations={recentConversations}
+                openConversationId={openConversationId}
+                onNavigate={() => closeMobileNav(false)}
+              />
             </section>
           </nav>
           {/* Pinned above the account control: when something is broken, the way
@@ -454,7 +472,7 @@ export function AppShell({
             >
               <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
             </button>
-            <span className="crumb">{crumb}</span>
+            <h1 className="crumb">{crumb}</h1>
             <button
               type="button"
               className="search"
@@ -481,7 +499,16 @@ export function AppShell({
           </header>
           <CommandPalette items={commandItems} />
           <BillingNoticeBar banner={billingNotice} />
-          {children}
+          <DemoDataBar show={demoData} />
+          {/* Dev/preview only — no-op in production. Warns when a stored value
+              reaches the screen as text (BSR-709). */}
+          <IdentifierLeakCheck />
+          {/* The app had no <main> on any route, so assistive tech had no way to
+              skip the rail and the header on every single page. This is the one
+              main landmark; Arc's own scroll region is a <div> beneath it. */}
+          <main id="main-content" tabIndex={-1}>
+            {children}
+          </main>
         </div>
       </div>
       <ComingSoonToasts />

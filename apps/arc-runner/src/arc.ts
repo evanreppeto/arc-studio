@@ -17,6 +17,8 @@ import { promoteConversationMemory } from "./extract-memory";
 import { resolveArcSkill, type ArcSkill } from "./skills";
 import { reviewTurnDrafts } from "./critic";
 import { createCumulativeStreamBuffer } from "./live-stream-buffer";
+import { createToolCallLog, type ArcToolCall } from "./tool-calls";
+import { buildUsageDetail, type UsageDetail } from "./usage-detail";
 import type {
   ArcActionCard,
   ArcCampaignTaskPayload,
@@ -33,6 +35,9 @@ import type { StepFn, TurnSink } from "./tools/helpers";
 export type ArcTurnResult = {
   body: string;
   actions: ArcActionCard[];
+  /** Structured record of the tools this turn ran, for `metadata.toolCalls`
+   *  (BSR-618). Empty when the turn called nothing. */
+  toolCalls: ArcToolCall[];
   suggestions: string[];
   sources: ArcMention[];
   questions: ArcQuestion[];
@@ -42,7 +47,13 @@ export type ArcTurnResult = {
   /** The model's extended-thinking transcript for this turn, preserved so the
    *  completed reply keeps the "Thought for Ns" trace. Null when none was emitted. */
   reasoning?: string | null;
-  usage: { model: string; inputTokens: number | null; outputTokens: number | null };
+  usage: {
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    /** Raw usage fields the ledger does not have columns for (BSR-502 Finding 3). */
+    detail: UsageDetail | null;
+  };
 };
 
 /**
@@ -96,6 +107,33 @@ export function assembleReplyBody(assistantChunks: string[], resultText: string)
   return [...distinctEarlier, finalText].join("\n\n");
 }
 
+/**
+ * Is this a lead-in — "I'll check the CRM first" — rather than a finding?
+ *
+ * Withholding every pre-tool chunk from the reply was too blunt. Arc reports as
+ * it goes, so a turn that checked three things wrote its findings in the chunks
+ * *between* tool calls: withholding them left a 143-character reply reading
+ * "All three reads are done — nothing changed. Summary above" while the summary
+ * itself sat in the trace. That is the failure `assembleReplyBody` exists to
+ * prevent, arrived at from the other direction.
+ *
+ * A lead-in is short and unstructured: one breath before acting. Anything with
+ * length, line breaks, bullets, or headings is doing real work and stays in the
+ * reply — where, being present, the chat's own suppression keeps it from also
+ * being read in the trace.
+ *
+ * Wrong in the safe direction by construction: misjudging a lead-in as a finding
+ * shows one extra line in the answer; the reverse deletes findings.
+ */
+const LEAD_IN_MAX_CHARS = 200;
+
+export function isLeadIn(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > LEAD_IN_MAX_CHARS) return false;
+  // Structure means it is presenting something, not announcing something.
+  return !/\n|^[-*#>|]|\d\./m.test(trimmed);
+}
+
 /** Fresh per-turn collectors plus the sink that feeds them. */
 function makeSink() {
   const actions: ArcActionCard[] = [];
@@ -124,6 +162,24 @@ function makeSink() {
  *  posts are awaited serially, so an app round-trip slower than this is the real
  *  floor. The client typewriter smooths between chunks either way. */
 const STREAM_THROTTLE_MS = 90;
+
+/**
+ * The run's own phases, reported the same way tool calls already are.
+ *
+ * Each label names what the code is actually doing at that moment. That
+ * constraint is the point: a trace that invents plausible-sounding activity is
+ * worse than one that says nothing, because it can't be caught being wrong.
+ * Keep them plain, present-tense, and free of internal vocabulary — the reader
+ * is waiting on an answer, not reading our call stack.
+ */
+const STEP_CONTEXT = "Reading your workspace";
+const STEP_WORKSPACE = "Checking what's active right now";
+const STEP_REASONING = "Working out an answer";
+const STEP_WRITING = "Writing the reply";
+/** A line of Arc's own prose, carried as a trace entry rather than a phase. The
+ *  chat renders these as prose and shows no label, so this string is a fallback
+ *  that only surfaces if that rendering is ever missed. */
+const STEP_NARRATION = "Arc";
 
 /** The model input for a turn: a plain string, or content blocks for multimodal. */
 type TurnContent = Awaited<ReturnType<typeof buildTurnContentAsync>>;
@@ -160,8 +216,86 @@ async function runArcQuery(opts: {
 }): Promise<ArcTurnResult> {
   const { actions, suggestions, sources, questions, drafts, sink } = makeSink();
 
-  const tools = toolsForMode(opts.mode, opts.client, opts.step, sink, { ...(opts.toolContext ?? {}), skill: opts.skill });
+  // Interleaving of block arrivals and step() calls. The previous attempt
+  // assumed a text block would be processed before the tool that follows it
+  // reported — it wasn't, and nothing in the code said so. This records the
+  // real order, bounded so a long turn can't flood the log.
+  const timeline: string[] = [];
+  const startedAtMs = Date.now();
+  const mark = (what: string) => {
+    if (timeline.length < 24) timeline.push(`+${Date.now() - startedAtMs}ms ${what}`);
+  };
+
+  // Live-thinking buffer, accumulated from thinking-token deltas. It feeds the
+  // "Thinking…" stream, and — because it is declared before the tools — it also
+  // lets each reported step carry the reasoning that led to it.
+  const thinkingStream = createCumulativeStreamBuffer({
+    onEmit: opts.onThinking,
+    throttleMs: STREAM_THROTTLE_MS,
+  });
+
+  /**
+   * Report a step, quoting the thinking that happened since the previous one.
+   *
+   * This is the honest version of the narration Codex shows: not a summary
+   * invented after the fact, and not the thinking transcript sliced arbitrarily,
+   * but the actual reasoning that ran between the last action and this one.
+   * Closing a step passes nothing — the stored narration is preserved.
+   */
+  /**
+   * The prose Arc wrote just before it acted — the narration source.
+   *
+   * Confirmed against a real run before this was built: a turn's block sequence
+   * reads `… thinking / text / tool_use / tool_use / thinking / text / tool_use …`,
+   * so Arc genuinely writes an explanation and then acts on it. That text is
+   * what Codex shows; the private thinking it appeared to show is redacted and
+   * arrives empty (BSR-573).
+   *
+   * This is only ever *copied* to the step. It is never removed from the reply:
+   * pre-tool text is sometimes substantive answer content — `assembleReplyBody`
+   * exists precisely because a turn that answered, called a tool, then closed
+   * was losing its finding — so withholding by position would trade a silent
+   * empty trace for a silently truncated answer. The chat suppresses narration
+   * that also appears in the answer, which degrades the trace rather than the
+   * reply.
+   */
+  let narratedUpTo = 0;
+  const step: StepFn = async (label, status, detail) => {
+    // Both edges quote, because which edge holds the reasoning depends on the
+    // step. A tool call is decided *before* it runs, so its "why" is on the
+    // opening edge and nothing new accrues while the model waits on the result.
+    // A phase like working out an answer is the opposite: it opens before the
+    // model has thought anything at all, and everything worth reporting happens
+    // inside it — quoting only on open left those phases as bare labels.
+    //
+    // The cursor advances either way, so a passage is reported once. A close
+    // with nothing new passes null, and the stored opening narration stands.
+    const thinking = thinkingStream.value();
+    const segment = thinking.slice(narratedUpTo).trim();
+    narratedUpTo = thinking.length;
+    // Prose first — it is the source that actually has content. Thinking stays
+    // as a fallback so this keeps working if these models stop redacting it.
+    mark(`step:${label}(${status})`);
+    return opts.step(label, status, detail ?? (segment || null));
+  };
+
+  const tools = toolsForMode(opts.mode, opts.client, step, sink, { ...(opts.toolContext ?? {}), skill: opts.skill });
   const arcServer = createSdkMcpServer({ name: "arc", version: "1.0.0", tools });
+
+  // Opened BEFORE the connector fetch, not after it (BSR-566).
+  //
+  // These three reads — connectors, media config, workspace summary — are one
+  // phase from the reader's side: Arc working out what this workspace has. The
+  // step used to open only around the last of them, so the two network calls
+  // below ran with no row in `running`, and the status line fell back to a bare
+  // "Thinking · Ns" for exactly as long as they took. That was the last of the
+  // silent windows BSR-566 was filed about; the rest were closed by BSR-574.
+  //
+  // Deliberately NOT a fourth label. run-phases.ts makes the case: these are our
+  // plumbing, and three rows telling someone we fetched our own config says
+  // nothing about their business. One line that stays honest while the work
+  // moves is the shape being asked for.
+  await step(STEP_WORKSPACE, "running");
 
   // Remote MCP connectors (e.g. Higgsfield) and the operator's media-model
   // defaults both only matter in work modes; fetch them together, best-effort, so
@@ -175,12 +309,48 @@ async function runArcQuery(opts: {
 
   const workspaceState = await resolveWorkspaceSummary(opts.client);
   const system = buildSystemPrompt(ARC_SYSTEM_PROMPT, { ...opts.ctx, workspaceState, mediaConfig });
+  await step(STEP_WORKSPACE, "done");
 
   // Every assistant message's text, in order. Kept per-message (not one string)
   // so they can be rejoined with a blank line — the model ends a message without
   // trailing whitespace, so concatenating raw runs the last word of one into the
   // first word of the next.
   const assistantChunks: string[] = [];
+  /**
+   * Chunks that turned out to be narration — prose Arc wrote and then acted on.
+   *
+   * Whether a text block is narration or answer is only knowable in hindsight:
+   * it is narration if a tool call follows it. So chunks are collected as
+   * normal and marked here when the next `tool_use` arrives, then withheld from
+   * the reply at assembly time.
+   *
+   * The closing text block is never marked, because nothing follows it. That
+   * matters: `assembleReplyBody` exists because a turn that answered, called a
+   * tool, then closed was reporting only its closing next-steps and losing the
+   * finding. Withholding narration moves that finding into the trace, where it
+   * is displayed above the answer — but it must never withhold the closing
+   * message, or the reply would be empty.
+   */
+  const narrationChunks = new Set<number>();
+  let lastTextChunk: number | null = null;
+  /** Text for the block currently streaming — not yet a chunk. */
+  let streamingText = "";
+  /**
+   * The reply as it stands right now, composed the way `assembleReplyBody`
+   * composes the final one: settled chunks minus anything reclassified as
+   * narration, plus whatever is being typed.
+   *
+   * Streaming raw deltas meant a lead-in was typed into the answer and then
+   * disappeared when the run settled and the reply was assembled without it.
+   * Composing instead means it leaves the answer at the moment it is classified
+   * — which is the moment it appears in the trace — so the sentence moves
+   * somewhere visible rather than vanishing.
+   */
+  const composeLiveBody = () =>
+    [...assistantChunks.filter((_, index) => !narrationChunks.has(index)), streamingText]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join("\n\n");
   let resultText = "";
   // Live-streaming buffer, accumulated from token deltas purely for the typing
   // effect. The final body is assembled below, so if partial events are
@@ -189,15 +359,42 @@ async function runArcQuery(opts: {
     onEmit: opts.onPartial,
     throttleMs: STREAM_THROTTLE_MS,
   });
-  // Live-thinking buffer, accumulated from thinking-token deltas purely for the
-  // "Thinking…" stream. Like streamBuf it's cosmetic — the canonical reasoning is
-  // set on the final reply, so if thinking deltas are unavailable nothing breaks.
-  const thinkingStream = createCumulativeStreamBuffer({
-    onEmit: opts.onThinking,
-    throttleMs: STREAM_THROTTLE_MS,
-  });
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
+  let usageDetail: UsageDetail | null = null;
+  // Diagnostic for BSR-573: Arc had never captured a character of reasoning in
+  // production, and nothing in the code path said why — the thinking branch
+  // reads a defensively-typed field, so a shape change or an absent event fails
+  // silently. Record which stream events actually arrive so the next real run
+  // answers it from the logs instead of from guesswork.
+  const seenEventShapes = new Set<string>();
+  // What a thinking_delta actually carries. The SDK notes that during a
+  // redacted-thinking phase these frames stream only token estimates — no text —
+  // which would explain thinking_delta arriving on every run while nothing is
+  // ever captured. Record the field names once so this stops being a guess.
+  let thinkingDeltaKeys: string | null = null;
+  // Does Arc actually write prose before it calls a tool? BSR-574 proposes using
+  // that text as the narration, and BSR-573 is a lesson in not building on an
+  // unverified source. Record the block order per assistant message, and how
+  // much text precedes the first tool call.
+  const blockSequences: string[] = [];
+  let preToolTextChars = 0;
+  // What Arc actually called, paired with what came back (BSR-618). Captured
+  // here rather than in `runTool` because the SDK stream also carries remote MCP
+  // connector calls, which never pass through the app's own tool wrappers.
+  const toolLog = createToolCallLog();
+  // The model phase, split where the reader can actually see it change: reasoning
+  // until the first token of prose, then writing. Tool calls report themselves in
+  // between, so the trace reads as a sequence of real phases rather than a gap.
+  let writing = false;
+  const beginWriting = async () => {
+    if (writing) return;
+    writing = true;
+    await step(STEP_REASONING, "done");
+    await step(STEP_WRITING, "running");
+  };
+
+  await step(STEP_REASONING, "running");
 
   for await (const message of query({
     prompt: promptInput(opts.content, opts.ctx.scope.conversationId ?? "arc-turn"),
@@ -210,13 +407,23 @@ async function runArcQuery(opts: {
   })) {
     if (message.type === "stream_event") {
       const event = message.event;
+      seenEventShapes.add(
+        event.type === "content_block_delta"
+          ? `content_block_delta:${(event.delta as { type?: string }).type ?? "?"}`
+          : event.type === "content_block_start"
+            ? `content_block_start:${((event as { content_block?: { type?: string } }).content_block)?.type ?? "?"}`
+            : event.type,
+      );
       if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        await beginWriting();
+        streamingText += event.delta.text;
         // Awaited (not fire-and-forget) so throttled posts stay ordered;
         // postChatChunk swallows its own errors, so this never breaks the run.
-        await partialStream.append(event.delta.text);
+        await partialStream.set(composeLiveBody());
       } else if (event.type === "content_block_delta" && event.delta.type === "thinking_delta") {
         // Extended-thinking tokens — streamed to the "Thinking…" trace. Typed as
         // unknown on some SDK versions, so read the field defensively.
+        thinkingDeltaKeys ??= Object.keys(event.delta as object).join("+");
         const thinking = (event.delta as { thinking?: unknown }).thinking;
         if (typeof thinking === "string") {
           await thinkingStream.append(thinking);
@@ -224,22 +431,119 @@ async function runArcQuery(opts: {
       }
     } else if (message.type === "assistant") {
       let text = "";
+      const shape: string[] = [];
+      let sawTool = false;
       for (const block of message.message.content) {
-        if (block.type === "text") text += block.text;
+        shape.push(block.type);
+        if (block.type === "tool_use") {
+          sawTool = true;
+          const use = block as { id?: string; name?: string; input?: unknown };
+          toolLog.start(use.id ?? "", use.name ?? "", use.input);
+        } else if (block.type === "text" && !sawTool) preToolTextChars += (block as { text?: string }).text?.length ?? 0;
       }
-      if (text.trim()) assistantChunks.push(text);
+      if (shape.length) blockSequences.push(shape.join(">"));
+      for (const type of shape) mark(`block:${type}`);
+      for (const block of message.message.content) {
+        if (block.type === "text") {
+          text += block.text;
+          const prose = block.text.trim();
+          // Emit the prose as its own entry in the trace, in the order it was
+          // written, rather than trying to hand it to a step.
+          //
+          // Attaching it to a step needed the text to be processed before the
+          // tool that follows it reported — and it isn't. A whole run's tool
+          // steps came back with no narration because of that assumption. Order
+          // in the steps array is append order, which we control, so emitting
+          // the prose directly sidesteps the correlation problem entirely: the
+          // trace reads prose, action, prose, action, which is the shape the
+          // reference actually has.
+          //
+          // Every text block is emitted, including the closing answer. The chat
+          // suppresses narration the answer already contains, so the final block
+          // disappears there rather than needing to be predicted here.
+          if (prose) await step(STEP_NARRATION, "done", prose);
+        }
+        // Second, independent capture path. The delta stream was the only way
+        // reasoning was ever collected, so a delta that carries no text — which
+        // is exactly what a redacted-thinking phase sends — lost it completely
+        // and silently. A settled thinking block, when the model emits one, has
+        // the full text and no shape ambiguity.
+        else if (block.type === "thinking") {
+          const settled = (block as { thinking?: unknown }).thinking;
+          if (typeof settled === "string" && settled.trim() && !thinkingStream.value().includes(settled.trim())) {
+            await thinkingStream.append((thinkingStream.value() ? "\n\n" : "") + settled.trim());
+          }
+        }
+      }
+      if (text.trim()) {
+        assistantChunks.push(text);
+        lastTextChunk = assistantChunks.length - 1;
+        streamingText = "";
+      }
+      // A tool call means the text before it introduced work about to happen —
+      // but only a lead-in is safe to withhold. Arc also reports findings
+      // mid-run, between tool calls, and those belong in the reply.
+      if (sawTool && lastTextChunk !== null) {
+        if (isLeadIn(assistantChunks[lastTextChunk] ?? "")) {
+          narrationChunks.add(lastTextChunk);
+          // Pull it out of the live reply now, as the trace entry for it appears.
+          await partialStream.set(composeLiveBody());
+        }
+        lastTextChunk = null;
+      }
+    } else if (message.type === "user") {
+      // Tool results come back as a synthetic user turn. Pair each one with the
+      // call it answers so the record says what happened, not just what was asked.
+      const content = (message as { message?: { content?: unknown } }).message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          const result = block as { type?: string; tool_use_id?: string; content?: unknown; is_error?: boolean };
+          if (result.type !== "tool_result" || !result.tool_use_id) continue;
+          toolLog.settle(result.tool_use_id, result.content, result.is_error === true);
+        }
+      }
     } else if (message.type === "result" && message.subtype === "success") {
       resultText = message.result;
-      const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+      const usage = (message as { usage?: Record<string, unknown> }).usage;
       if (usage) {
-        inputTokens = typeof usage.input_tokens === "number" ? usage.input_tokens : inputTokens;
-        outputTokens = typeof usage.output_tokens === "number" ? usage.output_tokens : outputTokens;
+        const count = (k: string): number | null => (typeof usage[k] === "number" ? (usage[k] as number) : null);
+        inputTokens = count("input_tokens") ?? inputTokens;
+        outputTokens = count("output_tokens") ?? outputTokens;
+        // BSR-502 Finding 3, now CONFIRMED in production: one turn reported
+        // input_tokens = 8 against cache_read 92,215 + cache_creation 12,707.
+        // The meter was recording ~8 tokens of a ~105,000-token input side.
+        //
+        // The first pass captured only the two fields the hypothesis named, plus
+        // the raw key set as a hedge — and the key set is what paid off, showing
+        // `cache_creation` (an object whose per-TTL halves bill at DIFFERENT
+        // multipliers), `service_tier` and `server_tool_use`, none of whose
+        // VALUES had been captured. buildUsageDetail stops enumerating and takes
+        // the whole payload under a structural guard, so a field nobody thought
+        // to ask for is already in the row next time.
+        //
+        // Still not priced. Cache reads are cheaper than base input and cache
+        // creation is dearer, and the multipliers have to be confirmed against
+        // published rates before any of this reaches a bill.
+        usageDetail = buildUsageDetail(usage);
+        console.log(`[arc-runner] usage payload: ${JSON.stringify(usage)}`);
       }
     }
   }
 
-  const body = assembleReplyBody(assistantChunks, resultText);
+  // Close whichever model phase is still open. A turn that produced no streamed
+  // text (tools only, or an empty reply) never entered the writing phase, so the
+  // reasoning step is the one left running.
+  await step(writing ? STEP_WRITING : STEP_REASONING, "done");
+
+  // The reply is the closing message plus anything substantive that wasn't
+  // commentary on work in progress. Narration lives in the trace instead, shown
+  // above the answer in the order Arc wrote it.
+  const replyChunks = assistantChunks.filter((_, index) => !narrationChunks.has(index));
+  const body = assembleReplyBody(replyChunks, resultText);
   const reasoning = thinkingStream.value().trim() || null;
+  console.log(
+    `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars} | narration chunks: ${narrationChunks.size}/${assistantChunks.length} | tool calls: ${toolLog.value().length}${toolLog.dropped() ? ` (+${toolLog.dropped()} over cap, not recorded)` : ""} | timeline: ${timeline.join(" ")}`,
+  );
 
   // The last SDK deltas commonly land inside the throttle window. Flush the
   // canonical values before the completion write so the pending bubble reaches
@@ -250,28 +554,36 @@ async function runArcQuery(opts: {
   return {
     body,
     actions,
+    toolCalls: toolLog.value(),
     suggestions: suggestions.slice(0, 4),
     sources,
     questions: questions.slice(0, 4),
     memory: opts.ctx.memory ?? [],
     drafts,
     reasoning,
-    usage: { model: opts.inference.model, inputTokens, outputTokens },
+    usage: { model: opts.inference.model, inputTokens, outputTokens, detail: usageDetail },
   };
 }
 
 export async function runArcTurn(payload: MarkChatMessagePayload, client: ArcClient): Promise<ArcTurnResult> {
-  const step = (label: string, status: "running" | "done") => client.postStep(payload.agentTaskId, label, status);
+  const step = (label: string, status: "running" | "done", detail?: string | null) =>
+    client.postStep(payload.agentTaskId, label, status, detail);
 
   const skill = resolveArcSkill(payload.skillId);
   const contextStartedAt = Date.now();
   // These reads are independent. Running them serially made every turn pay the
   // sum of three network round trips before the model could emit a first token.
+  //
+  // Narrate them. Until now the only steps Arc reported came from tool calls, so
+  // a turn spent these seconds — and an ask-mode turn that uses no tools, its
+  // entire run — reporting nothing at all while the reader watched a spinner.
+  await step(STEP_CONTEXT, "running");
   const [business, memory, memoryCtx] = await Promise.all([
     resolveBusinessContext(client),
     resolveRecallMemory(client, buildRecallQuery(payload.history, payload.message)),
     fetchConversationContext(client, payload.conversationId, payload.messageId),
   ]);
+  await step(STEP_CONTEXT, "done");
   console.log(`[arc-runner] context ready for task ${payload.agentTaskId} in ${Date.now() - contextStartedAt}ms`);
   const ctx: ArcTurnContext = {
     business,
@@ -374,7 +686,8 @@ export async function runArcOpportunityDraft(
   payload: ArcOpportunityDraftPayload,
   client: ArcClient,
 ): Promise<ArcTurnResult> {
-  const step = (label: string, status: "running" | "done") => client.postStep(payload.agentTaskId, label, status);
+  const step = (label: string, status: "running" | "done", detail?: string | null) =>
+    client.postStep(payload.agentTaskId, label, status, detail);
 
   const business = await resolveBusinessContext(client);
   const memory = await resolveRecallMemory(client, payload.message);
@@ -418,7 +731,8 @@ export async function runArcOpportunityScan(
   payload: ArcOpportunityScanPayload,
   client: ArcClient,
 ): Promise<ArcTurnResult> {
-  const step = (label: string, status: "running" | "done") => client.postStep(payload.agentTaskId, label, status);
+  const step = (label: string, status: "running" | "done", detail?: string | null) =>
+    client.postStep(payload.agentTaskId, label, status, detail);
 
   const business = await resolveBusinessContext(client);
   const memory = await resolveRecallMemory(client, payload.message);
@@ -449,6 +763,37 @@ export async function runArcOpportunityScan(
 }
 
 /**
+ * The instruction block for a campaign task wake. Pure and exported so the
+ * rules below are assertable — they are load-bearing behaviour, not phrasing,
+ * and both were learned from a revision that silently did nothing (BSR-695,
+ * BSR-706).
+ */
+export function buildCampaignTaskPrompt(payload: ArcCampaignTaskPayload): string {
+  return [
+    `Campaign task: ${payload.taskType}.`,
+    `Work only on campaign_id "${payload.campaignId}". When creating campaign drafts, attach them to that campaign_id.`,
+    "Create approval-gated draft assets only. Do not send, publish, launch, approve, unlock dispatch, or spend.",
+    // A revision names one asset. Without this the operator's instruction
+    // arrives scoped only to the campaign, and Arc has to guess which asset
+    // "add the logo" referred to as soon as the campaign holds more than one.
+    ...(payload.taskType === "campaign_asset_revision" && payload.assetId
+      ? [
+          "",
+          `This is a REVISION of the existing asset "${payload.assetId}". The operator's instruction below describes what to change about that asset specifically — read it first, keep everything they did not ask you to change, and produce the revised version as a new approval-gated draft on the same campaign. Do not start an unrelated concept from scratch.`,
+          // Branding revisions are the single most common ask on an image asset
+          // and the one generation can never satisfy: every prompt is hardened to
+          // forbid text and logos, so regenerating returns an image without them
+          // again and the operator sees their request silently ignored (BSR-706).
+          "If the instruction asks for the business's logo, name, phone number, or any words on the image, do NOT regenerate the background to add them. Image generation is hardened to refuse text and logos, so a regenerated image comes back without them and the operator's request is silently dropped. Use compose_creative instead, passing the existing asset's image as background_url — it overlays the real Brand Kit logo, colours and fonts.",
+          "Be straight about what compositing gives them: the logo lands as a brand lockup positioned by the layout, NOT painted onto an object inside the photo. If they asked for branding on a vehicle, a sign, a uniform, or anything else in the scene, say plainly in your reply that you cannot paint it into the image, describe what you produced instead, and let them decide. A draft that quietly ignores the instruction is worse than an honest 'here is the closest I can get'.",
+        ]
+      : []),
+    "",
+    payload.message,
+  ].join("\n");
+}
+
+/**
  * Run an Arc turn for a campaign task wake. This is the production path for
  * "Ask Arc to build" and "Hand to Arc": DRAFT mode, fixed campaign scope, and
  * a prompt that keeps all work approval-gated.
@@ -457,7 +802,8 @@ export async function runArcCampaignTask(
   payload: ArcCampaignTaskPayload,
   client: ArcClient,
 ): Promise<ArcTurnResult> {
-  const step = (label: string, status: "running" | "done") => client.postStep(payload.agentTaskId, label, status);
+  const step = (label: string, status: "running" | "done", detail?: string | null) =>
+    client.postStep(payload.agentTaskId, label, status, detail);
 
   const business = await resolveBusinessContext(client);
   const memory = await resolveRecallMemory(client, payload.message);
@@ -476,13 +822,7 @@ export async function runArcCampaignTask(
     skill,
   };
 
-  const prompt = [
-    `Campaign task: ${payload.taskType}.`,
-    `Work only on campaign_id "${payload.campaignId}". When creating campaign drafts, attach them to that campaign_id.`,
-    "Create approval-gated draft assets only. Do not send, publish, launch, approve, unlock dispatch, or spend.",
-    "",
-    payload.message,
-  ].join("\n");
+  const prompt = buildCampaignTaskPrompt(payload);
 
   const result = await runArcQuery({
     step,

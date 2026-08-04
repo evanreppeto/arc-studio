@@ -70,7 +70,7 @@ const KIND_COLOR: Record<string, string> = {
   contact: "#c8a24a",
   property: "#88b6d8",
   lead: "#88b6d8",
-  job: "#9678c8",
+  job: "#8fa2ba",
   outcome: "#7fb89a",
 };
 
@@ -190,6 +190,7 @@ export function RecordView({
   record,
   activity,
   personaOptions,
+  stageOptions,
   crmLabel = "Relationships",
   customFields = [],
 }: {
@@ -199,6 +200,8 @@ export function RecordView({
   customFields?: CustomFieldEntry[];
   /** The org's own personas for the edit picker. */
   personaOptions?: { key: string; label: string }[];
+  /** The org's own pipeline stages, in its own words. Absent for non-pipeline objects. */
+  stageOptions?: { key: string; label: string }[];
   /**
    * What this workspace calls its CRM — "Matters" for a law firm, "Accounts"
    * for an agency. The nav rail has always used the tenant's own word; this
@@ -351,7 +354,7 @@ export function RecordView({
         <div className="idrow">
           <span className="bigav">{initials(record.name)}</span>
           <div className="idmain">
-            <h1 className="rname">{record.name}</h1>
+            <h2 className="rname">{record.name}</h2>
             {record.detail && <div className="rrole">{record.detail}</div>}
             <div className="idchips">
               {dispPersona && (
@@ -802,6 +805,7 @@ export function RecordView({
         currentPersona={dispPersona}
         currentStatus={dispStatus}
         personaOptions={personaOptions}
+        stageOptions={stageOptions}
         onClose={() => setEditOpen(false)}
         onSubmit={handleEdit}
       />

@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { type ParsedCampaignDraft, type ViralityScore, channelForAssetType, deriveCampaignTheme, normalizeCampaignAssetType, normalizeRestorationFocus, resolveCampaignCta } from "@/domain";
+import { type ParsedCampaignDraft, type ViralityScore, channelForAssetType, deriveCampaignTheme, normalizeCampaignAssetType, normalizeHandoffNote, normalizeRestorationFocus, parseConsideredAudiences, resolveCampaignCta } from "@/domain";
 
 import { getSupabaseAdminClient, type TypedSupabaseClient } from "../supabase/server";
 import { type AgentTaskTenantFields } from "../agent-tasks/scope";
@@ -8,6 +8,7 @@ import { syncCampaignRecordToBrain } from "../brain-ingestion/sync";
 import { deferAfterResponse } from "../defer";
 import { checkArcGeneratedCopy } from "../arc/guardrails";
 import { getBusinessProfile } from "../brand-kit/persistence";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 /** Mirror a freshly created/updated campaign into the Brain. Best-effort and
  *  awaited (serverless can kill post-response work) — a sync hiccup must never
@@ -58,7 +59,7 @@ export async function insertPhotoAsset({ client, campaignId, operator, photo, in
   const url = await uploader(path, photo.bytes, photo.contentType);
 
   const assetId = await insertOne(client, "campaign_assets", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     asset_type: "social_ad",
     channel,
@@ -72,7 +73,7 @@ export async function insertPhotoAsset({ client, campaignId, operator, photo, in
   });
 
   const approvalItemId = await insertOne(client, "approval_items", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     campaign_asset_id: assetId,
     item_type: "campaign_asset",
@@ -86,7 +87,7 @@ export async function insertPhotoAsset({ client, campaignId, operator, photo, in
   });
 
   await insertNoReturn(client, "approval_decisions", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     approval_item_id: approvalItemId,
     decision: "approved",
     decided_by: operator,
@@ -129,7 +130,7 @@ export async function createOperatorCampaign({
   const now = new Date().toISOString();
 
   const campaignId = await insertOne(client, "campaigns", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     name: draft.name,
     persona: draft.persona,
     campaign_theme: draft.campaignTheme,
@@ -154,7 +155,7 @@ export async function createOperatorCampaign({
   }
 
   await insertNoReturn(client, "campaign_events", {
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     event_type: "created",
     actor: operator,
@@ -250,7 +251,7 @@ export async function createCampaignFromOpportunity(
   const legacyRestorationFocus = normalizeRestorationFocus(input.restorationFocus);
 
   const campaignId = await insertOne(client, "campaigns", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     name: input.name,
     persona: input.persona,
     campaign_theme: campaignTheme,
@@ -278,7 +279,7 @@ export async function createCampaignFromOpportunity(
   });
 
   await insertNoReturn(client, "campaign_events", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: campaignId,
     event_type: "created",
     actor: input.operator,
@@ -320,7 +321,7 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
   // enum type, so a free-text theme must never be written into it.
   const legacyRestorationFocus = normalizeRestorationFocus(input.restorationFocus);
   const campaignId = await insertOne(client, "campaigns", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     name: input.name,
     persona: input.persona,
     campaign_theme: campaignTheme,
@@ -331,7 +332,7 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
     source_system: "arc_saved",
   });
   await insertNoReturn(client, "campaign_events", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: campaignId,
     event_type: "created",
     actor: input.operator,
@@ -342,6 +343,56 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
   // round-trips into every Arc draft-asset / campaign-create call.
   deferAfterResponse(() => mirrorCampaignToBrain(client, campaignId, input.tenant));
   return { campaignId };
+}
+
+export type CampaignPackageSummaryInput = {
+  campaignId: string;
+  /** Sales/partner handoff note — the "what a human needs to know" half of the package. */
+  handoffNote?: unknown;
+  /** Audiences weighed and set aside, each with the reason it lost. */
+  consideredAudiences?: unknown;
+  client?: SupabaseClient;
+  tenant?: AgentTaskTenantFields;
+};
+
+/**
+ * Record the package-level summary a campaign accumulates as it is drafted
+ * (BSR-677).
+ *
+ * `handoff_note` and `considered_audiences` are named parts of the Campaign
+ * Package Builder and are both rendered on the campaign detail page — and until
+ * now nothing on any path wrote either, so the UI branch for considered
+ * audiences had never once had data. Arc produces both while drafting; they were
+ * simply spoken in chat and dropped.
+ *
+ * Validated through the SAME domain helpers the read model parses with, so what
+ * is written is exactly what the reader accepts rather than a second, looser
+ * shape that renders as nothing.
+ *
+ * Additive: a field absent from the input is left alone, because the pieces of a
+ * package arrive across several calls and a later asset must not blank the
+ * handoff note an earlier one recorded.
+ */
+export async function recordCampaignPackageSummary(input: CampaignPackageSummaryInput): Promise<void> {
+  const update: Record<string, unknown> = {};
+
+  if (input.handoffNote !== undefined) {
+    const note = normalizeHandoffNote(input.handoffNote);
+    if (note) update.handoff_note = note;
+  }
+  if (input.consideredAudiences !== undefined) {
+    const audiences = parseConsideredAudiences(input.consideredAudiences);
+    // Only write a list that survived parsing. An empty result means the input
+    // was malformed, and overwriting a real list with [] would lose more than it
+    // records.
+    if (audiences.length) update.considered_audiences = audiences;
+  }
+  if (Object.keys(update).length === 0) return;
+
+  const client = input.client ?? getSupabaseAdminClient();
+  let query = client.from("campaigns").update(update as never).eq("id", input.campaignId);
+  if (input.tenant?.org_id) query = query.eq("org_id", input.tenant.org_id);
+  await query;
 }
 
 /**
@@ -543,7 +594,7 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
       }
     : null;
   const assetId = await insertOne(client, "campaign_assets", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: input.campaignId,
     asset_type: input.assetType,
     // Derived, never omitted: the dispatch enqueue keys off `channel`, so an
@@ -565,7 +616,7 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
     },
   });
   await insertNoReturn(client, "approval_items", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: input.campaignId,
     campaign_asset_id: assetId,
     item_type: "campaign_asset",
@@ -577,7 +628,7 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
     ...(screen.complianceNotes ? { compliance_notes: screen.complianceNotes } : {}),
   });
   await insertNoReturn(client, "campaign_events", {
-    ...orgTenantFields(input.tenant),
+    ...workspaceScopeFields(input.tenant),
     campaign_id: input.campaignId,
     campaign_asset_id: assetId,
     event_type: "asset_generated",
@@ -587,6 +638,4 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
   return { assetId };
 }
 
-function orgTenantFields(tenant?: AgentTaskTenantFields): Record<string, string> {
-  return tenant ? { org_id: tenant.org_id } : {};
-}
+

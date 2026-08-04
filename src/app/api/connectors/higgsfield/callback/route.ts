@@ -73,7 +73,15 @@ export async function GET(request: Request): Promise<NextResponse> {
     const credentialRef = await writeConnectorCredential(client, { workspaceId: flow.workspaceId, connectorKey: "higgsfield", plaintext: bundle });
     await setConnectorCredentialRef(client, { workspaceId: flow.workspaceId, orgId: flow.orgId, connectorKey: "higgsfield", credentialRef });
     await setConnectorEnabled(client, { workspaceId: flow.workspaceId, connectorKey: "higgsfield", enabled: true });
-  } catch {
+  } catch (error) {
+    // The operator only ever sees `store_failed`, so the reason has to reach the
+    // server log or it is lost. A bare `catch {}` here is what made this failure
+    // take a database census to diagnose: OAuth had succeeded, and the three
+    // calls above could not say which one broke or why (BSR-733).
+    console.error(
+      `[connectors] Higgsfield connect succeeded at the provider but could not be stored for workspace ${flow.workspaceId}:`,
+      error,
+    );
     return done(base, "store_failed");
   }
 

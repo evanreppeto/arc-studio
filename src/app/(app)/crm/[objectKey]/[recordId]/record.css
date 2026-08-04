@@ -72,6 +72,17 @@
 .arc-record .sh .est { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.02em; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 4px; padding: 1px 6px; text-transform: none; font-weight: 600; }
 .arc-record .sh .wired { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.02em; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); border-radius: 4px; padding: 1px 6px; text-transform: none; font-weight: 600; }
 .arc-record .sec { margin-bottom: 26px; }
+/* "Manage fields" — the way out to where this record type's fields are defined.
+   Sits inside .sh, so it has to undo the uppercase label treatment, and stays a
+   quiet link rather than a second button: editing values and editing the schema
+   should not look like the same weight of action. */
+.arc-record .cf-manage { font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); text-decoration: none; border-bottom: 1px solid transparent; transition: color 0.15s var(--ease), border-color 0.15s var(--ease); }
+.arc-record .cf-manage:hover { color: var(--accent); border-bottom-color: var(--accent-border); }
+.arc-record .cf-manage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.arc-record .cf-empty { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.5; }
+.arc-record .cf-empty a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--line-2); }
+.arc-record .cf-empty a:hover { color: var(--accent); border-bottom-color: var(--accent-border); }
+.arc-record .cf-empty a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 .arc-record .card { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 16px 18px; }
 .arc-record .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; background: var(--line-2); }
 @media (max-width: 560px) { .arc-record .fields { grid-template-columns: 1fr; } }
@@ -135,7 +146,7 @@
 .arc-record .tdot.note { background: var(--accent); }
 .arc-record .tdot.task { background: var(--ok); }
 .arc-record .tdot.email { background: var(--blue); }
-.arc-record .tdot.ai { background: var(--vio); }
+.arc-record .tdot.ai { background: var(--slate); }
 .arc-record .tdot.status { background: var(--warn); }
 .arc-record .tev .tt { font-size: 12.5px; font-weight: 600; }
 .arc-record .tev .tt .by { font-weight: 400; color: var(--muted); font-size: 11px; }

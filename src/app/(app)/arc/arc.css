@@ -81,7 +81,7 @@
 }
 
 .arc-conversation-title { min-width: 0; }
-.arc-conversation-title h1 {
+.arc-conversation-title h2 {
   margin: 0;
   font-family: var(--serif);
   font-size: 18px;
@@ -141,6 +141,20 @@
   padding-top: 0;
   padding-bottom: 14px;
 }
+/* The launcher fills the space between the header and the composer so its
+   greeting lands in the middle of the empty chat, not jammed under the header
+   with a dead zone above the message box.
+   It asks for `min-height: 100%` itself, but a percentage min-height only
+   resolves against a parent with a *definite* height — and this column has
+   `min-height`, not `height`. So the launcher silently collapsed to its content
+   and sat at the top. Making the column a flex container while it holds the
+   launcher lets `flex: 1` do what the percentage couldn't. Scoped with `:has()`
+   so a column of real messages keeps its plain block flow (and its margins). */
+.arc-conversation-column:has(> .arc-launcher) {
+  display: flex;
+  flex-direction: column;
+}
+.arc-conversation-column > .arc-launcher { flex: 1 1 auto; }
 .arc-history-load-error {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
@@ -293,20 +307,27 @@
 .arc-assistant-message {
   margin: 0 0 12px;
 }
+
+/* Space below the newest turn so the question can sit at the top of the view
+   while the answer grows downward into it, rather than the answer being dragged
+   along the bottom edge above the composer. Height is measured and set in
+   arc-view.tsx — it is the shortfall and nothing more, so it shrinks to zero as
+   the reply grows and never has to be removed. */
+.arc-turn-spacer { height: 0; flex: none; }
 .arc-assistant-message.is-active { margin-top: 2px; }
 .arc-assistant-content { min-width: 0; }
 
-/* Comfortable reading measure. Arc's prose was sprawling to ~107 characters per
-   line across the full column — a top tell of an unrefined chat. Constrain the
-   text blocks to a book-width measure so replies read like considered writing,
-   while code, tables, media, and receipt cards keep the full width they need
-   (they live in their own wrappers, not these top-level prose elements). */
+/* Replies use the full column. A tighter book measure was in here on the theory
+   that ~52 characters reads as considered writing, but in this app it left the
+   answer stranded in the left third of a wide screen with dead space beside it —
+   asked for directly, and right: the operator wants the reply to use the room
+   it has. Code, tables, and cards were already full-width in their own wrappers. */
 .arc-assistant-content :where(.arc-stream, .arc-markdown, .arc-answer) > :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote) {
-  max-width: 52ch;
+  max-width: none;
 }
 
 .arc-assistant-footer {
-  max-width: 52ch;
+  max-width: none;
   min-height: 18px;
   display: flex;
   align-items: center;
@@ -319,113 +340,31 @@
 
 .arc-answer,
 .arc-markdown {
-  max-width: 76ch;
+  max-width: none;
   color: color-mix(in srgb, var(--text) 78%, var(--text-2));
   font-size: 14.5px;
   line-height: 1.7;
 }
 .arc-answer > p:first-child,
 .arc-markdown > p:first-child { color: var(--text); }
-.arc-result-receipt {
-  position: relative;
-  max-width: 76ch;
-  overflow: hidden;
-  margin-top: 15px;
-  border: 1px solid var(--line-2);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 34%),
-    color-mix(in srgb, var(--panel) 62%, var(--canvas));
-  padding: 17px 18px 16px;
-}
-.arc-result-receipt::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 2px;
-  background: var(--accent);
-}
-.arc-result-receipt-kicker {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--accent-contrast);
-  font-size: 10px;
-  font-weight: 680;
-  letter-spacing: .065em;
-  text-transform: uppercase;
-}
-.arc-result-receipt-kicker em {
-  margin-left: auto;
-  color: var(--ok-text);
-  font-size: 9px;
-  font-style: normal;
-  font-weight: 620;
-  letter-spacing: .03em;
-  text-transform: none;
-}
-.arc-result-receipt h2 {
-  margin: 10px 0 7px;
-  color: var(--text);
-  font-family: var(--serif);
-  font-size: clamp(20px, 2vw, 25px);
-  font-weight: 540;
-  line-height: 1.22;
-  letter-spacing: -.018em;
-}
-.arc-result-receipt > p {
-  margin: 0;
-  color: var(--text-2);
-  font-size: 13px;
-  line-height: 1.62;
-}
-.arc-live-result {
-  --arc-outcome-tone: var(--accent);
-  position: relative;
-  max-width: 76ch;
-  margin-top: 13px;
-  border-left: 2px solid color-mix(in srgb, var(--arc-outcome-tone) 72%, var(--line-2));
-  padding: 1px 0 1px 16px;
-}
-.arc-live-result[data-intent="research"] { --arc-outcome-tone: #6aa8c9; }
-.arc-live-result[data-intent="analysis"] { --arc-outcome-tone: #a191d6; }
-.arc-live-result[data-intent="create"] { --arc-outcome-tone: #d8a76d; }
-.arc-live-result[data-intent="action"] { --arc-outcome-tone: var(--ok); }
-.arc-live-result-kicker {
-  min-height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 9px;
-  color: color-mix(in srgb, var(--arc-outcome-tone) 72%, var(--text));
-  font-size: 10.5px;
-  font-weight: 680;
-  letter-spacing: .055em;
-  text-transform: uppercase;
-}
-.arc-live-result-kicker span { display: inline-flex; align-items: center; gap: 6px; }
-.arc-live-result-kicker em {
-  color: var(--ok-text);
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 620;
-  letter-spacing: .02em;
-  text-transform: none;
-}
-.arc-live-result-head { display: grid; gap: 9px; margin: 5px 0 12px; }
-.arc-live-result-head h2 {
-  max-width: 28ch;
-  margin: 0;
-  color: var(--text);
-  font-family: var(--serif);
-  font-size: clamp(20px, 2vw, 25px);
-  font-weight: 540;
-  line-height: 1.22;
-  letter-spacing: -.018em;
-}
-.arc-outcome-badges { display: flex; flex-wrap: wrap; gap: 6px; }
-.arc-outcome-badges span {
+/* Arc's reply. The same container and the same type scale from the first
+   streamed token to the settled message — `.arc-answer-body` is also
+   `.arc-markdown`, so nothing about the text changes when a run finishes; the
+   caret simply stops. There is deliberately no card, no border, no kicker, and
+   no generated headline around it: the answer is the message.
+
+   What used to live here (`.arc-live-result` / `.arc-result-receipt`) wrapped
+   every reply in a tinted, side-striped card topped by a serif headline the app
+   wrote on Arc's behalf. It also carried a per-intent hue palette — including a
+   purple — which DESIGN.md forbids twice over (no purple/neon AI palette, no
+   side-stripe borders > 1px). Evidence now reads below the answer instead. */
+.arc-answer-body { margin-top: 2px; }
+
+/* Result metadata: the outbound-safety guarantee and any evidence badges the
+   reply actually earned. Metadata scale, below the answer, inside the same
+   evidence rail as sources and recalled memory. */
+.arc-answer-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.arc-answer-meta > span {
   min-height: 24px;
   display: inline-flex;
   align-items: center;
@@ -438,9 +377,11 @@
   font-size: 9.5px;
   font-weight: 570;
 }
-.arc-outcome-badges span svg { color: var(--arc-outcome-tone); }
-.arc-outcome-badges span[data-kind="limitation"] { border-color: color-mix(in srgb, var(--warn) 28%, var(--line-2)); color: var(--warn); }
-.arc-live-result .arc-markdown { max-width: none; }
+.arc-answer-meta > span svg { color: var(--accent); }
+.arc-answer-safety { color: var(--ok-text); }
+.arc-answer-safety svg { color: var(--ok-text); }
+.arc-answer-badge[data-kind="limitation"] { border-color: color-mix(in srgb, var(--warn) 28%, var(--line-2)); color: var(--warn); }
+.arc-answer-badge[data-kind="limitation"] svg { color: var(--warn); }
 .arc-status-update {
   min-height: 34px;
   display: flex;
@@ -458,20 +399,8 @@
 .arc-status-update svg { flex: none; color: var(--ok-text); }
 .arc-status-update span { min-width: 0; display: flex; gap: 5px; }
 .arc-status-update b { color: var(--ok-text); font-weight: 650; }
-.arc-result-next {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 13px;
-  border-top: 1px solid var(--line);
-  padding-top: 11px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-.arc-result-next svg { flex: 0 0 auto; margin-top: 1px; color: var(--accent); }
 .arc-response-evidence {
-  max-width: 76ch;
+  max-width: none;
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -481,6 +410,26 @@
 }
 .arc-response-evidence .arc-sources,
 .arc-response-evidence .arc-recall { margin-top: 0; }
+
+/* Everything that lands when a run resolves — evidence, deliverables, follow-up
+   suggestions, the action row — used to appear at full opacity in a single
+   frame, which read as a jolt after the answer had just finished typing calmly.
+   A short staggered settle lets them arrive in the order you'd read them. */
+@media (prefers-reduced-motion: no-preference) {
+  .arc-assistant-message .arc-response-evidence,
+  .arc-assistant-message .arc-response-output,
+  .arc-assistant-message .arc-suggestions,
+  .arc-assistant-message .arc-message-action-row {
+    animation: arc-settle-in 320ms var(--arc-curve) both;
+  }
+  .arc-assistant-message .arc-response-output { animation-delay: 60ms; }
+  .arc-assistant-message .arc-suggestions { animation-delay: 120ms; }
+  .arc-assistant-message .arc-message-action-row { animation-delay: 180ms; }
+}
+@keyframes arc-settle-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
 .arc-response-output { max-width: 100%; margin-top: 18px; }
 .arc-response-output-label {
   min-height: 24px;
@@ -570,6 +519,11 @@
   border-bottom: 1px solid var(--line);
 }
 .arc-run-live { padding: 17px 0 0; }
+/* Waiting for the first sign of work: no bottom rule, no padding below — a
+   single line rather than an empty frame, so the pause doesn't look longer than
+   it is. */
+.arc-run-live[data-empty="true"] { padding-bottom: 0; border-bottom-color: transparent; }
+.arc-run-live[data-empty="true"] .arc-run-live-head { margin-bottom: 0; }
 .arc-run-live-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -646,31 +600,14 @@
   padding: 18px 0 20px;
   transition: opacity var(--arc-base) var(--arc-curve);
 }
-.arc-live-commentary { max-width: 76ch; }
-.arc-live-commentary.arc-markdown p,
-.arc-live-commentary.arc-markdown li {
-  color: var(--text);
-  font-size: 13.5px;
-  line-height: 1.72;
-}
-.arc-live-commentary.arc-markdown p { margin: 0; }
 
-/* Streaming typewriter caret — a calm block cursor on the last rendered line
-   while text is still typing out. Attaches to the last block so it flows inline
-   after prose, list items, and headings alike. */
+/* No typewriter caret. A blinking block cursor chasing the last word is a
+   second moving thing to track on top of the text itself, and it reads as
+   nervous rather than considered — Claude doesn't use one either. The header
+   already carries the run state (spinner, shimmer, live elapsed), so the text
+   can simply flow. Removing it also took away the caret's habit of sitting and
+   blinking during a pause, which made every gap look like a stall. */
 .arc-stream { min-width: 0; }
-.arc-stream.is-streaming > :last-child::after {
-  content: "";
-  display: inline-block;
-  width: 0.46em;
-  height: 1.02em;
-  margin-left: 2px;
-  border-radius: 1.5px;
-  background: var(--accent);
-  vertical-align: -0.16em;
-  animation: arc-caret 1.05s steps(1) infinite;
-}
-@keyframes arc-caret { 50% { opacity: 0; } }
 
 /* Shimmer sweep on the live status label ("Thinking · 4s") — a soft highlight
    travels across the text while Arc works, then the label just resolves. */
@@ -687,12 +624,21 @@
 /* Live "Thinking" — the model's reasoning streaming in as it forms, kept quiet
    and secondary to the answer (a muted quote with a small label). */
 .arc-live-reasoning { padding-left: 13px; border-left: 1px solid var(--line-2); }
-.arc-live-reasoning .arc-markdown { max-width: 74ch; color: var(--muted); font-size: 12.5px; line-height: 1.62; }
-.arc-live-reasoning .arc-markdown p { margin: 0 0 7px; }
-.arc-live-reasoning .arc-markdown p:last-child { margin: 0; }
-.arc-live-reasoning .arc-stream.is-streaming > :last-child::after { height: 0.95em; opacity: .8; }
+
+/* One reasoning treatment, wherever it appears — streaming live, expanded from a
+   collapsed run receipt, or read in the Work panel. Reasoning used to be
+   markdown only while live and a raw string in the two settled surfaces, so
+   finishing a run turned formatted thinking into literal asterisks and hashes. */
+.arc-reasoning-body { max-width: 74ch; color: var(--muted); font-size: 12.5px; line-height: 1.62; }
+.arc-reasoning-body p { margin: 0 0 7px; }
+.arc-reasoning-body p:last-child { margin: 0; }
+.arc-reasoning-body ul, .arc-reasoning-body ol { margin: 0 0 7px; gap: 3px; }
+.arc-reasoning-body strong { color: var(--text-2); }
 /* Long reasoning stays calm: a fixed window that auto-scrolls to the newest line,
    with a soft fade so earlier thought recedes rather than sprawling. */
+/* Follows the newest line only while the reader is at the bottom (see
+   useBottomPin) — it used to force scrollTop to the end on every revealed
+   frame, so scrolling back a line was impossible while thinking streamed. */
 .arc-live-reasoning-scroll {
   max-height: 176px;
   overflow-y: auto;
@@ -703,6 +649,24 @@
 }
 .arc-live-reasoning-scroll::-webkit-scrollbar { width: 6px; }
 .arc-live-reasoning-scroll::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--line-3); }
+.arc-live-reasoning[data-expanded="true"] .arc-live-reasoning-scroll { max-height: min(60vh, 620px); }
+.arc-live-reasoning-controls { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.arc-live-reasoning-controls button {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 7px;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast);
+}
+.arc-live-reasoning-controls button:hover { color: var(--text-2); border-color: var(--line-2); }
+.arc-live-reasoning-controls button.is-follow { color: var(--accent-contrast); border-color: var(--accent-border); }
 
 /* ── Rich markdown: code blocks + tables ────────────────────────────────── */
 .arc-code { margin: 13px 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: 10px; background: var(--canvas-deep); }
@@ -760,6 +724,10 @@
 .arc-table-wrap tr:last-child td { border-bottom: 0; }
 
 .arc-live-events { display: flex; flex-direction: column; gap: 12px; }
+/* A line Arc wrote, sitting between the actions it explains. No icon column, no
+   label, no status tick — it reads as prose, which is the whole point. */
+.arc-live-event.is-narration { grid-template-columns: minmax(0, 1fr); }
+.arc-live-event.is-narration .arc-live-event-copy small { max-width: 74ch; color: var(--text-2); font-size: 12.5px; line-height: 1.65; }
 .arc-live-event {
   min-height: 28px;
   display: grid;
@@ -783,7 +751,11 @@
 .arc-live-event-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-top: 2px; }
 .arc-live-event-copy b { color: currentColor; font-size: 12px; font-weight: 540; line-height: 1.35; }
 .arc-live-event-copy b[data-tool="true"] { font-family: var(--mono); font-size: 11px; font-weight: 560; letter-spacing: -.01em; }
-.arc-live-event-copy small { color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+/* A step's detail is now the reasoning that led to it, so it has to read as
+   prose rather than a caption: a comfortable measure and line-height, and no
+   truncation. This is the pairing the Codex reference gets its legibility from —
+   the action names what happened, the line beneath it says why. */
+.arc-live-event-copy small { max-width: 68ch; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
 .arc-live-event-result { max-width: 72ch; font-family: var(--mono); }
 .arc-live-event-state { width: 20px; height: 24px; display: grid; place-items: center; color: var(--muted); }
 .arc-live-event.is-done .arc-live-event-state { color: var(--ok); }
@@ -840,6 +812,14 @@
 .arc-run-copy { min-width: 0; display: flex; flex-direction: column; }
 .arc-run-copy b { color: currentColor; font-size: 11.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-run-copy small { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+/* The tool's own payload, one click away. Default is the summary line above;
+   this is here so evidence stays reachable without the row being a wall of JSON
+   (BSR-724). Text wraps and scrolls inside itself so a 400-char blob cannot
+   stretch the trace. */
+.arc-run-raw { margin-top: 3px; }
+.arc-run-raw summary { color: var(--muted); font-size: 10px; cursor: pointer; width: fit-content; }
+.arc-run-raw summary:hover { color: var(--text-2); }
+.arc-run-raw pre { margin: 4px 0 0; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 10px; line-height: 1.5; color: var(--muted); background: var(--inset); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
 .arc-run-state { color: var(--ok); }
 .arc-live-dots { display: inline-flex; align-items: center; gap: 3px; padding: 0 2px; }
 .arc-live-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); animation: arc-dot 1.05s ease-in-out infinite; }
@@ -880,7 +860,7 @@
 }
 .arc-reasoning-summary > svg { margin: 2px auto 0; color: var(--accent); }
 .arc-reasoning-summary b { color: var(--text); font-size: 11px; font-weight: 650; }
-.arc-reasoning-summary p { margin: 3px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; max-height: 320px; overflow-y: auto; }
+.arc-reasoning-summary .arc-reasoning-body { margin: 3px 0 0; max-height: 320px; overflow-y: auto; }
 
 /* ── Inline package and structured actions ──────────────────────────────── */
 .arc-package { max-width: 100%; margin: 14px 0 0; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
@@ -1289,7 +1269,6 @@
   .arc-launcher-grid { gap: 7px; margin-top: 11px; }
   .arc-launcher-grid button { min-height: 58px; padding: 7px 9px; }
   .arc-launcher-icon { width: 22px; height: 22px; }
-  .arc-chat[data-new-conversation="true"] .arc-composer { padding-top: 9px; }
 }
 
 /* ── Composer ───────────────────────────────────────────────────────────── */
@@ -1366,12 +1345,10 @@
   font-size: 14px;
   line-height: 1.5;
 }
-.arc-chat[data-new-conversation="true"] .arc-composer textarea {
-  min-height: 38px;
-  padding-bottom: 7px;
-  transition: min-height var(--arc-base) var(--arc-curve);
-}
-.arc-chat[data-new-conversation="true"] .arc-composer textarea:not(:placeholder-shown) { min-height: 55px; }
+/* The composer keeps ONE height in every state. It used to start 17px shorter
+   on a new conversation and animate up to full size the moment you typed or
+   sent, which read as the message box drifting out from under the cursor. The
+   box only grows now when your own text wraps past one line. */
 .arc-composer textarea::placeholder { color: var(--muted); }
 .arc-composer textarea:disabled { cursor: wait; }
 .arc-composer textarea:focus-visible { outline: 0; }
@@ -1535,7 +1512,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.arc-composer-chip.is-skill { height: 28px; color: #a8def7; border-color: rgba(91, 183, 232, .4); background: rgba(91, 183, 232, .14); padding-left: 8px; box-shadow: inset 0 0 0 1px rgba(91, 183, 232, .03); }
+.arc-composer-chip.is-skill { height: 28px; color: var(--accent-contrast); border-color: var(--accent-border-strong); background: var(--accent-soft); padding-left: 8px; box-shadow: inset 0 0 0 1px var(--accent-soft); }
 .arc-composer-chip.is-skill b { max-width: 170px; overflow: hidden; font-size: 10px; font-weight: 620; text-overflow: ellipsis; }
 .arc-composer-chip > button { width: 18px; height: 18px; display: grid; place-items: center; flex: 0 0 auto; border: 0; border-radius: 5px; background: transparent; color: currentColor; cursor: pointer; }
 .arc-composer-chip > button:hover { background: rgba(255, 255, 255, .08); }
@@ -1626,7 +1603,7 @@
   box-shadow: 0 28px 72px -24px rgba(0, 0, 0, .98), 0 10px 24px -18px rgba(0, 0, 0, .9), inset 0 1px rgba(255, 255, 255, .03);
   backdrop-filter: blur(18px);
 }
-.arc-composer-menu[data-menu="commands"] { width: min(350px, calc(100% - 22px)); border-color: rgba(91, 183, 232, .24); }
+.arc-composer-menu[data-menu="commands"] { width: min(350px, calc(100% - 22px)); border-color: var(--accent-border); }
 .arc-model-menu-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px 3px; color: var(--muted); font-size: 10px; font-weight: 520; }
 .arc-model-menu-label span { color: var(--text-2); font-family: var(--mono); font-size: 8.5px; }
 .arc-model-options { display: flex; flex-direction: column; gap: 3px; }
@@ -1699,13 +1676,13 @@
 .arc-composer-menu > button small { color: var(--muted); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-composer-menu > button.arc-composer-skill-option { min-height: 54px; grid-template-columns: 30px minmax(0, 1fr) 14px; border: 1px solid transparent; padding: 6px 7px; transition: border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast); }
 .arc-composer-menu > button.arc-composer-skill-option:hover,
-.arc-composer-menu > button.arc-composer-skill-option:focus-visible { border-color: rgba(91, 183, 232, .42); outline: 0; background: rgba(91, 183, 232, .14); transform: translateX(1px); }
-.arc-composer-menu > button.arc-composer-skill-option[data-source="system"] { margin-bottom: 4px; border-color: rgba(91, 183, 232, .2); background: rgba(91, 183, 232, .055); }
-.arc-composer-menu > button.arc-composer-skill-option > .arc-composer-skill-icon { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid rgba(91, 183, 232, .28); border-radius: 8px; background: rgba(91, 183, 232, .11); color: #5bb7e8; }
+.arc-composer-menu > button.arc-composer-skill-option:focus-visible { border-color: var(--accent-border-strong); outline: 0; background: var(--accent-soft); transform: translateX(1px); }
+.arc-composer-menu > button.arc-composer-skill-option[data-source="system"] { margin-bottom: 4px; border-color: var(--accent-border); background: var(--accent-soft); }
+.arc-composer-menu > button.arc-composer-skill-option > .arc-composer-skill-icon { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
 .arc-composer-menu > button.arc-composer-skill-option > span:nth-child(2) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; align-items: center; }
 .arc-composer-skill-option > span:nth-child(2) b { color: var(--text); }
 .arc-composer-skill-option > span:nth-child(2) small { grid-column: 1 / -1; }
-.arc-composer-skill-option em { grid-column: 2; grid-row: 1; border-radius: 5px; background: rgba(91, 183, 232, .1); color: #a8def7; padding: 3px 5px; font-family: var(--mono); font-size: 7px; font-style: normal; }
+.arc-composer-skill-option em { grid-column: 2; grid-row: 1; border-radius: 5px; background: var(--accent-soft); color: var(--accent-contrast); padding: 3px 5px; font-family: var(--mono); font-size: 10px; font-style: normal; }
 .arc-composer-skill-option > svg { color: #6594aa; }
 .arc-composer-menu-foot,
 .arc-composer-menu-empty { padding: 9px 10px; color: var(--muted); font-size: 9.5px; }
@@ -1784,46 +1761,19 @@
 .arc-artifact-status span.is-revising { color: var(--accent-contrast); }
 .arc-artifact-view { padding-top: 17px; }
 
-/* Persistent conversation workspace: the useful inspection surface from the
-   earlier Arc canvas, rebuilt around the current chat-first layout. */
+/* Persistent conversation workspace (BSR-562, BSR-567).
+   Deliverables and the decisions they need first, then the evidence behind
+   them, then run history as navigation — one scroll, no tab rail. */
 .arc-work-panel { grid-template-rows: auto minmax(0, 1fr); }
-.arc-work-scope {
-  min-width: 0;
-  grid-column: 2;
-  grid-row: 1;
-  display: flex;
-  gap: 3px;
-  padding: 8px 10px 0;
-}
-.arc-work-scope button {
-  min-width: 0;
-  min-height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex: 1;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  padding: 0 8px;
-  font-size: 9.5px;
-  font-weight: 570;
-  cursor: pointer;
-}
-.arc-work-scope button:hover { color: var(--text-2); background: rgba(255, 255, 255, .03); }
-.arc-work-scope button.is-active { border-color: var(--line-2); background: var(--panel); color: var(--text); }
-.arc-work-scope button span { min-width: 17px; height: 17px; display: inline-grid; place-items: center; border-radius: 999px; background: var(--inset); color: var(--muted); font-size: 8.5px; }
-.arc-work-view { min-height: 100%; }
+.arc-work-body { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; overflow: auto; padding: 15px 16px 24px; }
 .arc-work-run-status {
   min-height: 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin: -2px 0 15px;
-  padding-bottom: 12px;
+  margin: 0;
+  padding-bottom: 13px;
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: 11px;
@@ -1835,25 +1785,7 @@
 .arc-work-run-status[data-state="failed"] span i { background: var(--priority); box-shadow: 0 0 0 3px color-mix(in srgb, var(--priority) 12%, transparent); }
 .arc-work-run-status[data-state="canceled"] span i { background: var(--muted); box-shadow: none; }
 .arc-work-run-status em { font-family: var(--mono); font-style: normal; }
-.arc-work-count {
-  position: absolute;
-  top: 4px;
-  right: 5px;
-  min-width: 15px;
-  height: 15px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-contrast);
-  font-family: var(--mono);
-  font-size: 8px;
-  font-style: normal;
-}
-.arc-work-heading > span { color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
-.arc-work-heading h3 { margin: 5px 0 0; color: var(--text); font-family: var(--serif); font-size: 21px; font-weight: 540; line-height: 1.15; letter-spacing: -.015em; }
-.arc-work-reasoning { margin: 14px 0 0; border-left: 1px solid var(--accent-border); color: var(--text-2); padding-left: 12px; font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; }
-.arc-work-empty { margin-top: 14px; border: 1px dashed var(--line-2); border-radius: 9px; color: var(--muted); padding: 13px; font-size: 11px; line-height: 1.55; }
+.arc-work-empty { margin: 0; border: 1px dashed var(--line-2); border-radius: 9px; color: var(--muted); padding: 13px; font-size: 11px; line-height: 1.55; }
 .arc-work-activity { display: grid; gap: 2px; }
 .arc-work-activity > div { min-height: 44px; display: grid; grid-template-columns: 24px minmax(0, 1fr) 16px; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
 .arc-work-activity > div:last-child { border-bottom: 0; }
@@ -1865,10 +1797,7 @@
 .arc-work-activity > div.is-done > svg { color: var(--ok); }
 .arc-work-activity > div.is-running > svg { color: var(--accent); animation: arc-spin 1s linear infinite; }
 .arc-work-activity > div.is-error > svg { color: var(--priority); }
-.arc-work-activity-toggle { width: 100%; min-height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; }
-.arc-work-activity-toggle:hover { color: var(--text-2); }
-.arc-work-activity-toggle svg.is-up { transform: rotate(180deg); }
-.arc-work-recovery { margin-top: 14px; border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px; }
+.arc-work-recovery { margin: 0; border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px; }
 .arc-work-recovery > div:first-child { display: flex; align-items: flex-start; gap: 8px; color: var(--red-text); }
 .arc-work-recovery > div:first-child > span { display: flex; flex-direction: column; gap: 2px; }
 .arc-work-recovery b { font-size: 10.5px; font-weight: 620; }
@@ -1876,17 +1805,83 @@
 .arc-work-recovery > div:last-child { display: flex; gap: 6px; margin-top: 10px; }
 .arc-work-recovery button { min-height: 31px; flex: 1; border: 1px solid var(--red-border); border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 8px; font-size: 9.5px; cursor: pointer; }
 .arc-work-recovery button:hover { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--text); }
-.arc-created-wrap { min-height: calc(100% - 50px); display: flex; flex-direction: column; }
-.arc-created-progress { margin-top: 15px; }
-.arc-created-progress > span { display: flex; align-items: baseline; gap: 4px; color: var(--muted); font-size: 9.5px; }
-.arc-created-progress b { color: var(--text-2); font-size: 10.5px; font-weight: 600; }
-.arc-created-progress > div { height: 3px; margin-top: 8px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .06); }
+
+.arc-work-decision { border: 1px solid var(--accent-border); border-radius: 11px; background: var(--accent-soft); padding: 12px; }
+.arc-work-decision > div:first-child { display: flex; align-items: flex-start; gap: 9px; color: var(--accent-contrast); }
+.arc-work-decision > div:first-child > svg { flex: none; margin-top: 1px; }
+.arc-work-decision > div:first-child > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.arc-work-decision b { color: var(--text); font-size: 11.5px; font-weight: 620; }
+.arc-work-decision small { color: var(--muted); font-size: 10px; line-height: 1.45; }
+.arc-work-decision .arc-work-review { margin-top: 11px; }
+.arc-work-section { min-width: 0; display: flex; flex-direction: column; gap: 11px; }
+.arc-work-section + .arc-work-section { padding-top: 16px; border-top: 1px solid var(--line); }
+.arc-work-section-title { margin: 0; font-size: inherit; font-weight: inherit; }
+.arc-work-section-head { width: 100%; display: flex; align-items: center; gap: 9px; border: 0; background: transparent; padding: 0; color: inherit; font: inherit; text-align: left; }
+.arc-work-section-name { color: var(--text); font-family: var(--serif); font-size: 15px; font-weight: 540; letter-spacing: -.01em; }
+.arc-work-section-meta { margin-left: auto; color: var(--muted); font-size: 10px; font-weight: 400; }
+.arc-work-section-head.is-toggle { cursor: pointer; }
+.arc-work-section-head.is-toggle > svg { flex: none; color: var(--muted); transition: transform var(--arc-fast); }
+.arc-work-section-head.is-toggle > svg.is-open { transform: rotate(180deg); }
+.arc-work-section-head.is-toggle:hover .arc-work-section-meta { color: var(--text-2); }
+.arc-work-note { margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.55; }
+.arc-work-evidence { display: flex; flex-direction: column; gap: 17px; }
+.arc-work-evidence h4 { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; color: var(--text-2); font-size: 10px; font-weight: 620; letter-spacing: .06em; text-transform: uppercase; }
+.arc-work-evidence h4 > i { min-width: 16px; height: 16px; display: inline-grid; place-items: center; border-radius: 999px; background: var(--inset); color: var(--muted); font-family: var(--mono); font-size: 8.5px; font-style: normal; font-weight: 500; letter-spacing: 0; }
+.arc-work-evidence-icon { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--accent-border); border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+/* A memory is a sentence Arc wrote. It gets room to be read: its own quiet
+   surface, full wrapping, and no hairline chopping it into a table row. */
+.arc-work-fact { position: relative; margin: 0 0 5px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 60%, transparent); color: var(--text-2); padding: 9px 10px; font-size: 11.5px; line-height: 1.55; }
+.arc-work-fact:last-child { margin-bottom: 0; }
+.arc-work-more { width: 100%; min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 6px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; }
+.arc-work-more:hover { background: rgba(255, 255, 255, .03); color: var(--text-2); }
+.arc-work-more svg { transition: transform var(--arc-fast); }
+.arc-work-more svg.is-open { transform: rotate(180deg); }
+.arc-work-fact em { display: block; margin-top: 4px; color: var(--muted); font-family: var(--mono); font-size: 9px; font-style: normal; }
+.arc-work-evidence-item { display: flex; align-items: baseline; gap: 9px; min-height: 30px; padding: 6px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
+.arc-work-evidence > div > .arc-work-evidence-item:last-child { border-bottom: 0; }
+.arc-work-evidence-item b { min-width: 0; flex: 1; color: var(--text-2); font-size: 11px; font-weight: 550; line-height: 1.4; }
+.arc-work-evidence-item span { flex: none; color: var(--muted); font-size: 9.5px; }
+.arc-work-evidence-item > svg { flex: none; align-self: center; color: var(--muted); }
+a.arc-work-evidence-item:hover b { color: var(--text); }
+a.arc-work-evidence-item:hover > svg { color: var(--accent); }
+.arc-work-runs { display: flex; flex-direction: column; gap: 2px; }
+.arc-work-run { width: 100%; min-height: 46px; display: grid; grid-template-columns: 22px minmax(0, 1fr) 16px; align-items: center; gap: 9px; border: 0; border-radius: 8px; background: transparent; color: inherit; padding: 6px 7px; text-align: left; cursor: pointer; }
+.arc-work-run:hover { background: rgba(255, 255, 255, .035); }
+.arc-work-run > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.arc-work-run b { color: var(--text-2); font-size: 11.5px; font-weight: 560; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-work-run small { color: var(--muted); font-size: 9.5px; }
+.arc-work-run > svg { color: var(--muted); transition: transform var(--arc-fast); }
+.arc-work-run > svg.is-open { transform: rotate(90deg); }
+.arc-work-run-index { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 7px; background: var(--panel); color: var(--muted); font-family: var(--mono); font-size: 9px; }
+.arc-work-run-index[data-state="working"] { border-color: var(--accent-border); color: var(--accent-contrast); }
+.arc-work-run-index[data-state="failed"] { border-color: var(--red-border); color: var(--red-text); }
+.arc-work-runs .arc-work-activity { margin: 2px 0 10px; padding-left: 31px; }
+.arc-created-progress > div { height: 3px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .06); }
 .arc-created-progress i { display: block; height: 100%; border-radius: inherit; background: var(--ok); transition: width var(--arc-base) var(--arc-curve); }
-.arc-created-list { display: grid; gap: 7px; margin-top: 14px; }
+.arc-created-list { display: grid; gap: 7px; }
 .arc-created-list > .arc-created-item { width: 100%; min-height: 58px; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 9px; border: 1px solid var(--line-2); border-radius: 9px; background: color-mix(in srgb, var(--panel) 66%, transparent); color: inherit; padding: 8px 9px; text-align: left; }
 .arc-created-list > button.arc-created-item { cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast); }
 .arc-created-list > button.arc-created-item:hover { transform: translateY(-1px); border-color: var(--line-3); background: var(--panel); }
 .arc-created-icon { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--inset); }
+/* A deliverable that HAS creative shows the creative. The glyph is the fallback,
+   not the default — see DeliverableThumb. */
+.arc-created-icon.has-media { overflow: hidden; padding: 0; }
+.arc-created-icon.has-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.arc-created-list > button.arc-created-item:hover .arc-created-icon { border-color: var(--line-3); }
+
+/* "What Arc found" — cards with nothing to decide. Quieter than a deliverable
+   on purpose: they are context, and stamping them with a review badge was the
+   bug this section exists to fix. */
+.arc-work-findings { display: grid; gap: 2px; }
+.arc-work-finding { min-height: 40px; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 9px; border-radius: 8px; padding: 6px 7px; color: inherit; text-decoration: none; }
+a.arc-work-finding:hover { background: rgba(255, 255, 255, .035); }
+.arc-work-finding-icon { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: var(--inset); color: var(--muted); }
+.arc-work-finding > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.arc-work-finding b { color: var(--text-2); font-size: 11px; font-weight: 550; line-height: 1.4; }
+.arc-work-finding small { color: var(--muted); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-work-finding > svg { color: var(--muted); }
+a.arc-work-finding:hover b { color: var(--text); }
+a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-created-list > .arc-created-item > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .arc-created-list b { color: var(--text-2); font-size: 11px; font-weight: 580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-created-list small { color: var(--muted); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1894,10 +1889,8 @@
 .arc-created-list em.is-ok { color: var(--ok-text); }
 .arc-created-list em.is-accent { color: var(--accent-contrast); }
 .arc-created-list em.is-red { color: var(--red-text); }
-.arc-created-footer { position: sticky; bottom: -22px; margin-top: auto; padding: 14px 0 22px; background: linear-gradient(to bottom, transparent, var(--canvas-deep) 18%); }
 .arc-work-review { width: 100%; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line-3); border-radius: 9px; background: var(--text); color: var(--canvas-deep); font-size: 11px; font-weight: 630; cursor: pointer; }
 .arc-work-review:hover { transform: translateY(-1px); }
-.arc-live-audience { margin-top: 14px; padding-top: 0; border-top: 0; }
 
 /* Card-driven asset review panel (asset tabs + draft content). */
 .arc-artifact-tabs button { position: relative; }
@@ -1924,22 +1917,8 @@
 .arc-package-channels span[data-tone="accent"] small { color: var(--accent-contrast); }
 .arc-artifact-title h3 { margin: 5px 0 0; color: var(--text); font-family: var(--serif); font-size: 21px; font-weight: 540; letter-spacing: -.015em; }
 .arc-artifact-title p { margin: 7px 0 0; color: var(--muted); font-size: 10.5px; line-height: 1.55; }
-.arc-audience-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 16px; }
-.arc-audience-source { display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: start; gap: 8px; margin-top: 15px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--panel) 54%, transparent); color: var(--muted); padding: 10px; }
-.arc-audience-source > svg { margin-top: 1px; color: var(--ok-text); }
-.arc-audience-source > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.arc-audience-source b { color: var(--text-2); font-size: 10.5px; font-weight: 600; }
-.arc-audience-source span { font-size: 9.5px; line-height: 1.45; }
-.arc-audience-stats > div { min-width: 0; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); padding: 10px 8px; }
-.arc-audience-stats b { display: block; color: var(--text); font-family: var(--serif); font-size: 18px; font-weight: 550; }
-.arc-audience-stats span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
 .arc-artifact-section { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .arc-artifact-section h4 { margin: 0 0 11px; color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }
-.arc-audience-row { margin-top: 12px; }
-.arc-audience-row > div:first-child { display: flex; justify-content: space-between; gap: 10px; }
-.arc-audience-row b { color: var(--text-2); font-size: 10px; font-weight: 550; }
-.arc-audience-row span { color: var(--muted); font-size: 10px; white-space: nowrap; }
-.arc-audience-bar { height: 3px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .06); }
 .arc-audience-bar i { display: block; height: 100%; border-radius: inherit; background: var(--ok); }
 .arc-artifact-note { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 9px; margin-top: 18px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); color: var(--muted); padding: 11px; }
 .arc-artifact-note b { color: var(--text-2); font-size: 11px; font-weight: 600; }
@@ -1991,6 +1970,19 @@
 }
 .arc-workspace-scrim { position: absolute; inset: 0; z-index: 18; display: block; border: 0; background: rgba(7, 7, 9, .58); }
 .arc-history {
+  /* One type scale for the whole drawer. Before this there were 20 distinct
+     font sizes in here, 21 of them at 8px or below — sizes picked per-element
+     to squeeze into a 386px panel. Five steps now, and `--dz-xs` is the floor:
+     it matches the app's own structural minimum (nav section heads, chat
+     timestamps), so the drawer no longer reads at half the scale of the
+     conversation beside it. Density problems get solved with layout, not with
+     another decimal font size. */
+  --dz-xs: 10px;    /* meta, uppercase heads, mono command chips, status */
+  --dz-sm: 11px;    /* descriptions, secondary rows */
+  --dz-md: 12px;    /* row titles, body */
+  --dz-lg: 13.5px;  /* emphasis */
+  --dz-h: 19px;     /* view title (serif) */
+
   position: absolute;
   inset: 0 auto 0 0;
   z-index: 31;
@@ -2005,56 +1997,73 @@
 }
 .arc-history-topline { min-height: 28px; flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .arc-history-topline .arc-history-eyebrow { margin-top: 5px; margin-bottom: 0; }
-.arc-drawer-nav { flex: none; display: grid; grid-template-columns: 1.4fr .8fr 1.1fr .85fr; gap: 4px; margin: 8px 0 18px; padding: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--inset); }
-.arc-drawer-nav button { min-width: 0; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 7px; font-size: 9.5px; cursor: pointer; transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast); }
+/* Content-sized tabs that share the leftover space, rather than the old
+   1.4fr/.8fr/1.1fr/.85fr ratios — those were tuned to these exact four label
+   strings and still gave Skills the narrowest box of the four. `flex: 1 1 auto`
+   sizes each tab to its own label first, so "Conversations" and "Connectors"
+   fit without clipping and nothing has to be re-tuned when a label changes. */
+.arc-drawer-nav { flex: none; display: flex; gap: 4px; margin: 8px 0 18px; padding: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--inset); }
+.arc-drawer-nav button { flex: 1 1 auto; min-width: 0; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 6px; font-size: var(--dz-xs); cursor: pointer; transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast); }
+.arc-drawer-nav button > svg { flex: none; }
+.arc-drawer-nav button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arc-drawer-nav button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
-.arc-drawer-nav button.is-active { border-color: var(--line-2); background: var(--panel); color: var(--text); box-shadow: 0 5px 14px rgba(0, 0, 0, .18); }
-.arc-drawer-nav button.is-skills { color: #86cff3; }
-.arc-drawer-nav button.is-skills:hover { background: rgba(91, 183, 232, .08); color: #a8def7; }
-.arc-drawer-nav button.is-skills.is-active { border-color: rgba(91, 183, 232, .32); background: rgba(91, 183, 232, .13); color: #a8def7; box-shadow: inset 0 0 0 1px rgba(91, 183, 232, .04), 0 7px 18px rgba(5, 45, 68, .2); }
+/* Selection is the strongest signal in this bar, and the only coloured one.
+   The Skills tab used to carry `color: #86cff3` unconditionally, which made the
+   *inactive* tab brighter and more saturated than the active one. */
+.arc-drawer-nav button.is-active { border-color: var(--accent-border); background: var(--panel); color: var(--text); box-shadow: 0 5px 14px rgba(0, 0, 0, .18); }
+.arc-drawer-nav button.is-active > svg { color: var(--accent); }
 .arc-drawer-view { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .arc-drawer-view-head { flex: none; margin-bottom: 14px; }
-.arc-drawer-view-head h2 { margin: 0; font-family: var(--serif); color: var(--text); font-size: 20px; font-weight: 550; letter-spacing: -.015em; }
-.arc-drawer-view-head p { margin: 5px 0 0; color: var(--muted); font-size: 10.5px; line-height: 1.5; }
+.arc-drawer-view-head h2 { margin: 0; font-family: var(--serif); color: var(--text); font-size: var(--dz-h); font-weight: 550; letter-spacing: -.015em; }
+.arc-drawer-view-head p { margin: 5px 0 0; color: var(--muted); font-size: var(--dz-sm); line-height: 1.5; }
 
 /* Saved items drawer view */
-.arc-drawer-saved .arc-saved-error { margin: 0 0 10px; font-size: 11px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: 8px; padding: 7px 10px; }
+.arc-drawer-saved .arc-saved-error { margin: 0 0 10px; font-size: var(--dz-sm); color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: 8px; padding: 7px 10px; }
 .arc-saved-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
 .arc-saved-item { display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); padding: 10px 11px; transition: border-color var(--arc-fast); }
 .arc-saved-item:hover { border-color: var(--accent-border); }
 .arc-saved-main { min-width: 0; flex: 1; }
-.arc-saved-kind { display: inline-block; font-size: 8.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; margin-bottom: 6px; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); }
+.arc-saved-kind { display: inline-block; font-size: var(--dz-xs); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; margin-bottom: 6px; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); }
 .arc-saved-kind.is-draft { color: var(--accent-contrast); background: var(--accent-soft); border-color: var(--accent-border); }
-.arc-saved-title { display: block; font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.35; }
-.arc-saved-preview { margin: 4px 0 0; font-size: 10.5px; color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.arc-saved-open { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; font-size: 10px; font-weight: 600; color: var(--accent-contrast); text-decoration: none; }
-.arc-saved-open:hover { color: var(--text); }
+.arc-saved-title { display: block; font-size: var(--dz-md); font-weight: 600; color: var(--text); line-height: 1.35; }
+.arc-saved-preview { margin: 4px 0 0; font-size: var(--dz-sm); color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* Reuse actions. "Use in chat" is the primary one — it is the whole reason the
+   Saved tab exists — so it carries the accent; copy and the source link sit
+   beside it as quieter alternatives. */
+.arc-saved-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.arc-history .arc-saved-use,
+.arc-history .arc-saved-copy { min-height: 26px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 8px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast), color var(--arc-fast); }
+.arc-history .arc-saved-use { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
+.arc-history .arc-saved-use:hover { border-color: var(--accent-border-strong); background: color-mix(in srgb, var(--accent-soft) 55%, var(--canvas-deep)); }
+.arc-history .arc-saved-copy:hover { border-color: var(--line-3); background: rgba(255, 255, 255, .04); color: var(--text); }
+.arc-saved-open { display: inline-flex; align-items: center; gap: 4px; font-size: var(--dz-xs); font-weight: 600; color: var(--muted); text-decoration: none; }
+.arc-saved-open:hover { color: var(--text-2); }
 .arc-saved-remove { flex: none; width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast); }
 .arc-saved-item:hover .arc-saved-remove, .arc-saved-remove:focus-visible { opacity: 1; }
 .arc-saved-remove:hover { color: var(--red-text); border-color: var(--red-border); background: var(--red-soft); }
-.arc-saved-empty { display: flex; align-items: center; gap: 11px; color: var(--muted); font-size: 11.5px; padding: 18px 4px; }
-.arc-saved-empty b { display: block; color: var(--text-2); font-size: 12.5px; }
+.arc-saved-empty { display: flex; align-items: center; gap: 11px; color: var(--muted); font-size: var(--dz-sm); padding: 18px 4px; }
+.arc-saved-empty b { display: block; color: var(--text-2); font-size: var(--dz-md); }
 .arc-saved-empty span { display: block; margin-top: 2px; }
 
 /* Archived-conversations disclosure at the bottom of the Conversations view */
 .arc-archived { flex: none; border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
-.arc-archived-toggle { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 6px; border: none; background: transparent; color: var(--muted); font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer; border-radius: 8px; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-history .arc-archived-toggle { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 6px; border: none; background: transparent; color: var(--muted); font-family: inherit; font-size: var(--dz-sm); font-weight: 600; cursor: pointer; border-radius: 8px; transition: color var(--arc-fast), background var(--arc-fast); }
 .arc-archived-toggle:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
 .arc-archived-toggle svg { flex: none; }
 .arc-archived-toggle .arc-archived-chevron { margin-left: auto; transition: transform var(--arc-fast); }
 .arc-archived-toggle.is-open .arc-archived-chevron { transform: rotate(180deg); }
-.arc-archived-error { margin: 6px 4px 0; font-size: 10.5px; color: var(--red-text); }
-.arc-archived-empty { display: flex; align-items: center; gap: 7px; padding: 8px 6px; font-size: 10.5px; color: var(--muted); }
+.arc-archived-error { margin: 6px 4px 0; font-size: var(--dz-sm); color: var(--red-text); }
+.arc-archived-empty { display: flex; align-items: center; gap: 7px; padding: 8px 6px; font-size: var(--dz-sm); color: var(--muted); }
 .arc-archived-list { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; padding: 2px; }
 .arc-archived-item { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; transition: background var(--arc-fast); }
 .arc-archived-item:hover { background: rgba(255, 255, 255, .035); }
-.arc-archived-title { min-width: 0; flex: 1; font-size: 11.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.arc-archived-when { flex: none; font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
-.arc-archived-restore { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-family: inherit; font-size: 10px; font-weight: 600; cursor: pointer; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast); }
+.arc-archived-title { min-width: 0; flex: 1; font-size: var(--dz-sm); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-archived-when { flex: none; font-family: var(--mono); font-size: var(--dz-xs); color: var(--muted); }
+.arc-history .arc-archived-restore { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-family: inherit; font-size: var(--dz-xs); font-weight: 600; cursor: pointer; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast); }
 .arc-archived-item:hover .arc-archived-restore, .arc-archived-restore:focus-visible { opacity: 1; }
 .arc-archived-restore:hover { color: var(--accent-contrast); border-color: var(--accent-border); }
 .arc-drawer-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.arc-drawer-title-row > span { border: 1px solid rgba(91, 183, 232, .3); border-radius: 999px; background: rgba(91, 183, 232, .1); color: #a8def7; padding: 4px 8px; font-family: var(--mono); font-size: 8px; }
+.arc-drawer-title-row > span { flex: none; border: 1px solid var(--accent-border); border-radius: 999px; background: var(--accent-soft); color: var(--accent-contrast); padding: 3px 8px; font-family: var(--mono); font-size: var(--dz-xs); }
 .arc-drawer-title-row > span.is-connector-count { border-color: var(--ok-border); background: var(--ok-soft); color: var(--ok-text); }
 .arc-history-head,
 .arc-share-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 15px; }
@@ -2063,8 +2072,8 @@
 .arc-history-head h2,
 .arc-share-head h2 { margin: 0; font-family: var(--serif); color: var(--text); font-size: 18px; font-weight: 550; }
 .arc-history-head p,
-.arc-share-head p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
-.arc-history-eyebrow { display: block; margin-bottom: 7px; color: var(--accent-contrast); font-size: 8.5px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+.arc-share-head p { margin: 4px 0 0; color: var(--muted); font-size: var(--dz-sm); }
+.arc-history-eyebrow { display: block; margin-bottom: 7px; color: var(--accent-contrast); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
 .arc-new-chat {
   min-height: 38px;
   display: flex;
@@ -2078,7 +2087,7 @@
   color: var(--text-2);
   text-decoration: none;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--dz-md);
   font-weight: 600;
   transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast);
 }
@@ -2097,26 +2106,26 @@
   background: var(--inset);
   color: var(--muted);
 }
-.arc-history-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 11.5px; }
+.arc-history-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-sm); }
 .arc-history-search:focus-within { border-color: var(--accent-border); }
 .arc-history-search input:focus-visible { outline: 0; }
 .arc-history-search input::placeholder { color: var(--muted); }
 .arc-history-filters { display: flex; align-items: center; gap: 5px; margin-top: 9px; }
-.arc-history-filters button { min-height: 29px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 9px; font-size: 9.5px; cursor: pointer; }
+.arc-history-filters button { min-height: 29px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 9px; font-size: var(--dz-xs); cursor: pointer; }
 .arc-history-filters button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
 .arc-history-filters button.is-active { border-color: var(--line-2); background: var(--inset); color: var(--text); }
-.arc-history-filters small { min-width: 15px; height: 15px; display: grid; place-items: center; border-radius: 999px; background: rgba(255, 255, 255, .055); color: var(--muted); font-family: var(--mono); font-size: 7.5px; }
+.arc-history-filters small { min-width: 15px; height: 15px; display: grid; place-items: center; border-radius: 999px; background: rgba(255, 255, 255, .055); color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
 .arc-thread-grouping { display: flex; align-items: center; gap: 4px; margin: 7px 0 0; padding-top: 7px; border-top: 1px solid var(--line); }
-.arc-thread-grouping button { min-height: 27px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); padding: 0 8px; font-size: 8.8px; cursor: pointer; }
+.arc-thread-grouping button { min-height: 27px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); padding: 0 8px; font-size: var(--dz-xs); cursor: pointer; }
 .arc-thread-grouping button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
 .arc-thread-grouping button.is-active { background: rgba(255, 255, 255, .055); color: var(--text); }
 .arc-history-attention { display: flex; align-items: center; gap: 7px; margin-top: 9px; }
 .arc-history-attention > button { min-height: 34px; flex: 1; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--accent-border); border-radius: 9px; background: var(--accent-soft); color: var(--accent-contrast); padding: 0 10px; cursor: pointer; }
 .arc-history-attention > button > span { display: inline-flex; align-items: center; gap: 7px; }
-.arc-history-attention b { font-size: 10px; font-weight: 620; }
-.arc-history-attention > span { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); padding: 0 9px; font-size: 9px; }
+.arc-history-attention b { font-size: var(--dz-xs); font-weight: 620; }
+.arc-history-attention > span { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); padding: 0 9px; font-size: var(--dz-xs); }
 .arc-history-list { min-height: 0; flex: 1; overflow: auto; margin: 10px -4px 0; padding: 0 4px; }
-.arc-history-group h3 { display: flex; align-items: center; gap: 6px; margin: 14px 8px 5px; color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.arc-history-group h3 { display: flex; align-items: center; gap: 6px; margin: 14px 8px 5px; color: var(--muted); font-size: var(--dz-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .arc-campaign-group-icon { width: 12px; height: 12px; display: grid; flex: none; place-items: center; color: currentColor; }
 .arc-history-item { position: relative; display: flex; align-items: center; border-radius: 9px; }
 .arc-history-item:hover { background: rgba(255, 255, 255, .04); }
@@ -2139,15 +2148,15 @@
 .arc-history-item:hover .arc-history-open,
 .arc-history-item.is-active .arc-history-open { color: var(--text); }
 .arc-history-open > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
-.arc-history-open b { font-size: 11.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-history-open small { color: var(--muted); font-family: var(--mono); font-size: 8.5px; }
-.arc-history-open small.arc-thread-preview { min-width: 0; display: flex; align-items: center; gap: 5px; font-family: var(--sans); font-size: 9.5px; }
-.arc-history-open small.arc-thread-preview[data-campaign="true"] { color: #83a7ba; }
-.arc-history-open small.arc-thread-preview svg { flex: none; color: #6aabc9; }
+.arc-history-open b { font-size: var(--dz-sm); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-history-open small { color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-history-open small.arc-thread-preview { min-width: 0; display: flex; align-items: center; gap: 5px; font-family: var(--sans); font-size: var(--dz-xs); }
+.arc-history-open small.arc-thread-preview[data-campaign="true"] { color: var(--accent-contrast); }
+.arc-history-open small.arc-thread-preview svg { flex: none; color: var(--accent); }
 .arc-history-open small.arc-thread-preview span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.arc-history-open small.arc-thread-preview em { flex: none; color: var(--muted); font-size: 8.5px; font-style: normal; }
-.arc-history-open small.arc-thread-working { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-contrast); font-family: var(--sans); font-size: 9.5px; }
-.arc-history-open small.arc-thread-working em { min-width: 0; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; border-left: 1px solid var(--line-2); color: #83a7ba; padding-left: 6px; font-size: 8px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.arc-history-open small.arc-thread-preview em { flex: none; color: var(--muted); font-size: var(--dz-xs); font-style: normal; }
+.arc-history-open small.arc-thread-working { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-contrast); font-family: var(--sans); font-size: var(--dz-xs); }
+.arc-history-open small.arc-thread-working em { min-width: 0; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; border-left: 1px solid var(--line-2); color: var(--accent-contrast); padding-left: 6px; font-size: var(--dz-xs); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .arc-thread-dots { display: inline-flex; align-items: center; gap: 2.5px; }
 .arc-thread-dots i { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--accent); animation: arc-dot 1.05s ease-in-out infinite; }
 .arc-thread-dots i:nth-child(2) { animation-delay: .14s; }
@@ -2171,170 +2180,240 @@
   box-shadow: 0 18px 46px rgba(0, 0, 0, .55);
   animation: arc-detail-in var(--arc-fast) var(--arc-curve) both;
 }
-.arc-history-menu > button { width: 100%; display: flex; align-items: center; gap: 9px; min-height: 34px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 9px; font-size: 11.5px; cursor: pointer; }
+.arc-history-menu > button { width: 100%; display: flex; align-items: center; gap: 9px; min-height: 34px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 9px; font-size: var(--dz-sm); cursor: pointer; }
 .arc-history-menu > button:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
 .arc-history-menu > button svg { color: var(--muted); }
 .arc-history-menu > button.has-detail { min-height: 47px; }
 .arc-history-menu > button.has-detail > span { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
-.arc-history-menu > button.has-detail b { color: var(--text-2); font-size: 10.5px; font-weight: 560; }
-.arc-history-menu > button.has-detail small { max-width: 150px; overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.arc-history-menu > button.has-detail b { color: var(--text-2); font-size: var(--dz-sm); font-weight: 560; }
+.arc-history-menu > button.has-detail small { max-width: 150px; overflow: hidden; color: var(--muted); font-size: var(--dz-xs); text-overflow: ellipsis; white-space: nowrap; }
 .arc-history-menu > button.has-detail > svg:last-child { margin-left: auto; }
 .arc-history-campaign-picker > div { min-height: 46px; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 7px; border-bottom: 1px solid var(--line); margin-bottom: 4px; padding: 2px 5px 6px; }
 .arc-history-campaign-picker > div > button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .arc-history-campaign-picker > div > button:hover { background: rgba(255, 255, 255, .05); color: var(--text); }
 .arc-history-campaign-picker > div > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.arc-history-campaign-picker > div b { color: var(--text); font-size: 10px; font-weight: 620; }
-.arc-history-campaign-picker > div small { overflow: hidden; color: #83a7ba; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.arc-history-campaign-picker > div b { color: var(--text); font-size: var(--dz-xs); font-weight: 620; }
+.arc-history-campaign-picker > div small { overflow: hidden; color: var(--accent-contrast); font-size: var(--dz-xs); text-overflow: ellipsis; white-space: nowrap; }
 .arc-history-campaign-picker { max-height: 276px; overflow-y: auto; }
 .arc-history-campaign-picker > button { width: 100%; min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 9px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 9px; text-align: left; cursor: pointer; }
 .arc-history-campaign-picker > button:hover,
-.arc-history-campaign-picker > button:focus-visible { outline: 0; background: rgba(91, 183, 232, .08); color: var(--text); }
-.arc-history-campaign-picker > button[aria-checked="true"] { background: rgba(91, 183, 232, .1); color: #a8def7; }
-.arc-history-campaign-picker > button span { min-width: 0; overflow: hidden; font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
-.arc-history-campaign-picker > button svg { flex: none; color: #5bb7e8; }
+.arc-history-campaign-picker > button:focus-visible { outline: 0; background: var(--accent-soft); color: var(--text); }
+.arc-history-campaign-picker > button[aria-checked="true"] { background: var(--accent-soft); color: var(--accent-contrast); }
+.arc-history-campaign-picker > button span { min-width: 0; overflow: hidden; font-size: var(--dz-xs); text-overflow: ellipsis; white-space: nowrap; }
+.arc-history-campaign-picker > button svg { flex: none; color: var(--accent); }
 .arc-history-menu > button.is-danger,
 .arc-history-menu > button.is-danger svg { color: var(--red-text); }
 .arc-history-menu > button.is-danger:hover { background: var(--red-soft); }
 .arc-history-menu-confirm { padding: 8px 9px 6px; }
-.arc-history-menu-confirm > span { display: block; color: var(--text-2); font-size: 11px; margin-bottom: 9px; }
+.arc-history-menu-confirm > span { display: block; color: var(--text-2); font-size: var(--dz-sm); margin-bottom: 9px; }
 .arc-history-menu-confirm > div { display: flex; justify-content: flex-end; gap: 6px; }
-.arc-history-menu-confirm button { min-height: 28px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 10px; font-size: 11px; cursor: pointer; }
+.arc-history-menu-confirm button { min-height: 28px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 10px; font-size: var(--dz-sm); cursor: pointer; }
 .arc-history-menu-confirm button.is-danger { border-color: transparent; background: var(--red); color: #fff; font-weight: 600; }
 .arc-history-item.is-renaming { padding: 6px 8px; }
-.arc-history-item.is-renaming input { width: 100%; min-height: 38px; border: 1px solid var(--accent-border); border-radius: 8px; outline: 0; background: var(--inset); color: var(--text); padding: 0 10px; font-size: 12px; }
+.arc-history-item.is-renaming input { width: 100%; min-height: 38px; border: 1px solid var(--accent-border); border-radius: 8px; outline: 0; background: var(--inset); color: var(--text); padding: 0 10px; font-size: var(--dz-md); }
 .arc-history-empty { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); text-align: center; padding: 24px; }
-.arc-history-empty b { color: var(--text-2); font-size: 12px; font-weight: 600; }
-.arc-history-empty span { font-size: 11px; }
+.arc-history-empty b { color: var(--text-2); font-size: var(--dz-md); font-weight: 600; }
+.arc-history-empty span { font-size: var(--dz-sm); }
 
 /* ── Skills and connectors ──────────────────────────────────────────────── */
-.arc-drawer-skills { --skill-blue: #5bb7e8; --skill-blue-text: #a8def7; --skill-blue-soft: rgba(91, 183, 232, .12); --skill-blue-border: rgba(91, 183, 232, .3); overflow: hidden; }
-.arc-drawer-skills .arc-drawer-view-head code { border-radius: 4px; background: var(--skill-blue-soft); color: var(--skill-blue-text); padding: 1px 4px; font-family: var(--mono); font-size: .86em; }
-.arc-skill-actions { flex: none; display: flex; flex-direction: column; gap: 2px; }
+/* This block used to declare `--skill-blue: #5bb7e8` and friends — a hardcoded
+   copy of the `html[data-accent="blue"]` workspace theme, applied to every
+   workspace regardless of the accent it actually chose. It is now on the real
+   accent tokens, so a gold, red, steel or emerald workspace gets its own accent
+   here like everywhere else. */
+.arc-drawer-skills { overflow: hidden; }
+.arc-drawer-skills .arc-drawer-view-head code { border-radius: 4px; background: var(--accent-soft); color: var(--accent-contrast); padding: 1px 4px; font-family: var(--mono); font-size: 1em; }
+
+/* Skill authoring and installation are the rare case — they live in a collapsed
+   disclosure pinned below the list, not in four cards above it. */
+.arc-skill-manage { flex: none; margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+/* Qualified with `.arc-history` on purpose: `.arc-chat button { font-size: inherit }`
+   near the top of this file is (0,1,1) and outranks a bare single-class rule, so
+   an unqualified `.arc-skill-manage-toggle { font-size }` silently loses and the
+   button renders at the inherited 14px. Same trap caught `.arc-archived-toggle`
+   below, which had been rendering at 14px rather than the size it declares. */
+.arc-history .arc-skill-manage-toggle { width: 100%; min-height: 34px; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 6px; font-family: inherit; font-size: var(--dz-sm); font-weight: 600; cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-skill-manage-toggle:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
+.arc-skill-manage-toggle svg { flex: none; }
+.arc-skill-manage-toggle .arc-skill-manage-chevron { margin-left: auto; transition: transform var(--arc-fast); }
+.arc-skill-manage-toggle[aria-expanded="true"] .arc-skill-manage-chevron { transform: rotate(180deg); }
+.arc-skill-actions { flex: none; display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
 .arc-skill-create,
-.arc-skill-browse { width: 100%; min-height: 50px; display: grid; grid-template-columns: 30px minmax(0, 1fr) 12px; align-items: center; gap: 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--text-2); padding: 7px 8px; text-align: left; cursor: pointer; }
-.arc-skill-create { background: rgba(91, 183, 232, .075); }
-.arc-skill-browse { color: var(--text-2); }
+.arc-skill-browse { width: 100%; min-height: 46px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 12px; align-items: center; gap: 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--text-2); padding: 6px 8px; text-align: left; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast); }
 .arc-skill-create:hover,
-.arc-skill-browse:hover { border-color: rgba(91, 183, 232, .18); background: rgba(91, 183, 232, .075); }
+.arc-skill-browse:hover { border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-skill-create > span:first-child,
-.arc-skill-browse > span:first-child { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--skill-blue-border); border-radius: 9px; background: rgba(91, 183, 232, .12); color: var(--skill-blue); }
+.arc-skill-browse > span:first-child { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--muted); }
+.arc-skill-create:hover > span:first-child,
+.arc-skill-browse:hover > span:first-child { border-color: var(--accent-border); color: var(--accent); }
 .arc-skill-create > span:nth-child(2),
-.arc-skill-browse > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.arc-skill-browse > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .arc-skill-create b,
-.arc-skill-browse b { color: var(--text); font-size: 10.5px; font-weight: 650; }
+.arc-skill-browse b { color: var(--text); font-size: var(--dz-sm); font-weight: 620; }
 .arc-skill-create small,
-.arc-skill-browse small { color: #83a7ba; font-size: 7.8px; line-height: 1.35; }
+.arc-skill-browse small { color: var(--muted); font-size: var(--dz-xs); line-height: 1.35; }
 .arc-skill-create > svg,
-.arc-skill-browse > svg { color: #6594aa; }
+.arc-skill-browse > svg { color: var(--muted); }
 .arc-skills-section-head,
-.arc-connectors-section-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 18px 2px 7px; }
+.arc-connectors-section-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 2px 7px; }
+.arc-skills-section-head:first-child { margin-top: 4px; }
 .arc-skills-section-head > span,
-.arc-connectors-section-head > span { color: var(--muted); font-size: 8.5px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
-.arc-connectors-section-head a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-contrast); font-size: 8.8px; text-decoration: none; }
-.arc-skills-section-head small { color: #7aa8bd; font-size: 8.5px; }
-.arc-skills-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; margin: 0 -4px; padding: 0 4px 4px; }
+.arc-connectors-section-head > span { color: var(--muted); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.arc-connectors-section-head a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-contrast); font-size: var(--dz-xs); text-decoration: none; }
+.arc-skills-section-head small { color: var(--muted); font-size: var(--dz-xs); }
+.arc-skills-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; margin: 0 -4px; padding: 0 4px 4px; }
 .arc-drawer-skills .arc-drawer-footnote { flex: none; margin-top: 0; }
-.arc-skill-row { width: 100%; min-height: 64px; display: grid; grid-template-columns: 36px minmax(0, 1fr) 14px; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--text-2); padding: 8px; text-align: left; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast); }
-.arc-skill-row:hover,
-.arc-skill-row:focus-visible { border-color: rgba(91, 183, 232, .18); background: rgba(91, 183, 232, .075); }
-.arc-skill-icon { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--skill-blue-border); border-radius: 10px; background: var(--skill-blue-soft); color: var(--skill-blue); }
-.arc-skill-row > span:nth-child(2) { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; align-items: center; }
-.arc-skill-row b { color: var(--text); font-size: 11px; font-weight: 620; }
-.arc-skill-row small { grid-column: 1 / -1; color: var(--muted); font-size: 8.7px; line-height: 1.45; }
-.arc-skill-row em { grid-column: 2; grid-row: 1; border-radius: 5px; background: var(--skill-blue-soft); color: var(--skill-blue-text); padding: 3px 5px; font-family: var(--mono); font-size: 7px; font-style: normal; }
-.arc-skill-row > svg { color: #6594aa; }
-.arc-skill-row[data-source="library"],
-.arc-skill-row[data-source="github"] { background: rgba(91, 183, 232, .045); }
-.arc-skill-library-head > button { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 11px; border: 0; background: transparent; color: var(--skill-blue-text); padding: 0; font-size: 9px; cursor: pointer; }
-.arc-skill-library-head > button:hover { color: #d0efff; }
+
+/* A skill row: icon · (name + source badge + description + every command) · remove.
+   The remove control is a sibling button, so the row itself stays one big click
+   target that runs the skill. */
+.arc-skill-item { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; border: 1px solid transparent; border-radius: 9px; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-skill-item:hover,
+.arc-skill-item:focus-within { border-color: var(--accent-border); background: var(--accent-soft); }
+.arc-skill-row { min-width: 0; width: 100%; min-height: 62px; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2); padding: 8px; text-align: left; cursor: pointer; }
+.arc-skill-row:focus-visible { outline: 0; }
+.arc-skill-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); color: var(--text-2); }
+.arc-skill-item:hover .arc-skill-icon,
+.arc-skill-item:focus-within .arc-skill-icon { border-color: var(--accent-border); color: var(--accent); }
+.arc-skill-row > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.arc-skill-row-title { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.arc-skill-row b { min-width: 0; overflow: hidden; color: var(--text); font-size: var(--dz-md); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.arc-skill-row small { color: var(--muted); font-size: var(--dz-sm); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* Every command the skill answers to, not just the first. */
+.arc-skill-commands { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.arc-skill-commands em { border-radius: 5px; background: var(--accent-soft); color: var(--accent-contrast); padding: 2px 5px; font-family: var(--mono); font-size: var(--dz-xs); font-style: normal; }
+/* Source is a labelled badge. It used to be a 4.5% background tint, which made
+   a built-in and an untrusted GitHub import look identical. */
+.arc-skill-source { flex: none; border: 1px solid var(--line-2); border-radius: 999px; background: var(--inset); color: var(--muted); padding: 1px 6px; font-size: var(--dz-xs); font-weight: 620; letter-spacing: .03em; text-transform: uppercase; }
+.arc-skill-source[data-source="github"] { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
+.arc-skill-source[data-source="generated"] { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
+.arc-skill-remove { width: 26px; height: 26px; justify-self: center; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), background var(--arc-fast); }
+.arc-skill-item:hover .arc-skill-remove,
+.arc-skill-remove:focus-visible { opacity: 1; }
+.arc-skill-remove:hover { background: var(--red-soft); color: var(--red-text); }
+.arc-skill-remove:disabled { cursor: default; opacity: .4; }
+/* An unmet data source, on the skill row / library card / composer. Warn tones,
+   not destructive — nothing is broken and nothing is blocked; a source the
+   answer would have used is simply not switched on. */
+.arc-skill-requirement { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; margin: 0; border-top: 1px solid var(--line); padding: 7px 8px 8px; color: var(--warn-text); font-size: var(--dz-xs); line-height: 1.45; }
+.arc-skill-requirement > svg { flex: none; }
+.arc-skill-requirement > span { min-width: 0; flex: 1; }
+.arc-skill-requirement > button { flex: none; border: 1px solid var(--warn-border); border-radius: 6px; background: var(--warn-soft); color: var(--warn-text); padding: 3px 7px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; cursor: pointer; }
+.arc-skill-requirement > button:hover { background: color-mix(in srgb, var(--warn-soft) 55%, var(--canvas-deep)); }
+.arc-skill-item[data-unmet="true"] { grid-template-columns: minmax(0, 1fr) 28px; }
+/* Beside the composer chip: same message, no border, no jump-to — the operator
+   is already where the decision gets made. */
+.arc-skill-requirement[data-compact="true"] { border-top: 0; margin: 0 2px 6px; padding: 0; }
+.arc-skill-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 140px; color: var(--muted); text-align: center; padding: 20px; }
+.arc-skill-empty b { color: var(--text-2); font-size: var(--dz-md); }
+.arc-skill-empty span { font-size: var(--dz-sm); }
+.arc-skill-library-head > button { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 11px; border: 0; background: transparent; color: var(--accent-contrast); padding: 0; font-size: var(--dz-sm); cursor: pointer; }
+.arc-skill-library-head > button:hover { color: var(--text); }
 .arc-skill-search { height: 38px; flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--muted); padding: 0 10px; }
-.arc-skill-search:focus-within { border-color: var(--skill-blue-border); }
-.arc-skill-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 11px; }
+.arc-skill-search:focus-within { border-color: var(--accent-border); }
+.arc-skill-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-md); }
 .arc-skill-search input::placeholder { color: var(--muted); }
-.arc-github-toggle { flex: none; width: 100%; min-height: 48px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 14px; align-items: center; gap: 9px; border: 1px solid var(--skill-blue-border); border-radius: 9px; background: var(--skill-blue-soft); color: var(--skill-blue); padding: 7px 10px; text-align: left; cursor: pointer; }
+.arc-github-toggle { flex: none; width: 100%; min-height: 46px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 14px; align-items: center; gap: 9px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--muted); padding: 7px 10px; text-align: left; cursor: pointer; }
+.arc-github-toggle:hover { border-color: var(--accent-border); color: var(--accent); }
 .arc-github-toggle > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.arc-github-toggle b { color: var(--text); font-size: 10px; }
-.arc-github-toggle small { color: #83a7ba; font-size: 8px; }
+.arc-github-toggle b { color: var(--text); font-size: var(--dz-sm); }
+.arc-github-toggle small { color: var(--muted); font-size: var(--dz-xs); }
 .arc-github-toggle > svg:last-child { justify-self: end; transition: transform var(--arc-fast); }
 .arc-github-toggle[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
-.arc-github-import { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 7px; border: 1px solid var(--skill-blue-border); border-radius: 10px; background: color-mix(in srgb, var(--inset) 86%, var(--skill-blue-soft)); padding: 10px; }
+.arc-github-import { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 7px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); padding: 10px; }
 .arc-github-import > label { min-width: 0; }
-.arc-github-import > label > span { display: block; margin-bottom: 5px; color: #83a7ba; font-size: 8px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.arc-github-import > label > span { display: block; margin-bottom: 5px; color: var(--muted); font-size: var(--dz-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .arc-github-import > label > div { height: 34px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--canvas-deep); color: var(--muted); padding: 0 8px; }
-.arc-github-import input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 9px; }
+.arc-github-import input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-xs); }
 .arc-github-import > button,
-.arc-github-preview > button { align-self: end; min-height: 34px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--skill-blue-border); border-radius: 7px; background: var(--skill-blue-soft); color: var(--skill-blue-text); padding: 0 9px; font-size: 8.5px; font-weight: 620; cursor: pointer; }
+.arc-github-preview > button { align-self: end; min-height: 34px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--accent-border); border-radius: 7px; background: var(--accent-soft); color: var(--accent-contrast); padding: 0 9px; font-size: var(--dz-sm); font-weight: 620; cursor: pointer; }
 .arc-github-import button:disabled { opacity: .55; cursor: default; }
-.arc-github-preview { grid-column: 1 / -1; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 9px; border-top: 1px solid var(--line); padding-top: 9px; }
+.arc-github-preview { grid-column: 1 / -1; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 9px; border-top: 1px solid var(--line); padding-top: 9px; }
 .arc-github-preview > div { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 7px; }
-.arc-github-preview b { color: var(--text); font-size: 10px; }
-.arc-github-preview small { grid-column: 1 / -1; color: var(--muted); font-size: 8px; line-height: 1.4; }
-.arc-github-preview em { grid-column: 2; grid-row: 1; color: var(--skill-blue-text); font-family: var(--mono); font-size: 7px; font-style: normal; }
-.arc-github-preview p { grid-column: 1 / -1; margin: 0; color: #7aa8bd; font-size: 7.5px; }
-.arc-github-status { grid-column: 1 / -1; margin: 0; color: #8fc9e6; font-size: 8.3px; line-height: 1.4; }
-.arc-github-installed { flex: none; max-height: 150px; overflow: auto; }
-.arc-github-installed > div:not(.arc-skills-section-head) { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; border-radius: 8px; }
-.arc-github-installed > div:not(.arc-skills-section-head):hover { background: rgba(91, 183, 232, .055); }
-.arc-github-installed > div > button:first-child { min-width: 0; min-height: 50px; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
-.arc-github-installed > div > button:first-child > span:nth-child(2) { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 7px; }
-.arc-github-installed b { font-size: 9.5px; }
-.arc-github-installed small { grid-column: 1 / -1; color: var(--muted); font-size: 7.5px; }
-.arc-github-installed em { color: var(--skill-blue-text); font-family: var(--mono); font-size: 7px; font-style: normal; }
-.arc-github-installed > div > button:last-child { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
-.arc-github-installed > div > button:last-child:hover { background: var(--red-soft); color: var(--red-text); }
+.arc-github-preview b { color: var(--text); font-size: var(--dz-sm); }
+.arc-github-preview small { grid-column: 1 / -1; color: var(--muted); font-size: var(--dz-xs); line-height: 1.4; }
+.arc-github-preview em { grid-column: 2; grid-row: 1; color: var(--accent-contrast); font-family: var(--mono); font-size: var(--dz-xs); font-style: normal; }
+.arc-github-preview p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: var(--dz-xs); }
+.arc-github-status { grid-column: 1 / -1; margin: 0; color: var(--text-2); font-size: var(--dz-xs); line-height: 1.4; }
 /* Generated "voice" skills — Arc learned from the workspace's own approved copy. */
-.arc-voice-status { display: flex; align-items: flex-start; gap: 6px; margin: 0 2px; border-radius: 8px; padding: 8px 9px; font-size: 8.5px; line-height: 1.45; }
+.arc-voice-status { display: flex; align-items: flex-start; gap: 6px; margin: 0 2px; border-radius: 8px; padding: 8px 9px; font-size: var(--dz-sm); line-height: 1.45; }
 .arc-voice-status svg { flex: none; margin-top: 1px; }
 .arc-voice-status[data-tone="ok"] { border: 1px solid var(--ok-border); background: var(--ok-soft); color: var(--ok-text); }
 .arc-voice-status[data-tone="info"] { border: 1px solid var(--line); background: var(--inset); color: var(--muted); }
-.arc-voice-list { flex: none; display: flex; flex-direction: column; max-height: 176px; overflow: auto; }
-.arc-voice-skill { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; border-radius: 8px; }
-.arc-voice-skill:hover { background: rgba(91, 183, 232, .055); }
-.arc-voice-skill > button:first-child { min-width: 0; min-height: 52px; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
-.arc-voice-skill > button:first-child > span:nth-child(2) { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 7px; }
-.arc-voice-skill .arc-skill-icon { color: var(--skill-blue-text); }
-.arc-voice-skill b { font-size: 9.5px; }
-.arc-voice-skill small { grid-column: 1 / -1; color: var(--muted); font-size: 7.5px; }
-.arc-voice-skill em { color: var(--skill-blue-text); font-family: var(--mono); font-size: 7px; font-style: normal; }
-.arc-voice-skill > button:last-child { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
-.arc-voice-skill > button:last-child:hover { background: var(--red-soft); color: var(--red-text); }
 .arc-library-list { gap: 7px; }
-.arc-library-skill { min-height: 96px; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; padding: 9px; }
-.arc-library-skill:hover { border-color: rgba(91, 183, 232, .16); background: rgba(91, 183, 232, .045); }
-.arc-library-skill[data-installed="true"] { border-color: var(--skill-blue-border); background: color-mix(in srgb, var(--panel) 90%, var(--skill-blue-soft)); }
+/* `flex: none` is load-bearing: these are children of a flex column, so without
+   it they shrink below their own content and the rows overlap. It only showed up
+   once the requirement note added a row. */
+.arc-library-skill { flex: none; min-height: 96px; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; padding: 9px; }
+.arc-library-skill:hover { border-color: var(--accent-border); background: var(--accent-soft); }
+.arc-library-skill[data-installed="true"] { border-color: var(--accent-border); background: color-mix(in srgb, var(--panel) 90%, var(--accent-soft)); }
 .arc-library-skill > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .arc-library-skill > div > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.arc-library-skill b { color: var(--text); font-size: 10.8px; font-weight: 620; }
-.arc-library-skill em { flex: none; border-radius: 5px; background: var(--skill-blue-soft); color: var(--skill-blue-text); padding: 3px 5px; font-family: var(--mono); font-size: 7px; font-style: normal; }
-.arc-library-skill small { color: var(--muted); font-size: 8.7px; line-height: 1.42; }
-.arc-library-skill p { margin: 0; color: #7aa8bd; font-size: 7.8px; }
-.arc-library-skill > button { grid-column: 2; justify-self: start; min-height: 28px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--skill-blue-border); border-radius: 7px; background: var(--skill-blue-soft); color: var(--skill-blue-text); padding: 0 9px; font-size: 8.5px; font-weight: 620; cursor: pointer; }
-.arc-library-skill > button:hover:not(:disabled) { border-color: rgba(91, 183, 232, .52); background: rgba(91, 183, 232, .18); }
+.arc-library-skill b { color: var(--text); font-size: var(--dz-md); font-weight: 620; }
+.arc-library-skill small { color: var(--muted); font-size: var(--dz-sm); line-height: 1.42; }
+.arc-library-skill p { margin: 0; color: var(--muted); font-size: var(--dz-xs); }
+.arc-library-skill > button { grid-column: 2; justify-self: start; min-height: 28px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--accent-border); border-radius: 7px; background: var(--accent-soft); color: var(--accent-contrast); padding: 0 9px; font-size: var(--dz-sm); font-weight: 620; cursor: pointer; }
+.arc-library-skill > button:hover:not(:disabled) { border-color: var(--accent-border-strong); background: color-mix(in srgb, var(--accent-soft) 60%, var(--accent)); }
 .arc-library-skill > button:disabled { cursor: default; opacity: .72; }
-.arc-drawer-footnote { display: flex; align-items: center; gap: 6px; margin: auto 2px 0; padding-top: 16px; color: var(--muted); font-size: 8.8px; line-height: 1.45; }
+.arc-drawer-footnote { display: flex; align-items: center; gap: 6px; margin: auto 2px 0; padding-top: 16px; color: var(--muted); font-size: var(--dz-xs); line-height: 1.45; }
 .arc-drawer-footnote svg { flex: none; color: var(--ok-text); }
 .arc-connector-notice { min-height: 48px; display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--inset); color: var(--muted); padding: 8px 10px; }
 .arc-connector-notice > svg { color: var(--accent); }
 .arc-connector-notice > span { display: flex; flex-direction: column; gap: 2px; }
-.arc-connector-notice b { color: var(--text-2); font-size: 9.5px; font-weight: 620; }
-.arc-connector-notice small { font-size: 8.5px; }
+.arc-connector-notice b { color: var(--text-2); font-size: var(--dz-sm); font-weight: 620; }
+.arc-connector-notice small { font-size: var(--dz-xs); }
 .arc-connector-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; margin: 0 -4px; padding: 0 4px 4px; }
-.arc-connector-row { min-height: 78px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 14px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--text-2); padding: 9px 10px; text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast); }
-.arc-connector-row:hover { border-color: var(--line-3); background: color-mix(in srgb, var(--panel) 90%, var(--accent-soft)); transform: translateY(-1px); }
-.arc-connector-logo { --connector-color: #9aa0ac; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--connector-color) 42%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--connector-color) 14%, transparent); color: var(--connector-color); font-family: var(--mono); font-size: 8.5px; font-weight: 650; }
+.arc-connector-list .arc-connectors-section-head { margin: 12px 2px 2px; }
+.arc-connector-list .arc-connectors-section-head:first-child { margin-top: 2px; }
+.arc-connector-list .arc-connectors-section-head small { color: var(--muted); font-size: var(--dz-xs); }
+/* `flex: none` — these are flex children and would otherwise shrink below their
+   own content once a group head or toggle changes the row height. */
+.arc-connector-row { flex: none; min-height: 72px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 30px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--text-2); padding: 9px 10px; text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-connector-row:hover { border-color: var(--line-3); background: color-mix(in srgb, var(--panel) 90%, var(--accent-soft)); }
+/* Arrived at from an unmet skill requirement — mark which row was meant. */
+.arc-connector-row[data-focused="true"] { border-color: var(--warn-border); background: color-mix(in srgb, var(--panel) 88%, var(--warn-soft)); }
+.arc-connector-logo { --connector-color: #9aa0ac; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--connector-color) 42%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--connector-color) 14%, transparent); color: var(--connector-color); font-family: var(--mono); font-size: var(--dz-xs); font-weight: 650; }
 .arc-connector-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .arc-connector-copy > span { min-width: 0; display: flex; align-items: center; gap: 7px; }
-.arc-connector-copy b { min-width: 0; flex: 1; overflow: hidden; color: var(--text); font-size: 10.5px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
-.arc-connector-copy em { flex: none; border: 1px solid var(--line); border-radius: 999px; background: var(--inset); color: var(--muted); padding: 2px 5px; font-size: 6.8px; font-style: normal; }
+.arc-connector-copy b { min-width: 0; flex: 1; overflow: hidden; color: var(--text); font-size: var(--dz-md); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+/* Status is the reason to look at the row. It was 6.8px — the smallest text in
+   the app — and is now the same size as every other piece of meta here. */
+.arc-connector-copy em { flex: none; border: 1px solid var(--line); border-radius: 999px; background: var(--inset); color: var(--muted); padding: 2px 6px; font-size: var(--dz-xs); font-style: normal; font-weight: 620; }
 .arc-connector-row[data-status="connected"] .arc-connector-copy em { border-color: var(--ok-border); background: var(--ok-soft); color: var(--ok-text); }
 .arc-connector-row[data-status="disabled"] .arc-connector-copy em { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
 .arc-connector-row[data-status="error"] .arc-connector-copy em { border-color: var(--red-border); background: var(--red-soft); color: var(--red-text); }
-.arc-connector-copy small { color: var(--muted); font-size: 7.8px; }
-.arc-connector-copy p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; margin: 0; color: var(--muted); font-size: 8.3px; line-height: 1.35; }
+.arc-connector-copy small { color: var(--muted); font-size: var(--dz-xs); }
+/* No line clamp. The old one cut settings-page prose mid-word ("…deduped on
+   email/phone (a…"), which is worse than a slightly taller row: the operator
+   could never read the rest. Rows now size to their one-line capability
+   summary, and the list is grouped and searchable to keep it navigable. */
+.arc-connector-copy p { margin: 0; color: var(--muted); font-size: var(--dz-sm); line-height: 1.4; }
+.arc-connector-setup { display: grid; place-items: center; color: var(--muted); text-decoration: none; }
+.arc-connector-setup:hover { color: var(--text-2); }
+/* Switch a connector on or off without leaving the conversation. Reads as a
+   switch, not a nav chevron — the row is no longer a link. */
+.arc-connector-toggle { width: 30px; height: 18px; justify-self: center; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 999px; background: var(--inset); padding: 0; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-connector-toggle i { width: 12px; height: 12px; display: block; border-radius: 50%; background: var(--muted); transform: translateX(-5px); transition: transform var(--arc-fast), background var(--arc-fast); }
+.arc-connector-toggle[aria-checked="true"] { border-color: var(--ok-border); background: var(--ok-soft); }
+.arc-connector-toggle[aria-checked="true"] i { background: var(--ok-text); transform: translateX(5px); }
+.arc-connector-toggle:hover:not(:disabled) { border-color: var(--accent-border); }
+.arc-connector-toggle:disabled { cursor: default; opacity: .55; }
+.arc-connector-toggle .is-spinning { color: var(--muted); }
+.arc-connector-error { margin: 0 2px 8px; border: 1px solid var(--red-border); border-radius: 8px; background: var(--red-soft); color: var(--red-text); padding: 7px 9px; font-size: var(--dz-sm); line-height: 1.45; }
+/* Connectors that are catalogued but not built. Nothing to act on, so they sit
+   behind a disclosure instead of padding the list at full row weight. */
+.arc-planned { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+.arc-history .arc-planned-toggle { width: 100%; min-height: 32px; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 6px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
+.arc-history .arc-planned-toggle:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
+.arc-planned-toggle .arc-planned-chevron { margin-left: auto; transition: transform var(--arc-fast); }
+.arc-planned-toggle[aria-expanded="true"] .arc-planned-chevron { transform: rotate(180deg); }
+.arc-planned-item { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; color: var(--muted); }
+.arc-planned-item b { color: var(--text-2); font-size: var(--dz-sm); font-weight: 600; }
+.arc-planned-item small { font-size: var(--dz-xs); }
 .arc-connector-row > svg { color: var(--muted); }
 .arc-connector-empty { min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--muted); text-align: center; }
-.arc-connector-empty b { color: var(--text-2); font-size: 11px; }
-.arc-connector-empty span { font-size: 9px; }
+.arc-connector-empty b { color: var(--text-2); font-size: var(--dz-md); }
+.arc-connector-empty span { font-size: var(--dz-sm); }
 .arc-drawer-connectors .arc-drawer-footnote { flex: none; margin-top: 0; }
 
 /* ── Share dialog ───────────────────────────────────────────────────────── */
@@ -2349,7 +2428,10 @@
 }
 .arc-share-dialog {
   width: min(470px, 100%);
+  /* dvh for the same reason as .app: with 100vh the dialog can extend past the
+     visible area on a phone, hiding its own footer actions. */
   max-height: min(760px, calc(100vh - 44px));
+  max-height: min(760px, calc(100dvh - 44px));
   overflow: auto;
   border: 1px solid var(--line-2);
   border-radius: 14px;
@@ -2409,7 +2491,7 @@
   .arc-conversation-actions .arc-header-attention { display: inline-flex; width: 44px; height: 44px; padding: 0; }
   .arc-header-attention span { display: none; }
   .arc-history-button { width: 44px; height: 44px; padding: 0; }
-  .arc-conversation-title h1 { font-size: 16px; }
+  .arc-conversation-title h2 { font-size: 16px; }
   .arc-conversation-title p { display: none; }
   .arc-header-artifact,
   .arc-header-work { width: 44px; height: 44px; padding: 0; }
@@ -2422,8 +2504,6 @@
   .arc-assistant-message { margin-bottom: 30px; }
   .arc-answer,
   .arc-markdown { font-size: 14px; }
-  .arc-live-result { padding-left: 12px; }
-  .arc-live-result-kicker { font-size: 10px; }
   .arc-status-update span { flex-direction: column; gap: 1px; }
   .arc-suggestions button { min-height: 40px; padding-inline: 13px; }
   .arc-answer h2,
@@ -2443,8 +2523,6 @@
   .arc-composer-dock { padding: 5px 10px max(7px, env(safe-area-inset-bottom)); }
   .arc-composer { border-radius: 17px; padding: 7px 9px 6px; }
   .arc-composer textarea { min-height: 32px; max-height: 132px; padding: 1px 3px 6px; font-size: 13.5px; }
-  .arc-chat[data-new-conversation="true"] .arc-composer textarea,
-  .arc-chat[data-new-conversation="true"] .arc-composer textarea:not(:placeholder-shown) { min-height: 32px; }
   .arc-composer-toolbar { gap: 6px; }
   .arc-composer-tools,
   .arc-composer-send { gap: 2px; }
@@ -2472,7 +2550,8 @@
   .arc-thread-grouping button,
   .arc-archived-toggle,
   .arc-history-menu > button { min-height: 44px; }
-  .arc-drawer-nav button { font-size: 10.5px; }
+  /* One step up from `--dz-xs` for touch, still on the drawer's scale. */
+  .arc-drawer-nav button { font-size: var(--dz-sm); }
   .arc-history-menu-btn { width: 44px; height: 44px; margin-right: 0; opacity: 1; }
   .arc-question { grid-template-columns: minmax(0, 1fr) auto; }
   .arc-message-actions { opacity: 1; transform: none; }
@@ -2480,8 +2559,6 @@
   .arc-run-live-head { margin-bottom: 11px; }
   .arc-run-live-head b { font-size: 12.5px; }
   .arc-live-worklog { gap: 17px; padding: 16px 0 18px; }
-  .arc-live-commentary.arc-markdown p,
-  .arc-live-commentary.arc-markdown li { font-size: 13px; line-height: 1.65; }
   .arc-live-event { grid-template-columns: 22px minmax(0, 1fr) 18px; gap: 8px; }
   .arc-live-event-icon { width: 22px; }
   .arc-run-contract-grid { grid-template-columns: 1fr; }
@@ -2514,4 +2591,17 @@
     animation-iteration-count: 1 !important;
     transition-duration: .001ms !important;
   }
+}
+
+/* Link from a run row into the run inspector (BSR-509). A sibling of the row
+   button, since an anchor cannot be nested inside it. */
+.arc-work-inspect {
+  display: block;
+  margin: 6px 0 2px 30px;
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.arc-work-inspect:hover {
+  text-decoration: underline;
 }

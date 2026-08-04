@@ -9,6 +9,7 @@ import { ANALYTICS_WINDOWS } from "@/lib/analytics/overview";
 import type { AnalyticsOverview, AnalyticsWindow, TrendKey, TrendSeries } from "@/lib/analytics/overview";
 import type { OpportunityConversionReadModel } from "@/lib/performance/opportunity-conversion";
 import type { CampaignPerformanceRow, ChannelPerformance, PerformanceAnomaly, PerformanceNextMove } from "@/lib/performance/read-model";
+import { KpiStrip } from "../../_components/kpi-strip";
 
 export type ActivityRowVM = { id: string; dot: string; title: string; detail: string; meta: string[]; time: string };
 export type ActivityDayVM = { label: string; rows: ActivityRowVM[] };
@@ -120,12 +121,12 @@ function CampaignTable({ rows }: { rows: CampaignPerformanceRow[] }) {
   return (
     <div className="blk camps" style={{ marginTop: 20 }}>
       <h2>
-        Campaign performance <span className="tg wired">wired · attribution</span>
+        Campaign performance
         <span className="camphint">Open a campaign for its full performance breakdown</span>
       </h2>
       <div className="ctbl">
         <div className="cthead">
-          <span>Campaign</span><span>Leads</span><span>Booked</span><span>Revenue</span><span>Conv.</span><span>Trend</span>
+          <span>Campaign</span><span>Leads</span><span>Booked</span><span>Revenue</span><span>Converted</span><span>Trend</span>
         </div>
         {rows.map((c) => (
           <Link className="ctrow" key={c.id} href={`/campaigns/${encodeURIComponent(c.id)}`}>
@@ -196,7 +197,7 @@ function SignalsBlock({ anomalies, nextMoves }: { anomalies: PerformanceAnomaly[
         </div>
       </div>
       <div className="blk">
-        <h2>Recommended next moves <span className="tg sync">Arc · approval-gated</span></h2>
+        <h2>Recommended next moves <span className="tg sync">Drafted by Arc · needs your approval</span></h2>
         <div className="moves">
           {nextMoves.map((m) => (
             <Link className="move" key={m.id} href={m.href}>
@@ -221,9 +222,15 @@ function WhatConverts({ model }: { model: OpportunityConversionReadModel }) {
       <div className="blk" style={{ marginTop: 18 }}>
         <h2>What converts <span className="tg wired">opportunity → booked</span></h2>
         <div className="psub">
+          {/* Three different answers, and they were previously two. `unavailable`
+              means the read FAILED and the panel must not reassure; the banner
+              above names it. `not_configured` is the offline preview. `empty` is
+              a real, healthy workspace with nothing booked yet. */}
           {model.status === "unavailable"
-            ? "Connect a workspace to see which opportunity types convert."
-            : "Not enough data yet — Arc learns which opportunity types convert as campaigns get approved and book work."}
+            ? "This didn’t load, so there is nothing to read into the blank. Reload, and if it persists check your workspace access."
+            : model.status === "not_configured"
+              ? "Connect a workspace to see which opportunity types turn into booked work."
+              : "Not enough data yet — Arc learns which opportunity types convert as campaigns get approved and book work."}
         </div>
       </div>
     );
@@ -378,11 +385,11 @@ export function AnalyticsView({
             <>
               <div className="vhead">
                 <div>
-                  <h1 className="pt">Performance overview</h1>
+                  <h2 className="pt">Performance overview</h2>
                   <div className="psub">
                     {overview.dataError
-                      ? `Last ${range} days · org-scoped`
-                      : `Last ${range} days · compared to the prior ${range} · org-scoped, straight from CRM`}
+                      ? `Last ${range} days`
+                      : `Last ${range} days · compared with the previous ${range} days`}
                   </div>
                 </div>
               </div>
@@ -400,19 +407,17 @@ export function AnalyticsView({
                 </div>
               )}
 
-              <div className="kpis">
-                {overview.kpis.map((k) => (
-                  <div className="kpi" key={k.label}>
-                    <div className="kl">
-                      {k.label}
-                      <span className={`tg ${k.tag === "wired" ? "wired" : "sync"}`}>{k.tagLabel}</span>
-                    </div>
-                    <div className="kv">{k.value}</div>
-                    <div className={`kd ${k.dir}`}>{k.dir === "up" ? "▲" : k.dir === "dn" ? "▼" : "—"} {k.deltaLabel}</div>
-                    <div className="kp">{k.prevLabel}</div>
-                  </div>
-                ))}
-              </div>
+              <KpiStrip
+                items={overview.kpis.map((k) => ({
+                  label: k.label,
+                  // An empty metric carries no value and no delta; its prevLabel
+                  // is the sentence saying what to do about that.
+                  value: k.value === "—" ? "" : k.value,
+                  delta: { label: k.deltaLabel, dir: k.dir },
+                  sublabel: k.value === "—" ? undefined : k.prevLabel,
+                  emptyHint: k.value === "—" ? k.prevLabel : undefined,
+                }))}
+              />
 
               <div className="panel">
                 <div className="ph">
@@ -439,7 +444,7 @@ export function AnalyticsView({
               <div className="grid2">
                 <div className="col">
                   <div className="blk">
-                    <h2>Funnel <span className="tg wired">wired · CRM</span></h2>
+                    <h2>Funnel</h2>
                     <div className="funnel">
                       {overview.funnel.map((s) => (
                         <div className="fstage" key={s.label}>
@@ -451,11 +456,11 @@ export function AnalyticsView({
                     </div>
                   </div>
                   <div className="blk">
-                    <h2>Revenue by persona <span className="tg wired">wired · outcomes</span></h2>
+                    <h2>Revenue by persona</h2>
                     <Breakdown rows={overview.revenueByPersona} />
                   </div>
                   <div className="blk">
-                    <h2>Leads by source <span className="tg wired">wired · CRM</span></h2>
+                    <h2>Leads by source</h2>
                     <Breakdown rows={overview.leadsBySource} />
                   </div>
                 </div>
@@ -468,12 +473,12 @@ export function AnalyticsView({
                   )}
                   {overview.arcRead.rec && (
                     <div className="recbox">
-                      <div className="rl">Recommended next iteration · Arc estimate</div>
+                      <div className="rl">What to try next · Arc&rsquo;s estimate</div>
                       <div className="rt">{overview.arcRead.rec}</div>
                     </div>
                   )}
                   <div className="abtns">
-                    <button type="button" className="gbtn gold" data-soon="Arc iteration drafting is coming soon"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Draft the iteration</button>
+                    <button type="button" className="gbtn gold" data-soon="Drafting the next round is coming soon"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Draft it</button>
                     <Link className="gbtn" href="/arc"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Ask Arc</Link>
                   </div>
                   <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)", marginTop: 11, lineHeight: 1.5 }}>
@@ -492,27 +497,23 @@ export function AnalyticsView({
 
           {view === "personas" && (
             <>
-              <div className="vhead"><div><h1 className="pt">By persona</h1><div className="psub">Revenue per persona this period · wired from outcomes</div></div></div>
-              <div className="blk"><h2>Revenue by persona <span className="tg wired">wired · outcomes</span></h2><Breakdown rows={overview.revenueByPersona} /></div>
+              <div className="vhead"><div><h2 className="pt">By persona</h2><div className="psub">Revenue per persona this period</div></div></div>
+              <div className="blk"><h2>Revenue by persona</h2><Breakdown rows={overview.revenueByPersona} /></div>
             </>
           )}
 
           {view === "channels" && (
             <>
-              <div className="vhead"><div><h1 className="pt">By channel</h1><div className="psub">Leads, booked work, revenue, spend, and ROAS per channel · attributed from CRM outcomes</div></div></div>
-              <div className="blk"><h2>Channel performance <span className="tg wired">wired · attribution</span></h2><ChannelTable rows={channels} /></div>
-              <div className="blk" style={{ marginTop: 18 }}><h2>Leads by source <span className="tg wired">wired · CRM</span></h2><Breakdown rows={overview.leadsBySource} /></div>
+              <div className="vhead"><div><h2 className="pt">By channel</h2><div className="psub">Leads, booked work, revenue, spend, and ROAS per channel · attributed from CRM outcomes</div></div></div>
+              <div className="blk"><h2>Channel performance</h2><ChannelTable rows={channels} /></div>
+              <div className="blk" style={{ marginTop: 18 }}><h2>Leads by source</h2><Breakdown rows={overview.leadsBySource} /></div>
             </>
           )}
 
           {view === "activity" && (
             <>
-              <div className="vhead"><div><h1 className="pt">Activity</h1><div className="psub">The full audit trail — every Arc action, approval, and signal, merged from your workspace.</div></div></div>
-              <div className="asum">
-                {activitySummary.map((s) => (
-                  <div className="kpi" key={s.label}><div className="kl">{s.label}</div><div className="kv">{s.value}</div></div>
-                ))}
-              </div>
+              <div className="vhead"><div><h2 className="pt">Activity</h2><div className="psub">The full audit trail — every Arc action, approval, and signal, merged from your workspace.</div></div></div>
+              <KpiStrip items={activitySummary.map((s) => ({ label: s.label, value: String(s.value) }))} />
               {activityDays.length === 0 ? (
                 <div className="blk"><div className="psub">No activity recorded yet. Arc logs its actions here as it works.</div></div>
               ) : (

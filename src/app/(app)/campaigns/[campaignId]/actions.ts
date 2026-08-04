@@ -10,6 +10,7 @@ import { buildExternalSendPackage, recordExternalSend, type ExternalSendPackage 
 import { decideAsset, reopenAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
 import { editDraftAsset } from "@/lib/campaigns/draft-editing";
 import { launchCampaign } from "@/lib/campaigns/launch";
+import { redispatchStalledRevision } from "@/lib/campaigns/revision-recovery";
 import { requestAssetRevision } from "@/lib/campaigns/revisions";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
@@ -20,7 +21,25 @@ import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabas
  * outbound dispatch; launching is a separate step. `persisted: false` is the
  * honest offline/demo signal so the UI can reflect the decision without saving.
  */
-export type CampaignActionResult = { ok: true; persisted: boolean; status?: string } | { ok: false; error: string };
+export type CampaignActionResult =
+  | {
+      ok: true;
+      persisted: boolean;
+      status?: string;
+      /**
+       * Only set by revision requests. `false` means the request was recorded
+       * but Arc has not started on it (the runner did not answer the wake), so
+       * the UI must not tell the operator their revision is under way.
+       */
+      dispatched?: boolean;
+      /**
+       * The queued `agent_tasks` row, returned so the UI can offer an immediate
+       * Retry on `dispatched: false` instead of making the operator wait for the
+       * stale-revision sweep to notice it ten minutes later.
+       */
+      agentTaskId?: string | null;
+    }
+  | { ok: false; error: string };
 
 export type LaunchCampaignActionResult =
   | { ok: true; persisted: boolean; launchedAssets?: number }
@@ -59,11 +78,47 @@ export async function requestCampaignRevision(campaignId: string, assetId: strin
 
   try {
     const operator = await getOperatorActor();
-    await requestAssetRevision({ campaignId, assetId, instruction: cleaned, operator });
+    const { dispatched, agentTaskId } = await requestAssetRevision({ campaignId, assetId, instruction: cleaned, operator });
     revalidatePath(`/campaigns/${campaignId}`);
-    return { ok: true, persisted: true, status: "revision_requested" };
+    return { ok: true, persisted: true, status: "revision_requested", dispatched, agentTaskId };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not request the revision." };
+  }
+}
+
+/**
+ * Send a stranded revision to Arc again.
+ *
+ * The revision was already recorded — this only re-wakes the existing task, so
+ * pressing it twice cannot produce two revisions. `redispatchStalledRevision`
+ * re-reads the row and refuses anything that has already started. Nothing here
+ * touches outbound: a revision produces a draft, and the approval gate is
+ * untouched.
+ */
+export async function retryCampaignRevision(campaignId: string, agentTaskId: string): Promise<CampaignActionResult> {
+  await requireOperator();
+
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, status: "revision_requested" };
+
+  try {
+    const operator = await getOperatorActor();
+    const { org_id: orgId } = await getCurrentAgentTaskTenantFields();
+    const result = await redispatchStalledRevision({ agentTaskId, orgId, operator });
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        error:
+          result.reason === "already_running"
+            ? "Arc has already picked this up — no need to retry."
+            : "That revision request is no longer available.",
+      };
+    }
+
+    revalidatePath(`/campaigns/${campaignId}`);
+    return { ok: true, persisted: true, status: "revision_requested", dispatched: result.dispatched };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not retry the revision." };
   }
 }
 

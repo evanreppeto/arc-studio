@@ -22,6 +22,54 @@ describe("generate_image", () => {
     expect(genImage.name).toBe("generate_image");
   });
 
+  it("creates no campaign when the operator asked for just the image", async () => {
+    // BSR-634. The tool used to create a campaign unconditionally, because until
+    // generated media reached the Library a campaign was the only way an image
+    // was reachable at all. Asking for "just one image, no campaign" produced a
+    // campaign anyway — contradicting the operator and leaving junk behind.
+    const media = { kind: "image", url: "https://x/y.png", source: "ai_generated", format: "4:3", model: "m", jobId: "j" };
+    const { cards, apiPost, call } = setup([async () => ({ media, objectPath: "arc-generated/y.png" })]);
+
+    const out = await call({ prompt: "a service van", title: "Van", library_only: true });
+
+    // Generation happened; the draft-asset call did NOT.
+    expect(apiPost).toHaveBeenCalledTimes(1);
+    expect(apiPost).toHaveBeenCalledWith("/api/v1/arc/media/generate-image", expect.objectContaining({ prompt: "a service van" }));
+    const payload = JSON.parse(out.content[0]!.text) as { campaignId: string | null; status: string };
+    expect(payload.campaignId).toBeNull();
+    expect(payload.status).toMatch(/Library/i);
+    // The card points at the Library and carries no approval — there is no
+    // campaign asset to approve, and the Library holds it for review instead.
+    expect(cards[0]).toMatchObject({ kind: "result", title: "Van", href: "/library", media });
+    expect(cards[0]!.approval).toBeUndefined();
+  });
+
+  it("still attaches to a campaign the operator named, even with library_only set", async () => {
+    // An explicit campaign_id is a clearer instruction than the flag.
+    const media = { kind: "image", url: "https://x/y.png", source: "ai_generated", format: "1:1", model: "m", jobId: "j" };
+    const { apiPost, call } = setup([
+      async () => ({ media, objectPath: "arc-generated/y.png" }),
+      async () => ({ campaignId: "c1", assetId: "a1" }),
+    ]);
+
+    await call({ prompt: "x", title: "T", library_only: true, campaign_id: "c1" });
+
+    expect(apiPost).toHaveBeenCalledTimes(2);
+    expect(apiPost).toHaveBeenNthCalledWith(2, "/api/v1/arc/campaigns/draft-asset", expect.objectContaining({ campaign_id: "c1" }));
+  });
+
+  it("still creates a campaign by default, so nothing changes for normal campaign work", async () => {
+    const media = { kind: "image", url: "https://x/y.png", source: "ai_generated", format: "1:1", model: "m", jobId: "j" };
+    const { apiPost, call } = setup([
+      async () => ({ media, objectPath: "arc-generated/y.png" }),
+      async () => ({ campaignId: "c1", assetId: "a1" }),
+    ]);
+
+    await call({ prompt: "x", title: "T", name: "Spring push", persona: "persona_landlord" });
+
+    expect(apiPost).toHaveBeenCalledTimes(2);
+  });
+
   it("generates, creates a draft asset, and emits a media+approval card", async () => {
     const media = { kind: "image", url: "https://x/y.png", source: "ai_generated", format: "1:1", model: "m", jobId: "j" };
     const { cards, apiPost, call } = setup([
@@ -91,6 +139,41 @@ function setupVideo(posts: Array<() => Promise<unknown>>) {
     (genVideo.handler as (a: Record<string, unknown>, e?: unknown) => Promise<{ content: Array<{ type: string; text: string }> }>)(args);
   return { cards, apiPost, call, genVideo };
 }
+
+// BSR-706. Branding is the most common revision ask on an image asset and the
+// one image generation can never satisfy: hardenImagePrompt strips text/logos
+// from every prompt unconditionally, so "add our logo" regenerates a picture
+// that still has no logo. compose_creative is the only path that puts the real
+// Brand Kit logo on an image — but Arc only reaches for it if the descriptions
+// say so. These assert the signposts, because without them the tools quietly
+// point Arc at the tool that cannot do the job.
+describe("branding revisions route to compositing, not regeneration", () => {
+  const descriptions = () => {
+    const client = { apiPost: vi.fn() } as unknown as ArcClient;
+    const step = vi.fn(async () => {});
+    const tools = mediaTools(client, step, () => {}, {});
+    return Object.fromEntries(tools.map((t) => [t.name, t.description ?? ""]));
+  };
+
+  it("sends generate_image callers to compose_creative for logos and on-image words", () => {
+    const generateImage = descriptions().generate_image;
+    expect(generateImage).toMatch(/compose_creative/);
+    // naming the replacement is the point — "added later in design" told Arc the
+    // request was someone else's job without saying whose
+    expect(generateImage).toMatch(/logo/i);
+  });
+
+  it("tells compose_creative it is the answer to a branding revision", () => {
+    expect(descriptions().compose_creative).toMatch(/revision/i);
+    expect(descriptions().compose_creative).toMatch(/background_url/);
+  });
+
+  it("states the lockup limit rather than letting the operator discover it", () => {
+    // "put our logo on the truck" yields a branded creative, NOT a branded
+    // truck — the logo is positioned by the layout, not painted into the scene.
+    expect(descriptions().compose_creative).toMatch(/not painted onto an object|NOT painted onto an object/i);
+  });
+});
 
 describe("compose_creative", () => {
   it("exposes compose_creative", () => {

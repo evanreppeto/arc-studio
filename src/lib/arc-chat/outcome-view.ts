@@ -10,7 +10,6 @@ export type ArcOutcomeBadge = {
 export type ArcOutcomeView = {
   intent: ArcRunIntent;
   label: string;
-  headline: string;
   body: string;
   safetyLabel: string;
   nextAction: string;
@@ -19,21 +18,22 @@ export type ArcOutcomeView = {
 
 const LIMITATION_PATTERN = /\b(uncertain|uncertainty|limitation|could not|couldn't|cannot|can't confirm|no slices|not enough data|incomplete data|moderate confidence)\b/i;
 
-function extractHeading(body: string) {
-  const match = body.match(/^#{1,3}\s+(.+)$/m);
-  if (!match || !match[1]?.trim()) return null;
-  const headline = match[1].replace(/[*_`]/g, "").trim();
-  const remaining = body.replace(match[0], "").replace(/^\s+/, "");
-  return { headline, body: remaining };
-}
-
 function plural(count: number, singular: string, pluralValue = `${singular}s`) {
   return `${count} ${count === 1 ? singular : pluralValue}`;
 }
 
-/** Convert a completed Arc reply into an intent-aware presentation model. The
- * response remains canonical Markdown; this adds a stable, glanceable outcome
- * layer whose badges only appear when the reply actually has that evidence. */
+/**
+ * Convert a completed Arc reply into an intent-aware presentation model.
+ *
+ * `body` is the reply **verbatim** — this layer never rewrites, retitles, or
+ * reorders what Arc said. It used to hoist a markdown heading out of the
+ * response into a display headline; that both invented a title when the reply
+ * had no heading and, because the match wasn't anchored to the start of the
+ * document, could promote a mid-document `## Section` and delete it from the
+ * section it belonged to. The answer is Arc's; only the evidence around it is
+ * ours, and every badge here appears only when the reply actually has that
+ * evidence to back it.
+ */
 export function buildArcOutcomeView(input: {
   request?: string | null;
   response: string;
@@ -48,7 +48,6 @@ export function buildArcOutcomeView(input: {
     mode: input.mode,
     command: input.command,
   });
-  const extracted = extractHeading(input.response);
   const actions = input.actions ?? [];
   const badges: ArcOutcomeBadge[] = [];
   const sourceCount = input.sourceCount ?? 0;
@@ -65,7 +64,6 @@ export function buildArcOutcomeView(input: {
     return {
       intent: profile.intent,
       label: profile.resultLabel,
-      headline: profile.resultTitle,
       body: input.response,
       safetyLabel: "No changes recorded",
       nextAction: profile.nextAction,
@@ -77,8 +75,7 @@ export function buildArcOutcomeView(input: {
   return {
     intent: profile.intent,
     label: createdOutput ? "Created" : profile.resultLabel,
-    headline: extracted?.headline ?? (createdOutput ? "Reviewable work is ready." : profile.resultTitle),
-    body: extracted?.body ?? input.response,
+    body: input.response,
     safetyLabel: input.mode === "ask"
       ? "Read only"
       : profile.intent === "create" || createdOutput

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 
+import { AttributionCapture } from "@/app/_components/attribution-capture";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { getAppSettings } from "@/lib/settings/store";
 
@@ -40,7 +41,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_APP_URL?.startsWith("http")
 
 const OG_TITLE = "Arc Studio — Marketing operations, with your approval";
 const OG_DESCRIPTION =
-  "Arc finds source-backed opportunities, drafts approval-gated campaigns, and prepares creative — and never sends without your sign-off.";
+  "Arc finds opportunities backed by real evidence, drafts the campaigns, and prepares the creative — and never sends anything without your sign-off.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -116,6 +117,12 @@ export default async function RootLayout({
             PII; respects Do Not Track. Mounted at the root so the landing page
             and the signed-in app are both covered. */}
         <Analytics />
+        {/* Records WHICH CHANNEL brought this visitor, into a first-party cookie
+            the server reads at waitlist/signup time (BSR-586). Complements
+            <Analytics /> rather than duplicating it: Vercel counts the sessions,
+            this one survives until the account is created so a workspace can be
+            traced back to its source. Channel data only — never PII. */}
+        <AttributionCapture />
       </body>
     </html>
   );

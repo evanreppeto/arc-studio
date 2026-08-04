@@ -30,9 +30,12 @@ type AgentJoin = { key: string | null; name: string | null } | null;
 type TaskRow = {
   id: string;
   agent_id: string;
-  // NOT NULL on agent_tasks, so this is always present on a read row. Child
-  // agent_run_logs rows must carry it explicitly — that column has no default.
+  // Both NOT NULL on agent_tasks, so both are always present on a read row (
+  // TASK_SELECT is `*`). Child agent_run_logs rows must carry them explicitly —
+  // neither column has a default. Deriving the workspace from the task row rather
+  // than from `scope` is deliberate: scope is optional, the task row is not.
   org_id: string;
+  workspace_id: string;
   objective: string | null;
   status: string | null;
   priority: string | null;
@@ -114,13 +117,14 @@ export async function listAgentTasks(
 ): Promise<NormalizedTask[]> {
   let agentId: string | undefined;
   if (filter.assignee) {
-    // Org-filtered by hand rather than via applyAgentTaskScope, which also
-    // filters workspace_id -- a column agents doesn't have. The filter matters:
-    // agent keys are unique per org (20260716150000), so several tenants can
-    // hold the same key and maybeSingle() would see more than one row.
+    // agents gained workspace_id in BSR-712, so this is scoped the same way as
+    // agent_tasks now — the note that used to sit here, saying agents had no such
+    // column, is what justified the weaker filter. The filter matters either way:
+    // agent keys are unique per org (20260716150000), so several tenants can hold
+    // the same key and maybeSingle() would see more than one row.
     const agentQuery = client.from("agents").select("id").eq("key", filter.assignee);
     const { data: agentRow, error: agentErr } = await (scope
-      ? agentQuery.eq("org_id", scope.orgId)
+      ? agentQuery.eq("org_id", scope.orgId).eq("workspace_id", scope.workspaceId)
       : agentQuery
     ).maybeSingle();
     if (agentErr) {
@@ -226,6 +230,41 @@ async function updateAndNormalize(
   return rowToNormalized(data as TaskRow);
 }
 
+/**
+ * `updateAndNormalize` with a compare-and-set on `status`: the write only lands
+ * if the row is STILL in `guardStatus`. Returns null when the guard misses,
+ * which the caller reads as "someone else got there first" — not as an error.
+ */
+async function updateIfStatus(
+  taskId: string,
+  guardStatus: string,
+  patch: Record<string, unknown>,
+  client: SupabaseClient,
+  scope?: AgentTaskScope,
+): Promise<NormalizedTask | null> {
+  const { data, error } = await applyAgentTaskScope(
+    client.from("agent_tasks").update(patch).eq("id", taskId).eq("status", guardStatus),
+    scope,
+  )
+    .select(TASK_SELECT)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`agent_tasks update failed: ${error.message}`);
+  }
+  return data ? rowToNormalized(data as TaskRow) : null;
+}
+
+/**
+ * Claim a queued task for processing: queued -> running.
+ *
+ * The status guard makes this a compare-and-set, so two workers racing for the
+ * same task — a wake push and an operator's Retry, say — can never both win.
+ * It used to read the row, check `status === "queued"`, then update
+ * unconditionally; between those two statements both callers saw `queued` and
+ * both proceeded, which is a duplicate Arc run (and duplicate spend) on the
+ * same instruction. The retry path in `revision-recovery.ts` depends on this
+ * being atomic, since that is the whole basis for re-dispatching safely.
+ */
 export async function claimAgentTask(
   taskId: string,
   client: SupabaseClient = getSupabaseAdminClient(),
@@ -236,12 +275,16 @@ export async function claimAgentTask(
   if (row.status !== "queued") {
     return { ok: false, reason: "conflict", currentStatus: row.status ?? "unknown" };
   }
-  const task = await updateAndNormalize(
+  const task = await updateIfStatus(
     taskId,
+    "queued",
     { status: "running", started_at: new Date().toISOString() },
     client,
     scope,
   );
+  // The guard missed: the row moved out of `queued` between the read above and
+  // this write. Another worker owns it now.
+  if (!task) return { ok: false, reason: "conflict", currentStatus: "running" };
   return { ok: true, task };
 }
 
@@ -298,6 +341,7 @@ export async function blockAgentTask(
     task_id: taskId,
     agent_id: row.agent_id,
     org_id: row.org_id,
+    workspace_id: row.workspace_id,
     run_status: "failed",
     error_message: reason,
     reasoning_summary: "Arc blocked the task pending human input.",
@@ -376,6 +420,7 @@ export async function moveAgentTask(
     task_id: taskId,
     agent_id: row.agent_id,
     org_id: row.org_id,
+    workspace_id: row.workspace_id,
     run_status: toStatus === "completed" ? "completed" : toStatus === "blocked" ? "failed" : "running",
     reasoning_summary: `Operator moved task to ${toStatus} from the board.`,
     metadata: { source: "operator_board_move", from_status: row.status, to_status: toStatus },
@@ -411,7 +456,7 @@ export async function appendAgentRunLog(
   const taskQuery = applyAgentTaskScope(
     client
     .from("agent_tasks")
-    .select("agent_id, org_id")
+    .select("agent_id, org_id, workspace_id")
       .eq("id", taskId),
     scope,
   );
@@ -424,7 +469,7 @@ export async function appendAgentRunLog(
     return { ok: false, reason: "not_found" };
   }
 
-  const task = taskRow as { agent_id: string; org_id: string };
+  const task = taskRow as { agent_id: string; org_id: string; workspace_id: string };
   const rawSummary = input.reasoningSummary ?? input.message ?? null;
   const reasoningSummary = rawSummary === null ? null : redactSecrets(rawSummary);
   const { data, error } = await client
@@ -433,6 +478,7 @@ export async function appendAgentRunLog(
       task_id: taskId,
       agent_id: task.agent_id,
       org_id: task.org_id,
+      workspace_id: task.workspace_id,
       run_status: input.runStatus ?? "running",
       reasoning_summary: reasoningSummary,
       model_provider: input.modelProvider ?? null,

@@ -1,0 +1,335 @@
+/* Run inspector (BSR-509). Scoped to .arc-run, following the per-page CSS
+   convention used by record.css and campaign.css rather than reaching for a
+   global primitive — there isn't one. Warm obsidian + antique gold per
+   DESIGN.md; --priority red is reserved for the things that are actually wrong. */
+
+.arc-run {
+  padding: 28px 32px 64px;
+  max-width: 940px;
+}
+
+.arc-run .runband {
+  margin-bottom: 18px;
+}
+
+.arc-run .back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.arc-run .back:hover {
+  color: var(--ink);
+}
+.arc-run .back svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.arc-run .runhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+.arc-run .runhead h2 {
+  font-size: 22px;
+  line-height: 1.35;
+  margin: 4px 0 0;
+  font-weight: 500;
+}
+.arc-run .runkicker {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.arc-run .runpill {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.arc-run .runpill.ok {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+.arc-run .runpill.bad {
+  border-color: color-mix(in srgb, var(--priority) 55%, transparent);
+  color: var(--priority);
+}
+.arc-run .runpill.sm {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+/* Stats strip */
+.arc-run .runstats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+.arc-run .runstat {
+  background: var(--panel, #1c1c21);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.arc-run .runstat b {
+  font-size: 18px;
+  font-weight: 500;
+}
+.arc-run .runstat.bad b {
+  color: var(--priority);
+}
+.arc-run .runstat-l {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.arc-run .runstat small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.arc-run .runsec {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+.arc-run .runsec h2 {
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 12px;
+  font-weight: 500;
+}
+
+/* The reason the page was opened, so it leads. */
+.arc-run .runconcerns {
+  border-color: color-mix(in srgb, var(--priority) 40%, var(--line));
+}
+.arc-run .runconcerns ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+.arc-run .runconcerns li {
+  color: var(--priority);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.arc-run .runconcerns code {
+  font-size: 13px;
+}
+
+.arc-run .runmuted {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 10px 0 0;
+  line-height: 1.55;
+}
+.arc-run .runmuted:first-child {
+  margin-top: 0;
+}
+.arc-run .runbad {
+  color: var(--priority);
+}
+
+.arc-run .runrecall {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.arc-run .runrecall li {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.arc-run .runrecall-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.arc-run .runrecall b {
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.arc-run .runrecall small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.arc-run .runscore {
+  flex: none;
+  font-size: 12px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.arc-run .runsteps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.arc-run .runsteps li {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+.arc-run .runsteps li:last-child {
+  border-bottom: 0;
+}
+.arc-run .runsteps b {
+  font-weight: 450;
+  font-size: 14px;
+}
+.arc-run .runsteps small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.arc-run .runsteps em {
+  color: var(--priority);
+  font-style: normal;
+  font-size: 13px;
+}
+.arc-run .runsteps li.unfinished .runstep-n {
+  color: var(--priority);
+  border-color: color-mix(in srgb, var(--priority) 50%, transparent);
+}
+.arc-run .runstep-n {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.arc-run .runsteps time {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+/* A narration row: Arc's own prose between two actions. No number and no bold
+   label — the runner's `label` on these is a placeholder, and promoting it made
+   the word "Arc" the heading and the prose a footnote (BSR-693). Matches the
+   chat's `.is-narration` treatment so the same content reads the same way in
+   both places. The number column is kept as an empty cell rather than collapsed,
+   so narration and actions stay on one timeline. */
+.arc-run .runsteps li.is-narration .runstep-n.is-blank {
+  border: 0;
+}
+.arc-run .runsteps li.is-narration p {
+  margin: 0;
+  max-width: 74ch;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.arc-run .runtools {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.arc-run .runtools li {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.arc-run .runtools li.bad {
+  border-color: color-mix(in srgb, var(--priority) 45%, var(--line));
+}
+.arc-run .runtool-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+/* What the call actually returned, in a line. The raw payload is still here —
+   this page is the inspector — but behind a toggle rather than as the default
+   view (BSR-724). */
+.arc-run .runtool-sum {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.arc-run .runtools summary {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  width: fit-content;
+}
+.arc-run .runtools summary:hover { color: var(--text-2); }
+.arc-run .runtools pre {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--canvas) 60%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.arc-run .runanswer {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+  .arc-run {
+    padding: 20px 16px 48px;
+  }
+  .arc-run .runhead {
+    flex-direction: column;
+    gap: 10px;
+  }
+}

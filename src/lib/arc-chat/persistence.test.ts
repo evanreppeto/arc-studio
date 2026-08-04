@@ -489,6 +489,41 @@ describe("appendArcStep", () => {
         p_label: "Checking leads",
         p_status: "running",
         p_at: "2026-06-19T12:00:00.000Z",
+        p_detail: null,
+      },
+    ]);
+  });
+
+  // A step carries the reasoning that led to it, so the chat can pair each
+  // action with the thinking that preceded it rather than showing one
+  // undifferentiated transcript beside an unrelated list of actions.
+  it("passes the step's narration through to the database", async () => {
+    const supabase = createSupabaseQueryMock({
+      agent_tasks: { data: { id: "task-1" }, error: null },
+      "rpc:arc_append_message_step": { data: true, error: null },
+    });
+
+    await appendArcStep(
+      {
+        agentTaskId: "task-1",
+        label: "Checking leads",
+        status: "running",
+        at: "2026-06-19T12:00:00.000Z",
+        detail: "I need the qualified list before I can rank anything.",
+      },
+      supabase,
+      { orgId: "org-1", workspaceId: "workspace-1" },
+    );
+
+    expect(supabase.calls).toContainEqual([
+      "rpc",
+      "arc_append_message_step",
+      {
+        p_agent_task_id: "task-1",
+        p_label: "Checking leads",
+        p_status: "running",
+        p_at: "2026-06-19T12:00:00.000Z",
+        p_detail: "I need the qualified list before I can rank anything.",
       },
     ]);
   });

@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 
 import {
   type CreativeCopy,
+  type CreativeLayoutOverride,
+  MEDIA_UNITS,
   normalizeCreativeFormat,
   parseArcRoute,
   selectCreativeTemplate,
@@ -24,8 +26,10 @@ import { renderCreative } from "@/lib/media/compose/renderer";
 import { hardenImagePrompt } from "@/lib/media/prompt";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
 import { storeGeneratedImage, storeGeneratedMedia } from "@/lib/media/storage";
+import { signVideoTicket, verifyVideoTicket } from "@/lib/media/video-ticket";
 import { getAppSettings } from "@/lib/settings/store";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 
 const COMPOSITE_RISK =
   "Real logo overlaid on a background — the background is not proof of a real job.";
@@ -38,7 +42,7 @@ function imageAspectFor(format: string): string {
 }
 
 export type StudioMedia = {
-  kind: "image";
+  kind: "image" | "video";
   url: string;
   source: "ai_generated" | "composite";
   format: string;
@@ -46,6 +50,13 @@ export type StudioMedia = {
   jobId?: string;
   riskFlags: string[];
 };
+
+/** Veo accepts landscape and portrait only — Studio also offers 1:1 and 4:5. */
+const VIDEO_ASPECT = new Set(["16:9", "9:16"]);
+function videoAspectFor(format: string): string {
+  return VIDEO_ASPECT.has(format) ? format : "16:9";
+}
+
 
 export type GenerateStudioAssetInput = {
   /** "image" = raw AI scene from a prompt; "compose" = finished creative
@@ -60,10 +71,15 @@ export type GenerateStudioAssetInput = {
   backgroundUrl?: string;
   headline?: string;
   kicker?: string;
+  /** Optional supporting line under the headline (BSR-691). */
+  subhead?: string;
   ctaLabel?: string;
   template?: string;
   /** Accent hex picked in Studio; overrides the brand kit's accent for this render. */
   accent?: string;
+  /** The operator's canvas nudge (BSR-680). Clamped again in renderCreative —
+   *  this arrives from a client and is not trusted to be in range. */
+  layoutOverride?: CreativeLayoutOverride;
   /** The campaign this draft attaches to — required so it enters the approval gate. */
   campaignId: string;
 };
@@ -135,7 +151,19 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
         model: gen.model,
         units: 1,
         metadata: { route: "studio_generate", aspect_ratio: aspectRatio, job_id: gen.jobId },
-      }).catch(() => {});
+      }).catch((error) =>
+        // The image was generated and the provider WILL bill for it. Losing this
+        // write means the spend happened and nothing counted it — the workspace's
+        // usage under-reports, and the cap it is measured against drifts from
+        // reality. Failing the generation here would be worse (the money is
+        // already spent), so it degrades — but silently was how metering could
+        // quietly stop matching the invoice (BSR-502).
+        reportDegraded(error, {
+          scope: "studio.recordUsageEvent",
+          surface: "primary",
+          detail: { service: "gemini_image", model: gen.model, jobId: gen.jobId },
+        }),
+      );
       media = {
         kind: "image",
         url,
@@ -156,6 +184,7 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const copy: CreativeCopy = {
         headline,
         kicker: (input.kicker ?? "").trim() || undefined,
+        subhead: (input.subhead ?? "").trim() || undefined,
         ctaLabel: (input.ctaLabel ?? "").trim() || undefined,
       };
       const profile = await getBusinessProfile(ctx.orgId);
@@ -166,7 +195,7 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const baseBrand = toBrandTokens(profile);
       const accentOverride = /^#[0-9a-f]{6}$/i.test((input.accent ?? "").trim()) ? input.accent!.trim() : null;
       const brand = accentOverride ? { ...baseBrand, accent: accentOverride } : baseBrand;
-      const { bytes, contentType } = await renderCreative({ template, format, brand, copy, backgroundUrl });
+      const { bytes, contentType } = await renderCreative({ template, format, brand, copy, backgroundUrl, layoutOverride: input.layoutOverride });
       objectPath = `arc-composite/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.png`;
       const url = await storeGeneratedMedia(objectPath, bytes, contentType);
       media = { kind: "image", url, source: "composite", format, riskFlags: [COMPOSITE_RISK] };
@@ -198,5 +227,171 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
     return { ok: true, persisted: true, campaignId, assetId, media };
   } catch (error) {
     return { ok: false, code: "failed", error: error instanceof Error ? error.message : "Generation failed." };
+  }
+}
+
+export type StartStudioVideoInput = {
+  prompt: string;
+  style?: string;
+  format: string;
+  campaignId: string;
+};
+
+export type StartStudioVideoResult =
+  | { ok: true; operationName: string; ticket: string; model: string; aspectRatio: string }
+  | { ok: false; error: string; code?: "disabled" | "no_campaign" | "failed" };
+
+/**
+ * Start a Veo render for Studio. Split from the poll below because a video takes
+ * 1–3 minutes and a server action cannot hold a request open that long — the
+ * client polls `pollStudioVideo` with the returned operation name + ticket.
+ *
+ * Spend is metered HERE (video ≈ 10 image units) because starting is what costs;
+ * a poll of an in-flight job finishes work already paid for.
+ */
+export async function startStudioVideo(input: StartStudioVideoInput): Promise<StartStudioVideoResult> {
+  await requireOperator();
+
+  if (!isSupabaseAdminConfigured()) {
+    return { ok: false, code: "disabled", error: "Video generation needs a connected backend." };
+  }
+  const prompt = input.prompt.trim();
+  if (!prompt) return { ok: false, code: "failed", error: "Describe the video you want Arc to generate." };
+  if (!input.campaignId.trim()) {
+    return { ok: false, code: "no_campaign", error: "Pick a campaign to attach this draft to." };
+  }
+
+  try {
+    const [ctx, tenant] = await Promise.all([getCurrentWorkspaceContext(), getCurrentAgentTaskTenantFields()]);
+    const access = await resolveMediaGeneration(tenant.workspace_id);
+    if (!access.enabled) return { ok: false, code: "disabled", error: access.reason };
+    const settings = await getAppSettings(ctx.orgId);
+    const level = parseArcRoute(settings.markDefaultRoute);
+    const provider = getMediaProviderWithKey(access.credential, {
+      level,
+      imageModel: settings.imageModel,
+      videoModel: settings.videoModel,
+    });
+    const aspectRatio = videoAspectFor(input.format);
+    // Duration is deliberately NOT exposed: only the model's own default is
+    // verified against live Veo, and an unverified knob is how this path shipped
+    // broken the first time.
+    const metered = await meterConnectorCall(
+      undefined,
+      {
+        orgId: ctx.orgId,
+        workspaceId: tenant.workspace_id,
+        connectorKey: MEDIA_CONNECTOR_KEY,
+        estimatedUnits: MEDIA_UNITS.video,
+        costTier: access.costTier,
+        context: { surface: "studio", engine: "video" },
+      },
+      () => provider.startVideo({ prompt: hardenImagePrompt(prompt, { style: input.style }), aspectRatio }),
+    );
+    if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
+    const start = metered.result;
+    return {
+      ok: true,
+      operationName: start.operationName,
+      ticket: signVideoTicket(start.operationName, tenant.workspace_id ?? ""),
+      model: start.model,
+      aspectRatio,
+    };
+  } catch (error) {
+    return { ok: false, code: "failed", error: error instanceof Error ? error.message : "Could not start the video." };
+  }
+}
+
+export type PollStudioVideoInput = {
+  operationName: string;
+  ticket: string;
+  model: string;
+  prompt: string;
+  format: string;
+  title: string;
+  campaignId: string;
+};
+
+export type PollStudioVideoResult =
+  | { ok: true; status: "running" }
+  | { ok: true; status: "done"; campaignId: string; assetId: string; media: StudioMedia }
+  | { ok: false; error: string };
+
+/** Poll an in-flight Veo render; on completion, store it and land it as an
+ *  approval-gated draft on the campaign, exactly like the image path. */
+export async function pollStudioVideo(input: PollStudioVideoInput): Promise<PollStudioVideoResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Video generation needs a connected backend." };
+
+  try {
+    const [ctx, tenant, operator] = await Promise.all([
+      getCurrentWorkspaceContext(),
+      getCurrentAgentTaskTenantFields(),
+      getOperatorActor(),
+    ]);
+    if (!verifyVideoTicket(input.ticket, input.operationName, tenant.workspace_id ?? "")) {
+      return { ok: false, error: "This video job does not belong to this workspace." };
+    }
+    const access = await resolveMediaGeneration(tenant.workspace_id);
+    if (!access.enabled) return { ok: false, error: access.reason };
+    const settings = await getAppSettings(ctx.orgId);
+    const provider = getMediaProviderWithKey(access.credential, {
+      level: parseArcRoute(settings.markDefaultRoute),
+      imageModel: settings.imageModel,
+      videoModel: settings.videoModel,
+    });
+
+    const result = await provider.pollVideo(input.operationName);
+    if (result.status === "running") return { ok: true, status: "running" };
+
+    const objectPath = `arc-generated/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.mp4`;
+    const url = await storeGeneratedMedia(objectPath, result.bytes, result.contentType);
+    await recordUsageEvent({
+      orgId: ctx.orgId,
+      workspaceId: tenant.workspace_id,
+      service: "gemini_video",
+      model: input.model,
+      units: 1,
+      metadata: { route: "studio_generate", engine: "video", aspect_ratio: videoAspectFor(input.format) },
+    }).catch((error) =>
+      // Same posture as the image path: the render is already billed, so a lost
+      // metering write degrades loudly rather than failing the generation.
+      reportDegraded(error, {
+        scope: "studio.recordUsageEvent",
+        surface: "primary",
+        detail: { service: "gemini_video", model: input.model },
+      }),
+    );
+
+    const media: StudioMedia = {
+      kind: "video",
+      url,
+      source: "ai_generated",
+      format: videoAspectFor(input.format),
+      model: input.model,
+      riskFlags: deriveImageRiskFlags(input.prompt),
+    };
+    const { campaignId } = await resolveOrCreateCampaign({ operator, campaignId: input.campaignId, tenant });
+    const { assetId } = await promoteAssetToCampaign({
+      operator,
+      campaignId,
+      assetType: "video_prompt",
+      title: input.title.trim() || "Studio video",
+      body: null,
+      mediaUrl: media.url,
+      mediaPath: objectPath,
+      media: {
+        source: media.source,
+        model: media.model,
+        format: media.format,
+        riskFlags: media.riskFlags,
+      },
+      tenant,
+    });
+
+    revalidatePath("/studio");
+    return { ok: true, status: "done", campaignId, assetId, media };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Video generation failed." };
   }
 }

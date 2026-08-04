@@ -11,10 +11,41 @@ import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { bulkUpdateCrmPersona, type CreateCrmInput, insertCrmRecord } from "@/lib/crm/create";
 import { insertTask } from "@/lib/interactions/persistence";
-import { type CrmObjectKey } from "@/lib/crm/read-model";
+import { searchCrmObjectRows, type CrmObjectKey } from "@/lib/crm/read-model";
+
+import { toRow } from "./_data/row-vm";
+import { type CrmRowVM } from "./_components/crm-board";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import type { CustomFieldObjectKey } from "@/domain";
 import { saveCustomFieldValues, validateCustomFieldValues } from "@/lib/custom-fields/values";
+
+/**
+ * Reach a CRM record the board never loaded (BSR-633).
+ *
+ * The board fetches a 1,000-row recency window and filters it in the browser, so
+ * on a workspace with more records than that, everything past the window is
+ * unsearchable — while the row counter, a real COUNT, says it exists. Measured
+ * at 2,719 contacts: 63% of them were unreachable.
+ *
+ * Read-only and operator-gated. `capped` tells the UI the match set itself hit
+ * the ceiling, so it can say so rather than imply the results are exhaustive —
+ * the same no-silent-caps rule the Brain's search follows.
+ */
+export type CrmSearchActionResult =
+  | { ok: true; rows: CrmRowVM[]; capped: boolean }
+  | { ok: false; error: string };
+
+export async function searchCrmRecords(objectKey: string, query: string): Promise<CrmSearchActionResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: true, rows: [], capped: false };
+
+  const orgId = await getCurrentOrgId();
+  const result = await searchCrmObjectRows(objectKey as CrmObjectKey, query, orgId);
+  if (result.status !== "live") return { ok: false, error: result.message };
+  // Mapped with the SAME function the page uses, so a search result is
+  // indistinguishable from a row that was already on screen.
+  return { ok: true, rows: result.rows.map(toRow), capped: result.capped };
+}
 
 /**
  * Real operator write for the CRM board's "Add {record}" button. A new CRM

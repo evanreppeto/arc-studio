@@ -1,4 +1,4 @@
-import { assessProvenance, describeExternalMediaProvenance } from "@/domain";
+import { assessProvenance, describeExternalMediaProvenance, toWorkState, WORK_STATE_LABEL } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
@@ -6,11 +6,14 @@ import type { MediaAssetView, MediaFolderView } from "@/lib/media-library/types"
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import { LibraryView, type Asset, type Folder } from "./_components/library-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import "./library.css";
 
 export const metadata = { title: "Library — Arc Studio" };
 
-const FOLDER_PALETTE = ["#c47055", "#7fb89a", "#c8a24a", "#9678c8", "#88b6d8", "#bd6a58"];
+// Purple-free and red-free: folder colours are decoration, and red is reserved
+// for destructive controls (DESIGN.md §4.2, BSR-661).
+const FOLDER_PALETTE = ["#c8a24a", "#7fb89a", "#88b6d8", "#8fa2ba", "#6fae9e", "#d8935a"];
 
 function provFromSource(source: string): Asset["pv"] {
   switch (source) {
@@ -49,15 +52,15 @@ function addedLabel(iso: string | null): string {
   return months === 1 ? "1mo ago" : `${months}mo ago`;
 }
 
-/** approval_status → the word a reviewer recognises on a card. */
+/**
+ * approval_status → the word a reviewer recognises on a card.
+ *
+ * The same decision as the one on a campaign deliverable, so the same words: an
+ * asset here used to read "In review" while the identical state on /campaigns
+ * read "Needs you" (BSR-656).
+ */
 function reviewLabel(status: string): string {
-  switch (status) {
-    case "approved": return "Approved";
-    case "declined": return "Declined";
-    case "needs_revision": return "Revision requested";
-    case "archived": return "Archived";
-    default: return "In review";
-  }
+  return WORK_STATE_LABEL[toWorkState(status)];
 }
 
 function mapAsset(v: MediaAssetView, i: number): Asset {
@@ -102,6 +105,12 @@ function mapAsset(v: MediaAssetView, i: number): Asset {
         : []),
     ],
     prompt: external.prompt ?? undefined,
+    // The review state as a FIELD, not only as the lineage sentence above. The
+    // risk box needs to know whether this asset has already been decided on:
+    // approving acknowledges a flag, it does not clear it, so without this the
+    // box would keep offering "Resolve & approve" on an asset that was approved
+    // an hour ago and the operator would have no way to tell (BSR-687).
+    approvalStatus: v.approvalStatus ?? undefined,
     uses: v.usedInCount,
   };
 }
@@ -122,12 +131,21 @@ function mapFolders(views: MediaFolderView[]): Folder[] {
 }
 
 export default async function LibraryPage() {
+  // Correctly silent (BSR-546): (app)/layout.tsx is the auth boundary; a null
+  // context here renders a coherent empty state, not a false claim about data.
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   if (ctx?.orgId && isSupabaseAdminConfigured()) {
     const [data, campaigns] = await Promise.all([
-      getMediaLibraryData(getSupabaseAdminClient(), ctx.orgId).catch(() => null),
+      // PRIMARY: the media list IS the Library. Empty reads as "you have no
+      // approved media", which would send an operator off to re-upload assets
+      // they already own.
+      getMediaLibraryData(getSupabaseAdminClient(), ctx.orgId).catch((error) => {
+        reportDegraded(error, { scope: "library.getMediaLibraryData", surface: "primary" });
+        return null;
+      }),
       // Campaign options for the selection bar's "Add to campaign" picker.
-      listCampaignNames(ctx.orgId).catch(() => []),
+      // Correctly silent (BSR-546): picker options; an empty dropdown is visible.
+      listCampaignNames(ctx.orgId, undefined, ctx.workspaceId).catch(() => []),
     ]);
     if (data && data.status === "live") {
       return (

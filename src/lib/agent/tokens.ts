@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { createHash, randomBytes } from "node:crypto";
 
 import { type SupabaseClient } from "@supabase/supabase-js";
@@ -51,9 +52,18 @@ type AgentTokenRow = {
   scopes?: string[] | null;
 };
 
+/**
+ * `not_found` means the token is genuinely not ours — no row, or revoked.
+ * `unavailable` means we could not find out, because the lookup itself failed.
+ *
+ * They were one value, and the caller turned both into 401. A DB-issued token is
+ * verified on EVERY request, so one transient Supabase error told the runner its
+ * credential was invalid — which is fatal-looking, and orphaned the task it was
+ * trying to complete. "I can't check right now" has to be retryable.
+ */
 export type VerifyAgentTokenResult =
   | { ok: true; workspaceId: string; orgId?: string; scopes: string[] | null }
-  | { ok: false };
+  | { ok: false; reason: "not_found" | "unavailable" };
 
 export function hashToken(plaintext: string): string {
   return createHash("sha256").update(plaintext).digest("hex");
@@ -181,7 +191,8 @@ export async function hasActiveAgentTokens(client?: SupabaseClient): Promise<boo
   }
 
   if (error) return false;
-  return (count ?? 0) > 0;
+  // Fail closed: a null count read as 0 claims no token exists (BSR-575).
+  return requireCount("agent_tokens", { count, error }) > 0;
 }
 
 export async function verifyAgentToken(
@@ -210,7 +221,10 @@ export async function verifyAgentToken(
     error = legacy.error;
   }
 
-  if (error || !data) return { ok: false };
+  // Order matters: an error means the question went unanswered, which is not the
+  // same answer as "no such token".
+  if (error) return { ok: false, reason: "unavailable" };
+  if (!data) return { ok: false, reason: "not_found" };
 
   await client
     .from("agent_api_tokens")

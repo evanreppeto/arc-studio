@@ -19,6 +19,10 @@ on:
       - "supabase/migrations/**"
       - "supabase/config.toml"
       - "scripts/verify-migration-chain.mjs"
+      - "scripts/check-rls-cross-tenant.mjs"
+      - "scripts/check-tenancy-contract.mjs"
+      - "supabase/tenancy-contract.mjs"
+      - "supabase/tests/**"
       - ".github/workflows/migrations.yml"
   push:
     branches: [main]
@@ -26,6 +30,10 @@ on:
       - "supabase/migrations/**"
       - "supabase/config.toml"
       - "scripts/verify-migration-chain.mjs"
+      - "scripts/check-rls-cross-tenant.mjs"
+      - "scripts/check-tenancy-contract.mjs"
+      - "supabase/tenancy-contract.mjs"
+      - "supabase/tests/**"
       - ".github/workflows/migrations.yml"
   workflow_dispatch:
 
@@ -55,6 +63,19 @@ jobs:
       # job stays fast and cannot be broken by an unrelated lockfile change.
       - name: Apply the whole chain to an empty database
         run: node scripts/verify-migration-chain.mjs
+
+      # Runs against the database verify-migration-chain.mjs just reset, so the
+      # policies under test are the ones the chain actually produces and this
+      # costs one psql invocation rather than a second stack.
+      - name: Prove cross-tenant denial on real Postgres
+        run: node scripts/check-rls-cross-tenant.mjs
+
+      # The workspace axis. The RLS suite above can only see tables that already
+      # carry org_id — a new table with no tenancy column at all passes it without
+      # being noticed. This holds every table to supabase/tenancy-contract.mjs, so
+      # an unclassified one fails the build instead of inheriting "unscoped".
+      - name: Hold the schema to the tenancy contract
+        run: node scripts/check-tenancy-contract.mjs
 
       - name: Stop the stack
         if: always()

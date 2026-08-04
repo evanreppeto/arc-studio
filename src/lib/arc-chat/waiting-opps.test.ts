@@ -52,7 +52,7 @@ describe("buildArcWaitingOpportunities", () => {
   it("falls back to an approval-safe act-on-it prompt when there is no arcPrompt", () => {
     const [item] = buildArcWaitingOpportunities([opp({ title: "Flash-flood warning — Riverside" })]);
     expect(item.prompt).toContain("Flash-flood warning — Riverside");
-    expect(item.prompt).toMatch(/approval-gated/i);
+    expect(item.prompt).toMatch(/draft for my approval/i);
   });
 
   it("ignores a blank arcPrompt and uses the fallback", () => {

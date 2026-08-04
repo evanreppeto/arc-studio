@@ -448,18 +448,26 @@ export function buildPerformanceLearning(
   const recommendation = `For the next iteration, ${moves.join(", ")}.`;
 
   const label = campaignName?.trim() ? `the ${campaignName.trim()} campaign` : "this campaign";
-  const arcPrompt = `Draft the next iteration of ${label} based on what worked: ${recommendation} Keep it approval-gated.`;
+  const arcPrompt = `Draft the next iteration of ${label} based on what worked: ${recommendation} Keep it a draft for my approval.`;
 
   return { wins, recommendation, arcPrompt };
 }
 
-export async function getCampaignPerformancePanel(campaignId: string): Promise<CampaignPerformancePanel> {
+export async function getCampaignPerformancePanel(
+  campaignId: string,
+  /**
+   * The workspace this campaign belongs to. Optional only because not every
+   * caller has one — with it, attributed revenue reads the org's own stages
+   * instead of assuming ours (BSR-563).
+   */
+  orgId?: string,
+): Promise<CampaignPerformancePanel> {
   // Live attribution first when Supabase is configured and the campaign has signal.
   if (isSupabaseAdminConfigured()) {
-    const econ = await getCampaignEconomics(campaignId);
+    const econ = await getCampaignEconomics(campaignId, undefined, orgId);
     if (econ.status === "live" && hasAttributionSignal(econ)) {
       const [rows, breakdown] = await Promise.all([
-        getCampaignTrendRows(campaignId),
+        getCampaignTrendRows(campaignId, undefined, orgId),
         getCampaignAttributionRows(campaignId),
       ]);
       let trend: PerformanceTrendPoint[] = [];

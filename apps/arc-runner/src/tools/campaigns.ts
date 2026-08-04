@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { ArcClient } from "../arc-client";
 import { runTool, type StepFn } from "./helpers";
+import { enforce, expectList, expectRecord } from "./expectations";
 
 /** Read-only campaign + approval visibility. Available in all modes. */
 export function campaignReadTools(client: ArcClient, step: StepFn) {
@@ -18,7 +19,7 @@ export function campaignReadTools(client: ArcClient, step: StepFn) {
       runTool(step, "Listing campaigns", async () => {
         const params = { status: args.status, limit: args.limit, needs_review: args.needs_review ? "true" : undefined };
         const r = await client.apiGet<{ campaigns: unknown[] }>("/api/v1/arc/campaigns", params);
-        return r.campaigns ?? [];
+        return enforce(r, expectList("campaigns")).campaigns;
       }),
   );
 
@@ -29,7 +30,7 @@ export function campaignReadTools(client: ArcClient, step: StepFn) {
     async (args) =>
       runTool(step, "Loading campaign", async () => {
         const r = await client.apiGet<{ campaign: unknown }>(`/api/v1/arc/campaigns/${args.id}`);
-        return r.campaign ?? null;
+        return enforce(r, expectRecord("campaign")).campaign ?? null;
       }),
   );
 
@@ -43,7 +44,7 @@ export function campaignReadTools(client: ArcClient, step: StepFn) {
     async (args) =>
       runTool(step, "Listing approvals", async () => {
         const r = await client.apiGet<{ approvals: unknown[] }>("/api/v1/arc/approvals", args);
-        return r.approvals ?? [];
+        return enforce(r, expectList("approvals")).approvals;
       }),
   );
 

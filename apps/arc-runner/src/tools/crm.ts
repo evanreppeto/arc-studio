@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { ArcClient, QueryParams } from "../arc-client";
 import { runTool, type StepFn } from "./helpers";
+import { enforce, expectListEnvelope, expectRecord } from "./expectations";
 
 /**
  * What every CRM list tool hands back, spelled out for the model. `total` is the
@@ -35,7 +36,10 @@ async function listPage(
   args: QueryParams,
 ): Promise<Record<string, unknown>> {
   const r = await client.apiGet<ListEnvelope>(path, args);
-  return { [key]: r[key] ?? [], total: r.total, returned: r.returned, has_more: r.has_more };
+  // Validate the RAW response: the `?? []` this replaced is precisely what made
+  // a malformed 200 indistinguishable from an empty CRM (BSR-508).
+  enforce(r, expectListEnvelope(key));
+  return { [key]: r[key], total: r.total, returned: r.returned, has_more: r.has_more };
 }
 
 const limitArg = z
@@ -105,7 +109,9 @@ export function crmReadTools(client: ArcClient, step: StepFn) {
     async (args) =>
       runTool(step, "Loading lead", async () => {
         const r = await client.apiGet<{ lead: unknown }>(`/api/v1/arc/crm/leads/${args.id}`);
-        return r.lead ?? null;
+        // `lead: null` is a real answer — that id isn't here. A MISSING `lead`
+        // field is not, and must not read as "no such lead".
+        return enforce(r, expectRecord("lead")).lead ?? null;
       }),
   );
 

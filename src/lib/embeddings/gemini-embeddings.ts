@@ -1,5 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 
+import { estimateTokensFromChars } from "@/domain";
+import { recordUsageEvent } from "@/lib/ai-usage/persistence";
+
 export const EMBEDDING_DIMS = 768;
 
 // Default to gemini-embedding-2 — the current GA embedding model. The old
@@ -12,13 +15,34 @@ export const EMBEDDING_DIMS = 768;
 const EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL?.trim() || "gemini-embedding-2";
 
 /**
+ * Who is paying for this embedding, and what for.
+ *
+ * REQUIRED, not optional — that is the whole point. The meter could not record
+ * embeddings at all until BSR-502, and the reason it went unnoticed for weeks is
+ * that nothing forced the question. A required parameter makes a new call site
+ * impossible to add without deciding who it bills to; an optional one would let
+ * the next one default quietly back to unmetered.
+ *
+ * There is no workspace here on purpose: the Brain is org-scoped.
+ */
+export type EmbedScope = {
+  orgId: string;
+  /** Free-form call-site label (`brain.recall`, `brain.node-write`, …). Lands in row metadata. */
+  purpose: string;
+};
+
+/**
  * Embed text with Gemini (768-dim). Returns null when the key is missing, the
  * text is empty, the call fails, or the vector is the wrong size — so every
  * caller degrades gracefully (recall falls back to keyword/graph). For the
  * "why did embedding fail" question, use probeEmbedding() which surfaces the
  * real error instead of collapsing it to null.
+ *
+ * Meters every SUCCESSFUL call to the usage ledger (BSR-502). Metering is
+ * best-effort and awaited-but-swallowed: a ledger failure must never break a
+ * Brain write, and `recordUsageEvent` already reports its own failures.
  */
-export async function embedText(text: string): Promise<number[] | null> {
+export async function embedText(text: string, scope: EmbedScope): Promise<number[] | null> {
   const key = process.env.GEMINI_API_KEY?.trim();
   const input = text?.trim();
   if (!key || !input) return null;
@@ -30,9 +54,45 @@ export async function embedText(text: string): Promise<number[] | null> {
       config: { outputDimensionality: EMBEDDING_DIMS },
     });
     const values = res?.embeddings?.[0]?.values;
-    return Array.isArray(values) && values.length === EMBEDDING_DIMS ? (values as number[]) : null;
+    if (!Array.isArray(values) || values.length !== EMBEDDING_DIMS) return null;
+    await meterEmbedding(input, scope);
+    return values as number[];
   } catch {
     return null;
+  }
+}
+
+/**
+ * Record one embedding call against the org's ledger.
+ *
+ * The token count is ESTIMATED. Gemini's developer API returns no usage figures
+ * for `embedContent` — `billableCharacterCount` and the per-embedding
+ * `statistics` block are Enterprise-only — so there is nothing measured to
+ * record. What IS exact is the character count, which goes in `units`; the
+ * estimate is derived from it and stamped `token_source: "estimated_from_chars"`
+ * so it can never be mistaken for a measured number when someone reconciles
+ * against a real invoice.
+ */
+async function meterEmbedding(input: string, scope: EmbedScope): Promise<void> {
+  try {
+    const chars = input.length;
+    await recordUsageEvent({
+      orgId: scope.orgId,
+      // Org-scoped by design — see RecordUsageInput.workspaceId.
+      workspaceId: null,
+      service: "gemini_embedding",
+      model: EMBEDDING_MODEL,
+      inputTokens: estimateTokensFromChars(chars),
+      units: chars,
+      metadata: {
+        purpose: scope.purpose,
+        input_chars: chars,
+        token_source: "estimated_from_chars",
+        output_dims: EMBEDDING_DIMS,
+      },
+    });
+  } catch {
+    // Metering must never break the embedding it is measuring.
   }
 }
 

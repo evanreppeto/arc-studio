@@ -132,7 +132,21 @@ function demoUsageView(now: Date): SettingsUsageView {
 }
 
 export async function getSettingsUsageView(): Promise<SettingsUsageView> {
-  const usage = await loadWorkspaceUsage("30d").catch(() => null);
+  // Deliberately NOT caught here (BSR-575).
+  //
+  // `loadWorkspaceUsage` already returns an unconfigured result for every
+  // legitimate "nothing to report" case — no Supabase, no workspace context, no
+  // workspace id — so the only thing a catch at this level can swallow is a real
+  // query failure. Swallowed, it fell through to ZERO_CARD below and rendered
+  // "$0 spent, 0% of cap" over an outage: a false statement about money, which
+  // an operator either relaxes about or files a bug over.
+  //
+  // Worse, it made the caller's own care pointless. settings/page.tsx wraps this
+  // call in a PRIMARY reportDegraded handler whose comment says exactly why
+  // spend must not fail to null — and that handler could never fire, because
+  // this function had already turned the failure into a plausible view. Let it
+  // throw; the page is the layer that decides how to say so.
+  const usage = await loadWorkspaceUsage("30d");
   if (usage?.configured) {
     // Resolve the org's real plan cap so both the % and the label reflect billing.
     const plan = await resolveOrgPlan(await getCurrentOrgId().catch(() => "")).catch(() => null);

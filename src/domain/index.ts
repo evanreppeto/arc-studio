@@ -56,6 +56,7 @@ export * from "./campaign-performance";
 export * from "./brand-kit";
 export * from "./brand-design";
 export * from "./creative-templates";
+export * from "./creative-layout";
 export * from "./dispatch-scheduling";
 export * from "./opportunity-detection";
 export * from "./nws-weather";
@@ -65,6 +66,8 @@ export * from "./review-signals";
 export * from "./competitor-ads";
 export * from "./crm-import";
 export * from "./csv-import";
+export * from "./import-presets";
+export * from "./entity-import";
 export * from "./enrichment";
 export * from "./opportunity-kinds";
 export * from "./opportunity-proposal";
@@ -83,6 +86,10 @@ export * from "./media-config";
 export * from "./email-templates";
 export * from "./crm-matching";
 export * from "./custom-fields";
+export * from "./custom-field-inference";
+export * from "./object-labels";
+export * from "./env-capabilities";
+export * from "./pipeline-stages";
 export * from "./audience-resolution";
 
 export * from "./virality";
@@ -98,7 +105,50 @@ export * from "./exemplar-skills";
 export * from "./auto-draft-selection";
 
 export * from "./support";
+// How a support request becomes a Linear ticket. Separate file, same feature —
+// support.ts owns the request itself, this owns the ticket it turns into.
+export * from "./support-linear";
 
 export * from "./workspace-identity";
 export * from "./branding-image";
+
+// Inbound "which channel produced this signup" (BSR-586). Distinct from
+// ./attribution above, which resolves which CAMPAIGN an outbound touchpoint
+// belongs to — the two never share a symbol, but the names are close enough
+// to be worth the signpost.
+export * from "./signup-attribution";
+
+// Pre-flight for arming ARC_BILLING_ENFORCEMENT (BSR-621).
+export * from "./billing-enforcement-preflight";
 export * from "./email-compliance";
+export * from "./lead-fit";
+export * from "./arc-eval";
+export * from "./brain-dedup";
+export * from "./brain-dedup-backfill";
+
+// The one place the user-facing approval vocabulary is decided (BSR-656).
+// Import WORK_STATE_LABEL / toWorkState / countOf from here rather than
+// spelling a status label into a component.
+export * from "./vocabulary";
+
+// Does a rendered string look like a stored value rather than language (BSR-709).
+// The predicate behind the dev-only DOM check; the source scanners in
+// plumbing-vocabulary.test.ts cannot see this class.
+export * from "./identifier-leak";
+
+// One colour per persona, everywhere (BSR-661). Import personaAccent rather
+// than re-deriving a hue from a regex ladder.
+export * from "./persona-accent";
+
+// What the app's invented words mean (BSR-659). Render with <Define>.
+export * from "./definitions";
+
+// Why an operator dismissed an opportunity, and what Arc should learn (BSR-686).
+export * from "./dismissal-reasons";
+
+// What the operator sent back, and why — corrections Arc should learn (BSR-685).
+export * from "./correction-feedback";
+
+// What a tool call's input/output looks like on screen: redacted, and summarised
+// with the raw text behind a disclosure (BSR-724).
+export * from "./tool-payload";

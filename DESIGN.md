@@ -1,4 +1,4 @@
-# Design System: Signal (Big Shoulders Growth Engine)
+# Design System: Signal (Arc Studio)
 
 ## 1. Visual Theme & Atmosphere
 
@@ -55,6 +55,69 @@ Several of these are installed but **not yet used anywhere in `src/`** — the n
 - **Motion owns state feedback, not spectacle.** In use on the landing page (`landing/_components/`) and the Arc chat. Keep transitions short, reduced-motion safe, and tied to state changes; the calm rules in §6 still bind the workflow screens.
 - **Charts are hand-built inline SVG.** Analytics and the Brain knowledge graph both draw their own SVG — that is the pattern. Recharts is **not installed** (§6 bans it). `@mui/x-charts` and `cytoscape` are in `package.json` but imported by nothing (cytoscape only has type shims in `src/types/`); adopting either is a new decision, not a continuation.
 - **Radix, MUI, dnd-kit, Rive: installed, zero imports.** If you reach for one, you are establishing the pattern, so do it deliberately: Radix for accessible menus/popovers/collapsibles/dialogs rather than hand-rolled focus trapping; MUI Joy/Material only for dense product controls, always wrapped and mapped to CSS variables, never raw in a page; dnd-kit for board/sortable workflows; Rive and shader effects as brand moments only, never ambient decoration on ordinary workflow screens.
+
+## 4.2 Vocabulary — the words the product uses
+
+Canonical source: **`src/domain/vocabulary.ts`**. Import `WORK_STATE_LABEL` / `toWorkState` / `countOf` — never spell a status label into a component.
+
+This exists because the approval state had **eleven** names at once (BSR-656): *packages waiting, Waiting on you, to decide, Needs you, Needs approval, In review, need review, Ready for review, Awaiting your confirm, Awaiting review, proposed*. `/arc` rendered "Ready for review" and "Needs review" on the same card.
+
+**States.** One string per state, everywhere — board, tab, pill, KPI tile, chat card:
+
+| State | Label | Means |
+|---|---|---|
+| `draft` | Draft | Arc is still building this. |
+| `needs_you` | **Needs you** | Arc finished it and is waiting for your decision. |
+| `needs_changes` | Needs changes | You asked for changes. Arc is reworking it. |
+| `approved` | Approved | You said yes. It has not gone out yet. |
+| `scheduled` | Scheduled | Approved and queued to go out at a set time. |
+| `sending` | Sending | Going out to customers now. (Replaces the old split between "Live" and "Sending".) |
+| `sent` | Sent | Already delivered. |
+| `declined` | Declined | You said no. Nothing will go out. |
+| `archived` | Archived | Put away. Nothing will go out. |
+
+Tone: gold = `needs_you` / `needs_changes` (the one accent per screen), green = approved through sent, neutral = the rest. **Red never appears in this table** — it is for destructive controls only. A compliance hold keeps red as an exception and is worded "Blocked by a rule".
+
+**Nouns.** A **campaign** contains **assets** (the email, the SMS, the ad, the landing copy, the image). "Package", "piece", and "deliverable" are retired as user-facing words.
+
+**Never in customer copy:** vendor names (Resend, Gemini, Higgsfield in body text), architecture terms (`layer`, `scoped`, `gated`, `metered`, `runner`, `node`, `token`), database identifiers, or billing-system vocabulary. An empty metric says what the user would have to do to fill it — "Starts once you send your first campaign" — never which input is missing.
+
+## 4.3 The KPI strip
+
+`src/app/(app)/_components/kpi-strip.tsx` is the only KPI row. Import `KpiStrip`; do not hand-roll another grid.
+
+It exists because there were **seven** — `.metrics`, `.okpis`, `.kpis`, `.asum`, `.pstats`, `.bstats`, `.jr-kpis` — six of them an equal `repeat(N, 1fr)` row, which §5 below bans in bold, while the shared component built for the job was used by CRM alone (BSR-658).
+
+**Cell anatomy, in order:** label → value + delta → sparkline → sublabel. Every strip, every screen. The slots are `label`, `value`, `delta`, `sublabel`, `spark`, `tone`, `emptyHint`.
+
+- **Asymmetric by default.** The first metric is the lead and takes ~1.5× the width. That is the reason equal rows are banned: an equal row claims every number matters the same, which is never true.
+- **Four cells is the intent, five the ceiling.**
+- **The sublabel carries the period.** A delta with no baseline is decoration — prefer "vs previous 30 days" over "580 prev".
+- **An empty metric uses `emptyHint`**, and it says what the *user* must do ("Starts once you send your first campaign"), never which input our pipeline lacks.
+- **Tone is gold (needs you) or green (healthy). Never red** — a KPI is a fact, not a destructive control.
+
+## 4.4 Colour is semantic, never decorative
+
+Colour has to answer a question. If a hue varies across a list and nothing tells the reader why, it is decoration wearing the costume of meaning — and it costs the palette its ability to signal (BSR-661).
+
+**The contract:**
+
+| Colour | Means | Where |
+|---|---|---|
+| gold `--accent` / `--warn` | **needs you** — the one focal cue per screen | status pills, KPI `attention` tone |
+| green `--ok` | live, sent, healthy, won | status pills, KPI `ok` tone |
+| **red `--priority`** | **destructive only** | delete/decline controls. **Never a category, never a persona, never a KPI** |
+| blue `--blue` | not identified yet / anonymous | journey stages, insurance persona |
+| slate `--slate` | a different *kind* of thing | provenance + channel chips |
+| neutral | everything else | any category with no status meaning |
+
+**Rules:**
+
+- **No purple.** Banned in §8 and it kept coming back — as a persona hue, a journey stage, a folder colour, and a `--vio` token that was mostly resolving to nothing because it was never defined globally.
+- **Persona colour comes from `personaAccent()`** in `src/domain/persona-accent.ts`. It is deterministic on the persona's *name*, so the same persona is the same colour on CRM, Campaigns, Analytics and Personas. It used to be derived five separate ways, one of them by array index — which meant a persona was gold on one screen and blue on the next.
+- **A magnitude gets one hue.** Funnels, bars and ramps vary lightness, not hue: a rainbow funnel claims each stage is a different *kind* of thing rather than a smaller *amount* of the same thing.
+- **Any colour that carries meaning gets a legend** adjacent to it, or a `title` at minimum. If you can't write the legend, the colour isn't carrying meaning and should be neutral.
+- **A tenant's brand colours are theirs.** Where the app renders customer brand colour (the Studio canvas), say so — otherwise an off-palette blue reads as our inconsistency.
 
 ## 5. Layout Principles
 

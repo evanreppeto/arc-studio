@@ -16,27 +16,29 @@ import {
 import type { JourneyWithMeta, JourneysReadModel } from "@/lib/journey/read-model";
 
 import { setJourneyConsentMode } from "../actions";
+import { KpiStrip } from "../../_components/kpi-strip";
 
 // Compact labels for the lens picker — the 320px side panel can't fit the full
 // names. The full label + blurb ride along in each button's title.
 const LENS_SHORT: Record<AttributionModel, string> = {
-  last_touch: "Last",
-  first_touch: "First",
-  linear: "Linear",
-  time_decay: "Decay",
-  position_based: "40/20/40",
+  last_touch: "The last thing they saw",
+  first_touch: "The first thing they saw",
+  linear: "Split evenly",
+  time_decay: "Weighted to the end",
+  position_based: "First and last count most",
 };
 
-// Stage → tone token (see the .journeys CSS block). Two anonymous stages read
-// blue; the known-side stages escalate gold → amber → green, with retention its
-// own violet so repeat/expansion is visually distinct from a first conversion.
+// Stage → tone token (see the .journeys CSS block). Three tones, each meaning
+// something a person can state: blue = we don't know who this is yet, gold =
+// known and in progress, green = won. Retention used to have its own violet,
+// which DESIGN.md §8 bans outright and which no legend explained (BSR-661).
 const STAGE_TONE: Record<JourneyStageKey, string> = {
   reached: "blue",
   engaged: "blue",
   identified: "gold",
-  nurtured: "amber",
+  nurtured: "gold",
   converted: "green",
-  retained: "vio",
+  retained: "green",
 };
 
 // Nicer labels for the touch kinds the read-model emits; anything else is titleized.
@@ -146,13 +148,13 @@ function JourneyRow({ journey }: { journey: JourneyWithMeta }) {
         <span className="jr-who">
           <b>{journey.identity.label}</b>
           {journey.persona && <span className="jr-persona">{titleize(journey.persona)}</span>}
-          {journey.identity.resolution !== "known" && <span className={`jr-res ${journey.identity.resolution}`}>{journey.identity.resolution}</span>}
+          {journey.identity.resolution !== "known" && <span className={`jr-res ${journey.identity.resolution}`}>{titleize(journey.identity.resolution)}</span>}
         </span>
         <StageTrack current={journey.currentStage} />
         <span className={`jr-pill t-${tone}`}>{stageLabel(journey.currentStage)}</span>
         <span className="jr-span">{spanLabel}</span>
         <span className="jr-val">
-          {journey.converted ? money(journey.conversionValueCents) : <span className="jr-muted">in flight</span>}
+          {journey.converted ? money(journey.conversionValueCents) : <span className="jr-muted" title="No revenue from this journey yet">—</span>}
         </span>
         <span className={`jr-caret${open ? " up" : ""}`} aria-hidden>
           ⌄
@@ -188,10 +190,13 @@ function JourneyRow({ journey }: { journey: JourneyWithMeta }) {
 }
 
 export function JourneysView({
+  loadError = null,
   model,
   origin = "",
   consentMode = "implied",
 }: {
+  /** Why the read FAILED, vs returning nothing. Null when it succeeded. */
+  loadError?: string | null;
   model: JourneysReadModel;
   origin?: string;
   consentMode?: JourneyConsentMode;
@@ -209,7 +214,7 @@ export function JourneysView({
       <div className="journeys">
         <header className="jr-head">
           <div>
-            <h1>Customer Journeys</h1>
+            <h2>Customer Journeys</h2>
             <p className="jr-lede">Every contact&rsquo;s path from first touch to conversion — one stitched timeline.</p>
           </div>
         </header>
@@ -225,7 +230,7 @@ export function JourneysView({
     );
   }
 
-  const { funnel, kpis, channelCreditByModel, defaultModel, isDemo } = model;
+  const { funnel, kpis, channelCreditByModel, defaultModel } = model;
   const topCount = funnel[0]?.count ?? 0;
   const channelCredit = channelCreditByModel[lens] ?? [];
   const creditTotal = channelCredit.reduce((s, c) => s + c.valueCents, 0);
@@ -242,33 +247,55 @@ export function JourneysView({
 
   return (
     <div className="journeys">
+      {/* A failed read is NOT an empty result. Rendering them the same is how a
+          live outage hid behind a normal-looking page (BSR-542). */}
+      {loadError && (
+        <div className="crm-error" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <b>Couldn&rsquo;t load journey data.</b> What&rsquo;s missing below is a failed query, not an absence of activity.
+            <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
+          </span>
+        </div>
+      )}
       <header className="jr-head">
         <div>
-          <h1>
-            Customer Journeys
-            {isDemo ? <span className="jr-tag demo">demo data</span> : <span className="jr-tag wired">wired · live</span>}
-          </h1>
+          {/* No per-screen demo tag: the console-wide DemoDataBar says it once,
+              in one wording, on every screen. */}
+          <h2>Customer Journeys</h2>
           <p className="jr-lede">Every contact&rsquo;s path from first touch to conversion — one stitched timeline.</p>
         </div>
-        <div className="jr-model" title="Attribution lens applied to channel credit">
-          <span className="jr-modellab">Credit</span>
-          <span className="jr-modelval">{activeLens?.label ?? defaultLabel}</span>
+        <div className="jr-model" title={activeLens?.blurb ?? "How revenue is shared between the campaigns a customer saw"}>
+          <span className="jr-modellab">Revenue credited to</span>
+          <span className="jr-modelval">{LENS_SHORT[lens] ?? defaultLabel}</span>
         </div>
       </header>
 
-      <div className="jr-kpis">
-        <Kpi label="Journeys" value={String(kpis.total)} hint="contacts with a path" />
-        <Kpi label="In flight" value={String(kpis.inFlight)} hint="identified, not yet converted" tone="amber" />
-        <Kpi label="Converted" value={String(kpis.converted)} hint={`${Math.round(kpis.conversionRate * 100)}% of identified`} tone="green" />
-        <Kpi label="Realized" value={money(kpis.realizedCents)} hint="from converted journeys" tone="green" />
-        <Kpi label="Avg. time to convert" value={kpis.avgDaysToConvert !== null ? `${kpis.avgDaysToConvert}d` : "—"} hint="first touch → paid" />
-      </div>
+      <KpiStrip
+        className="jr-kpis"
+        items={[
+          { label: "Journeys", value: String(kpis.total), sublabel: "contacts with a path" },
+          { label: "In flight", value: String(kpis.inFlight), sublabel: "identified, not yet converted", tone: "attention" },
+          { label: "Converted", value: String(kpis.converted), sublabel: `${Math.round(kpis.conversionRate * 100)}% of identified`, tone: "ok" },
+          { label: "Revenue earned", value: money(kpis.realizedCents), sublabel: "from converted journeys", tone: "ok" },
+          {
+            label: "Avg. time to convert",
+            value: kpis.avgDaysToConvert !== null ? `${kpis.avgDaysToConvert}d` : "",
+            sublabel: "first touch → paid",
+            emptyHint: "Fills in once a journey completes",
+          },
+        ]}
+      />
 
       <section className="jr-panel jr-funnelpanel">
         <h2>
           The journey funnel
           <span className="jr-sub2">how many contacts reach each stage</span>
         </h2>
+        <div className="jr-legend">
+          <span><i className="t-blue" />Not identified yet</span>
+          <span><i className="t-gold" />Known, in progress</span>
+          <span><i className="t-green" />Won</span>
+        </div>
         <div className="jr-funnel">
           {funnel.map((f, i) => {
             const meta = JOURNEY_STAGES[i];
@@ -284,10 +311,10 @@ export function JourneysView({
               >
                 <span className="jr-flabel">
                   {f.label}
-                  {meta?.anonymous && <span className="jr-anon" title="Anonymous / pre-identification stage — full capture arrives in P1">pre-lead</span>}
+                  {meta?.anonymous && <span className="jr-anon" title={`${meta.meaning} We do not know who they are at this stage yet.`}>not identified yet</span>}
                 </span>
                 <span className="jr-fbar">
-                  <i className={`t-${STAGE_TONE[f.key]}`} style={{ width: `${width}%` }} />
+                  <i style={{ width: `${width}%`, opacity: 1 - i * 0.12 }} />
                 </span>
                 <span className="jr-fcount">{f.count}</span>
                 <span className="jr-frate">{i === 0 ? "" : `${Math.round(f.rateFromPrev * 100)}%`}</span>
@@ -331,21 +358,24 @@ export function JourneysView({
               Revenue by channel
               <span className="jr-sub2">credit across converted journeys</span>
             </h2>
-            <div className="jr-lens" role="group" aria-label="Attribution model">
-              {ATTRIBUTION_MODELS.map((m) => (
-                <button
-                  key={m.key}
-                  type="button"
-                  className={`jr-lensbtn${lens === m.key ? " on" : ""}`}
-                  onClick={() => setLens(m.key)}
-                  aria-pressed={lens === m.key}
-                  title={`${m.label} — ${m.blurb}`}
-                >
-                  {LENS_SHORT[m.key]}
-                </button>
-              ))}
-            </div>
             <p className="jr-lensblurb">{activeLens?.blurb}</p>
+            <details className="jr-lenswrap">
+              <summary>Change how credit is shared</summary>
+              <div className="jr-lens" role="group" aria-label="How credit is shared between campaigns">
+                {ATTRIBUTION_MODELS.map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    className={`jr-lensbtn${lens === m.key ? " on" : ""}`}
+                    onClick={() => setLens(m.key)}
+                    aria-pressed={lens === m.key}
+                    title={m.blurb}
+                  >
+                    {LENS_SHORT[m.key]}
+                  </button>
+                ))}
+              </div>
+            </details>
             {channelCredit.length === 0 ? (
               // "No credit" and "no conversions" are different things, and conflating
               // them reads as broken: a workspace whose campaigns haven't sent yet has
@@ -400,16 +430,6 @@ export function JourneysView({
           <CollectorInstall origin={origin} consentMode={consentMode} />
         </aside>
       </div>
-    </div>
-  );
-}
-
-function Kpi({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: string }) {
-  return (
-    <div className={`jr-kpi${tone ? ` t-${tone}` : ""}`}>
-      <span className="jr-klab">{label}</span>
-      <span className="jr-kval">{value}</span>
-      <span className="jr-khint">{hint}</span>
     </div>
   );
 }

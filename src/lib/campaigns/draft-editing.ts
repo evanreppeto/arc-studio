@@ -9,6 +9,7 @@ import {
 } from "@/domain";
 
 import { getSupabaseAdminClient } from "../supabase/server";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 export type DraftAssetView = {
   assetId: string;
@@ -126,6 +127,7 @@ export async function editDraftAsset(
 
   const { error: eventError } = await client.from("campaign_events").insert({
     org_id: asset.org_id,
+    ...(await workspaceIdFields(client, asset.org_id, { campaignAssetId: assetId, campaignId: campaignId || null })),
     campaign_id: campaignId || null,
     campaign_asset_id: assetId,
     event_type: "asset_edited",

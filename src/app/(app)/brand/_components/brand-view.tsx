@@ -71,15 +71,25 @@ export function BrandView({ view }: { view: BrandProfileView }) {
   // The workspace logo — one image, shared with the Settings control: it draws
   // in the nav rail AND is stamped on generated creative, so the preview here
   // reflects both.
+  // Two pickers, not one shared picker plus a "who opened it" ref: each control
+  // then carries its own origin, so the result reports itself in the right place
+  // without mutating state from inside JSX.
   const logoInput = useRef<HTMLInputElement>(null);
+  const cardLogoInput = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(identity.logoUrl);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
+  // WHERE the failure should be reported. The header button and the intake card
+  // share one action, and an error rendered only in the header is off-screen for
+  // someone who just dropped a file on the card further down the page.
+  const [logoErrorAt, setLogoErrorAt] = useState<"header" | "card">("header");
+  const [dragOverLogo, setDragOverLogo] = useState(false);
   const [, startLogo] = useTransition();
 
-  function runLogo(action: () => Promise<BrandLogoResult>) {
+  function runLogo(action: () => Promise<BrandLogoResult>, from: "header" | "card" = "header") {
     setLogoBusy(true);
     setLogoError(null);
+    setLogoErrorAt(from);
     startLogo(async () => {
       try {
         const result = await action();
@@ -93,16 +103,39 @@ export function BrandView({ view }: { view: BrandProfileView }) {
     });
   }
 
-  function onLogoPicked(chosen: File | null, event: React.ChangeEvent<HTMLInputElement>) {
+  function onLogoPicked(chosen: File | null, event: React.ChangeEvent<HTMLInputElement>, from: "header" | "card") {
     event.target.value = ""; // let the same file be re-picked after a remove
     if (!chosen) return;
     const formData = new FormData();
     formData.append("file", chosen);
-    runLogo(() => saveBrandLogo(formData));
+    runLogo(() => saveBrandLogo(formData), from);
   }
 
   function onLogoRemove() {
     runLogo(() => removeBrandLogo());
+  }
+
+  /**
+   * Drag-and-drop onto the logo card. Filters to images up front so dropping a
+   * PDF fails here with a readable message instead of reaching the action and
+   * coming back as a generic upload rejection — `uploadBrandingImage` accepts
+   * only the LOGO_ACCEPT types, and it still re-checks type and size server-side.
+   */
+  function onLogoDropped(event: React.DragEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    setDragOverLogo(false);
+    if (logoBusy) return;
+    const dropped = Array.from(event.dataTransfer.files ?? []);
+    if (dropped.length === 0) return;
+    const image = dropped.find((file) => LOGO_ACCEPT.includes(file.type));
+    if (!image) {
+      setLogoErrorAt("card");
+      setLogoError("That file type isn't supported. Use a PNG, JPG, WebP, GIF or SVG.");
+      return;
+    }
+    const formData = new FormData();
+    formData.append("file", image);
+    runLogo(() => saveBrandLogo(formData), "card");
   }
 
   // Website analysis. Read-only: it fetches the page and shows what it found;
@@ -136,6 +169,26 @@ export function BrandView({ view }: { view: BrandProfileView }) {
 
   return (
     <div className="arc-brand" style={{ ["--bactive" as string]: accent }}>
+      {/* A failed read renders NEUTRAL_DEFAULTS, which look like a real brand
+          kit and are not this tenant's. Say so before anything below is read as
+          theirs — and before anyone approves creative drawn from it (BSR-578). */}
+      {view.failed && (
+        <div
+          role="status"
+          style={{
+            margin: "0 0 14px",
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--red-border, rgba(204,102,102,.4))",
+            color: "var(--red-text)",
+            fontSize: 13,
+          }}
+        >
+          Your brand kit couldn&apos;t be loaded, so what&apos;s shown below are placeholder
+          defaults — not your colours, logo or voice. Don&apos;t approve creative from this
+          until it reloads.
+        </div>
+      )}
       {/* HERO */}
       <div className="brandhero">
         <div className="mk2">
@@ -161,7 +214,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           </div>
         </div>
         <div className="bacts">
-          <input ref={logoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={(e) => onLogoPicked(e.target.files?.[0] ?? null, e)} />
+          <input ref={logoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={(e) => onLogoPicked(e.target.files?.[0] ?? null, e, "header")} />
           <button type="button" className="gbtn sm" onClick={() => logoInput.current?.click()} disabled={logoBusy}>
             <svg viewBox="0 0 24 24"><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3M8 9l4-4 4 4M12 5v10" /></svg>
             {logoBusy ? "Uploading…" : logoUrl ? "Replace logo" : "Add logo"}
@@ -170,7 +223,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           {logoUrl && !logoBusy && (
             <button type="button" className="gbtn sm" onClick={onLogoRemove}>Remove</button>
           )}
-          {logoError && <span className="blogoerr">{logoError}</span>}
+          {logoError && logoErrorAt === "header" && <span className="blogoerr">{logoError}</span>}
           {saved && <span className="bsaved">Saved ✓</span>}
           <button type="button" className="gbtn gold sm" onClick={() => setEditOpen(true)}><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg>Edit identity</button>
         </div>
@@ -181,13 +234,12 @@ export function BrandView({ view }: { view: BrandProfileView }) {
         <div className="intakehead">
           <div>
             <div className="ih-title"><span className="sp"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg></span>Teach Arc your brand</div>
-            <div className="ih-sub">Add your website, documents, and logo — Arc parses, reads, and analyzes them with Gemini, then proposes brand details for you to approve. Extracted facts land in your <b>Brain</b> and your Brand profile, gated by review — <b>nothing is auto-applied</b>.</div>
+            <div className="ih-sub">Add your website, documents, and logo. Arc reads them and suggests brand details for you to approve — what it learns lands in your <b>Brain</b> and your Brand profile, and <b>nothing is applied until you say so</b>.</div>
           </div>
           <div className="ih-prog">{sources.length} {sources.length === 1 ? "source" : "sources"} connected</div>
         </div>
         <div className="sources">
           <div className="isrc">
-            <span className="tg ok">wired</span>
             <div className="si"><span className="ic bl"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" /></svg></span><div><div className="nm">Website</div><div className="ds">Reads the page — title, description, icon, and copy for Arc</div></div></div>
             <div className="urow">
               <input
@@ -216,7 +268,6 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             )}
           </div>
           <div className="isrc">
-            <span className="tg ok">wired · Brain</span>
             <div className="si"><span className="ic gd">{DOC}</span><div><div className="nm">Documents</div><div className="ds">.docx · .pdf · .md · .csv · txt — up to 50&nbsp;MB</div></div></div>
             <input
               ref={fileInput}
@@ -237,14 +288,34 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             </button>
           </div>
           <div className="isrc">
-            <span className="tg est">vision · partial</span>
-            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logo &amp; images</div><div className="ds">Arc reads them with Gemini vision</div></div></div>
-            <div className="ucta drop" data-soon="Logo & image upload is coming soon"><svg className="upi" viewBox="0 0 24 24"><path d="M12 16V6M8 10l4-4 4 4" /><path d="M5 16v3a1 1 0 001 1h12a1 1 0 001-1v-3" /></svg><span><b>Drop logo / photos</b></span></div>
+            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logo</div><div className="ds">Drawn in the sidebar and stamped on creative Arc makes</div></div></div>
+            {/* Same action as the "Add logo" button in the header — one logo, one
+                write path. This card advertised the capability as "Coming soon"
+                while `saveBrandLogo` was wired and working 400px above it, so an
+                operator reading this card concluded Arc could not use their logo. */}
+            <input ref={cardLogoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={(e) => onLogoPicked(e.target.files?.[0] ?? null, e, "card")} />
+            <button
+              type="button"
+              className={`ucta drop${logoBusy ? " is-busy" : ""}${dragOverLogo ? " is-over" : ""}`}
+              disabled={logoBusy}
+              onClick={() => cardLogoInput.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragOverLogo(true); }}
+              onDragLeave={() => setDragOverLogo(false)}
+              onDrop={onLogoDropped}
+            >
+              <svg className="upi" viewBox="0 0 24 24"><path d="M12 16V6M8 10l4-4 4 4" /><path d="M5 16v3a1 1 0 001 1h12a1 1 0 001-1v-3" /></svg>
+              <span>{logoBusy ? <b>Uploading…</b> : logoUrl ? <><b>Replace logo</b> — drop or browse</> : <><b>Drop a logo</b> or browse</>}</span>
+            </button>
+            {logoError && logoErrorAt === "card" && <span className="blogoerr">{logoError}</span>}
           </div>
           <div className="isrc">
-            <span className="tg est">preview</span>
-            <div className="si"><span className="ic mu"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg></span><div><div className="nm">Manual</div><div className="ds">Type a note, or edit any field below</div></div></div>
-            <div className="ucta" data-soon="Brand notes are coming soon">Add a brand note</div>
+            <div className="si"><span className="ic mu"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg></span><div><div className="nm">Write it yourself</div><div className="ds">Set your name, tagline, website and how Arc should sound</div></div></div>
+            {/* Was "Add a brand note", badged "Coming soon". There is no brand-note
+                store — but the rest of what this card offered ("edit any field
+                below") is exactly `updateBrandIdentity`, which the header's Edit
+                identity button already calls. Point at the thing that exists
+                rather than promising a note feature that does not. */}
+            <button type="button" className="ucta" onClick={() => setEditOpen(true)}>Edit brand details</button>
           </div>
         </div>
       </div>
@@ -254,7 +325,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
         <div className="bcol">
           {/* PALETTE */}
           <div className="bsec">
-            <div className="bsh"><h3>Brand palette</h3><span className="tg ok">wired</span><div className="sx"><span className="editlink" data-soon="Editing the palette is coming soon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add color</span></div></div>
+            <div className="bsh"><h3>Brand palette</h3><div className="sx"><span className="editlink" data-soon="Editing the palette is coming soon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add color</span></div></div>
             <div className="bsb">
               {palette.length === 0 ? (
                 <div className="bsnote" style={{ margin: 0 }}>No palette yet — add colors, or let Arc extract them from your website and logo.</div>
@@ -275,13 +346,13 @@ export function BrandView({ view }: { view: BrandProfileView }) {
               )}
             </div>
             {palette.length > 0 && (
-              <div className="bsnote">Click a color to preview it as the active accent on the generated ad → Arc uses these tokens across every generated ad, landing page, and email render.</div>
+              <div className="bsnote">Click a color to preview it on the ad above. Arc uses these colors on every ad, landing page, and email it makes.</div>
             )}
           </div>
 
           {/* TYPOGRAPHY */}
           <div className="bsec">
-            <div className="bsh"><h3>Typography</h3><span className="tg ok">wired</span><div className="sx"><span className="editlink" data-soon="Editing typography is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Change</span></div></div>
+            <div className="bsh"><h3>Typography</h3><div className="sx"><span className="editlink" data-soon="Editing typography is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Change</span></div></div>
             <div className="bsb"><div className="typ">
               <div className="tspec serif"><div className="glyph">Aa</div><div className="ti"><div className="role">Display</div><div className="fam">{headingFont}</div><div className="sample">{tagline || "Your headline, set in the display face."}</div></div></div>
               <div className="tspec"><div className="glyph">Aa</div><div className="ti"><div className="role">UI / Body</div><div className="fam">{bodyFont}</div><div className="sample">{proofPoints.slice(0, 2).join(". ") || "Body copy for everyday UI and paragraphs."}</div></div></div>
@@ -292,7 +363,12 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           {/* VOICE */}
           {(tone.length > 0 || voiceGuidance || preferredPhrases.length > 0 || bannedPhrases.length > 0) && (
             <div className="bsec">
-              <div className="bsh"><h3>Voice &amp; tone</h3><span className="tg ok">wired · tone · voice_guidance</span><div className="sx"><span className="editlink" data-soon="Editing voice & tone is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Edit</span></div></div>
+              {/* Voice guidance is one of the four fields updateBrandIdentity
+                  writes, so this was never "coming soon" either — the header's
+                  Edit identity button has always saved it. Tone chips and the
+                  phrase lists are NOT editable here yet; those come from the
+                  profile and Arc's reading of your documents. */}
+              <div className="bsh"><h3>Voice &amp; tone</h3><div className="sx"><button type="button" className="editlink" onClick={() => setEditOpen(true)}><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Edit</button></div></div>
               <div className="bsb">
                 {tone.length > 0 && <div className="tone">{tone.map((t) => <span className="tchip" key={t}>{t}</span>)}</div>}
                 {voiceGuidance && <p className="guide">{voiceGuidance}</p>}
@@ -316,7 +392,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
 
           {/* PROOF / GUARDRAILS / SERVICES */}
           <div className="bsec">
-            <div className="bsh"><h3>Proof, guardrails &amp; offering</h3><span className="tg ok">wired · proof_points · guardrails · services</span></div>
+            <div className="bsh"><h3>Proof, guardrails &amp; offering</h3></div>
             <div className="bsb">
               <div className="twocol">
                 <div>
@@ -357,7 +433,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
 
           {/* BRAND SOURCES */}
           <div className="bsec">
-            <div className="bsh"><h3>Brand sources</h3><span className="tg ok">wired · media_assets</span><div className="sx">
+            <div className="bsh"><h3>Brand sources</h3><div className="sx">
               <button type="button" className="resyncall" disabled={intake || sources.length === 0} onClick={() => runIntake("resync", () => resyncBrandSources())}>{RESYNC}{busy === "resync" ? "Re-syncing…" : "Re-sync all"}</button>
               <button type="button" className="gbtn gold sm" disabled={intake} onClick={() => fileInput.current?.click()}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>Upload</button>
             </div></div>
@@ -392,7 +468,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
                 ))
               )}
             </div>
-            <div className="bsnote">Upload a deck, brief, or guidelines — Arc parses it (docx/pdf/md/csv) and writes what it learns into the <b>Brain</b> as proposed facts you approve. <b>Re-sync</b> re-learns a source when your docs change. Click a source to see its facts.</div>
+            <div className="bsnote">Upload a deck, brief, or guidelines (Word, PDF, Markdown or CSV). Arc reads it and adds what it learns to the <b>Brain</b> as facts waiting on your approval. <b>Re-sync</b> re-reads a source when your documents change. Click a source to see what it learned.</div>
           </div>
 
           {/* ARC USES THIS */}

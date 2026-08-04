@@ -30,6 +30,30 @@ export async function POST(request: Request) {
   const asCount = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
 
+  // Usage fields the ledger has no column for — the prompt-cache token counts and
+  // the per-TTL cache split (BSR-502 Finding 3, confirmed in production: one turn
+  // reported 8 input tokens against ~105,000 real). Recorded to metadata rather
+  // than given columns because what the SDK reports is still moving; `usage_keys`
+  // says what actually arrived, so the next reader is not inferring from an
+  // absence. NOT priced — no rate enters the meter on a guess.
+  //
+  // The runner already shapes this (buildUsageDetail), but this is a bearer API
+  // writing caller-supplied JSON into a JSONB column on every turn, so the size
+  // bound is enforced here too rather than trusted from the other side of the
+  // network. Oversized detail is dropped, not truncated: half a payload would
+  // read as a complete one.
+  const MAX_USAGE_DETAIL_BYTES = 8_192;
+  const detail = body.usage_detail;
+  const usageDetail =
+    detail && typeof detail === "object" && !Array.isArray(detail) && JSON.stringify(detail).length <= MAX_USAGE_DETAIL_BYTES
+      ? { usage_detail: detail as Record<string, unknown> }
+      : {};
+
+  const callerMetadata =
+    body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+      ? (body.metadata as Record<string, unknown>)
+      : {};
+
   const result = await recordUsageEvent({
     orgId: allowed.scope.orgId,
     workspaceId: allowed.scope.workspaceId,
@@ -40,7 +64,7 @@ export async function POST(request: Request) {
     outputTokens: asCount(body.output_tokens),
     taskId: typeof body.task_id === "string" ? body.task_id : null,
     campaignId: typeof body.campaign_id === "string" ? body.campaign_id : null,
-    metadata: body.metadata && typeof body.metadata === "object" ? (body.metadata as Record<string, unknown>) : undefined,
+    metadata: { ...callerMetadata, ...usageDetail },
   });
 
   if (!result.recorded) {

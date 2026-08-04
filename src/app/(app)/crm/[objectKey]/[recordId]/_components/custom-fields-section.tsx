@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 
 import type { CustomFieldEntry } from "@/lib/custom-fields/values";
@@ -27,7 +28,24 @@ export function CustomFieldsSection({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  if (entries.length === 0) return null;
+  // Where the fields for this record type are defined. Scoped to this object so
+  // the editor opens on the right row of a six-object list.
+  const manageHref = `/settings?s=records&t=Fields&o=${encodeURIComponent(objectKey)}`;
+
+  // No fields defined yet. This used to render nothing at all, which hid the one
+  // screen that could fix it from the exact moment someone wants it — "this
+  // record should track X" is how a custom field gets asked for.
+  if (entries.length === 0) {
+    return (
+      <div className="sec">
+        <h3 className="sh">Custom fields</h3>
+        <p className="cf-empty">
+          None defined for this record type yet.{" "}
+          <Link href={manageHref}>Add one</Link>
+        </p>
+      </div>
+    );
+  }
 
   const startEdit = () => {
     const seed: Record<string, unknown> = {};
@@ -56,9 +74,17 @@ export function CustomFieldsSection({
       <h3 className="sh">
         Custom fields
         {!editing && (
-          <button type="button" className="btn sm" style={{ marginLeft: "auto" }} onClick={startEdit}>
-            Edit
-          </button>
+          <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {/* Edit changes this record's values; Manage changes which fields
+                exist for every record of this type. Different blast radius, so
+                they read differently — one button, one quiet link. */}
+            <Link className="cf-manage" href={manageHref}>
+              Manage fields
+            </Link>
+            <button type="button" className="btn sm" onClick={startEdit}>
+              Edit
+            </button>
+          </span>
         )}
       </h3>
 

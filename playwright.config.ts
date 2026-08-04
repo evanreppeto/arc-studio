@@ -17,7 +17,12 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   // Keep it light — these are smoke tests, one browser is enough.
   workers: process.env.CI ? 2 : undefined,
-  reporter: process.env.CI ? [["github"], ["list"]] : [["list"]],
+  // The JSON report is what gives the golden questions a per-question pass/fail
+  // record that survives the run (BSR-507). A slow degradation in one capability
+  // is invisible in a pass/fail total, and the log scrolls away.
+  reporter: process.env.CI
+    ? [["github"], ["list"], ["json", { outputFile: "playwright-report/results.json" }]]
+    : [["list"]],
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",

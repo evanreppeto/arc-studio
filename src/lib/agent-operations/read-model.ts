@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { WORK_STATE_LABEL } from "@/domain";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getCurrentAgentTaskTenantFields, type AgentTaskTenantFields } from "../agent-tasks/scope";
@@ -259,6 +260,9 @@ export type AgentTaskDetail =
       acceptanceCriteria: Array<{ id: string; label: string; completed: boolean }>;
       latestOutput: AgentTaskOutput | null;
       timeline: AgentTaskTimelineItem[];
+      /** What the timeline is built from, and what it is missing — so a consumer
+       *  (Arc reads this) can tell "nothing happened" from "nothing records it". */
+      timelineCoverage: { taskEvents: "recorded" | "not_recorded"; note: string | null };
       agent: {
         id: string;
         key: string;
@@ -391,38 +395,38 @@ export async function getAgentOperationsDashboard(
     const supabase = client ?? getSupabaseAdminClient();
     const scope = tenantScope ?? (!client ? await getCurrentAgentTaskTenantFields() : undefined);
     const [agentsResult, tasksResult, approvalsResult, outputsResult, campaignsResult] = await Promise.all([
-      applyOrgScope(
+      applyWorkspaceScope(
         supabase
           .from("agents")
           .select("id,key,name,description,status,allowed_actions,blocked_actions,default_approval_policy,metadata,updated_at")
           .order("updated_at", { ascending: false })
           .limit(25),
-        scope?.org_id,
+        scope,
       ),
       fetchDashboardTasks(supabase, scope),
-      applyOrgScope(
+      applyWorkspaceScope(
         supabase
           .from("approval_items")
           .select(
             "id,campaign_id,campaign_asset_id,item_type,status,risk_level,requested_by,submitted_at,reviewed_at,draft_output,decision_notes",
           ),
-        scope?.org_id,
+        scope,
       )
         .order("submitted_at", { ascending: false })
         .limit(50),
-      applyOrgScope(
+      applyWorkspaceScope(
         supabase
           .from("agent_outputs")
           .select("id,task_id,approval_item_id,title,output_type,risk_level,compliance_status,approval_status,created_at"),
-        scope?.org_id,
+        scope,
       )
         .order("created_at", { ascending: false })
         .limit(25),
-      applyOrgScope(
+      applyWorkspaceScope(
         supabase
           .from("campaigns")
           .select("id,name,persona,status,objective"),
-        scope?.org_id,
+        scope,
       )
         .order("updated_at", { ascending: false })
         .limit(50),
@@ -458,7 +462,7 @@ export async function getAgentOperationsDashboard(
       metrics: [
         { label: "Active agents", value: agents.filter((agent) => agent.status !== "paused").length, delta: "Supabase registry" },
         { label: "Tasks running", value: openTasks.length, delta: "Open queue" },
-        { label: "Awaiting approval", value: activeApprovals.length, delta: "Human gate" },
+        { label: WORK_STATE_LABEL.needs_you, value: activeApprovals.length, delta: "Human gate" },
         { label: "Blocked outputs", value: countBlocked(tasks, outputs), delta: "Guardrails visible" },
         { label: "Approved this week", value: approvals.filter((item) => item.status === "approved").length, delta: "Recent decisions" },
         { label: "Risk flags", value: countRiskFlags(approvals, outputs), delta: "Review signals" },
@@ -590,7 +594,31 @@ export async function getAgentTaskDetail(
       },
       acceptanceCriteria: parseAcceptanceCriteria(taskMetadata),
       latestOutput: outputs[0] ?? null,
+      // Uninspected by design (BSR-575, triaged not fixed): these three are
+      // detail panels on ONE task — a timeline, its inputs, its logs. An empty
+      // panel next to a task that is plainly there reads as "nothing recorded",
+      // not as a claim about the business, so it fails the "false statement the
+      // operator will act on" test. The task itself, above, IS guarded.
+      //
+      // This module also has no consumer under src/app (see CLAUDE.md), so
+      // hardening it now would be guessing at how a future screen wants to
+      // degrade. Revisit when it is wired.
       timeline: composeTaskTimeline((eventsResult.data ?? []) as AgentTaskEventRow[], outputs, approvalResult.data ?? null),
+      // What the timeline is actually built from, and what it is missing.
+      //
+      // `agent_task_events` has never been written — not by the app, the runner,
+      // the scripts or a trigger (BSR-671). Arc reads this payload, and an agent
+      // takes an empty timeline as a fact about the task ("nothing happened")
+      // rather than as a gap in instrumentation. Saying so, and pointing at the
+      // run history that DOES exist, is the difference between a silence and a
+      // claim.
+      timelineCoverage: {
+        taskEvents: ((eventsResult.data ?? []) as AgentTaskEventRow[]).length > 0 ? "recorded" : "not_recorded",
+        note:
+          ((eventsResult.data ?? []) as AgentTaskEventRow[]).length > 0
+            ? null
+            : "Task state transitions are not recorded in this deployment; `logs` carries the run history.",
+      },
       agent: {
         id: agent?.id ?? task.agent_id ?? "unassigned",
         key: agent?.key ?? "unassigned-agent",
@@ -647,7 +675,22 @@ export async function getAgentTaskDetail(
   }
 }
 
-function applyAgentTaskTenantScope<Query>(query: Query, scope?: AgentTaskTenantFields): Query {
+/**
+ * Scope a list query to one workspace, not one org (BSR-713).
+ *
+ * This used to be `applyAgentTaskTenantScope`, sitting next to a weaker
+ * `applyOrgScope` that the four dashboard queries used — so `agent_tasks` was
+ * workspace-scoped while `agents`, `approval_items`, `agent_outputs` and
+ * `campaigns` were read across the whole org. The last three were already
+ * workspace-locked by Wave 1; that wave changed `campaigns/read-model.ts` and
+ * did not reach this file.
+ *
+ * It is not a live leak — no org holds two workspaces — but the service role
+ * bypasses RLS, so a read model is the only thing standing between one
+ * workspace's dashboard and another's rows. Having exactly one scoper here is
+ * what stops the weaker one being picked next time.
+ */
+function applyWorkspaceScope<Query>(query: Query, scope?: AgentTaskTenantFields): Query {
   if (!scope) return query;
   const scoped = query as {
     eq(column: string, value: string): { eq(column: string, value: string): Query };
@@ -655,13 +698,8 @@ function applyAgentTaskTenantScope<Query>(query: Query, scope?: AgentTaskTenantF
   return scoped.eq("org_id", scope.org_id).eq("workspace_id", scope.workspace_id);
 }
 
-function applyOrgScope<Query>(query: Query, orgId?: string): Query {
-  if (!orgId) return query;
-  return (query as { eq(column: string, value: string): Query }).eq("org_id", orgId);
-}
-
 async function fetchDashboardTasks(supabase: SupabaseClient, scope?: AgentTaskTenantFields) {
-  const result = await applyAgentTaskTenantScope(
+  const result = await applyWorkspaceScope(
     supabase
       .from("agent_tasks")
       .select(TASK_SELECT),
@@ -672,7 +710,7 @@ async function fetchDashboardTasks(supabase: SupabaseClient, scope?: AgentTaskTe
 
   if (!isMissingSharedTaskSchemaError(result.error)) return result;
 
-  return applyAgentTaskTenantScope(
+  return applyWorkspaceScope(
     supabase
       .from("agent_tasks")
       .select(LEGACY_TASK_SELECT),
@@ -683,7 +721,7 @@ async function fetchDashboardTasks(supabase: SupabaseClient, scope?: AgentTaskTe
 }
 
 async function fetchTaskDetailRow(supabase: SupabaseClient, taskId: string, scope?: AgentTaskTenantFields) {
-  const result = await applyAgentTaskTenantScope(
+  const result = await applyWorkspaceScope(
     supabase
       .from("agent_tasks")
       .select(TASK_DETAIL_SELECT)
@@ -693,7 +731,7 @@ async function fetchTaskDetailRow(supabase: SupabaseClient, taskId: string, scop
 
   if (!isMissingSharedTaskSchemaError(result.error)) return result;
 
-  return applyAgentTaskTenantScope(
+  return applyWorkspaceScope(
     supabase
       .from("agent_tasks")
       .select(LEGACY_TASK_DETAIL_SELECT)

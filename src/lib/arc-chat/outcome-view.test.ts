@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildArcOutcomeView } from "./outcome-view";
 
 describe("buildArcOutcomeView", () => {
-  it("promotes a meaningful markdown heading and removes the duplicate heading from the body", () => {
+  it("returns the response verbatim, headings and all", () => {
     const view = buildArcOutcomeView({
       request: "Analyze the strongest opportunity",
       response: "## Rebuild homeowners are the best opportunity\n\nThe CRM contains 21 leads.",
@@ -13,11 +13,23 @@ describe("buildArcOutcomeView", () => {
 
     expect(view).toMatchObject({
       intent: "analysis",
-      headline: "Rebuild homeowners are the best opportunity",
-      body: "The CRM contains 21 leads.",
+      body: "## Rebuild homeowners are the best opportunity\n\nThe CRM contains 21 leads.",
       safetyLabel: "Read only",
       badges: [{ kind: "sources", label: "3 sources" }],
     });
+  });
+
+  // The regression this guards: the old heading extraction matched the first
+  // heading ANYWHERE in the reply (a multiline, unanchored regex) and then
+  // deleted it in place. A reply that opened with prose and later had a
+  // "## Recommended next steps" section had that heading hoisted to the top —
+  // above prose it did not describe — and stripped from its own section, so the
+  // list below read as an unlabeled continuation of the preceding paragraph.
+  it("leaves a mid-document heading where Arc put it", () => {
+    const response = "Three accounts stand out this week.\n\n## Recommended next steps\n\n- Call Dana first";
+    const view = buildArcOutcomeView({ request: "What should I do?", response, mode: "ask" });
+
+    expect(view.body).toBe(response);
   });
 
   it("adds only evidence badges supported by the response", () => {
@@ -43,7 +55,6 @@ describe("buildArcOutcomeView", () => {
     expect(view).toMatchObject({
       intent: "analysis",
       label: "Recommendation",
-      headline: "The decision is ready to inspect.",
       safetyLabel: "No changes recorded",
     });
   });
@@ -59,7 +70,6 @@ describe("buildArcOutcomeView", () => {
     expect(view).toMatchObject({
       intent: "action",
       label: "No change recorded",
-      headline: "No workspace change was recorded.",
       body: "I attempted to update the campaign owner.",
       safetyLabel: "No changes recorded",
     });
@@ -77,7 +87,6 @@ describe("buildArcOutcomeView", () => {
     expect(view).toMatchObject({
       intent: "action",
       label: "Created",
-      headline: "Reviewable work is ready.",
       safetyLabel: "Nothing sent",
       badges: [{ kind: "created", label: "1 deliverable" }],
     });

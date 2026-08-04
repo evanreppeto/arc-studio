@@ -3,8 +3,16 @@ import { describe, expect, it } from "vitest";
 import {
   PRICING_VERSION,
   estimateClaudeCostCents,
+  estimateClaudeCostMicrocents,
+  estimateEmbeddingCostCents,
+  estimateGeminiTextCostCents,
+  estimateMediaCostMicrocents,
+  eventMicrocents,
   estimateMediaCostCents,
+  foldGeminiTextUsage,
+  estimateTokensFromChars,
   isPricedModel,
+  isPricedUsage,
 } from "../ai-usage";
 import type { UsageRollupEvent, UsageSummary } from "../ai-usage";
 import { summarizeUsage, bucketCostByDay, summarizeUsageForSettings } from "../ai-usage";
@@ -151,5 +159,168 @@ describe("isPricedModel / PRICING_VERSION", () => {
   it("exposes a pricing version string", () => {
     expect(typeof PRICING_VERSION).toBe("string");
     expect(PRICING_VERSION.length).toBeGreaterThan(0);
+  });
+});
+
+describe("claude-sonnet-5 pricing (BSR-502)", () => {
+  // It ran in production from 2026-07-10 with no pricing entry, so every turn
+  // was recorded at zero. 36 events, ~42k output tokens, 52% of the ledger.
+  it("is priced, so a sonnet turn no longer costs nothing", () => {
+    expect(isPricedModel("claude-sonnet-5")).toBe(true);
+    expect(estimateClaudeCostCents("claude-sonnet-5", 0, 1_000_000)).toBe(1500);
+    expect(estimateClaudeCostCents("claude-sonnet-5", 1_000_000, 0)).toBe(300);
+  });
+
+  it("reprices the exact volume that was recorded as free", () => {
+    // The real prod totals: 250 input, 42,454 output tokens across 36 events.
+    // At 300/1500 cents per Mtok that is ~64 cents the ledger is missing.
+    const cents = estimateClaudeCostCents("claude-sonnet-5", 250, 42_454);
+    expect(cents).toBe(64);
+  });
+
+  it("still refuses to invent a price for a model it does not know", () => {
+    // The zero must stay VISIBLE for anything unpriced — persistence reports it.
+    expect(isPricedModel("claude-nonexistent-9")).toBe(false);
+    expect(estimateClaudeCostCents("claude-nonexistent-9", 1_000_000, 1_000_000)).toBe(0);
+  });
+});
+
+describe("embedding pricing (BSR-502 Finding 1)", () => {
+  it("estimates tokens from characters, rounding UP", () => {
+    // Gemini's developer API returns no token count for embedContent — the
+    // billableCharacterCount / statistics fields are Enterprise-only — so the
+    // token figure is derived. Rounding up keeps the estimate from being the
+    // optimistic side of an already-undercounting meter.
+    expect(estimateTokensFromChars(0)).toBe(0);
+    expect(estimateTokensFromChars(1)).toBe(1);
+    expect(estimateTokensFromChars(4)).toBe(1);
+    expect(estimateTokensFromChars(5)).toBe(2);
+    expect(estimateTokensFromChars(-10)).toBe(0);
+  });
+
+  it("records ZERO for an unpriced embedding model — and says so", () => {
+    // The rate table is deliberately empty: no published figure has been
+    // supplied, and inferring one would swap a visible zero for an invisible
+    // wrong number. What matters is that the zero is DECLARED unpriced, so
+    // recordUsageEvent reports it instead of filing it silently — the exact
+    // failure that let claude-sonnet-5 bill nothing for three weeks.
+    expect(estimateEmbeddingCostCents("gemini-embedding-2", 10_000)).toBe(0);
+    expect(isPricedUsage("gemini_embedding", "gemini-embedding-2")).toBe(false);
+  });
+
+  it("does not let a Claude-only priced check vouch for another service", () => {
+    // isPricedModel consults the Claude table. Asking it about an embedding
+    // model would answer "unpriced" for the right reason by accident, and would
+    // answer "priced" for a media row that has no model id at all.
+    expect(isPricedUsage("arc_claude", "claude-opus-4-8")).toBe(true);
+    expect(isPricedUsage("arc_claude", "claude-not-a-real-model-9")).toBe(false);
+    expect(isPricedUsage("gemini_image", "")).toBe(true);
+  });
+});
+
+describe("foldGeminiTextUsage (BSR-502)", () => {
+  it("counts tool-use prompt tokens as input and thinking tokens as output", async () => {
+    // The trap this exists to avoid: prompt/candidates look like the obvious
+    // mapping, but Google defines totalTokenCount as the sum of FOUR fields.
+    // toolUsePromptTokenCount is billed as input and excluded from
+    // promptTokenCount; thoughtsTokenCount is billed as output and excluded from
+    // candidatesTokenCount. Reading only the obvious two reproduces Finding 3.
+    const folded = foldGeminiTextUsage({
+      promptTokenCount: 1_000,
+      toolUsePromptTokenCount: 30_000,
+      candidatesTokenCount: 800,
+      thoughtsTokenCount: 2_200,
+      totalTokenCount: 34_000,
+    });
+
+    expect(folded.inputTokens).toBe(31_000);
+    expect(folded.outputTokens).toBe(3_000);
+    // The fold must account for everything Google says it billed.
+    expect(folded.inputTokens + folded.outputTokens).toBe(34_000);
+  });
+
+  it("does not double-count cached content, which promptTokenCount already includes", () => {
+    const folded = foldGeminiTextUsage({ promptTokenCount: 5_000, cachedContentTokenCount: 4_000, candidatesTokenCount: 100 });
+    expect(folded.inputTokens).toBe(5_000);
+    // Kept in the breakdown, because cached tokens bill at a different rate and
+    // pricing them later needs the split.
+    expect(folded.breakdown.cached_content_token_count).toBe(4_000);
+  });
+
+  it("distinguishes a missing usage block from a genuine zero-token call", () => {
+    const folded = foldGeminiTextUsage(null);
+    expect(folded.inputTokens).toBe(0);
+    expect(folded.outputTokens).toBe(0);
+    // Six explicit nulls — so a row where Gemini reported nothing cannot be read
+    // as a call that genuinely used no tokens.
+    expect(Object.values(folded.breakdown).every((v) => v === null)).toBe(true);
+  });
+
+  it("records ZERO for an unpriced Gemini text model — and declares it unpriced", () => {
+    expect(estimateGeminiTextCostCents("gemini-2.5-flash", 31_000, 3_000)).toBe(0);
+    expect(isPricedUsage("gemini_text", "gemini-2.5-flash")).toBe(false);
+  });
+});
+
+describe("sub-cent precision (BSR-502 Finding 5)", () => {
+  it("keeps a sub-half-cent call as a real cost instead of zero", () => {
+    // 10 output tokens of opus at 7500 cents/Mtok = 0.075 cents. The old code
+    // rounded that to 0 at write time and the money vanished.
+    expect(estimateClaudeCostMicrocents("claude-opus-4-8", 0, 10)).toBe(75);
+    expect(estimateClaudeCostCents("claude-opus-4-8", 0, 10)).toBe(0);
+  });
+
+  it("sums a thousand tiny turns to real money instead of nothing", () => {
+    // The heart of the finding: the floor only ever rounds DOWN, so it cannot
+    // average out — it compounds with the number of small calls, and short turns
+    // are what a chat-heavy product makes most of.
+    const events: UsageRollupEvent[] = Array.from({ length: 1_000 }, () => ({
+      service: "arc_claude" as const,
+      model: "claude-opus-4-8",
+      actorUser: null,
+      inputTokens: 0,
+      outputTokens: 10,
+      units: null,
+      costCents: 0, // what the old write path stored
+      costMicrocents: 75, // what it actually cost
+      occurredAt: "2026-07-31T00:00:00.000Z",
+    }));
+
+    const summary = summarizeUsage(events);
+    // 1,000 x 75 microcents = 75,000 = 75 cents. Summing the stored cents gives 0.
+    expect(summary.totalCostCents).toBe(75);
+    expect(events.reduce((s, e) => s + e.costCents, 0)).toBe(0);
+  });
+
+  it("falls back to cents for rows written before precision existed", () => {
+    // costMicrocents is null on historical rows. Those never had the precision,
+    // so cents * 1000 is the honest reading — not a claim they were measured.
+    expect(eventMicrocents({ costCents: 3, costMicrocents: null })).toBe(3_000);
+    expect(eventMicrocents({ costCents: 3 })).toBe(3_000);
+    expect(eventMicrocents({ costCents: 0, costMicrocents: 75 })).toBe(75);
+  });
+
+  it("rounds each daily bucket once, not each event", () => {
+    const day = (n: number): UsageRollupEvent[] =>
+      Array.from({ length: n }, () => ({
+        service: "arc_claude" as const,
+        model: "claude-opus-4-8",
+        actorUser: null,
+        inputTokens: null,
+        outputTokens: null,
+        units: null,
+        costCents: 0,
+        costMicrocents: 300,
+        occurredAt: "2026-07-30T12:00:00.000Z",
+      }));
+    const [bucket] = bucketCostByDay(day(10), ["2026-07-30"]);
+    expect(bucket.costCents).toBe(3); // 10 x 300 = 3000 microcents
+  });
+
+  it("never yields NaN for a service with no price entry", () => {
+    // undefined * count is NaN, and NaN in a cost column is worse than a zero
+    // because it is neither a number nor an honest absence.
+    expect(estimateMediaCostMicrocents("gemini_text" as never, 2)).toBe(0);
+    expect(estimateMediaCostCents("gemini_text" as never, 2)).toBe(0);
   });
 });

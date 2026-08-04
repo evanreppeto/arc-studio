@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { formatAutoDraftLog, runScheduledAutoDraft, type AutoDraftRunSummary } from "@/lib/opportunities/auto-draft";
-import { enqueueOpportunityScanTask } from "@/lib/opportunities/enqueue";
-import { hasRecentOpportunityScan } from "@/lib/opportunities/recent-scan";
-import { runDeterministicOpportunityScan, type OpportunityScanSummary } from "@/lib/opportunities/scan";
+// Every stage is reached through the fan-out now, so the single-tenant helpers
+// (enqueue / recent-scan / auto-draft) are deliberately no longer imported here —
+// calling one directly would reintroduce the ambient-tenant bug.
+import { formatAutoDraftLog } from "@/lib/opportunities/auto-draft";
+import { runOpportunityScanAcrossWorkspaces, type FanOutSummary } from "@/lib/opportunities/fan-out";
+import { type OpportunityScanSummary } from "@/lib/opportunities/scan";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -37,38 +39,45 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, skipped: "not_configured" });
   }
 
-  // Refresh deterministic opportunities every scheduled pass. Best-effort — a
-  // detector failure must not block the generative scan below.
+  // ONE pass per tenant, covering all three stages: deterministic detectors,
+  // auto-draft, and the generative Arc scan (BSR-626).
+  //
+  // Every stage used to resolve its tenant from the ambient request. The cron has
+  // no session, so each went through the resolver that deliberately REFUSES once a
+  // second active org exists — and the refusals were swallowed or applied to a
+  // single default tenant. Scope is now handed down and iterated.
+  //
+  // Dedup for the generative scan is per-tenant inside the fan-out, so one
+  // workspace's recent scan can no longer suppress every other workspace's.
   let deterministic: "ok" | "error" = "ok";
-  // Carried into the response so a scheduled pass that rejects everything below
-  // the confidence floor is visible in the cron log, not indistinguishable from
-  // a pass that genuinely found nothing.
   let scan: OpportunityScanSummary = { added: 0, filtered: 0 };
+  let fanOut = { workspaces: 0, scanned: 0, failed: 0, generativeQueued: 0 };
+  let results: FanOutSummary["results"] = [];
   try {
-    scan = await runDeterministicOpportunityScan();
+    const pass = await runOpportunityScanAcrossWorkspaces({
+      autoDraft: true,
+      generative: true,
+      recentHours: RECENT_HOURS,
+    });
+    scan = { added: pass.added, filtered: pass.filtered };
+    fanOut = {
+      workspaces: pass.workspaces,
+      scanned: pass.scanned,
+      failed: pass.failed,
+      generativeQueued: pass.generativeQueued,
+    };
+    results = pass.results;
+    if (pass.failed > 0) deterministic = "error";
   } catch {
     deterministic = "error";
   }
 
-  // Draft the top pending opportunities. Runs on every pass — including one that
-  // skips the generative scan as "recent" — because the backlog it drains was
-  // built by earlier passes, not this one. Off unless
-  // OPPORTUNITY_AUTO_DRAFT_ENABLED=1; best-effort so a drafting failure never
-  // blocks the scan below.
-  let autoDraft: AutoDraftRunSummary | { ran: false; error: string };
-  try {
-    autoDraft = await runScheduledAutoDraft();
-  } catch (error) {
-    autoDraft = { ran: false, error: error instanceof Error ? error.message : "auto-draft failed" };
-  }
-  // The response body is not visible in Vercel's cron view, so the plan a dry
-  // run exists to produce would otherwise be unreadable.
-  console.log(formatAutoDraftLog(autoDraft));
-
-  if (await hasRecentOpportunityScan(RECENT_HOURS)) {
-    return NextResponse.json({ ok: true, deterministic, scan, autoDraft, skipped: "recent" });
+  // The response body is not visible in Vercel's cron view, so the plan a dry run
+  // exists to produce would otherwise be unreadable.
+  for (const r of results) {
+    if (r.autoDraft) console.log(`[${r.workspaceName}] ${formatAutoDraftLog(r.autoDraft)}`);
   }
 
-  const result = await enqueueOpportunityScanTask({ operator: "Scheduled scan" });
-  return NextResponse.json({ ok: result.ok, deterministic, scan, autoDraft, queued: result.ok, ...(result.error ? { error: result.error } : {}) });
+  return NextResponse.json({ ok: deterministic === "ok", deterministic, scan, fanOut });
+
 }

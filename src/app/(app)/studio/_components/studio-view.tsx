@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type ChangeEvent, useMemo, useRef, useState, useTransition } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { decideArcDraftAction, requestArcDraftRevisionAction, sendArcMessageAction } from "../../arc/actions";
+import { type CreativeLayoutOverride } from "@/domain";
+
+import { hasRepliedToLastMessage } from "@/lib/arc-chat/thread-state";
+
+import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
-import { generateStudioAsset } from "../actions";
+import { generateStudioAsset, pollStudioVideo, startStudioVideo } from "../actions";
+import { StudioCanvas, type CanvasBrand, type CanvasLayer } from "./studio-canvas";
 
 const HOUSE = '<svg viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4654"/><stop offset="1" stop-color="#27303a"/></linearGradient></defs><rect width="600" height="300" fill="url(#sky)"/><path d="M0 210 L150 120 L300 200 L450 110 L600 190 V300 H0 Z" fill="#2b343d"/><path d="M120 230 L300 130 L480 230 Z" fill="#4a5663"/><path d="M120 230 L300 130 L300 250 L120 250 Z" fill="#3d4854"/><rect x="180" y="230" width="240" height="70" fill="#323b45"/><rect x="210" y="248" width="34" height="34" fill="#566270"/><rect x="356" y="248" width="34" height="34" fill="#566270"/></svg>';
 const SC: Record<string, string> = {
@@ -87,10 +91,10 @@ const TOOLS = {
   generate: [
     { t: "genimg", target: "arc", label: "Image", ai: true, d: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z"/>' },
     { t: "genvid", target: "arc", label: "Video", ai: true, d: '<rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9l4-2v10l-4-2"/>' },
-    { t: "vary", target: "arc", label: "Variations", ai: true, d: '<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 002-2V9"/>' },
+    { t: "vary", target: "arc", label: "Other versions", ai: true, d: '<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 002-2V9"/>' },
   ],
   edit: [
-    { t: "reframe", target: "arc", label: "Reframe", ai: true, d: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 6v12"/>' },
+    { t: "reframe", target: "arc", label: "Resize", ai: true, d: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 6v12"/>' },
     { t: "expand", target: "arc", label: "Expand", ai: true, d: '<path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3"/>' },
     { t: "cutout", target: "arc", label: "Cut-out", ai: true, d: '<path d="M5 5l14 14M9 5a4 4 0 014 4M5 9a4 4 0 004 4"/><rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="3 3"/>' },
     { t: "upscale", target: "arc", label: "Upscale", ai: true, d: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>' },
@@ -102,11 +106,26 @@ const TOOLS = {
   ],
 } as const;
 
+/**
+ * Layer names as a person would say them. The keys stay as they are — they are
+ * the contract `studio-canvas` and the exporter share — but "Kicker" and "CTA
+ * button" are craft words a roofer has no reason to know, and the Edit-copy
+ * panel taught a SECOND one ("eyebrow") for the same element.
+ */
+const LAYER_LABEL: Record<string, string> = {
+  Background: "Photo",
+  Logo: "Logo",
+  Kicker: "Small line on top",
+  Headline: "Headline",
+  Subhead: "Supporting line",
+  "CTA button": "Button",
+};
+
 const FORMATS = [
-  { ar: "1 / 1", dim: "1080 × 1080", label: "Square", r: "1:1" },
-  { ar: "4 / 5", dim: "1080 × 1350", label: "Portrait", r: "4:5" },
-  { ar: "9 / 16", dim: "1080 × 1920", label: "Story", r: "9:16" },
-  { ar: "16 / 9", dim: "1920 × 1080", label: "Landscape", r: "16:9" },
+  { ar: "1 / 1", dim: "1080 × 1080", label: "Square", r: "1:1", use: "Feed post" },
+  { ar: "4 / 5", dim: "1080 × 1350", label: "Portrait", r: "4:5", use: "Tall feed post" },
+  { ar: "9 / 16", dim: "1080 × 1920", label: "Story", r: "9:16", use: "Story / Reel" },
+  { ar: "16 / 9", dim: "1920 × 1080", label: "Landscape", r: "16:9", use: "Wide / web banner" },
 ];
 /**
  * Template tiles. `id` MUST match a CREATIVE_TEMPLATE_IDS value in
@@ -132,8 +151,31 @@ const SESSION: { id: string; tag: string; item: Item }[] = [
   { id: "v4", tag: "9:16", item: { s: SC.video, l: "Crew 9:16", p: "real" } },
 ];
 
+/**
+ * Split the "(From Studio · …)" preamble off a message for display.
+ *
+ * askArc appends the canvas state to the body it SENDS so Arc knows the format,
+ * mode and headline. That preamble is machine context, not something the operator
+ * typed — rendering it inside the bubble put "(From Studio · Draft · image · 1:1)"
+ * in their own words, and made the message visibly change the moment the canonical
+ * thread replaced the optimistic copy (which never had it).
+ */
+export function splitStudioContext(body: string): { body: string; context: string | null } {
+  const match = body.match(/\n*\((From Studio · [^)]*)\)\s*$/);
+  if (!match || match.index === undefined) return { body, context: null };
+  return { body: body.slice(0, match.index).trim(), context: match[1] };
+}
+
+/** Terms that mean "put words or branding in the picture" — which generation
+ *  refuses by design (hardenImagePrompt's NO_TEXT_DIRECTIVE strips all of it). */
+const BAKED_TEXT_RE = /\b(logo|logos|watermark|branding|brand name|signage|sign|text|words|lettering|caption)\b/i;
+
 type CampaignRef = { id: string; name: string; href: string };
-type StudioDraft = { campaignId: string; assetId: string; url: string; source: string; format: string; title: string; status: string };
+type StudioDraft = { campaignId: string; assetId: string; url: string; source: string; format: string; title: string; status: string; kind?: "image" | "video" };
+
+/** Veo renders asynchronously; poll about every 10s for up to ~6 minutes. */
+const VIDEO_POLL_MS = 10_000;
+const VIDEO_MAX_POLLS = 36;
 
 /**
  * Starting copy for the canvas text layers. The sample set is restoration
@@ -150,7 +192,7 @@ const SAMPLE_COPY = {
 };
 const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
 
-export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, brandPalette = [] }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; brandPalette?: string[] }) {
+export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
   // The "Approved media" source shows the workspace's real media_assets. Live, it
   // shows ONLY those — never the built-in samples, which would present stock art as
@@ -196,6 +238,26 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // a hidden layer isn't rendered on the canvas, and a hidden text layer is left
   // out of the composited generate so the output matches the preview.
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  // Canvas editing (BSR-680): which layer is selected, and the operator's nudge.
+  // Constrained on purpose — the copy block moves and the headline scales; the
+  // template keeps everything else, which is what keeps creative on brand.
+  const [selectedLayer, setSelectedLayer] = useState<CanvasLayer | null>(null);
+  const [layoutOverride, setLayoutOverride] = useState<CreativeLayoutOverride>({});
+  const nudged = Boolean(layoutOverride.copyDx || layoutOverride.copyDy || (layoutOverride.headlineScale ?? 1) !== 1);
+
+  // Escape drops the selection — but only when focus is not inside a field, or
+  // it would fight the modals and the in-place text editor, which use Escape to
+  // cancel their own edit.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      setSelectedLayer(null);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
   const shown = (layer: string) => !hidden.has(layer);
   const toggleLayer = (layer: string) =>
     setHidden((prev) => {
@@ -211,7 +273,40 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [msg, setMsg] = useState("");
   const [sendErr, setSendErr] = useState<string | null>(null);
   const [sending, startSend] = useTransition();
-  const router = useRouter();
+  // The conversation Studio is holding. It used to be thrown at the router the
+  // moment it existed, which is why this panel never showed a reply (BSR-681).
+  const [convId, setConvId] = useState<string | null>(null);
+  const [thread, setThread] = useState<ArcThreadMessage[]>([]);
+  const [awaitingReply, setAwaitingReply] = useState(false);
+  const [streamBody, setStreamBody] = useState<string | null>(null);
+  const [reconcileTick, setReconcileTick] = useState(0);
+  const threadEndRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * What the transcript actually shows. The runner writes the reply row BEFORE it
+   * has a body, so mapping the raw thread rendered an empty bordered bubble above
+   * "Arc is thinking…" — the same pending reply drawn twice, once as a blank pill.
+   */
+  const visibleThread = useMemo(
+    () =>
+      thread.filter((m) => {
+        if (m.role === "operator") return true;
+        if (!m.body.trim()) return false;
+        // While waiting, the live bubble below already represents the in-flight
+        // reply; showing the pending row too would duplicate it mid-stream.
+        return !(awaitingReply && m.status === "pending");
+      }),
+    [thread, awaitingReply],
+  );
+
+  const replied = useMemo(() => hasRepliedToLastMessage(thread), [thread]);
+
+  /** The operator asked for baked-in text/branding, which generation strips by
+   *  design. Say so instead of letting the result quietly not contain it. */
+  const logoHint = useMemo(() => {
+    const lastOperator = [...thread].reverse().find((m) => m.role === "operator");
+    return Boolean(lastOperator && BAKED_TEXT_RE.test(splitStudioContext(lastOperator.body).body));
+  }, [thread]);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
@@ -225,17 +320,95 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     if (!text || sending || !live) return;
     setSendErr(null);
     const context = `\n\n(From Studio · ${cmode} · ${mode} · ${FORMATS[fmt].r}${headline ? ` · headline: "${headline}"` : ""})`;
+    // Optimistic: the operator's own words appear immediately, so the panel
+    // never looks like it swallowed the message while the round trip runs.
+    const localId = `local-${Date.now()}`;
+    setThread((prev) => [...prev, { id: localId, role: "operator", body: text, status: "sent", createdAt: new Date().toISOString() }]);
+    setMsg("");
     startSend(async () => {
-      const result = await sendArcMessageAction({ conversationId: null, body: text + context });
+      const result = await sendArcMessageAction({ conversationId: convId, body: text + context });
       if (result.ok) {
-        setMsg("");
-        router.push(`/arc?c=${result.conversationId}`);
-        router.refresh();
+        setConvId(result.conversationId);
+        setAwaitingReply(true);
       } else {
+        // Take the optimistic bubble back rather than leaving a message that
+        // was never sent sitting in the thread.
+        setThread((prev) => prev.filter((m) => m.id !== localId));
+        setMsg(text);
         setSendErr(result.error);
       }
     });
   };
+  // Arc answers HERE. Same mechanism the chat page uses — cumulative snapshots
+  // over SSE — but rendered in this panel instead of navigating away from the
+  // canvas (BSR-681).
+  //
+  // `done` does NOT end the wait. The stream reports "done" whenever nothing is
+  // in flight, and the pending reply row is written by the runner AFTER the send
+  // action returns — so subscribing immediately can catch that gap and be told
+  // the reply is finished before it has started. Only the reconcile below, which
+  // looks for an actual completed reply, decides we are no longer waiting.
+  useEffect(() => {
+    if (!live || !awaitingReply || !convId) return;
+    const source = new EventSource(`/api/arc/stream/${encodeURIComponent(convId)}`);
+    source.onmessage = (event) => {
+      try {
+        const frame = JSON.parse(event.data) as { messageId?: string; body?: string };
+        if (frame.messageId) setStreamBody(frame.body ?? "");
+      } catch {
+        /* ignore a malformed frame */
+      }
+    };
+    source.addEventListener("done", () => setReconcileTick((n) => n + 1));
+    source.onerror = () => setReconcileTick((n) => n + 1);
+    return () => source.close();
+  }, [live, awaitingReply, convId]);
+
+  // The canonical thread. Runs on a slow cadence while waiting (and immediately
+  // whenever the stream says something changed), and is what actually ends the
+  // wait — when a completed Arc reply newer than the message we sent exists.
+  useEffect(() => {
+    if (!convId) return;
+    let cancelled = false;
+
+    const pull = async () => {
+      const result = await getArcConversationTailAction({ conversationId: convId });
+      if (cancelled || !result.ok) return;
+      setThread(result.messages);
+      // Decided by POSITION, not by clock — see hasRepliedToLastMessage.
+      if (hasRepliedToLastMessage(result.messages)) {
+        setAwaitingReply(false);
+        setStreamBody(null);
+      }
+    };
+
+    void pull();
+    if (!awaitingReply) return () => { cancelled = true; };
+
+    // Bounded: a reply that never lands stops the poll rather than leaving a
+    // timer running for the life of the tab.
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      if (Date.now() - startedAt > 120_000) {
+        window.clearInterval(interval);
+        setAwaitingReply(false);
+        return;
+      }
+      void pull();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [convId, awaitingReply, reconcileTick]);
+
+  // Keep the newest message in view. Without this the reply streams in below the
+  // fold and the panel looks like nothing happened.
+  useEffect(() => {
+    if (tab !== "arc") return;
+    threadEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [visibleThread.length, streamBody, awaitingReply, tab]);
 
   // Import art: reuse the wired Library upload (real media_assets rows, provenance-
   // tagged, held for review before Arc may reuse). New assets appear under Imported.
@@ -298,12 +471,31 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [gen, startGen] = useTransition();
   const [genErr, setGenErr] = useState<string | null>(null);
   const [draftBusy, setDraftBusy] = useState<string | null>(null);
+  /** A revision that saved but that Arc never picked up. Warn, not error: the
+   *  request is recorded and nothing was lost — it just isn't running, and
+   *  nothing re-surfaces it on its own. */
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [videoPrompt, setVideoPrompt] = useState("");
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoNote, setVideoNote] = useState<string | null>(null);
+  // The video poll loop outlives a fast unmount; this stops it writing state
+  // into a component that is gone.
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
 
   // Why generation is unavailable (honest gating), or null when it's ready.
+  // The off-reason comes from `resolveMediaGeneration`, which already names the
+  // connector and where to switch it on. The fallback is only for a caller that
+  // passes none — it must still not name an env var (BSR-731).
   const genGate = !mediaEnabled
-    ? "Media generation is off — set ARC_MEDIA_ENABLED + GEMINI_API_KEY"
+    ? mediaOffReason ?? "Image and video generation isn't switched on for this workspace yet."
     : !live
-      ? "Connect a backend to generate"
+      ? "Connect a workspace to generate"
       : !campaignId
         ? "Pick a campaign above first"
         : !bg?.url
@@ -337,12 +529,16 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           // (Background/Logo are composited server-side from the media + brand kit.)
           headline: shown("Headline") ? headline : "",
           kicker: shown("Kicker") ? kicker : "",
+          subhead: shown("Subhead") ? sub : "",
           ctaLabel: shown("CTA button") ? cta : "",
           // Send what the operator actually picked, so the render matches the canvas
           // they just approved by eye. Both were previously dropped: the server chose
           // a template from a hash of the background URL and always used the brand
           // kit's accent, whatever the swatches showed.
           template: TEMPLATES[tmpl]?.id,
+          // What the operator moved on the canvas has to reach the render, or
+          // the drag was theatre (BSR-680).
+          layoutOverride,
           accent,
           campaignId,
         });
@@ -358,6 +554,72 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         }
       }
     });
+  };
+
+  // Video is its own engine: it needs a described SCENE, not a background photo
+  // to composite over, so it has its own prompt and its own gate. The render is
+  // async (start → poll), which is why this can't reuse runGenerate's transition.
+  // Veo takes landscape or portrait only; mirror the server's videoAspectFor so
+  // the button never promises a ratio the render won't produce.
+  const videoAspect = FORMATS[fmt].r === "9:16" ? "9:16" : "16:9";
+  const videoGate = !mediaEnabled
+    ? mediaOffReason ?? "Image and video generation isn't switched on for this workspace yet."
+    : !live
+      ? "Connect a workspace to generate"
+      : !campaignId
+        ? "Pick a campaign above first"
+        : !videoPrompt.trim()
+          ? "Describe the video you want first"
+          : null;
+
+  const runVideo = async () => {
+    if (videoGate || videoBusy) return;
+    const prompt = videoPrompt.trim();
+    const title = headline.trim() || "Studio video";
+    setGenErr(null);
+    setVideoBusy(true);
+    setVideoNote("Starting the render…");
+    try {
+      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId });
+      if (!started.ok) {
+        setGenErr(started.error);
+        return;
+      }
+      setVideoNote("Rendering — this usually takes 1–3 minutes.");
+      for (let i = 0; i < VIDEO_MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, VIDEO_POLL_MS));
+        if (!aliveRef.current) return;
+        const poll = await pollStudioVideo({
+          operationName: started.operationName,
+          ticket: started.ticket,
+          model: started.model,
+          prompt,
+          format: started.aspectRatio,
+          title,
+          campaignId,
+        });
+        if (!aliveRef.current) return;
+        if (!poll.ok) {
+          setGenErr(poll.error);
+          return;
+        }
+        if (poll.status === "done") {
+          setDrafts((prev) => [
+            { campaignId: poll.campaignId, assetId: poll.assetId, url: poll.media.url, source: poll.media.source, format: poll.media.format, title, status: "pending_approval", kind: "video" },
+            ...prev,
+          ]);
+          return;
+        }
+      }
+      // Don't claim failure for work that is probably still running — the draft
+      // lands on the campaign whenever it finishes.
+      setGenErr("Still rendering after 6 minutes. It should appear on the campaign shortly.");
+    } finally {
+      if (aliveRef.current) {
+        setVideoBusy(false);
+        setVideoNote(null);
+      }
+    }
   };
 
   // Approve / decline reuse the wired campaign approval action; revise reuses the
@@ -378,8 +640,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     setDraftBusy(d.assetId);
     const res = await requestArcDraftRevisionAction({ campaignId: d.campaignId, assetId: d.assetId, instruction });
     setDraftBusy(null);
-    if (res.ok) setDrafts((prev) => prev.map((x) => (x.assetId === d.assetId ? { ...x, status: "revision_requested" } : x)));
-    else setGenErr(res.error);
+    if (!res.ok) return setGenErr(res.error);
+    setDrafts((prev) => prev.map((x) => (x.assetId === d.assetId ? { ...x, status: "revision_requested" } : x)));
+    // The status flip above says "revision requested", which is true — but it
+    // says nothing about whether Arc took the job. On a dropped wake the request
+    // is recorded and never runs, and nothing re-surfaces it, so silence here
+    // reads as "under way" when it isn't (BSR-695). Retry lives on the campaign
+    // (retryCampaignRevision re-wakes the existing task); asking again from here
+    // would queue a second one.
+    setDraftNotice(
+      res.persisted && res.dispatched === false
+        ? "Saved, but Arc hasn't picked it up — open the campaign to send it again."
+        : null,
+    );
   };
 
   const pickTool = (t: (typeof TOOLS)[keyof typeof TOOLS][number]) => {
@@ -387,6 +660,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     setTab(t.target === "arc" ? "arc" : "design");
   };
   const logoInitial = (brandName || "S").trim().charAt(0).toUpperCase();
+  // What the canvas paints with. The accent is the swatch the operator picked
+  // (the same value sent to the renderer); everything else comes from the Brand
+  // Kit so the preview's colours are the export's colours. Without a kit we fall
+  // back to the renderer's own neutral tokens rather than inventing a palette.
+  const canvasBrand: CanvasBrand = {
+    primary: brandTokens?.primary ?? "#16161a",
+    secondary: brandTokens?.secondary ?? "#2a2a32",
+    accent,
+    dark: brandTokens?.dark ?? "#0f1115",
+    light: brandTokens?.light ?? "#f1ede2",
+    displayName: brandTokens?.displayName ?? brandName,
+    shortMark: brandTokens?.shortMark ?? logoInitial,
+  };
 
   const Tile = ({ item, i }: { item: Item; i: number }) => (
     <div className={`mtile${selTile === i ? " on" : ""}`} onClick={() => { setSelTile(i); setBg(item); }}>
@@ -409,13 +695,13 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             ) : (
               <div className="cn">No campaigns yet</div>
             )}
-            <div className="cmeta">{campaigns.length ? "attaches on generate · approval-gated" : "create one in Campaigns first"}</div>
+            <div className="cmeta">{campaigns.length ? "Anything you make here gets attached for approval" : "Create a campaign first, then anything you make here attaches to it"}</div>
           </div>
         </div>
         <span className="proj"><span className="dot" />Untitled creative · autosaved</span>
         <div className="right">
-          <button className="iconbtn" title="Undo" data-soon="Undo is coming soon"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 010 10h-3" /></svg></button>
-          <button className="iconbtn" title="Redo" data-soon="Redo is coming soon"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 000 10h3" /></svg></button>
+          <button type="button" className="iconbtn" aria-label="Undo" title="Undo — not available yet" disabled><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 010 10h-3" /></svg></button>
+          <button type="button" className="iconbtn" aria-label="Redo" title="Redo — not available yet" disabled><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 000 10h3" /></svg></button>
           <span className="cdivr" />
           <a className="gbtn" href="/library"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>Save to Library</a>
           <Link className="gbtn gold" href="/campaigns"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add to campaign</Link>
@@ -434,7 +720,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             ))}
           </div>
           <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUploadFiles} style={{ display: "none" }} />
-          <div className="drop" onClick={() => { if (live) fileRef.current?.click(); }} style={live ? { cursor: "pointer" } : undefined} {...(!live ? { "data-soon": "Connect a backend to import art" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><div className="dt">{uploading ? "Uploading…" : "Upload or import art"}</div><div className="dd">{uploadNote ?? "Bring in art from Canva, Midjourney, DALL·E — anything"}</div></div>
+          <div className="drop" onClick={() => { if (live) fileRef.current?.click(); }} style={live ? { cursor: "pointer" } : undefined} {...(!live ? { "data-soon": "Connect a workspace to import art" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><div className="dt">{uploading ? "Uploading…" : "Upload or import art"}</div><div className="dd">{uploadNote ?? "Bring in art from Canva, Midjourney, DALL·E — anything"}</div></div>
           <div className="srchead"><span className="st">{sources[srcTab].title}</span><span className="sc">{sources[srcTab].items.length} items</span></div>
           <div className="mgrid2">{sources[srcTab].items.map((it, i) => <Tile key={i} item={it} i={i} />)}</div>
           {srcTab === "library" && sources.library.items.length === 0 ? (
@@ -475,47 +761,66 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             <span className="fmdiv" />
             <span className="fl">Format</span>
             {FORMATS.map((f, i) => (
-              <span key={f.r} className={`fchip${fmt === i ? " on" : ""}`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></span>
+              <span key={f.r} className={`fchip${fmt === i ? " on" : ""}`} title={`${f.use} · ${f.dim} px`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></span>
             ))}
+            {/* Only offered once something has been moved — an always-present
+                "Reset layout" on an untouched canvas is noise. */}
+            {nudged && (
+              <span
+                className="szbtn"
+                role="button"
+                tabIndex={0}
+                onClick={() => setLayoutOverride({})}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLayoutOverride({}); } }}
+                title="Put the copy back where the template puts it"
+              >
+                <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" /></svg>
+                Reset layout
+              </span>
+            )}
             <span className="fspacer" />
-            <span className={`szbtn${safe ? " on" : ""}`} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Safe zones</span>
-            <span className="zoom">Fit · 100%</span>
+            <span className={`szbtn${safe ? " on" : ""}`} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Keep text clear of edges</span>
+            <span className="zoom">Zoom 100%</span>
           </div>
 
           <div className="stagewrap">
             <div className="artboard">
               <div className={`canvas${safe ? " szon" : ""}${mode === "video" ? " video" : ""}`} style={{ aspectRatio: FORMATS[fmt].ar }}>
-                <div className="cbg">
-                  {!bg ? (
-                    <div className="cbg-empty">No approved media yet — pick a source, upload, or generate to set a background.</div>
-                  ) : shown("Background") ? (
-                    <ItemMedia item={bg} />
-                  ) : null}
-                </div>
+                {/* Laid out from CREATIVE_LAYOUTS — the same numbers the exporter
+                    uses — so switching template changes what you see, and what
+                    you see is the shape that ships (BSR-679). */}
+                <StudioCanvas
+                  template={(TEMPLATES[tmpl]?.id ?? "bold") as "bold" | "editorial" | "minimal"}
+                  brand={canvasBrand}
+                  copy={{ kicker, headline, subhead: sub, cta }}
+                  shown={shown}
+                  override={layoutOverride}
+                  onOverrideChange={setLayoutOverride}
+                  selected={selectedLayer}
+                  onSelect={setSelectedLayer}
+                  onCopyChange={(field, value) => {
+                    if (field === "kicker") setKicker(value);
+                    else if (field === "headline") setHeadline(value);
+                    else if (field === "subhead") setSub(value);
+                    else setCta(value);
+                  }}
+                  background={
+                    !bg ? (
+                      <div className="cbg-empty">No approved media yet — pick a source, upload, or generate to set a background.</div>
+                    ) : shown("Background") ? (
+                      <ItemMedia item={bg} />
+                    ) : null
+                  }
+                />
                 <div className="cveil" />
                 <div className="cplay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div>
-                {shown("Logo") && <div className="clogo"><span className="lm" style={{ background: accent }}>{logoInitial}</span> {brandName}</div>}
                 {bg && <div className="cprov">{PVLABEL[bg.p]}</div>}
-                {/* Empty text layers render as muted placeholders rather than
-                    collapsed nothing, so a workspace starting from scratch still
-                    sees where the copy lands. The CTA is a filled pill — an empty
-                    one is just a coloured smudge, so it sits out entirely. */}
-                <div className="ctext">
-                  {shown("Kicker") && (kicker
-                    ? <div className="ckick" style={{ color: accent === "#f1ede2" ? "#f1ede2" : accent }}>{kicker}</div>
-                    : <div className="ckick cplace">Kicker</div>)}
-                  {shown("Headline") && (headline
-                    ? <div className="chead">{headline}</div>
-                    : <div className="chead cplace">Your headline goes here.</div>)}
-                  <div className={`csub${sub ? "" : " cplace"}`}>{sub || "Supporting line"}</div>
-                  {shown("CTA button") && cta && <div className="ccta" style={{ background: accent, color: accent === "#f1ede2" ? "#201808" : "#1a1505" }}>{cta}</div>}
-                </div>
                 <div className="safez"><div className="szb szt"><span className="szl">caption / UI safe area</span></div><div className="szb szbo" /></div>
               </div>
               <div className="cspec">
                 <span>Rendered by <b>Arc</b></span><span className="dotsep" />
                 <span><b>{FORMATS[fmt].dim}</b> px</span><span className="dotsep" />
-                <span>{brandName} brand kit</span><span className="dotsep" />
+                <span title="Colours and type come from your Brand page, not from Arc">{brandName}&rsquo;s own colours</span><span className="dotsep" />
                 <span className="draftpill">Draft · not approved</span>
               </div>
             </div>
@@ -557,7 +862,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         <aside className="insp">
           <div className="itabs">
             <div className={`itab${tab === "design" ? " on" : ""}`} onClick={() => setTab("design")}><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M4 9h16M9 9v11" /></svg>Design</div>
-            <div className={`itab${tab === "arc" ? " on" : ""}`} onClick={() => setTab("arc")}><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Arc<span className="ibadge">copilot</span></div>
+            <div className={`itab${tab === "arc" ? " on" : ""}`} onClick={() => setTab("arc")}><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Arc</div>
           </div>
 
           {tab === "design" ? (
@@ -566,7 +871,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="brief">
                   <div className="bh"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Campaign context</div>
                   <div className="bn">{campaigns.find((c) => c.id === campaignId)?.name ?? "No campaign selected"}</div>
-                  <div className="bmeta">generated drafts attach here → pending approval</div>
+                  <div className="bmeta">Pick a campaign and anything you make here gets attached to it for approval</div>
                   {/* The angle and proof chips are sample brief copy — there is no
                       wired source for a campaign's angle here yet. Showing them
                       live would put another tenant's positioning on this canvas
@@ -582,19 +887,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 </div>
 
                 <div className="psec">
-                  <h3 className="ph2">Layers</h3>
-                  <div className="layer sel" style={shown("Background") ? undefined : { opacity: 0.5 }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">Background</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
-                  {[["Kicker", kicker], ["Headline", headline], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
-                    <div className="layer" key={lt} style={shown(lt) ? undefined : { opacity: 0.5 }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
+                  <h3 className="ph2">Parts of this ad</h3>
+                  <div className={`layer${selectedLayer === "Background" ? " sel" : ""}`} role="button" tabIndex={0} onClick={() => setSelectedLayer("Background")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer("Background"); } }} style={shown("Background") ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL.Background}</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
+                  {[["Kicker", kicker], ["Headline", headline], ["Subhead", sub], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
+                    <div className={`layer${selectedLayer === lt ? " sel" : ""}`} key={lt} role="button" tabIndex={0} onClick={() => setSelectedLayer(lt as CanvasLayer)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer(lt as CanvasLayer); } }} style={shown(lt) ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL[lt as string] ?? lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
                   ))}
                 </div>
 
                 <div className="psec">
                   <h3 className="ph2">Edit copy</h3>
-                  <div className="fieldl"><span>Kicker</span><span>eyebrow</span></div><input className="input" placeholder="Short eyebrow" value={kicker} onChange={(e) => setKicker(e.target.value)} />
+                  <div className="fieldl"><span>{LAYER_LABEL.Kicker}</span></div><input className="input" placeholder="e.g. Storm season" value={kicker} onChange={(e) => setKicker(e.target.value)} />
                   <div className="field"><div className="fieldl"><span>Headline</span></div><input className="input" placeholder="The one line that has to land" value={headline} onChange={(e) => setHeadline(e.target.value)} /></div>
-                  <div className="field"><div className="fieldl"><span>Subhead</span></div><input className="input" placeholder="Supporting detail or offer" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
-                  <div className="field"><div className="fieldl"><span>CTA</span></div><input className="input" placeholder="Button text" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
+                  <div className="field"><div className="fieldl"><span>{LAYER_LABEL.Subhead}</span></div><input className="input" placeholder="Supporting detail or offer" value={sub} onChange={(e) => setSub(e.target.value)} /></div>
+                  <div className="field"><div className="fieldl"><span>Button</span></div><input className="input" placeholder="e.g. Get my free quote" value={cta} onChange={(e) => setCta(e.target.value)} /></div>
                 </div>
 
                 <div className="psec">
@@ -655,7 +960,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     <span className="pxchip">{FORMATS[fmt].dim}</span>
                   </div>
                   <div className="scapt">
-                    Performance scoring isn&rsquo;t available — Arc has no virality model wired up. These are the
+                    Arc can&rsquo;t predict how this will perform yet. These are the
                     dimensions this creative will render at.
                   </div>
                 </div>
@@ -663,8 +968,57 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="psec">
                   <h3 className="ph2">Generate</h3>
                   {genErr ? <div role="alert" style={{ margin: "0 2px 8px", fontSize: 11, color: "#cc6666", lineHeight: 1.4 }}>{genErr}</div> : null}
-                  <div className="exrow gold" onClick={() => runGenerate([FORMATS[fmt].r])} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>{gen ? "Generating…" : `Generate creative · ${FORMATS[fmt].r}`}</div>
-                  <div className="exrow" onClick={() => runGenerate(FORMATS.map((f) => f.r))} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.6" /></svg>Resize for all platforms <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)" }}>1:1 4:5 9:16 16:9</span></div>
+                  {draftNotice ? (
+                    <div role="status" style={{ margin: "0 2px 8px", fontSize: 11, color: "var(--warn-text)", lineHeight: 1.4 }}>
+                      {draftNotice}
+                    </div>
+                  ) : null}
+                  {mode === "video" ? (
+                    <>
+                      {/* Video doesn't composite over the selected photo — Veo renders
+                          the scene you describe. Keep that distinction visible so the
+                          canvas background isn't mistaken for the video's input. */}
+                      <div className="field">
+                        <div className="fieldl"><span>Describe the shot</span></div>
+                        <textarea
+                          className="input"
+                          rows={3}
+                          style={{ resize: "vertical", lineHeight: 1.45 }}
+                          placeholder="e.g. A clean service van pulls into a suburban driveway on a bright morning, slow steady camera"
+                          value={videoPrompt}
+                          onChange={(e) => setVideoPrompt(e.target.value)}
+                          disabled={videoBusy}
+                        />
+                      </div>
+                      {/* role + tabIndex + Enter/Space, not a bare onClick div: the
+                          surrounding .exrow controls are the keyboard-unreachable
+                          debt BSR-664 ratchets down, and a new control must not add
+                          to it. */}
+                      <div
+                        className="exrow gold"
+                        role="button"
+                        tabIndex={videoGate || videoBusy ? -1 : 0}
+                        aria-disabled={Boolean(videoGate) || videoBusy}
+                        onClick={runVideo}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); runVideo(); } }}
+                        style={!videoGate && !videoBusy ? { cursor: "pointer" } : { opacity: 0.55 }}
+                        {...(videoGate ? { "data-soon": videoGate } : {})}
+                      >
+                        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2" /><path d="M17 9l4-2v10l-4-2" /></svg>
+                        {videoBusy ? "Rendering video…" : `Generate video · ${videoAspect}`}
+                      </div>
+                      <div className="scapt">
+                        {videoNote
+                          ? videoNote
+                          : `Veo renders a short clip from your description — it does not use the selected photo. Landscape and portrait only, so this renders at ${videoAspect}. Lands as a draft for your approval.`}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="exrow gold" onClick={() => runGenerate([FORMATS[fmt].r])} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>{gen ? "Generating…" : `Generate creative · ${FORMATS[fmt].r}`}</div>
+                      <div className="exrow" onClick={() => runGenerate(FORMATS.map((f) => f.r))} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.6" /></svg>Resize for all platforms <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)" }}>1:1 4:5 9:16 16:9</span></div>
+                    </>
+                  )}
                 </div>
 
                 {drafts.length > 0 && (
@@ -673,8 +1027,14 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     {drafts.map((d) => (
                       <div className="grow" key={d.assetId} style={{ alignItems: "center", gap: 9 }}>
                         <span style={{ width: 42, height: 42, borderRadius: 6, overflow: "hidden", flexShrink: 0, background: "var(--line)" }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element -- generated media URL */}
-                          <img src={d.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          {d.kind === "video" ? (
+                            // A video draft has to be watchable to be reviewable —
+                            // an <img> pointed at an MP4 renders a broken thumbnail.
+                            <video src={d.url} muted playsInline preload="metadata" controls style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element -- generated media URL
+                            <img src={d.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          )}
                         </span>
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <div className="gt">{d.title} · {d.format}</div>
@@ -715,23 +1075,66 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="archead">
                   <span className="am">A</span>
                   <div>
-                    <div className="at">Arc · Creative copilot</div>
+                    <div className="at">Arc</div>
                     <div className="ad"><i />{selectedCampaignLabel ? `Working in ${selectedCampaignLabel}` : "No campaign selected"}</div>
                   </div>
                 </div>
                 <div className="arcscroll">
-                  <div className="arcempty">
-                    <div className="arcempty-t">Ask Arc about this creative</div>
-                    <p className="arcempty-d">
-                      Your message starts a new Arc conversation seeded with what&rsquo;s on the canvas — the
-                      format, the headline, and the campaign you picked — and opens it in Arc, where the reply
-                      and any drafts appear.
-                    </p>
-                    <p className="arcempty-d">
-                      Arc drafts only; nothing it produces goes outbound until you approve it. Drafts you
-                      generate here show up under <b>Drafts</b> on the Design tab.
-                    </p>
-                  </div>
+                  {thread.length === 0 && !awaitingReply ? (
+                    <div className="arcempty">
+                      <div className="arcempty-t">Ask Arc about this creative</div>
+                      <p className="arcempty-d">
+                        Your message starts an Arc conversation seeded with what&rsquo;s on the canvas — the
+                        format, the headline, and the campaign you picked. The reply appears here; you keep
+                        the artboard.
+                      </p>
+                      <p className="arcempty-d">
+                        Arc drafts only; nothing it produces goes outbound until you approve it. Drafts you
+                        generate here show up under <b>Drafts</b> on the Design tab.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="arcthread">
+                      {visibleThread.map((m) => {
+                        const { body, context } = splitStudioContext(m.body);
+                        return (
+                          <div key={m.id} className={`arcmsg ${m.role === "operator" ? "me" : "arc"}`}>
+                            {body}
+                            {/* The Studio context is appended to what we SEND so Arc
+                                knows the canvas state — but it is machine preamble,
+                                not something the operator typed. Showing it inside
+                                the bubble also made the message visibly change once
+                                the canonical thread replaced the optimistic copy. */}
+                            {context ? <span className="arcctx">{context}</span> : null}
+                          </div>
+                        );
+                      })}
+                      {/* `&& !replied` is deliberate belt-and-braces: the reconcile
+                          clears awaitingReply, but if it ever fails to, this stops
+                          the finished answer being drawn twice. */}
+                      {awaitingReply && !replied && (
+                        <div className="arcmsg arc">
+                          {streamBody ? streamBody : <span className="arcdots">Arc is thinking…</span>}
+                        </div>
+                      )}
+                      {logoHint ? (
+                        <div className="arcnote" role="note">
+                          <b>Your logo goes on top of the picture, not into it.</b> Arc strips text and
+                          branding out of every generated image on purpose, then composites your real Brand
+                          kit logo as a corner lockup. It can&rsquo;t paint the logo onto an object in the
+                          scene — a door, a van panel, a sign — because that would mean inventing branded
+                          property you don&rsquo;t have. For a branded vehicle in shot, upload a real photo
+                          of it to the <b>Library</b> and use that as the background.
+                        </div>
+                      ) : null}
+                      {convId && (
+                        <a className="arcopen" href={`/arc?c=${convId}`}>
+                          Open the full conversation in Arc →
+                        </a>
+                      )}
+                      <div ref={threadEndRef} />
+                    </div>
+                  )}
                 </div>
                 <div className="composer">
                   <div className="modes">{["Ask", "Act", "Draft"].map((m) => <span key={m} className={`mode${cmode === m ? " on" : ""}`} onClick={() => setCmode(m)}>{m}</span>)}</div>
@@ -741,15 +1144,16 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       value={msg}
                       onChange={(e) => setMsg(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askArc(); } }}
-                      placeholder={live ? "Ask Arc to edit, generate, or repackage this creative…" : "Connect a backend to chat with Arc"}
+                      placeholder={live ? "Ask Arc to change the words, the photo, or the size…" : "Connect a workspace to chat with Arc"}
                       disabled={!live || sending}
                     />
                     <button
                       className="csend"
+                      aria-label="Send to Arc"
                       onClick={askArc}
                       disabled={!live || sending || !msg.trim()}
-                      title={live ? "Send to Arc" : "Arc chat needs a connected backend"}
-                      {...(!live ? { "data-soon": "Connect a backend to chat with Arc" } : {})}
+                      title={live ? "Send to Arc" : "Arc chat needs a connected workspace"}
+                      {...(!live ? { "data-soon": "Connect a workspace to chat with Arc" } : {})}
                     >
                       <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                     </button>

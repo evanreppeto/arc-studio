@@ -1,4 +1,4 @@
-import { buildCampaignSeedFromOpportunity, humanizePersonaLabel } from "@/domain";
+import { buildCampaignSeedFromOpportunity, humanizePersonaLabel, definitionText,} from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { crmRecordHref, listOpenOpportunities, type OpportunityRecord } from "@/lib/opportunities/read-model";
@@ -7,6 +7,8 @@ import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { canonicalIndustryKey } from "@/lib/product-language";
 
 import { classify } from "./classify";
+import { extraEvidenceRows } from "./evidence";
+import { humanizeArcProse, isMachineText, rowName, rowQualifier } from "./prose";
 import { OpportunityInbox, type OpportunityVM } from "./_components/opportunity-inbox";
 
 export const metadata = { title: "Opportunities — Arc Studio" };
@@ -21,11 +23,6 @@ function humanizePersona(persona: string): string {
   return /^unassigned/i.test(label) ? "" : label;
 }
 
-
-function shortName(title: string): string {
-  const first = title.split(/\s+[—–-]\s+/)[0].trim() || title.trim();
-  return first.length > 46 ? `${first.slice(0, 44).trim()}…` : first;
-}
 
 function urgencyTone(urgency: OpportunityRecord["urgency"]): OpportunityVM["urgencyTone"] {
   return urgency === "high" ? "red" : urgency === "medium" ? "amber" : "info";
@@ -82,7 +79,12 @@ function buildRouting(status: string): OpportunityVM["routing"] {
 function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): OpportunityVM {
   const ev = rec.evidence ?? {};
   const persona = humanizePersona(ev.persona ?? "");
+  // Arc's generative scan writes titles and summaries carrying ids, tool names,
+  // and column names. Strip those tokens before display — the claims themselves
+  // are left exactly as Arc wrote them. Classification reads the ORIGINAL text,
+  // so cleaning it can never move a card into a different bucket.
   const { icon, typeLabel } = classify(`${rec.title} ${rec.summary}`, rec.subject_type);
+  const title = humanizeArcProse(rec.title) || rec.title;
   const urgencyLabel = humanize(rec.urgency) || "Medium";
   // "feed_item" humanizes to "Feed item", which reads as jargon in the list row —
   // give it the same friendly name the detail's type chip uses.
@@ -90,7 +92,7 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
   const confidence = Math.round(rec.confidence);
   // Abbreviated for the row: the title already spells it out, and the list is
   // scanned, not read.
-  const staleLabel = typeof ev.daysCold === "number" ? `quiet ${ev.daysCold}d` : null;
+  const staleLabel = typeof ev.daysCold === "number" ? `last contacted ${ev.daysCold}d ago` : null;
 
   // A next-iteration opportunity points back at the campaign it learned from;
   // CRM subjects resolve to their record route.
@@ -120,8 +122,10 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
     evidence.push({ label: "Active creatives", value: `${ev.creativeCount}${ev.activityLevel ? ` (${humanize(ev.activityLevel)} activity)` : ""}` });
   }
   if (Array.isArray(ev.keywords) && ev.keywords.length) evidence.push({ label: "Keywords", value: ev.keywords.slice(0, 4).join(", ") });
-  // Feed/news signals (kind='news_signal').
-  if (ev.source) evidence.push({ label: "Source", value: ev.source });
+  // Feed/news signals (kind='news_signal'). Arc's generative scan reuses `source`
+  // for the tools it happened to call — "read_recent_activity + query_brain(…)" —
+  // which is not a source an operator can go and check.
+  if (ev.source && !isMachineText(ev.source)) evidence.push({ label: "Source", value: ev.source });
   if (Array.isArray(ev.matchedKeywords) && ev.matchedKeywords.length) {
     evidence.push({ label: "Matched terms", value: ev.matchedKeywords.slice(0, 4).join(", ") });
   }
@@ -137,29 +141,33 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
   if (ev.topAsset) evidence.push({ label: "Best asset", value: ev.topAsset });
   // Cold-lead / lifecycle signals.
   if (typeof ev.leadScore === "number") evidence.push({ label: "Lead score", value: `${Math.round(ev.leadScore)} / 100` });
-  if (typeof ev.daysCold === "number") evidence.push({ label: "Inactivity", value: `${ev.daysCold} days since last touch` });
+  if (typeof ev.daysCold === "number") {
+    evidence.push({
+      label: "Last contacted",
+      value: ev.daysCold === 1 ? "1 day ago" : `${ev.daysCold} days ago`,
+      hint: definitionText("last_contacted"),
+    });
+  }
   if (ev.lastActivityAt) evidence.push({ label: "Last activity", value: formatDate(ev.lastActivityAt) });
   if (persona) evidence.push({ label: "Persona match", value: persona });
   if (Array.isArray(ev.evidence_urls) && ev.evidence_urls.length) {
     evidence.push({ label: "Sources", value: `${ev.evidence_urls.length} reference link${ev.evidence_urls.length === 1 ? "" : "s"}` });
   }
+  // The rows above cover the deterministic detectors, whose keys are fixed. Arc's
+  // generative scan names its own key per finding, so anything unclaimed gets a
+  // generic row — otherwise the evidence that justifies the card dies in the jsonb.
+  evidence.push(...extraEvidenceRows(ev));
 
-  const impact: OpportunityVM["impact"] = [
-    { label: "Urgency", value: urgencyLabel },
-    { label: "Confidence", value: `${confidence}%` },
-  ];
-  if (ev.severity) impact.push({ label: "Severity", value: humanize(ev.severity) });
-  if (ev.activityLevel) impact.push({ label: "Activity", value: humanize(ev.activityLevel) });
-  if (typeof ev.bookedJobs === "number" && ev.bookedJobs > 0) impact.push({ label: "Booked", value: `${ev.bookedJobs}` });
-  if (typeof ev.leadScore === "number") impact.push({ label: "Lead score", value: `${Math.round(ev.leadScore)}` });
-  if (typeof ev.daysCold === "number") impact.push({ label: "Days cold", value: `${ev.daysCold}` });
 
   // Deterministic seed for the "Create campaign" confirm modal (persona enum,
   // inferred focus, name). Computed server-side so the modal can pre-fill it.
+  // Seeded from the cleaned text: the draft's default name is derived from the
+  // title, and a campaign called "…(campaign 0bd41cb3-ff30…)" is a name nobody
+  // would keep.
   const seed = buildCampaignSeedFromOpportunity({
-    title: rec.title,
-    summary: rec.summary,
-    recommendedAction: rec.recommended_action,
+    title,
+    summary: humanizeArcProse(rec.summary) || rec.summary,
+    recommendedAction: humanizeArcProse(rec.recommended_action) || rec.recommended_action,
     urgency: rec.urgency,
     persona: ev.persona,
     recommendedCampaignType: null,
@@ -167,8 +175,11 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
 
   return {
     id: rec.id,
-    name: shortName(rec.title),
-    title: rec.title,
+    name: rowName(title),
+    // The staleness field already says "last contacted 30d ago"; repeating the
+    // title's own "— quiet 30 days" tail beside it is noise.
+    qualifier: staleLabel ? null : rowQualifier(title),
+    title,
     confidence,
     urgencyTone: urgencyTone(rec.urgency),
     urgencyLabel,
@@ -176,8 +187,8 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
     icon,
     sourceLabel,
     staleLabel,
-    summary: rec.summary,
-    recommendedAction: rec.recommended_action,
+    summary: humanizeArcProse(rec.summary) || rec.summary,
+    recommendedAction: humanizeArcProse(rec.recommended_action) || rec.recommended_action,
     persona,
     personaHref: persona ? "/personas" : null,
     recordHref,
@@ -185,7 +196,6 @@ function toVM(rec: OpportunityRecord, allowedPersonaKeys?: readonly string[]): O
     audienceNote: persona ? "Primary persona Arc matched to this signal" : `Source: ${sourceLabel}`,
     campaignTypes: campaignTypes(rec.urgency),
     evidence,
-    impact,
     routing: buildRouting(rec.status),
     status: rec.status,
     statusLabel: statusLabel(rec.status),
@@ -202,6 +212,7 @@ export default async function OpportunitiesPage({
   const ctx = await getCurrentWorkspaceContext();
   const [records, storedPersonaOptions, params] = await Promise.all([
     listOpenOpportunities(undefined, ctx.orgId).catch(() => [] as OpportunityRecord[]),
+    // Correctly silent (BSR-546): picker options, as on /campaigns.
     getOrgPersonaOptions(ctx.orgId).catch(() => []),
     searchParams,
   ]);

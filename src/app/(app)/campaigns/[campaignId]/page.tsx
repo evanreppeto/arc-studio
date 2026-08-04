@@ -5,10 +5,12 @@ import { getCampaignAudiencePreview } from "@/lib/audience/campaign-audience";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { listAttachableMedia, type AttachableMediaItem } from "@/lib/campaigns/attach-media";
 import { getCampaignWorkspaceDetail } from "@/lib/campaigns/read-model";
+import { listStalledRevisions, type StalledRevision } from "@/lib/campaigns/revision-recovery";
 import { getCampaignPerformancePanel } from "@/lib/performance/campaign-panel";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import { CampaignDetailView } from "./_components/campaign-detail-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import "./campaign.css";
 
 export const metadata = { title: "Campaign — Arc Studio" };
@@ -24,8 +26,8 @@ const DEMO_ATTACHABLE_MEDIA: AttachableMediaItem[] = [
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ campaignId: string }> }) {
   const { campaignId } = await params;
-  const orgId = (await getCurrentWorkspaceContext()).orgId;
-  const detail = await getCampaignWorkspaceDetail(decodeURIComponent(campaignId), undefined, "Arc", orgId);
+  const { orgId, workspaceId } = await getCurrentWorkspaceContext();
+  const detail = await getCampaignWorkspaceDetail(decodeURIComponent(campaignId), undefined, "Arc", orgId, workspaceId);
 
   if (detail.status === "not_found") notFound();
   if (detail.status !== "live") {
@@ -42,21 +44,58 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     );
   }
 
-  const performance = await getCampaignPerformancePanel(decodeURIComponent(campaignId));
+  const performance = await getCampaignPerformancePanel(decodeURIComponent(campaignId), orgId ?? undefined);
   // Read-only preview of who this campaign would email — no dispatch rows, no send.
   const audience =
     orgId && isSupabaseAdminConfigured()
-      ? await getCampaignAudiencePreview({ campaignId: decodeURIComponent(campaignId), orgId }).catch(() => null)
+      ? await getCampaignAudiencePreview({ campaignId: decodeURIComponent(campaignId), orgId }).catch((error) => {
+          // PRIMARY: this is the "who would this email" panel an operator reads
+          // BEFORE approving a send. Failing to null renders as "no recipients",
+          // which is a different decision than "we couldn't check" — and the
+          // decision it invites is to go looking for a problem that isn't there,
+          // or worse, to approve believing the audience is empty.
+          reportDegraded(error, {
+            scope: "campaigns.getCampaignAudiencePreview",
+            surface: "primary",
+            detail: { campaignId: decodeURIComponent(campaignId) },
+          });
+          return null;
+        })
       : null;
 
   // Approved Library media the operator can attach to a deliverable. Live reads the
   // real workspace library; the offline preview shows a demo set.
   const attachableMedia =
     orgId && isSupabaseAdminConfigured()
+      // Correctly silent (BSR-546): an empty attach-media picker is visible, and
+      // the deliverable still renders and can be approved without media.
       ? await listAttachableMedia(orgId).catch(() => [])
       : DEMO_ATTACHABLE_MEDIA;
 
+  // Revisions the operator asked for that Arc never started. PRIMARY, not
+  // decorative: the whole point is that the operator currently has no way to
+  // learn a revision was dropped, so failing this read to `[]` would restore
+  // exactly the silence it exists to break — hence reportDegraded rather than a
+  // bare catch.
+  const stalledRevisions: StalledRevision[] =
+    orgId && isSupabaseAdminConfigured()
+      ? await listStalledRevisions({ campaignId: decodeURIComponent(campaignId), orgId }).catch((error) => {
+          reportDegraded(error, {
+            scope: "campaigns.listStalledRevisions",
+            surface: "primary",
+            detail: { campaignId: decodeURIComponent(campaignId) },
+          });
+          return [];
+        })
+      : [];
+
   return (
-    <CampaignDetailView detail={detail} performance={performance} audience={audience} attachableMedia={attachableMedia} />
+    <CampaignDetailView
+      detail={detail}
+      performance={performance}
+      audience={audience}
+      attachableMedia={attachableMedia}
+      stalledRevisions={stalledRevisions}
+    />
   );
 }

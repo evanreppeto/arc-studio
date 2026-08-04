@@ -1,3 +1,4 @@
+import { requireCount } from "@/lib/supabase/count";
 import { randomBytes } from "node:crypto";
 
 import type { User } from "@supabase/supabase-js";
@@ -8,8 +9,12 @@ import { isPlatformAdmin } from "@/lib/waitlist/admin";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured, type TypedSupabaseClient } from "@/lib/supabase/server";
 import { seedDefaultMediaFolders } from "@/lib/media-library/persistence";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { seedDefaultPersonas } from "@/lib/personas/persistence";
+import { seedDefaultPipelineStages } from "@/lib/pipeline-stages/definitions";
 import { canonicalIndustryKey } from "@/lib/product-language";
+import { attributionColumnValue, readAttributionRecord } from "@/lib/signup-attribution/server";
+import type { AttributionRecord } from "@/domain/signup-attribution";
 
 type WorkspaceType = "individual" | "company" | "agency";
 
@@ -33,6 +38,12 @@ export type CreateWorkspaceInput = {
   workspaceType?: string;
   /** Industry template key (see industry-templates.ts) — drives the seeded persona pack. */
   industry?: string;
+  /**
+   * Which channel produced this workspace (BSR-586). Passed in rather than read
+   * here: this module runs from contexts that have no request (provisioning,
+   * scripts), and the cookie only exists at a request boundary. Null = unattributed.
+   */
+  attribution?: AttributionRecord | null;
 };
 
 export type CreateWorkspaceResult =
@@ -108,8 +119,9 @@ async function organizationHasMemberships(client: TypedSupabaseClient, orgId: st
     .eq("org_id", orgId)
     .in("status", ["active", "invited"]);
 
-  if (error) throw error;
-  return (count ?? 0) > 0;
+  // Fail closed: a null count read as 0 would claim the org has no members
+  // when it may have several (BSR-575).
+  return requireCount("organization_memberships", { count, error }) > 0;
 }
 
 async function createOrganization(client: TypedSupabaseClient, name: string, slug: string) {
@@ -193,6 +205,7 @@ async function upsertDefaultWorkspace(
   workspaceName: string,
   workspaceType: WorkspaceType,
   userId: string,
+  attribution: AttributionRecord | null = null,
 ) {
   const workspaceSlug = slugify(workspaceName || org.name);
   const { data: existing, error: existingError } = await client
@@ -232,6 +245,10 @@ async function upsertDefaultWorkspace(
       created_by: userId,
       settings: { createdFromOnboarding: true },
       metadata: {},
+      // Only on INSERT. The update branch above reclaims a pre-existing default
+      // workspace, and overwriting its attribution there would rewrite the
+      // channel credit of a workspace that was already acquired.
+      attribution: attributionColumnValue(attribution),
     })
     .select("id,org_id,key,slug,name")
     .single<WorkspaceRow>();
@@ -318,11 +335,20 @@ async function createWorkspaceDefaults(
   // this path had an Arc that could not be given a single instruction.
   //
   // Distinct from arc_instances above, which is the per-workspace Arc identity;
-  // this is the org-scoped agent that agent_tasks.agent_id points at. The key
-  // must match DEFAULT_CONNECTION.agentKey in lib/agent/connection.ts.
+  // this is the agent that agent_tasks.agent_id points at. The key must match
+  // DEFAULT_CONNECTION.agentKey in lib/agent/connection.ts.
+  //
+  // `agents` is workspace-owned by the BSR-637 boundary (two workspaces in one
+  // company could legitimately want different approval policies) and gained
+  // workspace_id in BSR-712. NOTE the conflict target is still (org_id, key):
+  // equivalent today, since no product path puts a second workspace in an
+  // existing org, but it is the constraint that would have to move first if one
+  // ever did. Tracked on BSR-713 rather than changed here — a Phase A does not
+  // rewrite unique constraints.
   await client.from("agents").upsert(
     {
       org_id: org.id,
+      workspace_id: workspace.id,
       key: "arc",
       name: "Arc",
       description: "Marketing operator. Drafts and prepares; never sends without approval.",
@@ -332,9 +358,14 @@ async function createWorkspaceDefaults(
     { onConflict: "org_id,key" },
   );
 
+  // The brand identity a workspace creates from (BSR-714) — distinct from
+  // workspaces.logo_url, which is shell chrome. NOTE the conflict target is still
+  // (org_id): business_profiles has a bare UNIQUE (org_id), which does not merely
+  // fail to express workspace ownership, it forbids it. Flagged for BSR-715.
   await client.from("business_profiles").upsert(
     {
       org_id: org.id,
+      workspace_id: workspace.id,
       display_name: org.name,
       legal_name: org.name,
       short_mark: shortMarkFor(org.name),
@@ -346,6 +377,16 @@ async function createWorkspaceDefaults(
 
   await seedDefaultMediaFolders({ orgId: org.id, client });
   await seedDefaultPersonas({ orgId: org.id, client, industry });
+
+  // Pipeline stages. Best-effort, unlike the two above: every read falls back to
+  // DEFAULT_PIPELINE_STAGES, so a workspace without seeded rows behaves
+  // identically — it just can't be edited in Settings until the first save
+  // materialises the set. Failing workspace creation over that trades a working
+  // workspace for a cosmetic one.
+  await seedDefaultPipelineStages({ orgId: org.id, client, industry }).catch((error) => {
+    reportDegraded(error, { scope: "workspace-onboarding.seedDefaultPipelineStages", surface: "secondary" });
+    return 0;
+  });
 
   // Start the free trial. Best-effort and non-renewing: a failure must not fail
   // workspace creation, and a workspace with no trial dates is fully usable
@@ -393,11 +434,21 @@ export async function createWorkspaceForAuthenticatedUser(input: CreateWorkspace
     };
   }
 
+  // Which channel produced this workspace (BSR-586). Read here because this is a
+  // request boundary and the cookie only exists in one; the caller may also pass
+  // it explicitly, which wins. Never fails the creation — null is "unattributed".
+  const attribution = input.attribution ?? (await readAttributionRecord());
+
   // The explicit "create workspace" UI must create a genuinely NEW workspace, even
   // for users who already belong to one — otherwise it's a silent no-op that drops
   // them back into their existing org. Provisioning (which auto-creates on first
   // sign-in) calls createWorkspaceForUser directly and keeps the reuse default.
-  return createWorkspaceForUser(getSupabaseAdminClient(), user, input, { reuseExistingMembership: false });
+  return createWorkspaceForUser(
+    getSupabaseAdminClient(),
+    user,
+    { ...input, attribution },
+    { reuseExistingMembership: false },
+  );
 }
 
 export async function createWorkspaceForUser(
@@ -436,7 +487,7 @@ export async function createWorkspaceForUser(
     }
 
     const org = await createOrganizationUnique(client, organizationName, organizationName);
-    const workspace = await upsertDefaultWorkspace(client, org, workspaceName, workspaceType, user.id);
+    const workspace = await upsertDefaultWorkspace(client, org, workspaceName, workspaceType, user.id, input.attribution ?? null);
 
     await createOwnerMemberships(client, org.id, workspace.id, user.id, email);
     await createWorkspaceDefaults(client, org, workspace, user.id, industry);

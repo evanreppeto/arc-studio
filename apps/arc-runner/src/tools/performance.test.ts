@@ -35,7 +35,12 @@ describe("read_performance", () => {
     expect(text).toContain("4");
   });
 
-  it("falls back to an empty slices array when the endpoint returns none", async () => {
+  it("reports a missing slices field as a FAILURE, not as no performance data (BSR-508)", async () => {
+    // This test previously asserted the opposite — that a response with no
+    // `slices` field "falls back to an empty slices array". That fallback is the
+    // bug: a 200 that forgot to answer became indistinguishable from a workspace
+    // with no performance history, and Arc would report "no data yet" with total
+    // confidence. Empty is a real answer; ABSENT is a fault.
     const apiGet = vi.fn(async () => ({ ok: true, dimension: "channel" }));
     const client = { apiGet } as unknown as ArcClient;
     const step = vi.fn(async () => {});
@@ -43,6 +48,23 @@ describe("read_performance", () => {
     const [readPerformance] = performanceReadTools(client, step);
     const res = await loose(readPerformance)({ dimension: "channel" });
 
+    expect(res.content[0].text).toContain("RETRIEVAL FAILED");
+    expect(res.content[0].text).toContain("no `slices` field");
+    expect(res.content[0].text).not.toContain('"slices":[]');
+    expect((res as { isError?: boolean }).isError).toBe(true);
+  });
+
+  it("still returns a genuinely empty slices list as data", async () => {
+    // The guard must not turn "nothing happened yet" into an alarm, or it gets
+    // ignored within a week.
+    const apiGet = vi.fn(async () => ({ ok: true, dimension: "channel", slices: [] }));
+    const client = { apiGet } as unknown as ArcClient;
+    const step = vi.fn(async () => {});
+
+    const [readPerformance] = performanceReadTools(client, step);
+    const res = await loose(readPerformance)({ dimension: "channel" });
+
     expect(res.content[0].text).toContain('"slices":[]');
+    expect(res.content[0].text).not.toContain("RETRIEVAL FAILED");
   });
 });

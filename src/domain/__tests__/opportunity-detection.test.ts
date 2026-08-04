@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyConfidenceFloor,
   confidenceFloorForKind,
+  DEFAULT_WEATHER_CATEGORIES,
   parseWeatherCategories,
   WEATHER_CATEGORIES,
   weatherCategoryOf,
@@ -28,6 +29,7 @@ function lead(over: Partial<ColdLeadInput> = {}): ColdLeadInput {
     leadScore: 70,
     status: "qualified",
     lastActivityAt: "2026-05-01T00:00:00.000Z", // 47 days before NOW
+    activityKnown: true,
     hasActiveCampaign: false,
     ...over,
   };
@@ -396,7 +398,10 @@ describe("weatherCategoryOf", () => {
   it("classifies each category from real NWS product names", () => {
     expect(weatherCategoryOf("Severe Thunderstorm Warning")).toBe("property_damage");
     expect(weatherCategoryOf("Hard Freeze Warning")).toBe("property_damage");
-    expect(weatherCategoryOf("Red Flag Warning")).toBe("property_damage");
+    // BSR-551: fire weather is its own category now. This line used to assert
+    // property_damage, which is exactly the bug — it gave a fire FORECAST the
+    // damage-response claim ("affected property owners") before anything burned.
+    expect(weatherCategoryOf("Red Flag Warning")).toBe("fire_weather");
     expect(weatherCategoryOf("Excessive Heat Warning")).toBe("extreme_heat");
     expect(weatherCategoryOf("Heat Advisory")).toBe("extreme_heat");
     expect(weatherCategoryOf("Air Quality Alert")).toBe("air_quality");
@@ -422,9 +427,11 @@ describe("weatherCategoryOf", () => {
 });
 
 describe("parseWeatherCategories", () => {
-  it("falls back to property damage when unset, empty, or unparseable", () => {
+  it("falls back to the default categories when unset, empty, or unparseable", () => {
+    // fire_weather joined the defaults in BSR-551 so that splitting it out of
+    // property_damage did not silently remove coverage workspaces already had.
     for (const raw of [undefined, null, [], "storms", [""], ["nonsense"], 42]) {
-      expect(parseWeatherCategories(raw)).toEqual(["property_damage"]);
+      expect(parseWeatherCategories(raw)).toEqual(["property_damage", "fire_weather"]);
     }
   });
 
@@ -492,5 +499,91 @@ describe("detectWeatherEventOpportunities — per-workspace categories", () => {
         expect(`${o.summary} ${o.recommendedAction}`).not.toMatch(/HVAC|roofer|plumber|BSR|Big Shoulders/i);
       }
     }
+  });
+});
+
+/**
+ * BSR-551. `Red Flag Warning` was always surfaced — the property-damage regex
+ * matches `red flag` explicitly — but it landed in `property_damage`, whose copy
+ * claims "damage-response demand" among "affected property owners". A Red Flag
+ * Warning forecasts fire RISK: nothing has burned and there are no affected
+ * owners yet. Same class as the Air Quality bug: a real NWS alert wearing a
+ * false claim.
+ */
+describe("fire weather is its own category (BSR-551)", () => {
+  it("routes Red Flag Warning to fire_weather, not property_damage", () => {
+    // The product name contains no "fire" at all — this is why the classifier
+    // keys on the product, not the word.
+    expect(weatherCategoryOf("Red Flag Warning")).toBe("fire_weather");
+  });
+
+  it("routes Fire Weather Watch to fire_weather", () => {
+    expect(weatherCategoryOf("Fire Weather Watch")).toBe("fire_weather");
+  });
+
+  it("still classifies real damage weather as property_damage", () => {
+    expect(weatherCategoryOf("Tornado Warning")).toBe("property_damage");
+    expect(weatherCategoryOf("Ice Storm Warning")).toBe("property_damage");
+  });
+
+  it("does not let fire steal the more specific categories", () => {
+    // Ordering guard: heat/air/marine are tested before fire.
+    expect(weatherCategoryOf("Excessive Heat Warning")).toBe("extreme_heat");
+    expect(weatherCategoryOf("Air Quality Alert")).toBe("air_quality");
+    expect(weatherCategoryOf("Coastal Flood Warning")).toBe("marine_coastal");
+  });
+
+  it("ships ON by default so existing coverage is not silently removed", () => {
+    // Fire alerts already reached every workspace via property_damage. Shipping
+    // the new category off-by-default would look like an improvement while
+    // quietly taking coverage away.
+    expect(DEFAULT_WEATHER_CATEGORIES).toContain("fire_weather");
+    expect(DEFAULT_WEATHER_CATEGORIES).toContain("property_damage");
+  });
+
+  it("is opt-out-able like any other category", () => {
+    expect(parseWeatherCategories(["property_damage"])).toEqual(["property_damage"]);
+  });
+});
+
+/**
+ * The cold-lead title and summary are written to the opportunity row, so a
+ * count disagreeing with its noun is stored — shown on the card, and read back
+ * by Arc when it reasons about the record (BSR-690).
+ *
+ * `coldDays: 1` is not contrived. The 30-day default only binds
+ * `crm_inactivity`; prod carries daysCold on four opportunity kinds, three of
+ * which sit below 30 today (10, 12, 13) and never pass through this floor.
+ */
+describe("cold-lead copy agrees in number", () => {
+  const dayBefore = "2026-06-16T00:00:00.000Z"; // exactly 1 day before NOW
+
+  it("says '1 day', never '1 days', when activity is known", () => {
+    const [out] = detectColdLeadOpportunities(
+      [lead({ lastActivityAt: dayBefore, activityKnown: true })],
+      { now: NOW, coldDays: 1 },
+    );
+    expect(out.evidence.daysCold).toBe(1);
+    expect(out.title).toContain("quiet 1 day");
+    expect(out.title).not.toContain("1 days");
+    expect(out.summary).toContain("no activity in 1 day.");
+    expect(out.summary).not.toContain("1 days");
+  });
+
+  it("says '1 day', never '1 days', when nothing has been recorded", () => {
+    const [out] = detectColdLeadOpportunities(
+      [lead({ lastActivityAt: dayBefore, activityKnown: false })],
+      { now: NOW, coldDays: 1 },
+    );
+    expect(out.title).toContain("nothing recorded in 1 day");
+    expect(out.title).not.toContain("1 days");
+    expect(out.summary).toContain("since it arrived 1 day ago");
+    expect(out.summary).not.toContain("1 days");
+  });
+
+  it("keeps the plural everywhere above one", () => {
+    const [out] = detectColdLeadOpportunities([lead()], { now: NOW });
+    expect(out.title).toContain("quiet 47 days");
+    expect(out.summary).toContain("no activity in 47 days.");
   });
 });

@@ -4,6 +4,7 @@ import {
   csvRowId,
   csvRowToContact,
   detectColumnMapping,
+  parseCsvDate,
   mapCsvRow,
   parseCsv,
   parseCsvContacts,
@@ -117,5 +118,118 @@ Dana,Whitfield,dana@northshore.com,North Shore Group,,Evanston,IL
   it("returns nothing usable for a header-only or empty CSV", () => {
     expect(parseCsvContacts("name,email").contacts).toEqual([]);
     expect(parseCsvContacts("").contacts).toEqual([]);
+  });
+});
+
+describe("parseCsvDate", () => {
+  const NOW = new Date("2026-07-29T00:00:00.000Z");
+
+  it("accepts ISO dates, with or without a time", () => {
+    expect(parseCsvDate("2026-01-15", NOW)).toBe("2026-01-15T00:00:00.000Z");
+    expect(parseCsvDate("2026-01-15T09:30:00Z", NOW)).toBe("2026-01-15T00:00:00.000Z");
+  });
+
+  it("accepts US M/D/YYYY, which is what most CRM exports emit", () => {
+    expect(parseCsvDate("1/15/2026", NOW)).toBe("2026-01-15T00:00:00.000Z");
+    expect(parseCsvDate("12/03/2025", NOW)).toBe("2025-12-03T00:00:00.000Z");
+  });
+
+  // A wrong date manufactures false urgency — "quiet 200 days" about someone
+  // spoken to last week — inside an evidence-cited card the operator trusts.
+  // No date is strictly better than a guessed one.
+  it("refuses to guess ambiguous or malformed dates", () => {
+    expect(parseCsvDate("15/01/2026", NOW)).toBeUndefined();
+    expect(parseCsvDate("1/15/26", NOW)).toBeUndefined();
+    expect(parseCsvDate("last tuesday", NOW)).toBeUndefined();
+    expect(parseCsvDate("45231", NOW)).toBeUndefined();
+    expect(parseCsvDate("", NOW)).toBeUndefined();
+    expect(parseCsvDate(undefined, NOW)).toBeUndefined();
+  });
+
+  it("drops future dates and pre-2000 artefacts", () => {
+    expect(parseCsvDate("2027-01-01", NOW)).toBeUndefined();
+    expect(parseCsvDate("1899-12-30", NOW)).toBeUndefined();
+  });
+});
+
+describe("last-contacted column", () => {
+  // Without this the lead lands as received-today, reads as zero days cold, and
+  // Arc finds nothing for 30 days right after telling the owner to import.
+  it("detects common header spellings and carries the date as updatedAt", () => {
+    const csv = ["email,Last Contacted", "a@b.com,2026-01-15"].join("\n");
+    const { contacts, mappedColumns } = parseCsvContacts(csv);
+    expect(mappedColumns.lastContactedAt).toBe("Last Contacted");
+    expect(contacts[0].updatedAt).toBe("2026-01-15T00:00:00.000Z");
+  });
+
+  it("omits updatedAt entirely when the date is unusable", () => {
+    const csv = ["email,last activity", "a@b.com,not a date"].join("\n");
+    const { contacts } = parseCsvContacts(csv);
+    expect(contacts[0].updatedAt).toBeUndefined();
+  });
+
+  it("imports fine when the column is absent", () => {
+    const { contacts } = parseCsvContacts(["email", "a@b.com"].join("\n"));
+    expect(contacts).toHaveLength(1);
+    expect(contacts[0].updatedAt).toBeUndefined();
+  });
+});
+
+// BSR-642. Auto-detection is a first guess; without a way to correct it, a column
+// named something unusual is dropped and the operator never learns it existed.
+describe("operator column overrides", () => {
+  const csv = "Full Name,Work Email,Account,Notes\nAda Lovelace,ada@example.com,Analytical Ltd,ignore me";
+
+  it("reports every header, including the ones nothing matched", () => {
+    const out = parseCsvContacts(csv);
+    expect(out.headers).toEqual(["Full Name", "Work Email", "Account", "Notes"]);
+    // "Notes" has no alias — today it is silently dropped, which is exactly what
+    // the operator needs to be told rather than left to discover.
+    expect(out.unmappedColumns).toContain("Notes");
+  });
+
+  it("maps a column the detector missed", () => {
+    const out = parseCsvContacts(csv, { Notes: "company" });
+    expect(out.mappedColumns.company).toBe("Notes");
+    expect(out.contacts[0]?.properties?.company).toBe("ignore me");
+    expect(out.unmappedColumns).not.toContain("Notes");
+  });
+
+  it("drops a column the detector claimed", () => {
+    const detected = parseCsvContacts(csv);
+    expect(detected.mappedColumns.email).toBe("Work Email");
+
+    const out = parseCsvContacts(csv, { "Work Email": null });
+    expect(out.mappedColumns.email).toBeUndefined();
+    expect(out.contacts[0]?.properties?.email).toBeUndefined();
+  });
+
+  it("targets by header name, not index, so a reordered re-upload still maps correctly", () => {
+    // An index-based override would silently mis-target the moment the same file
+    // is exported again with columns in a different order.
+    const reordered = "Notes,Full Name,Work Email,Account\nignore me,Ada Lovelace,ada@example.com,Analytical Ltd";
+    const out = parseCsvContacts(reordered, { Notes: "company" });
+    expect(out.contacts[0]?.properties?.company).toBe("ignore me");
+  });
+
+  it("ignores an override naming a column the file does not have", () => {
+    const out = parseCsvContacts(csv, { "Not A Column": "phone" });
+    expect(out.mappedColumns.phone).toBeUndefined();
+    expect(out.contacts).toHaveLength(1);
+  });
+});
+
+describe("an explicit mapping wins over detection", () => {
+  it("releases the field from whichever column the detector had claimed", () => {
+    // "Account" auto-detects as company. Mapping "Notes" to company must take it
+    // away from "Account" rather than leaving two columns fighting over one field
+    // — which one won would otherwise depend on their order in the file.
+    const csv = "Full Name,Account,Notes\nAda Lovelace,Analytical Ltd,Difference Engine Co";
+    const out = parseCsvContacts(csv, { Notes: "company" });
+
+    expect(out.mappedColumns.company).toBe("Notes");
+    expect(out.contacts[0]?.properties?.company).toBe("Difference Engine Co");
+    // And the column it was taken from is now honestly reported as not imported.
+    expect(out.unmappedColumns).toContain("Account");
   });
 });

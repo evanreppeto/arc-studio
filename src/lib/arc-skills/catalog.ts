@@ -19,6 +19,17 @@ export type ArcSkillDefinition = {
   /** `generated` = built by Arc from this workspace's own campaign history. */
   source: "built-in" | "library" | "system" | "github" | "generated";
   publisher?: string;
+  /**
+   * Connector keys (from `src/domain/connectors.ts`) this skill cannot do its
+   * stated job without. Resolved against live workspace status by
+   * `unmetSkillConnectors` so an unmet source is named before the turn runs —
+   * it never blocks the run.
+   *
+   * Declare a connector here only when the skill's *description* becomes untrue
+   * without it. A skill that merely works better with a source should stay
+   * silent; a false warning on every run is worse than no warning.
+   */
+  requiresConnectors?: readonly string[];
   /** Present for workspace-installed GitHub skills and generated exemplar skills.
    *  Kept out of the visible chat message, but injected into the runner request
    *  behind a read-only skill. */
@@ -42,6 +53,10 @@ export const ARC_SKILLS: readonly ArcSkillDefinition[] = [
     commands: ["/research-company", "/summarize", "/signals"],
     mode: "ask",
     source: "built-in",
+    // The only built-in whose primary verb is external. The other seven read
+    // workspace records and stay silent by design — a warning on every run of
+    // the most-used skills would train operators to ignore this signal.
+    requiresConnectors: ["gemini-research"],
   },
   {
     key: "opportunity-discovery",
@@ -127,6 +142,9 @@ export const ARC_SKILL_LIBRARY: readonly ArcSkillDefinition[] = [
     mode: "ask",
     source: "library",
     publisher: "Arc Labs",
+    // "Track competitor launches and messaging shifts" is not something the
+    // workspace's own records can answer.
+    requiresConnectors: ["competitor-ads"],
   },
   {
     key: "local-search-audit",
@@ -138,6 +156,8 @@ export const ARC_SKILL_LIBRARY: readonly ArcSkillDefinition[] = [
     mode: "ask",
     source: "library",
     publisher: "Arc Labs",
+    // Local visibility is read from the review/reputation profiles, not the CRM.
+    requiresConnectors: ["reviews-signals"],
   },
   {
     key: "review-response-planner",
@@ -149,6 +169,8 @@ export const ARC_SKILL_LIBRARY: readonly ArcSkillDefinition[] = [
     mode: "draft",
     source: "library",
     publisher: "Arc Community",
+    // There is nothing to respond to without the reviews themselves.
+    requiresConnectors: ["reviews-signals"],
   },
   {
     key: "proposal-follow-up",
@@ -182,6 +204,10 @@ export const ARC_SKILL_LIBRARY: readonly ArcSkillDefinition[] = [
     mode: "act",
     source: "library",
     publisher: "Signal Works",
+    // Only the weather source is required. The "property signals" half is the
+    // `permit-data` connector, which fabricates opportunities and must not be
+    // recommended — a skill requirement is an invitation to switch it on.
+    requiresConnectors: ["weather-signals"],
   },
 ];
 

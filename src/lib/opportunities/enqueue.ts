@@ -1,7 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type OpportunityPackageBrief } from "@/domain";
-import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
+import { getCurrentAgentTaskTenantFields, type AgentTaskScope } from "@/lib/agent-tasks/scope";
 import { markAgentKeys } from "@/lib/arc-chat/agent-config";
 import { notifyOpportunityScan } from "@/lib/arc-chat/notify";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -35,6 +35,7 @@ export async function enqueueArcOpportunityTask(
     .from("agents")
     .select("id")
     .eq("org_id", tenant.org_id)
+    .eq("workspace_id", tenant.workspace_id)
     .in("key", await markAgentKeys())
     .limit(1)
     .maybeSingle<{ id: string }>();
@@ -89,6 +90,8 @@ export const OPPORTUNITY_SCAN_BRIEFING =
  */
 export async function enqueueOpportunityScanTask(input: {
   operator: string;
+  /** Explicit tenant; omit to resolve from the ambient request. */
+  scope?: AgentTaskScope;
 }): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseAdminConfigured()) {
     return { ok: false, error: "Supabase is not configured." };
@@ -98,12 +101,13 @@ export async function enqueueOpportunityScanTask(input: {
   try {
     // Hoisted above the agents lookup: agent keys are only unique per-org, so
     // the lookup must filter by org_id or it can return another tenant's agent.
-    const tenant = await getCurrentAgentTaskTenantFields();
+    const tenant = await getCurrentAgentTaskTenantFields(input.scope);
 
     const { data: agent } = await client
       .from("agents")
       .select("id")
       .eq("org_id", tenant.org_id)
+      .eq("workspace_id", tenant.workspace_id)
       .in("key", await markAgentKeys())
       .limit(1)
       .maybeSingle<{ id: string }>();

@@ -3,6 +3,14 @@
  * Verifies the isDemoDataEnabled() flag controls demo fallbacks:
  *   - flag OFF + empty live data → real empty result (no demo- IDs)
  *   - flag ON  + empty live data → demo bundle (regression: existing behavior)
+ *
+ * ERROR paths are different, and changed deliberately in BSR-575: a failed read
+ * now reports failure REGARDLESS of the flag. The four "flag ON + DB error →
+ * demo" cases below used to assert the opposite. That behaviour was never
+ * argued for — #182/#220 were fixing the flag-OFF leak into real workspaces and
+ * carried flag-ON along unchanged — and it is what made this class of bug
+ * unfindable, since every launch.json config sets ARC_DEMO_DATA=1 and so no
+ * local forced-failure test could ever make these reads fail.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -148,8 +156,9 @@ describe("getCrmRecordData demo gate", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Error path (live read throws, e.g. schema drift): must NOT leak demo data
-// into a real workspace — only fall back to demo when the flag is on.
+// Error path (live read throws, e.g. schema drift): must report the failure,
+// with or without the demo flag. Fixtures over an outage are a fabrication, not
+// a degrade — and in demo mode they are invisible, which is worse.
 // ---------------------------------------------------------------------------
 describe("CRM read-model error fallback gate", () => {
   it("getCrmOverviewData: flag OFF + DB error → unavailable (no demo)", async () => {
@@ -158,12 +167,10 @@ describe("CRM read-model error fallback gate", () => {
     expect(result.status).toBe("unavailable");
   });
 
-  it("getCrmOverviewData: flag ON + DB error → demo (regression)", async () => {
+  it("getCrmOverviewData: flag ON + DB error → still unavailable (BSR-575)", async () => {
     vi.stubEnv("ARC_DEMO_DATA", "1");
     const result = await getCrmOverviewData(erroringClient());
-    expect(result.status).toBe("live");
-    if (result.status !== "live") return;
-    expect(result.rows.some((row) => row.id.startsWith("demo-"))).toBe(true);
+    expect(result.status).toBe("unavailable");
   });
 
   it("getCrmObjectData: flag OFF + DB error → unavailable (no demo)", async () => {
@@ -172,12 +179,10 @@ describe("CRM read-model error fallback gate", () => {
     expect(result.status).toBe("unavailable");
   });
 
-  it("getCrmObjectData: flag ON + DB error → demo (regression)", async () => {
+  it("getCrmObjectData: flag ON + DB error → still unavailable (BSR-575)", async () => {
     vi.stubEnv("ARC_DEMO_DATA", "1");
     const result = await getCrmObjectData("companies", erroringClient());
-    expect(result.status).toBe("live");
-    if (result.status !== "live") return;
-    expect(result.sampleRows.some((row) => row.id.startsWith("demo-"))).toBe(true);
+    expect(result.status).toBe("unavailable");
   });
 
   it("getCrmNavCounts: flag OFF + DB error → unavailable (no demo)", async () => {
@@ -186,12 +191,12 @@ describe("CRM read-model error fallback gate", () => {
     expect(result.status).toBe("unavailable");
   });
 
-  it("getCrmNavCounts: flag ON + DB error → demo (regression)", async () => {
+  it("getCrmNavCounts: flag ON + DB error → still unavailable (BSR-575)", async () => {
+    // The one that "could not be made to fail": it reported status "live"
+    // alongside demo counts, so callers were told the read had succeeded.
     vi.stubEnv("ARC_DEMO_DATA", "1");
     const result = await getCrmNavCounts(erroringClient());
-    expect(result.status).toBe("live");
-    if (result.status !== "live") return;
-    expect(result.counts.companies).toBeGreaterThan(0);
+    expect(result.status).toBe("unavailable");
   });
 
   it("getCrmRecordData: flag OFF + DB error → unavailable (no demo)", async () => {
@@ -200,11 +205,9 @@ describe("CRM read-model error fallback gate", () => {
     expect(result.status).toBe("unavailable");
   });
 
-  it("getCrmRecordData: flag ON + DB error → demo record (regression)", async () => {
+  it("getCrmRecordData: flag ON + DB error → still unavailable (BSR-575)", async () => {
     vi.stubEnv("ARC_DEMO_DATA", "1");
     const result = await getCrmRecordData("companies", "demo-co-northside-plumbing", erroringClient());
-    expect(result.status).toBe("live");
-    if (result.status !== "live") return;
-    expect(result.id).toBe("demo-co-northside-plumbing");
+    expect(result.status).toBe("unavailable");
   });
 });

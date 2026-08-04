@@ -49,7 +49,7 @@ describe("enqueueDispatchesForAssets (producer)", () => {
 
   it("builds a to/subject/text payload from the approved asset body", async () => {
     const supabase = emailCampaignMock();
-    await enqueueDispatchesForAssets({ campaignId: "c1", assetIds: ["a1"], operator: "Operator" }, supabase);
+    await enqueueDispatchesForAssets({ campaignId: "c1", assetIds: ["a1"], operator: "Operator", tenant: { org_id: "org-1", workspace_id: "workspace-1" } }, supabase);
 
     const dispatch = findCalls(supabase, "insert").find((row) => row.campaign_asset_id === "a1");
     expect(dispatch?.payload).toMatchObject({ to: "lead@example.com", subject: "Welcome", text: "Hi there" });
@@ -57,7 +57,7 @@ describe("enqueueDispatchesForAssets (producer)", () => {
 
   it("suppresses opted-out contacts — no queued dispatch row, only the summary event", async () => {
     const supabase = emailCampaignMock({ contacts: [{ ...CONTACT, status: "do_not_contact" }] });
-    await enqueueDispatchesForAssets({ campaignId: "c1", assetIds: ["a1"], operator: "Operator" }, supabase);
+    await enqueueDispatchesForAssets({ campaignId: "c1", assetIds: ["a1"], operator: "Operator", tenant: { org_id: "org-1", workspace_id: "workspace-1" } }, supabase);
 
     const inserts = findCalls(supabase, "insert");
     expect(inserts.filter((row) => "campaign_asset_id" in row && row.status === "queued")).toHaveLength(0);
@@ -66,7 +66,7 @@ describe("enqueueDispatchesForAssets (producer)", () => {
 
   it("does nothing for an empty asset list", async () => {
     const supabase = createSupabaseQueryMock({ campaign_dispatches: { data: [], error: null } });
-    await enqueueDispatchesForAssets({ campaignId: "c1", assetIds: [], operator: "Operator" }, supabase);
+    await enqueueDispatchesForAssets({ campaignId: "c1", assetIds: [], operator: "Operator", tenant: { org_id: "org-1", workspace_id: "workspace-1" } }, supabase);
     expect(findCalls(supabase, "insert")).toHaveLength(0);
   });
 
@@ -74,7 +74,7 @@ describe("enqueueDispatchesForAssets (producer)", () => {
     const supabase = emailCampaignMock();
 
     await enqueueDispatchesForAssets(
-      { campaignId: "c1", assetIds: ["a1"], operator: "Operator", scheduledFor: "2026-07-01T09:00:00.000Z" },
+      { campaignId: "c1", assetIds: ["a1"], operator: "Operator", scheduledFor: "2026-07-01T09:00:00.000Z", tenant: { org_id: "org-1", workspace_id: "workspace-1" } },
       supabase,
     );
 
@@ -96,7 +96,7 @@ describe("enqueueDispatchesForAssets (producer)", () => {
       campaign_events: { data: null, error: null },
     });
 
-    await enqueueDispatchesForAssets({ campaignId: "c1", assetIds: ["a1", "a2"], operator: "Operator" }, supabase);
+    await enqueueDispatchesForAssets({ campaignId: "c1", assetIds: ["a1", "a2"], operator: "Operator", tenant: { org_id: "org-1", workspace_id: "workspace-1" } }, supabase);
 
     const inserts = findCalls(supabase, "insert");
     // a1 email → 1 recipient row + event; a2 sms → 1 deliverable-level row + event = 4 inserts

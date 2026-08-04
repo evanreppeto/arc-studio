@@ -10,7 +10,7 @@ import {
   type OfficialPersonaMapping,
   OFFICIAL_PERSONA_MAPPINGS,
 } from "@/domain";
-import { findExistingLeadByExternalId } from "@/lib/lead-ingestion/idempotency";
+import { findExistingLeadByExternalId, snapshotLeadRow, type ExistingLeadRefs } from "@/lib/lead-ingestion/idempotency";
 import { persistLeadIngestion, type LeadProvenance } from "@/lib/lead-ingestion/persistence";
 
 import { type EnrichmentProvider } from "../enrichment/provider";
@@ -24,7 +24,28 @@ import { type CrmImportSource } from "./source";
 export type ImportPersistDeps = {
   persist?: typeof persistLeadIngestion;
   findExisting?: typeof findExistingLeadByExternalId;
+  /** Reads the row an update is about to overwrite, so a reversal can restore it. */
+  snapshot?: typeof snapshotLeadRow;
 };
+
+/**
+ * Called once per successfully persisted record so the caller can write batch
+ * provenance (BSR-640). Injected rather than imported so the engine stays
+ * network-free in unit tests, and OPTIONAL so an import without a run still works.
+ *
+ * Best-effort by contract: the engine swallows anything this throws. Failing a
+ * customer's data import because a bookkeeping row would not write is the wrong
+ * trade every time.
+ */
+export type ImportProvenanceRecorder = (record: {
+  externalId: string;
+  leadId: string;
+  action: "created" | "updated";
+  /** Pre-existing row refs when this was an update, so a reversal can restore. */
+  existing: ExistingLeadRefs | null;
+  /** The row as it stood BEFORE this run overwrote it. Null for a create. */
+  previous: Record<string, unknown> | null;
+}) => Promise<void>;
 
 // ---------------------------------------------------------------------------
 // The provider-agnostic CRM import engine (BSR-368). It pages a `CrmImportSource`,
@@ -46,6 +67,30 @@ export const DEFAULT_MAX_IMPORT_PAGES = 100;
 
 export type ImportRunError = { externalId: string; message: string };
 
+/**
+ * A resolved record as the engine would write it, for the preview (BSR-641). Kept
+ * to what an operator can actually check by eye — the point is to confirm the
+ * column mapping worked before committing, not to render the whole payload.
+ */
+export type ImportSampleRecord = {
+  externalId: string;
+  action: "create" | "update" | "skip";
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  persona: string | null;
+  /** Resolved last-contacted date, so "would every lead land as new?" is answerable. */
+  lastContactedAt: string | null;
+  /** Why it would be skipped. Null for create/update. */
+  reason: string | null;
+};
+
+/** How many resolved records a dry run carries back. Enough to spot a mis-mapped
+ *  column, few enough that the result stays a summary rather than a second copy
+ *  of the customer's file. */
+export const DRY_RUN_SAMPLE_SIZE = 25;
+
 export type ImportRunResult = {
   /** New leads inserted. */
   imported: number;
@@ -61,6 +106,8 @@ export type ImportRunResult = {
   pages: number;
   /** Best-effort per-record errors (skips with a reason + failures). */
   errors: ImportRunError[];
+  /** Resolved sample records. Only populated on a dry run. */
+  sample?: ImportSampleRecord[];
 };
 
 export type ImportContactsInput = {
@@ -80,10 +127,55 @@ export type ImportContactsInput = {
   maxPages?: number;
   /** Injectable persistence seams (tests); default to the real functions. */
   deps?: ImportPersistDeps;
+  /** Optional per-record provenance sink (BSR-640). Absent = import without a run. */
+  recordProvenance?: ImportProvenanceRecorder;
+  /**
+   * Resolve everything and write NOTHING (BSR-641). Same counts, same skip
+   * reasons, plus a sample of resolved records — so an operator can see what an
+   * import would do before it does it. Today the only way to find that out is to
+   * run it, which is the scariest moment in onboarding for someone uploading five
+   * years of customer data into a product they met twenty minutes ago.
+   */
+  dryRun?: boolean;
 };
 
 function emptyResult(): ImportRunResult {
   return { imported: 0, updated: 0, skipped: 0, failed: 0, enriched: 0, pages: 0, errors: [] };
+}
+
+/**
+ * Collect a resolved record for the dry-run preview. No-op on a real import, so
+ * the live path carries no extra cost and cannot leak sample data into a result
+ * the UI would then render as a preview of something already committed.
+ */
+function addSample(
+  input: ImportContactsInput,
+  result: ImportRunResult,
+  entry: { externalId: string; action: ImportSampleRecord["action"]; reason: string | null; lead?: LeadIngestionInput },
+): void {
+  if (!input.dryRun) return;
+  result.sample ??= [];
+  if (result.sample.length >= DRY_RUN_SAMPLE_SIZE) return;
+
+  const lead = entry.lead;
+  const first = lead?.contact?.firstName?.trim() ?? "";
+  const last = lead?.contact?.lastName?.trim() ?? "";
+  const name = `${first} ${last}`.trim();
+
+  result.sample.push({
+    externalId: entry.externalId,
+    action: entry.action,
+    name: name || null,
+    email: lead?.contact?.email ?? null,
+    phone: lead?.contact?.phone ?? null,
+    company: lead?.company?.name ?? null,
+    persona: typeof lead?.persona === "string" ? lead.persona : null,
+    // The column that decides whether anything is ever cold. Surfacing it here is
+    // what lets an operator notice their date column did not parse BEFORE every
+    // imported lead lands as "received today".
+    lastContactedAt: lead?.receivedAt ?? null,
+    reason: entry.reason,
+  });
 }
 
 async function importOneContact(
@@ -98,13 +190,26 @@ async function importOneContact(
     ...input.options,
     allowedPersonaKeys: input.options.allowedPersonaKeys ?? input.allowedPersonaKeys,
   });
+
+  // An import carries history: a contact last touched eight months ago must land
+  // as an eight-month-old lead, not a brand-new one, or nothing is ever cold.
+  if (lead && contact.updatedAt) {
+    lead = { ...lead, receivedAt: contact.updatedAt };
+  }
   if (!lead) {
     result.skipped += 1;
     result.errors.push({ externalId, message: "no usable name/email/phone" });
+    addSample(input, result, { externalId, action: "skip", reason: "no usable name/email/phone" });
     return;
   }
 
-  if (input.enrichment) {
+  // Enrichment is METERED — meterConnectorCall authorizes each lookup against the
+  // workspace spend cap and records usage after. A preview that silently spends
+  // money is a worse bug than no preview, so a dry run reports what WOULD be
+  // enriched and spends nothing.
+  if (input.enrichment && input.dryRun) {
+    result.enriched += 1;
+  } else if (input.enrichment) {
     const fields = await input.enrichment.enrich({
       email: lead.contact?.email,
       companyName: lead.company?.name,
@@ -117,14 +222,36 @@ async function importOneContact(
 
   const parsed = parseLeadIngestionPayload(lead, input.now, input.allowedPersonaKeys ?? OFFICIAL_PERSONA_MAPPINGS);
   if (!parsed.ok) {
+    const message = parsed.errors.map((e) => e.message).join("; ") || "rejected";
     result.skipped += 1;
-    result.errors.push({ externalId, message: parsed.errors.map((e) => e.message).join("; ") || "rejected" });
+    result.errors.push({ externalId, message });
+    addSample(input, result, { externalId, action: "skip", reason: message, lead });
     return;
   }
 
   const findExisting = input.deps?.findExisting ?? findExistingLeadByExternalId;
   const persist = input.deps?.persist ?? persistLeadIngestion;
+  const snapshot = input.deps?.snapshot ?? snapshotLeadRow;
   const existing = await findExisting(input.client, input.orgId, lead.externalLeadId);
+
+  // Capture BEFORE the write, and only when someone is recording and there is
+  // something to overwrite. An undo that can only delete what a run created, and
+  // not put back what it changed, is half an undo.
+  const previous =
+    input.recordProvenance && !input.dryRun && existing?.leadId
+      ? await snapshot(input.client, input.orgId, existing.leadId)
+      : null;
+
+  // The whole dry run: everything above has resolved — mapping, enrichment,
+  // validation, and the create-vs-update decision, which findExisting has just
+  // made. Stop before the only line that writes.
+  if (input.dryRun) {
+    if (existing?.leadId) result.updated += 1;
+    else result.imported += 1;
+    addSample(input, result, { externalId, action: existing?.leadId ? "update" : "create", reason: null, lead });
+    return;
+  }
+
   const persisted = await persist({
     input: parsed.normalizedInput,
     result: parsed,
@@ -137,6 +264,22 @@ async function importOneContact(
   });
   if (persisted.leadCreated) result.imported += 1;
   else result.updated += 1;
+
+  // Provenance is bookkeeping AROUND the import, not part of it. A failure here
+  // must not turn a persisted record into a counted failure, so it is caught and
+  // dropped rather than allowed to reach the per-record catch in the page loop —
+  // which would report a row that actually landed as failed.
+  if (input.recordProvenance && persisted.leadId) {
+    await input
+      .recordProvenance({
+        externalId,
+        leadId: persisted.leadId,
+        action: persisted.leadCreated ? "created" : "updated",
+        existing,
+        previous,
+      })
+      .catch(() => undefined);
+  }
 }
 
 /**

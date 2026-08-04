@@ -21,7 +21,13 @@ export type SubscriptionState = {
 };
 
 export type OrgPlanUpdate = {
-  plan_tier: PlanTier;
+  /**
+   * Omitted when the subscription is PAID but its price id maps to no known
+   * tier. Omitting leaves the stored tier untouched on update (and falls to the
+   * column's `free` default on insert), so a config drift cannot silently
+   * demote a paying customer. See planUpdateForSubscription.
+   */
+  plan_tier?: PlanTier;
   subscription_status: string;
   stripe_subscription_id: string;
   stripe_customer_id: string;
@@ -34,16 +40,51 @@ export type OrgPlanUpdate = {
 // a workspace is paying.
 const PAID_STATUSES = PAID_SUBSCRIPTION_STATUSES;
 
-/** Map a Stripe subscription to the org_plans update we persist. Pure. */
-export function planUpdateForSubscription(sub: SubscriptionState): OrgPlanUpdate {
-  const entitled = PAID_STATUSES.has(sub.status) ? tierForPriceId(sub.priceId) : null;
-  return {
-    plan_tier: entitled ?? DEFAULT_PLAN_TIER,
+export type PlanUpdatePlan = {
+  update: OrgPlanUpdate;
+  /**
+   * True when the subscription is in a PAID status but its price id matches no
+   * configured STRIPE_PRICE_* tier. That is a configuration fault on our side,
+   * not a customer state — and it must never pass quietly.
+   */
+  unresolvedPaidPrice: boolean;
+};
+
+/**
+ * Map a Stripe subscription to the org_plans update we persist. Pure.
+ *
+ * THE CASE THIS GUARDS. A paid subscription whose price id does not map to a
+ * configured tier used to fall back to `free`. That silently converted a paying
+ * customer into a free-tier workspace on a $2/month cap — Stripe got a 200, the
+ * row was written, and nothing anywhere logged a word. With billing enforcement
+ * armed the customer would then be blocked for exceeding an allowance they had
+ * paid to exceed.
+ *
+ * The drift that produces it is ordinary: a price rotated in Stripe, a
+ * subscription edited in the dashboard, a stale STRIPE_PRICE_* after a
+ * redeploy, or a negotiated price that was never in env at all.
+ *
+ * So the tier is now OMITTED rather than defaulted. On an existing row that
+ * preserves whatever they were on; on a new row the column default (`free`)
+ * still applies, which is no worse than before. The caller reports the anomaly.
+ */
+export function planUpdateForSubscription(sub: SubscriptionState): PlanUpdatePlan {
+  const paid = PAID_STATUSES.has(sub.status);
+  const entitled = paid ? tierForPriceId(sub.priceId) : null;
+  const unresolvedPaidPrice = paid && entitled === null;
+
+  const update: OrgPlanUpdate = {
     subscription_status: sub.status,
     stripe_subscription_id: sub.subscriptionId,
     stripe_customer_id: sub.customerId,
     current_period_end: sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd * 1000).toISOString() : null,
   };
+
+  // Not paying → free is the correct, intended downgrade and stays explicit.
+  // Paying but unmappable → leave the tier alone and let the caller shout.
+  if (!unresolvedPaidPrice) update.plan_tier = entitled ?? DEFAULT_PLAN_TIER;
+
+  return { update, unresolvedPaidPrice };
 }
 
 /**

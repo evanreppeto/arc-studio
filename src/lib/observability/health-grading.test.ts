@@ -72,6 +72,22 @@ describe("gradeAgentLoop", () => {
     expect(gradeAgentLoop(agent()).state).toBe("live");
   });
 
+  it("is unknown — never live — when the queue could not be read (BSR-575)", () => {
+    // The console's queue figures default to zero, and "no queued work, no
+    // recent failures" is indistinguishable from a healthy idle system. Grading
+    // that as live meant this console reported prod healthy at the exact moment
+    // it could not see prod.
+    const verdict = gradeAgentLoop(agent({ evidenceMissing: true }));
+    expect(verdict.state).toBe("unknown");
+    expect(verdict.detail).toMatch(/could not be read/i);
+  });
+
+  it("still reports a genuinely unreachable runner as down, not unknown", () => {
+    // The heartbeat is independent evidence of the runner itself, so an
+    // unreadable queue must not downgrade a real outage to "unproven".
+    expect(gradeAgentLoop(agent({ evidenceMissing: true, lastStatus: "unreachable" })).state).toBe("down");
+  });
+
   it("does NOT fault a stale heartbeat on its own", () => {
     // The runner is webhook-driven, so "hasn't been seen in a while" can simply
     // mean it had nothing to do. Grading off last-seen would cry wolf nightly.

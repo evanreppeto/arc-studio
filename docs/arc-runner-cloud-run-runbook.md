@@ -92,13 +92,13 @@ One-time setup (operator, in Cloud Shell):
     gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" --member="serviceAccount:${CB_SA}" --role="roles/iam.serviceAccountUser"
 
     # 3. Connect the GitHub repo to Cloud Build (one-time, console is easiest):
-    #    Cloud Build → Triggers → Connect Repository → GitHub → authorize evanreppeto/marketing.
+    #    Cloud Build → Triggers → Connect Repository → GitHub → authorize evanreppeto/arc-studio.
 
     # 4. Create the trigger (or do it in the console with the same values):
     gcloud builds triggers create github \
       --name=arc-runner-deploy \
       --region=us-central1 \
-      --repo-name=marketing --repo-owner=evanreppeto \
+      --repo-name=arc-studio --repo-owner=evanreppeto \
       --branch-pattern='^main$' \
       --included-files='apps/arc-runner/**' \
       --build-config=apps/arc-runner/cloudbuild.yaml
@@ -109,3 +109,46 @@ Cloud Run revision. Roll back anytime via Cloud Run → Revisions.
 
 Note: CI only rolls the **image**. Config changes (new/rotated secrets, scaling or
 flag changes) still go through `deploy-cloud-run.sh` or `gcloud run services update`.
+
+### ⚠️ Renaming the GitHub repo breaks this trigger, silently
+
+The trigger stores the repo as a literal `github: {owner, name}` — **not a repo
+id**. Rename the repo and GitHub's webhook starts carrying the new name, the
+filter stops matching, and the runner just stops deploying. No error, no failed
+build, nothing to notice. (Vercel is the opposite: it binds `repoId`, so it
+survives a rename untouched.)
+
+**Every `gcloud` repair path is blocked.** Verified 2026-08-04 against a renamed,
+console-connected repo, in `global` and three regions:
+
+| Attempt | Result |
+| --- | --- |
+| `triggers update github … --repo-name=X` | `INVALID_ARGUMENT` |
+| `triggers import` (edited YAML) | `FAILED_PRECONDITION` |
+| `triggers create github --repo-name=X` | `FAILED_PRECONDITION: Repository mapping does not exist` |
+| `builds connections list` | 0 items everywhere — it is 1st-gen, no 2nd-gen connection to repoint |
+
+The last one fails **even while the console lists that exact repo as connected**.
+The console and the 1st-gen API disagree; the console is the one that can act.
+
+**The procedure that works:**
+
+1. Back up first — note `triggers export` does not exist:
+   `gcloud builds triggers describe arc-runner-deploy --project=arc-marketing-500317 --format=yaml > backup.yaml`
+2. Rename the repo (`gh repo rename …`).
+3. Console → Cloud Build → Triggers → **Manage repositories**: disconnect the old
+   name, connect the new one.
+4. Console → **edit the existing trigger** and change its source repo. Do *not*
+   create a replacement — editing preserves the id, service account, `filename`,
+   `includedFiles` and branch pattern, so the diff against your backup is one line.
+5. `git remote set-url` in every clone **and** worktree.
+6. `diff backup.yaml <(gcloud builds triggers describe … --format=yaml)` — expect
+   exactly the repo name to differ.
+
+**Decide before step 3:** once the old repo is disconnected, reverting the rename
+no longer restores anything — the old name has no mapping either, so going back
+needs the same console work. There is no cheap undo after that point.
+
+**A rename is not verified until the trigger fires.** That needs a real merge
+touching `apps/arc-runner/**`. If a runner change ever produces no build, check
+`github.name` on the trigger first.

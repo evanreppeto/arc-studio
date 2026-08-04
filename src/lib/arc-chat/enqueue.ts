@@ -4,6 +4,8 @@ import { type ArcMention } from "@/domain";
 import { type ApprovalStrictness, type AssistantResponseStyle, type AssistantTone } from "@/lib/settings/store";
 import { type ArcSkillId } from "@/lib/arc-skills/catalog";
 
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
+
 import { getCurrentAgentTaskTenantFields } from "../agent-tasks/scope";
 import { getSupabaseAdminClient } from "../supabase/server";
 import { markAgentKeys } from "./agent-config";
@@ -61,6 +63,7 @@ export async function enqueueArcChatTask(
     .from("agents")
     .select("id")
     .eq("org_id", tenant.org_id)
+    .eq("workspace_id", tenant.workspace_id)
     .in("key", await markAgentKeys())
     .limit(1)
     .maybeSingle<{ id: string }>();
@@ -110,9 +113,9 @@ export async function enqueueArcChatTask(
 
   const { error: inputError } = await client.from("agent_task_inputs").insert({
     task_id: task.id,
-    // Only org_id: agent_task_inputs has no workspace_id column, so `tenant`
-    // cannot be spread here the way it is into agent_tasks above.
-    org_id: tenant.org_id,
+    // agent_task_inputs gained workspace_id in BSR-712, so this now carries the
+    // same scope as the agent_tasks row above rather than org_id alone.
+    ...workspaceScopeFields(tenant),
     input_type: "operator_message",
     source_table: "arc_conversations",
     source_id: input.conversationId,

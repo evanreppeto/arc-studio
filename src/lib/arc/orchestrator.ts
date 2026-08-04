@@ -7,6 +7,7 @@ import { type ArcBusinessContext, deriveCampaignTheme, normalizeRestorationFocus
 import { getBusinessContext } from "../brand-kit/read-model";
 import { getCurrentOrgId } from "../auth/org";
 import { getCurrentAgentTaskTenantFields, type AgentTaskTenantFields } from "../agent-tasks/scope";
+import { orgScopeFields, workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 export type ArcRunResult = {
   runId: string;
@@ -36,7 +37,11 @@ export async function runArcPartnerCampaign(
   const businessContext = context ?? (await getBusinessContext(orgId));
   const runId = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
   const startedAt = new Date().toISOString();
-  const agentId = await upsertArcAgent(client, orgId);
+  // Resolved here rather than just before the agent_tasks insert below: `agents`
+  // gained workspace_id in BSR-712 and is written on the very next line, so the
+  // workspace has to be known before the first write, not partway through.
+  const taskTenant = tenant ?? (await getCurrentAgentTaskTenantFields());
+  const agentId = await upsertArcAgent(client, taskTenant);
   const draft = createPartnerCampaignDraft(request, businessContext);
 
   const companyId = await insertOne(client, "companies", withOrg({
@@ -95,7 +100,7 @@ export async function runArcPartnerCampaign(
     },
   }, tenant));
 
-  const campaignId = await insertOne(client, "campaigns", withOrg({
+  const campaignId = await insertOne(client, "campaigns", withWorkspace({
     name: `${draft.campaignName} ${runId}`,
     persona: request.persona,
     // `campaigns_campaign_theme_length` rejects an empty string, so fall back to
@@ -130,7 +135,7 @@ export async function runArcPartnerCampaign(
     },
   }, tenant));
 
-  const personaSnapshotId = await insertOne(client, "persona_snapshots", withOrg({
+  const personaSnapshotId = await insertOne(client, "persona_snapshots", withWorkspace({
     persona: request.persona,
     company_id: companyId,
     contact_id: contactId,
@@ -159,7 +164,7 @@ export async function runArcPartnerCampaign(
     },
   }, tenant));
 
-  const campaignAssetId = await insertOne(client, "campaign_assets", withOrg({
+  const campaignAssetId = await insertOne(client, "campaign_assets", withWorkspace({
     campaign_id: campaignId,
     asset_type: request.channel === "call_script" ? "script" : request.channel,
     channel: request.channel,
@@ -190,7 +195,7 @@ export async function runArcPartnerCampaign(
     tenant,
   });
 
-  const approvalItemId = await insertOne(client, "approval_items", withOrg({
+  const approvalItemId = await insertOne(client, "approval_items", withWorkspace({
     campaign_id: campaignId,
     campaign_asset_id: campaignAssetId,
     company_id: companyId,
@@ -216,8 +221,6 @@ export async function runArcPartnerCampaign(
 
   await updateById(client, "campaigns", campaignId, { approval_item_id: approvalItemId }, tenant);
 
-  const taskTenant = tenant ?? (await getCurrentAgentTaskTenantFields());
-
   const agentTaskId = await insertOne(client, "agent_tasks", {
     ...taskTenant,
     agent_id: agentId,
@@ -242,7 +245,7 @@ export async function runArcPartnerCampaign(
     },
   });
 
-  await insertOne(client, "agent_task_inputs", withOrg({
+  await insertOne(client, "agent_task_inputs", withWorkspace({
     task_id: agentTaskId,
     input_type: "partner_campaign_request",
     source_table: "leads",
@@ -254,7 +257,7 @@ export async function runArcPartnerCampaign(
     },
   }, taskTenant));
 
-  const agentOutputId = await insertOne(client, "agent_outputs", withOrg({
+  const agentOutputId = await insertOne(client, "agent_outputs", withWorkspace({
     task_id: agentTaskId,
     approval_item_id: approvalItemId,
     campaign_asset_id: campaignAssetId,
@@ -277,7 +280,7 @@ export async function runArcPartnerCampaign(
     approval_status: draft.guardrails.approvalStatus,
   }, taskTenant));
 
-  await insertOne(client, "agent_run_logs", withOrg({
+  await insertOne(client, "agent_run_logs", withWorkspace({
     task_id: agentTaskId,
     agent_id: agentId,
     run_status: draft.guardrails.riskLevel === "blocked" ? "completed" : "completed",
@@ -298,7 +301,7 @@ export async function runArcPartnerCampaign(
     },
   }, taskTenant));
 
-  await insertOne(client, "campaign_events", withOrg({
+  await insertOne(client, "campaign_events", withWorkspace({
     campaign_id: campaignId,
     campaign_asset_id: campaignAssetId,
     approval_item_id: approvalItemId,
@@ -330,19 +333,20 @@ export async function runArcPartnerCampaign(
   };
 }
 
-// agents is org-scoped but has no workspace_id column, so `tenant` cannot be
-// spread here -- org_id is set explicitly. The conflict target must stay
-// (org_id, key) to match the per-org unique; targeting "key" alone would
-// resolve against another tenant's agent row and overwrite it.
-async function upsertArcAgent(client: SupabaseClient, orgId: string) {
+// agents gained workspace_id in BSR-712, so this now carries the full tenant.
+// The conflict target must stay (org_id, key) to match the per-org unique;
+// targeting "key" alone would resolve against another tenant's agent row and
+// overwrite it. On conflict the upsert also re-stamps workspace_id, which makes
+// this idempotent with the migration's backfill rather than fighting it.
+async function upsertArcAgent(client: SupabaseClient, tenant: AgentTaskTenantFields) {
   const { data, error } = await client
     .from("agents")
     .upsert(
       {
-        org_id: orgId,
+        ...workspaceScopeFields(tenant),
         key: "arc",
         name: "Arc Orchestrator",
-        description: "Coordinates Growth Engine sub-workflows and routes outbound-facing work into human approval.",
+        description: "Coordinates Arc Studio sub-workflows and routes outbound-facing work into human approval.",
         status: "ready",
         allowed_actions: [
           "create_internal_crm_records",
@@ -420,7 +424,7 @@ async function insertCreativeAssets(
   for (const [index, creative] of input.creativeAssets.entries()) {
     const title = creative.title ?? defaultCreativeTitle(creative.type);
 
-    await insertOne(client, "campaign_assets", withOrg({
+    await insertOne(client, "campaign_assets", withWorkspace({
       campaign_id: input.campaignId,
       asset_type: CREATIVE_ASSET_TYPE[creative.type],
       channel: creative.type,
@@ -478,6 +482,25 @@ async function updateById(
   }
 }
 
-function withOrg(values: Record<string, unknown>, tenant?: Pick<AgentTaskTenantFields, "org_id">) {
-  return tenant ? { ...values, org_id: tenant.org_id } : values;
+/**
+ * Org-only tenancy, for the tables that genuinely have no workspace column:
+ * companies / contacts / leads (org-owned by the BSR-637 boundary), plus
+ * persona_snapshots until Wave 3 gives it one. agent_task_inputs and
+ * agent_run_logs left this list in BSR-712. Delegates to the shared helper rather
+ * than being a ninth private copy.
+ */
+function withOrg(values: Record<string, unknown>, tenant?: AgentTaskTenantFields) {
+  return { ...values, ...orgScopeFields(tenant) };
+}
+
+/**
+ * Workspace tenancy, for the tables that carry a workspace_id (BSR-710).
+ *
+ * `campaigns.workspace_id` has been NOT NULL since BSR-639 — writing through
+ * withOrg here did not merely miss a column, it made this orchestrator unable to
+ * create a campaign at all. That is why this throws on a missing tenant: a named
+ * error beats a not-null violation surfacing from Postgres.
+ */
+function withWorkspace(values: Record<string, unknown>, tenant?: AgentTaskTenantFields) {
+  return { ...values, ...workspaceScopeFields(tenant) };
 }

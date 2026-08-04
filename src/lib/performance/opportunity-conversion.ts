@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { buildOpportunityConversion, type OpportunityConversion, type OpportunityConversionFact } from "@/domain";
 import { getCurrentOrgId } from "@/lib/auth/org";
+import { notConfigured } from "@/lib/observability/unavailable";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { resolveTenantReadHandle } from "@/lib/supabase/tenant-client";
 
@@ -16,6 +17,8 @@ import { resolveTenantReadHandle } from "@/lib/supabase/tenant-client";
 export type OpportunityConversionReadModel =
   | { status: "live"; conversion: OpportunityConversion; windowDays: number }
   | { status: "empty" }
+  /** No backend configured — an answer, not an outage. See `notConfigured`. */
+  | { status: "not_configured" }
   | { status: "unavailable" };
 
 type OppRow = {
@@ -35,7 +38,10 @@ export async function getOpportunityConversion(
   client?: SupabaseClient,
   windowDays = 90,
 ): Promise<OpportunityConversionReadModel> {
-  if (!client && !isSupabaseAdminConfigured()) return { status: "unavailable" };
+  // Not an outage: there is no database to ask. Reporting this as a failed read
+  // put a red "Some analytics couldn't load" banner on every backend-less
+  // preview, naming a query that had never run.
+  if (!client && !isSupabaseAdminConfigured()) return notConfigured();
 
   const { client: db, orgId: handleOrgId } = client ? { client, orgId: null } : await resolveTenantReadHandle();
   const resolvedOrgId = orgId ?? handleOrgId ?? (await getCurrentOrgId());
@@ -60,6 +66,13 @@ export async function getOpportunityConversion(
       db.from("approval_items").select("campaign_id").eq("org_id", resolvedOrgId).eq("status", "approved").in("campaign_id", campaignIds),
       db.from("campaign_results").select("campaign_id, jobs, won_revenue_cents").in("campaign_id", campaignIds),
     ]);
+    // These three decide which opportunities count as approved and booked, so a
+    // failed read here does not thin the data — it reports that NOTHING
+    // converted (BSR-575). On the analytics surface that reads as a real result
+    // an operator would act on, and it is the same `unavailable` the primary
+    // opportunities read above already returns for its own failure.
+    if (camps.error || appr.error || results.error) return { status: "unavailable" };
+
     for (const c of (camps.data ?? []) as { id: string; status: string }[]) {
       if (APPROVED_CAMPAIGN_STATUSES.has(c.status)) approved.add(c.id);
     }

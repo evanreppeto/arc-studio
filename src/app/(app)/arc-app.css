@@ -77,11 +77,26 @@
   .arc-app .page-enter { animation: none; }
 }
 
+/* The single <main> landmark (app-shell.tsx) sits between .main and .page-enter.
+   It has to be the same transparent flex passthrough they are: with no rule it
+   is a block box that sizes to its content, which breaks the chain of bounded
+   heights .app depends on. Every page taller than the viewport was then clipped
+   by .app's `overflow: hidden` with no way to scroll to the rest — a page root
+   measured 7450px inside a 100vh box. Height must stay bounded from .app all
+   the way down to each page's own scroll container. */
+.arc-app #main-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .arc-app {
   /* mockup var names → app tokens / fonts */
   --canvas: #16161a; --canvas-deep: #101013; --panel: #1c1c21; --inset: #202027; --raised: #26262d; --sidebar: #121316;
   --line: rgba(232, 224, 205, 0.08); --line-2: rgba(232, 224, 205, 0.12); --line-3: rgba(232, 224, 205, 0.20);
-  --text: #f2eee4; --text-2: #b8b4aa; --muted: #777c80;
+  --text: #f2eee4; --text-2: #b8b4aa; --muted: #8a8f93;
   /* --accent* intentionally inherit from html[data-accent] (globals.css) so the
      Appearance setting re-skins the whole shell. Do not re-pin them here. */
   --ok: #7fb89a; --ok-soft: rgba(127, 184, 154, 0.14); --ok-text: #a3d0b8; --ok-border: rgba(127, 184, 154, 0.4);
@@ -93,7 +108,12 @@
   background: var(--canvas); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 
-  & .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100vh; overflow: hidden; }
+  /* 100dvh, not 100vh: on a mobile browser 100vh is the viewport with the
+     address bar *retracted*, so the box is taller than what you can see. Paired
+     with `overflow: hidden` that clips the bottom strip with no way to reach it
+     — the same failure the <main> passthrough rule above fixes, phone-only. The
+     100vh line stays as the fallback for anything without dvh support. */
+  & .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
 
   /* Embedded in the mockup gallery's crossfade iframe: the host already renders
      the sidebar, so drop ours (otherwise the two rails stack — the double
@@ -168,12 +188,51 @@
   & .rail-recents-head h2 { margin: 0; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); font: 600 10.5px/1.4 var(--sans); letter-spacing: 0.11em; text-transform: uppercase; }
   & .rail-recents-head a { color: var(--muted); font-size: 10.5px; font-weight: 600; text-decoration: none; transition: color 0.15s var(--ease); }
   & .rail-recents-head a:hover { color: var(--accent); }
+  /* "New" reads as an action, not a caption: a bordered chip with a plus, sized
+     to stay quieter than the nav rows above it. */
+  & .rail-recents-new { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border: 1px solid var(--line-2); border-radius: 6px; transition: color 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease); }
+  & .rail-recents-new svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.1; stroke-linecap: round; }
+  & .rail-recents-head a.rail-recents-new:hover { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
   & .rail-recents-list { display: grid; gap: 1px; }
   & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: 7px; color: var(--text-2); text-decoration: none; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
   & .rail-recent:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
+  /* The chat you're reading, marked the same way the rail marks the page you're
+     on — otherwise /arc is the one destination that never says where you are. */
+  & .rail-recent.on { color: var(--text); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); }
+  & .rail-recent.on .rail-recent-title { font-weight: 600; }
   & .rail-recent-dot { width: 5px; height: 5px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 72%, var(--muted)); opacity: 0.72; }
+  & .rail-recent.on .rail-recent-dot { background: var(--accent); opacity: 1; }
   & .rail-recent-title { min-width: 0; overflow: hidden; font-size: 11.5px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
   & .rail-recent time { color: var(--muted); font: 500 9.5px/1 var(--mono); }
+  /* An Arc run in flight. The rail is on every screen, so this is how work
+     started in a chat stays visible after you navigate away from it. */
+  & .rail-recent.working .rail-recent-dot { background: var(--accent); opacity: 1; }
+  & .rail-recent-working { color: var(--accent); font: 600 9.5px/1 var(--mono); letter-spacing: 0.04em; }
+  @media (prefers-reduced-motion: no-preference) {
+    & .rail-recent.working .rail-recent-dot { animation: arcBreathe 2.2s var(--ease) infinite; }
+  }
+  /* The row is a link plus an options button, so the wrapper positions the menu
+     without the button living inside the anchor. */
+  & .rail-recent-wrap { position: relative; display: block; }
+  & .rail-recent-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  & .rail-recent-campaign { color: var(--muted); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .rail-recent-more { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: var(--panel); color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
+  & .rail-recent-wrap:hover .rail-recent-more, & .rail-recent-more[aria-expanded="true"] { display: inline-flex; }
+  & .rail-recent-more:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+  & .rail-recent-menu { position: absolute; top: calc(100% - 2px); right: 4px; z-index: 60; min-width: 152px; padding: 4px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); display: grid; gap: 1px; }
+  & .rail-recent-menu button { width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
+  & .rail-recent-menu button:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+  & .rail-recent-menu button.danger:hover { color: var(--red-text); background: var(--red-soft); }
+  /* A campaign that owns two or more chats. Collapsible, open by default —
+     closing it is the operator tidying, not a state we choose for them. */
+  & .rail-recent-group { display: grid; gap: 1px; }
+  & .rail-recent-group > summary { display: flex; align-items: center; gap: 6px; padding: 4px 5px; border-radius: 6px; color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; list-style: none; }
+  & .rail-recent-group > summary::-webkit-details-marker { display: none; }
+  & .rail-recent-group > summary::before { content: "\25B8"; font-size: 8px; transition: transform 0.15s var(--ease); }
+  & .rail-recent-group[open] > summary::before { transform: rotate(90deg); }
+  & .rail-recent-group > summary:hover { color: var(--text-2); background: rgba(255, 255, 255, 0.03); }
+  & .rail-recent-group .rail-recent-count { margin-left: auto; font: 500 9px/1 var(--mono); }
+  & .rail-recent-group .rail-recent-wrap { padding-left: 10px; }
   & .rail-recents-empty { margin: 0; padding: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; }
   & .nav-more { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding: 7px 10px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; transition: color 0.15s var(--ease); }
   & .nav-more:hover { color: var(--text-2); }
@@ -217,7 +276,11 @@
   /* body */
   & .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   & .top { display: flex; align-items: center; gap: 14px; padding: 11px 22px; border-bottom: 1px solid var(--line-2); background: color-mix(in srgb, var(--canvas-deep) 60%, transparent); }
-  & .top .crumb { font-size: 13px; font-weight: 600; }
+  /* The de-facto page title, and now the literal one: this is the app's single
+     h1 on every route (BSR-631). font-family and letter-spacing are pinned
+     because the global `h1, h2, h3` rule would otherwise swap it to the serif
+     display face — the tag change has to be semantic only, not visual. */
+  & .top .crumb { font-size: 13px; font-weight: 600; font-family: inherit; letter-spacing: normal; }
 
   /* Mobile nav affordances — inert on desktop (the rail is docked). The
      hamburger and backdrop only become visible/active inside the shell
@@ -233,6 +296,41 @@
   & .topav { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 12px; overflow: hidden; }
   & .topavbtn { flex-shrink: 0; padding: 0; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
   & .topavbtn:hover { border-color: var(--accent-border); background: var(--raised); }
+
+  /* Off-screen until focused, then it lands over the header where it is
+     obviously the thing you just reached. */
+  & .skip-link {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 200;
+    border: 1px solid var(--accent-border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--text);
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transform: translateY(-200%);
+    transition: transform var(--arc-fast, 0.15s) ease;
+  }
+  & .skip-link:focus-visible { transform: translateY(0); }
+  & main:focus { outline: none; }
+
+  /* Every focusable thing inside the shell gets a visible focus ring.
+     This list covered the shell's own chrome and stopped there, so page-level
+     controls — the Analytics view tabs, the range picker, the gold action
+     buttons — had no focus indicator at all. Measured: 10 of 29 controls on
+     /analytics matched no :focus-visible rule.
+
+     `:where()` keeps this at zero specificity, so it is a floor rather than an
+     override: any element with a deliberate focus treatment still wins, and
+     nothing below has to be rewritten. */
+  & :where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 
   & .nav:focus-visible,
   & .rail-recents a:focus-visible,
@@ -267,13 +365,40 @@
 
   & .scroll { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr) 312px; }
   & .content { min-width: 0; padding: 26px 30px 48px 34px; }
-  & .content > * { animation: arcRise 0.5s var(--ease) both; }
+  /* Gated, like every other entrance in this sheet. This one was ungated: it
+     animates *every* top-level child of the content column on *every* page, so
+     it was the one piece of motion a reduced-motion user could not escape.
+     `no-preference` rather than a `reduce` override, to match `.arc-grid`. */
+  @media (prefers-reduced-motion: no-preference) {
+    & .content > * { animation: arcRise 0.5s var(--ease) both; }
+  }
   & .col-r { border-left: 1px solid var(--line); padding: 26px 24px 48px; background: color-mix(in srgb, var(--canvas-deep) 22%, transparent); }
 
   & .date { font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: 0.02em; }
-  & h1.greet { font-family: var(--serif); font-weight: 500; font-size: 33px; line-height: 1.02; letter-spacing: -0.02em; margin: 10px 0 9px; }
+  & h2.greet { font-family: var(--serif); font-weight: 500; font-size: 33px; line-height: 1.02; letter-spacing: -0.02em; margin: 10px 0 9px; }
   & .subline { font-size: 13px; color: var(--text-2); }
   & .subline .dot { color: var(--line-3); margin: 0 8px; }
+
+  /* first-run setup checklist — shown only until the workspace has records
+     and the owner finishes or dismisses it */
+  & .setup { margin-top: 22px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 38%, var(--panel)), var(--panel)); padding: 18px 20px; }
+  & .setup-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  & .setup-sub { margin: 7px 0 0; font-size: 13px; color: var(--text-2); max-width: 56ch; }
+  & .setup-meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  & .setup-count { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  & .setup-x { background: none; border: 0; padding: 0; font-size: 12px; color: var(--muted); cursor: pointer; transition: color 140ms var(--ease); }
+  & .setup-x:hover { color: var(--text-1); }
+  & .setup-steps { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; }
+  & .setup-step { display: flex; align-items: flex-start; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
+  & .setup-step:first-child { border-top: 0; padding-top: 4px; }
+  & .setup-tick { width: 17px; height: 17px; margin-top: 1px; border-radius: 50%; border: 1px solid var(--line-3); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--on-accent); }
+  & .setup-step.done .setup-tick { background: var(--accent); border-color: var(--accent); }
+  & .setup-step.done .setup-title { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-3); }
+  & .setup-body { flex: 1; min-width: 0; }
+  & .setup-title { font-size: 13.5px; font-weight: 600; color: var(--text-1); display: flex; align-items: center; gap: 8px; }
+  & .setup-req { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 999px; padding: 1px 6px; }
+  & .setup-why { margin: 5px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text-2); max-width: 62ch; }
+  & .setup-step .btn { flex-shrink: 0; align-self: center; }
 
   /* focal */
   & .focal { margin-top: 22px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 50%, var(--panel)), var(--panel)); padding: 18px 20px; box-shadow: 0 18px 50px -34px rgba(0, 0, 0, 0.9); }
@@ -316,17 +441,8 @@
   & .chip { display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); font-size: 10.5px; color: var(--text-2); max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   & .ago { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 46px; text-align: right; }
 
-  /* metric strip */
-  & .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 11px; overflow: hidden; margin-top: 26px; }
-  & .metric { background: color-mix(in srgb, var(--panel) 82%, var(--canvas)); padding: 14px 16px; }
-  & .metric .ml { font-size: 10.5px; color: var(--muted); font-weight: 500; }
-  & .metric .mrow { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: 7px; }
-  & .metric .mv { font-size: 23px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-  & .metric .delta { font-family: var(--mono); font-size: 10.5px; margin-top: 5px; color: var(--ok-text); }
-  & .metric .delta.dn { color: var(--red-text); }
-  & .metric .delta.flat { color: var(--muted); }
-  & .metric .spark { margin-top: 9px; }
-  & .metric .spark svg { display: block; width: 100%; height: 22px; }
+  /* The KPI strip moved out of Home's block and is now app-wide — see the
+     `.kpistrip` section further down (BSR-658). */
 
   /* opportunities */
   & .opps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
@@ -422,10 +538,9 @@
     & .content { padding: 20px 16px 40px; }
     & .col-r { border-left: 0; border-top: 1px solid var(--line); padding: 22px 16px 40px; }
     & .opps { grid-template-columns: 1fr; }
-    & .metrics { grid-template-columns: 1fr; }
 
     /* Home hero + section headers scale down so nothing overflows. */
-    & h1.greet { font-size: 27px; }
+    & h2.greet { font-size: 27px; }
     & .focal { padding: 16px 15px; }
     /* Focal top row: let the title own its own line; citations + confidence
        wrap beneath it instead of colliding with the wrapping headline. */
@@ -439,6 +554,119 @@
     & .task .chip { display: none; }
     & .task .ago { width: auto; white-space: nowrap; }
   }
+}
+
+/* ============================================================
+   Definitions + explainers (BSR-659).
+
+   The app invents words — Confidence, Lead score, Arc-ready,
+   Trusted — and none of them was defined anywhere. The affordance
+   is deliberately quiet: it must not compete with the number it
+   annotates, and it must never be the loudest thing in a row.
+   ============================================================ */
+/* Evidence chips became focusable so their fact is reachable without a mouse
+   (BSR-670). */
+.arc-app .cite:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.arc-app .define {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  margin-left: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: help;
+  vertical-align: middle;
+  transition: color .14s, border-color .14s;
+}
+.arc-app .define:hover,
+.arc-app .define:focus-visible { color: var(--accent-contrast); border-color: var(--accent-border); outline: none; }
+
+.arc-app .howworks { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); padding: 16px 18px; }
+.arc-app .howworks h2 { font-family: var(--serif); font-size: 15px; font-weight: 500; color: var(--text); margin: 0 0 8px; }
+.arc-app .howworks p { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 0 0 8px; max-width: 68ch; }
+.arc-app .howworks p:last-child { margin-bottom: 0; }
+.arc-app .howworks b { color: var(--text); font-weight: 600; }
+
+/* ============================================================
+   KPI strip — ONE implementation, app-wide (BSR-658).
+
+   Replaces `.metrics`, `.okpis`, `.kpis`, `.asum`, `.pstats`,
+   `.bstats` and `.jr-kpis`: seven hand-rolled grids, six of them an
+   equal `repeat(N, 1fr)` row that DESIGN.md §5 and the Calm
+   Principles both ban in bold, and one shared component that only
+   CRM used.
+
+   The layout is asymmetric by design — the first metric is the lead
+   and takes ~1.5x the width. That is the whole reason equal rows are
+   banned: an equal row says every number matters the same, which is
+   never true. Four cells is the intent, five the ceiling.
+   ============================================================ */
+.arc-app .kpistrip {
+  display: grid;
+  gap: 1px;
+  background: var(--line-2);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.arc-app .kpistrip[data-count="2"] { grid-template-columns: 1.5fr 1fr; }
+.arc-app .kpistrip[data-count="3"] { grid-template-columns: 1.5fr 1fr 1fr; }
+.arc-app .kpistrip[data-count="4"] { grid-template-columns: 1.5fr 1fr 1fr 1fr; }
+.arc-app .kpistrip[data-count="5"] { grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; }
+
+/* Per-page spacing only — the strip itself owns no outer margin. */
+.arc-app .arc-outbox .kpistrip.okpis { margin: 12px clamp(20px, 2.6vw, 30px) 0; flex-shrink: 0; }
+.arc-app .arc-personas .kpistrip.pstats { margin-top: 16px; animation: personasHeaderIn .5s cubic-bezier(.16, 1, .3, 1) both; }
+.arc-app .arc-brain .kpistrip.bstats { margin-top: 16px; }
+.arc-app .journeys .kpistrip.jr-kpis { margin-bottom: 16px; }
+.arc-app .arc-personas .kpistrip.perfgrid { flex: 1; margin-top: 2px; }
+.arc-app .kpistrip { margin-top: 16px; }
+
+.arc-app .kpicell {
+  min-width: 0;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--panel) 82%, var(--canvas));
+}
+/* Gold = needs you, green = healthy. Never red: a KPI is a fact, not a
+   destructive control (DESIGN.md §4.2). */
+.arc-app .kpicell.attention { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.arc-app .kpicell.ok .kpivalue { color: var(--ok-text); }
+
+.arc-app .kpicell .kpilabel { font-size: 10.5px; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-app .kpicell .kpirow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 7px; min-width: 0; }
+.arc-app .kpicell .kpivalue { font-family: var(--serif); font-size: 23px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+.arc-app .kpicell .kpivalue.is-empty { color: var(--muted); }
+.arc-app .kpicell .kpidelta { font-family: var(--mono); font-size: 10.5px; color: var(--ok-text); white-space: nowrap; }
+.arc-app .kpicell .kpidelta.dn { color: var(--red-text); }
+.arc-app .kpicell .kpidelta.flat { color: var(--muted); }
+.arc-app .kpicell .kpispark { margin-top: 9px; }
+.arc-app .kpicell .kpispark svg { display: block; width: 100%; height: 22px; }
+.arc-app .kpicell .kpisub { margin-top: 6px; font-size: 10.5px; line-height: 1.35; color: var(--muted); }
+/* The needs-setup line is a sentence the user can act on, so it wraps rather
+   than truncating like an ordinary sublabel. */
+.arc-app .kpicell .kpisub.is-hint { color: var(--text-3, var(--muted)); }
+
+@media (max-width: 900px) {
+  .arc-app .kpistrip[data-count="4"],
+  .arc-app .kpistrip[data-count="5"] { grid-template-columns: 1.3fr 1fr; }
+  .arc-app .kpistrip[data-count="3"] { grid-template-columns: 1.3fr 1fr; }
+}
+@media (max-width: 560px) {
+  .arc-app .kpistrip[data-count] { grid-template-columns: 1fr 1fr; }
+  .arc-app .kpicell { padding: 11px 12px; }
+  .arc-app .kpicell .kpivalue { font-size: 19px; }
+}
+/* An odd cell count leaves a dead half-row at the end of a two-column layout —
+   the last cell takes the full width instead. */
+@media (max-width: 900px) {
+  .arc-app .kpicell:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 
 /* ============================================================
@@ -460,7 +688,7 @@
   min-width: 0;
 }
 .arc-app .arc-grid .chrow { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
-.arc-app .arc-grid h1.ct { font-family: var(--serif); font-weight: 500; font-size: 29px; letter-spacing: -.02em; margin: 0; color: var(--text); }
+.arc-app .arc-grid h2.ct { font-family: var(--serif); font-weight: 500; font-size: 29px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-grid .csub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 .arc-app .arc-grid .chrow .sp { margin-left: auto; display: flex; gap: 9px; align-items: center; }
 .arc-app .arc-grid .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; text-decoration: none; }
@@ -515,6 +743,18 @@
 .arc-app .arc-grid .pav { width: 32px; height: 32px; border-radius: 8px; background: var(--inset); border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; font-family: var(--serif); font-weight: 600; font-size: 12.5px; }
 .arc-app .arc-grid .pav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-app .arc-grid .pav.co { font-size: 11px; color: var(--text-2); }
+/* Campaign rows carry the package's own creative in the avatar slot. Scoped to
+   this board on purpose — the other .arc-grid tables have no media to show. */
+.arc-app .arc-campaigns .pav { position: relative; width: 40px; height: 40px; border-radius: 9px; overflow: visible; }
+.arc-app .arc-campaigns .pav.hasthumb { background: var(--canvas-deep, #101013); }
+.arc-app .arc-campaigns .pavimg { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+/* Not a notification count — it says "this package has more creative than the
+   one frame you can see". */
+.arc-app .arc-campaigns .pavn {
+  position: absolute; right: -5px; bottom: -5px; min-width: 16px; height: 16px; padding: 0 4px;
+  display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line-2);
+  background: var(--panel); color: var(--text-2); font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+}
 .arc-app .arc-grid .pnm { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; max-width: 210px; }
 .arc-app .arc-grid .psub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; max-width: 210px; }
 .arc-app .arc-grid .dt td:first-child { width: 34%; }
@@ -594,8 +834,98 @@
 
 @media (max-width: 900px) {
   .arc-app .arc-grid { padding: 18px 16px 0; }
-  .arc-app .arc-grid .dt td:nth-child(5),
-  .arc-app .arc-grid .dt th:nth-child(5) { display: none; }
+  .arc-app .arc-campaigns .dt td:nth-child(5),
+  .arc-app .arc-campaigns .dt th:nth-child(5) { display: none; }
+}
+
+/* ---- Phone: the data tables become stacked cards (BSR-662) ----------------
+   Below this width the desktop table shipped unchanged and scrolled sideways,
+   so STATUS clipped mid-word ("In reviev") and NEXT ACTION — the column that
+   says what to do — sat entirely off-screen behind a horizontal gesture with a
+   hairline scrollbar as its only affordance. Approving from a phone between
+   jobs is the core loop for an owner-operator, so the answer to "what needs me"
+   cannot be the one thing you have to swipe to find.
+
+   Done in CSS alone, deliberately: adding a wrapper element to group the meta
+   cells would be a DOM change, and an unstyled wrapper from the a11y pass is
+   exactly what broke scrolling on every screen for two weeks. `tr::after` gives
+   us the line break with no new elements.
+
+   Column order is the contract here. Campaigns is a fixed six (name, status,
+   next action, audience, channels, updated) so it keys off nth-child; CRM's
+   columns vary per object, so it keys off the stable positions (select first,
+   primary second, actions last) and lets everything else flow into the meta
+   line. Changing either column order means revisiting this block. */
+@media (max-width: 640px) {
+  /* The page stops being a fixed-height flex column and becomes one scrolling
+     column. `.tablewrap` flexes to fill leftover height, and on a phone the
+     chrome above it (KPI strip, object tabs, two rows of filters) eats the whole
+     viewport — CRM's table computed to SEVEN pixels tall with all seven rows
+     rendered inside it. The rows were there the whole time; there was simply no
+     room. `.app` is still the 100dvh/overflow-hidden ancestor, so this moves the
+     scroll to `.arc-grid` rather than adding a second scrolling box. */
+  .arc-app .arc-grid { overflow-y: auto; padding-bottom: 16px; }
+  /* Every child keeps its natural height and the page scrolls. Without this the
+     column is still a fixed height and flex-shrink just picks a different victim
+     — first the table (7px tall, all rows inside it), then, once the table was
+     pinned, the KPI strip (2px: its two borders, nothing else). Whoever is last
+     to be given `flex: none` is the one that survives, which is not a layout
+     rule, it is a race. */
+  .arc-app .arc-grid > * { flex-shrink: 0; }
+  .arc-app .arc-grid .tablewrap { flex: none; min-height: 0; overflow: visible; }
+  .arc-app .arc-grid .tablewrap { overflow-x: hidden; }
+  .arc-app .arc-grid .dt,
+  .arc-app .arc-grid .dt tbody,
+  .arc-app .arc-grid .dt tr,
+  .arc-app .arc-grid .dt td { display: block; }
+
+  /* The header row has nowhere to go once cells stack; each card carries its
+     own meaning instead. Hidden, not removed, so it stays in the a11y tree. */
+  .arc-app .arc-grid .dt thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  .arc-app .arc-grid .dt tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px 10px;
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .arc-app .arc-grid .dt tbody td { padding: 0; border-bottom: none; }
+  /* Line break between the card's headline row and its meta row. */
+  .arc-app .arc-grid .dt tbody tr::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+  .arc-app .arc-grid .dt tbody td { order: 5; flex: 0 0 auto; }
+
+  /* Names stop truncating at a desktop column width they no longer sit in. */
+  .arc-app .arc-grid .dt td:first-child { width: auto; }
+  .arc-app .arc-grid .pnm,
+  .arc-app .arc-grid .psub { max-width: none; white-space: normal; }
+  .arc-app .arc-grid .psub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* Campaigns, three lines:
+       [avatar  name                        ]
+       [Approve 2 assets        · Needs you ]
+       [New lead                    13d ago ]
+     The title owns its own line rather than splitting ~100px with the status
+     pill, and the second line pairs what to do with what state — the two things
+     a phone-sized glance is actually for. */
+  .arc-app .arc-campaigns .dt tbody td:nth-child(1) { order: 1; flex: 1 1 100%; min-width: 0; }
+  .arc-app .arc-campaigns .dt tbody td:nth-child(3) { order: 2; flex: 1 1 0; min-width: 0; }
+  .arc-app .arc-campaigns .dt tbody td:nth-child(2) { order: 3; margin-left: auto; }
+  .arc-app .arc-campaigns .dt tbody td:nth-child(4) { order: 5; }
+  .arc-app .arc-campaigns .dt tbody td:nth-child(6) { order: 6; margin-left: auto; }
+  .arc-app .arc-campaigns .dt tbody .nx { font-weight: 600; color: var(--text); }
+  .arc-app .arc-campaigns .dt td:nth-child(5) { display: none; }
+
+  /* CRM: [✓ name ........ ›] / [persona · status · last activity · …] */
+  .arc-app .arc-crm .dt tbody td.cselect { order: 1; width: auto; padding-left: 0; }
+  .arc-app .arc-crm .dt tbody td:nth-child(2) { order: 2; flex: 1 1 0; min-width: 0; }
+  .arc-app .arc-crm .dt tbody td.cact { order: 2; margin-left: auto; }
+
+  /* The empty / error row is one message, not a card. */
+  .arc-app .arc-grid .dt .emptyrow { display: block; padding: 0; }
+  .arc-app .arc-grid .dt .emptyrow td { order: 0; padding: 30px 16px; }
+  .arc-app .arc-grid .dt .emptyrow::after { content: none; }
 }
 
 /* ============================================================
@@ -605,7 +935,6 @@
    ============================================================ */
 .arc-app .arc-outbox {
   --blue-soft: rgba(136, 182, 216, .14);
-  --vio-text: #cdbbe6;
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -623,13 +952,6 @@
 .arc-app .arc-outbox .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
 /* KPI strip */
-.arc-app .arc-outbox .okpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; margin: 12px clamp(20px, 2.6vw, 30px) 0; flex-shrink: 0; }
-.arc-app .arc-outbox .kpi { border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); padding: 11px 13px; }
-.arc-app .arc-outbox .kpi .kv { font-family: var(--serif); font-weight: 500; font-size: 22px; letter-spacing: -.02em; line-height: 1; color: var(--text); }
-.arc-app .arc-outbox .kpi .kl { font-size: 11px; color: var(--text-2); margin-top: 5px; font-weight: 500; }
-.arc-app .arc-outbox .kpi .ks { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
-.arc-app .arc-outbox .kpi.alert { border-color: var(--accent-border); background: linear-gradient(180deg, var(--accent-soft), transparent); }
-.arc-app .arc-outbox .kpi.alert .kv { color: var(--accent-contrast); }
 
 /* tabbar: view tabs + channel filters */
 .arc-app .arc-outbox .tabbar { position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 12px; padding: 14px clamp(20px, 2.6vw, 30px) 0; border-bottom: 1px solid var(--line-2); flex-shrink: 0; flex-wrap: wrap; background: var(--canvas); }
@@ -674,7 +996,7 @@
 .arc-app .arc-outbox .chip-ch svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-app .arc-outbox .ch-email { background: var(--accent-soft); color: var(--accent); }
 .arc-app .arc-outbox .ch-sms { background: var(--blue-soft); color: var(--blue-text); }
-.arc-app .arc-outbox .ch-social { background: rgba(150, 120, 200, .16); color: var(--vio-text); }
+.arc-app .arc-outbox .ch-social { background: var(--slate-soft); color: var(--slate-text); }
 .arc-app .arc-outbox .own-agent { background: var(--accent-soft); color: var(--accent); }
 .arc-app .arc-outbox .own-human { background: var(--blue-soft); color: var(--blue-text); }
 .arc-app .arc-outbox .own-system { background: var(--inset); color: var(--muted); }
@@ -741,6 +1063,11 @@
 
 /* action row: cancel alongside the primary action */
 .arc-app .arc-outbox .card .cactions { display: flex; gap: 8px; margin-top: 10px; }
+/* Taking a queued send out is destructive on the one screen that reaches real
+   people, so it asks first rather than firing on a single ambiguous click. */
+.arc-app .arc-outbox .card .ccancelconfirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; font-size: 11px; color: var(--text-2); }
+.arc-app .arc-outbox .card .ccancelconfirm > span:first-child { flex: 1 1 100%; }
+.arc-app .arc-outbox .card .ccancel.is-confirm { border-color: var(--priority); color: var(--priority); }
 .arc-app .arc-outbox .card .cactions .caction { margin-top: 0; flex: 1; }
 .arc-app .arc-outbox .card button.ccancel { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; transition: .14s; }
 .arc-app .arc-outbox .card button.ccancel:hover { color: var(--text-2); border-color: var(--line-3); }
@@ -749,8 +1076,10 @@
 .arc-app .arc-outbox .card button.caction.ghost:hover { border-color: var(--accent-border); color: var(--text); }
 
 @media (max-width: 900px) {
-  .arc-app .arc-outbox .okpis { grid-template-columns: repeat(4, minmax(146px, 1fr)); overflow-x: auto; scrollbar-width: none; }
-  .arc-app .arc-outbox .okpis::-webkit-scrollbar { display: none; }
+  /* Two rows of two, not four in a hidden side-scroll. This used to be
+     `overflow-x: auto` with `scrollbar-width: none`, so on a phone two of the
+     four counts — including anything failed — were off-screen with no visual
+     cue they existed at all (BSR-662). */
   .arc-app .arc-outbox .tabbar { flex-wrap: nowrap; }
   .arc-app .arc-outbox .ofilters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .arc-app .arc-outbox .ofilters::-webkit-scrollbar { display: none; }
@@ -765,10 +1094,6 @@
   .arc-app .arc-outbox .ohead { padding-top: 10px; }
   .arc-app .arc-outbox .pt { font-size: 24px; }
   .arc-app .arc-outbox .gbtn { height: 30px; padding-inline: 11px; }
-  .arc-app .arc-outbox .okpis { margin-top: 9px; gap: 8px; }
-  .arc-app .arc-outbox .kpi { padding: 8px 11px; }
-  .arc-app .arc-outbox .kpi .kv { font-size: 19px; }
-  .arc-app .arc-outbox .kpi .kl { margin-top: 3px; }
   .arc-app .arc-outbox .tabbar { margin-top: 9px; }
   .arc-app .arc-outbox .oq { padding-top: 11px; gap: 16px; }
 }
@@ -807,15 +1132,6 @@
 .arc-app .arc-analytics .tg.wired { color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); }
 .arc-app .arc-analytics .tg.sync { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); }
 
-.arc-app .arc-analytics .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line-2); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; }
-.arc-app .arc-analytics .kpi { background: var(--panel); padding: 14px 16px; }
-.arc-app .arc-analytics .kpi .kl { font-size: 10.5px; color: var(--muted); font-weight: 500; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.arc-app .arc-analytics .kpi .kv { font-family: var(--serif); font-weight: 500; font-size: 25px; letter-spacing: -.02em; margin-top: 6px; color: var(--text); }
-.arc-app .arc-analytics .kpi .kp { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 4px; }
-.arc-app .arc-analytics .kpi .kd { font-family: var(--mono); font-size: 10.5px; margin-top: 5px; display: flex; align-items: center; gap: 5px; }
-.arc-app .arc-analytics .kpi .kd.up { color: var(--ok-text); }
-.arc-app .arc-analytics .kpi .kd.dn { color: var(--red-text); }
-.arc-app .arc-analytics .kpi .kd.flat { color: var(--muted); }
 
 /* trend panel + metric toggle + legend */
 .arc-app .arc-analytics .panel { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); margin-top: 20px; overflow: hidden; }
@@ -937,8 +1253,6 @@
 .arc-app .arc-analytics .cit b { color: var(--accent-contrast); }
 
 /* activity feed */
-.arc-app .arc-analytics .asum { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-2); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
-.arc-app .arc-analytics .asum .kpi { background: var(--panel); padding: 13px 15px; }
 .arc-app .arc-analytics .aday { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 16px 2px 8px; }
 .arc-app .arc-analytics .arow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 14px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); margin-bottom: 8px; }
 .arc-app .arc-analytics .arow .adot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
@@ -949,7 +1263,6 @@
 .arc-app .arc-analytics .arow .atime { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; }
 
 @media (max-width: 900px) {
-  .arc-app .arc-analytics .kpis, .arc-app .arc-analytics .asum { grid-template-columns: repeat(2, 1fr); }
   .arc-app .arc-analytics .grid2 { grid-template-columns: 1fr; }
 }
 
@@ -963,17 +1276,12 @@
 /* persona command header — title, stat cards, Arc-drafts banner (ported from build-personas.html) */
 .arc-app .arc-personas .phead { padding: 20px clamp(22px, 3vw, 38px) 0; flex-shrink: 0; }
 .arc-app .arc-personas .ph1row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-.arc-app .arc-personas h1.pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
+.arc-app .arc-personas h2.pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-personas .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; max-width: 60ch; white-space: normal; }
 .arc-app .arc-personas .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; }
 .arc-app .arc-personas .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-personas .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-personas .phead .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; white-space: nowrap; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
-.arc-app .arc-personas .pstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-2); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; margin-top: 16px; animation: personasHeaderIn .5s cubic-bezier(.16, 1, .3, 1) both; }
-.arc-app .arc-personas .pstat { background: var(--panel); padding: 13px 16px; }
-.arc-app .arc-personas .pstat .sl { font-size: 10.5px; color: var(--muted); }
-.arc-app .arc-personas .pstat .sv { font-family: var(--serif); font-weight: 500; font-size: 23px; letter-spacing: -.02em; margin-top: 5px; color: var(--text); }
-.arc-app .arc-personas .pstat .sd { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-top: 3px; }
 .arc-app .arc-personas .arcalert { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(90deg, var(--accent-soft), transparent 70%); padding: 11px 14px; animation: personasHeaderIn .5s cubic-bezier(.16, 1, .3, 1) .08s both; }
 .arc-app .arc-personas .arcalert .am { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); color: var(--accent); font-size: 13px; flex-shrink: 0; }
 .arc-app .arc-personas .arcalert .at { font-size: 12.5px; color: var(--text-2); }
@@ -985,7 +1293,6 @@
 .arc-app .arc-personas .miniabtn.ghost:hover { color: var(--text-2); }
 @keyframes personasHeaderIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (max-width: 720px) {
-  .arc-app .arc-personas .pstats { grid-template-columns: repeat(2, 1fr); }
   /* Alert banner: let text keep its own lines and drop the action buttons to
      a full-width row beneath, instead of squeezing the copy to one word/line. */
   .arc-app .arc-personas .arcalert { flex-wrap: wrap; align-items: flex-start; }
@@ -1055,11 +1362,6 @@
 .arc-app .arc-personas .rdr { display: flex; gap: 8px; font-size: 10.5px; color: var(--text-2); line-height: 1.4; }
 .arc-app .arc-personas .rdr b { color: var(--text); font-weight: 600; width: 66px; flex-shrink: 0; }
 .arc-app .arc-personas .perfcard { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); padding: 14px 16px; display: flex; flex-direction: column; }
-.arc-app .arc-personas .perfgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 11px; overflow: hidden; flex: 1; margin-top: 2px; }
-.arc-app .arc-personas .pc { background: var(--panel); padding: 12px 14px; }
-.arc-app .arc-personas .pc .pl { font-size: 10.5px; color: var(--muted); }
-.arc-app .arc-personas .pc .pv { font-family: var(--serif); font-weight: 500; font-size: 21px; letter-spacing: -.02em; margin-top: 4px; color: var(--text); }
-.arc-app .arc-personas .pc .pd { font-family: var(--mono); font-size: 9px; color: var(--ok-text); margin-top: 2px; }
 @media (max-width: 900px) { .arc-app .arc-personas .dduo { grid-template-columns: 1fr; } }
 .arc-app .arc-personas .pbk { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; border: 1px solid var(--line-2); border-radius: 13px; overflow: hidden; background: var(--line-2); }
 .arc-app .arc-personas .pbi { background: var(--panel); padding: 14px 16px; }
@@ -1122,11 +1424,6 @@
 .arc-app .arc-brain .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; }
 .arc-app .arc-brain .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-brain .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
-.arc-app .arc-brain .bstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-2); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; margin-top: 16px; }
-.arc-app .arc-brain .bstat { background: var(--panel); padding: 13px 16px; }
-.arc-app .arc-brain .bstat .sl { font-size: 10.5px; color: var(--muted); }
-.arc-app .arc-brain .bstat .sv { font-family: var(--serif); font-weight: 500; font-size: 23px; letter-spacing: -.02em; margin-top: 5px; color: var(--text); }
-.arc-app .arc-brain .bstat .sd { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-top: 3px; }
 .arc-app .arc-brain .covbanner { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: 11px; background: var(--accent-soft); padding: 11px 14px; }
 .arc-app .arc-brain .covbanner svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 1.8; flex-shrink: 0; }
 .arc-app .arc-brain .covbanner .ct { font-size: 12.5px; color: var(--text-2); }
@@ -1173,8 +1470,15 @@
 .arc-app .arc-brain .ft tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 /* per-fact archive control — revealed on row hover, sits in a trailing cell */
 .arc-app .arc-brain .ft td.factact { width: 34px; text-align: right; padding-left: 0; }
-.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity 0.14s, color 0.14s, border-color 0.14s; }
-.arc-app .arc-brain .ft tbody tr:hover .farch { opacity: 1; }
+.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: opacity 0.14s, color 0.14s, border-color 0.14s; }
+/* Reveal-on-hover, but only where hovering exists. A touch screen never hovers,
+   so hiding it there left an invisible control that still accepted taps — worse
+   than a visible one. Guarding the *hide* (rather than overriding it back to 1
+   later) keeps the desktop behaviour identical and needs no source-order luck. */
+@media (hover: hover) {
+  .arc-app .arc-brain .ft .farch { opacity: 0; }
+  .arc-app .arc-brain .ft tbody tr:hover .farch { opacity: 1; }
+}
 .arc-app .arc-brain .ft .farch:hover { color: var(--text); border-color: var(--line-2); background: var(--inset); }
 .arc-app .arc-brain .ft .farch:focus-visible { opacity: 1; }
 .arc-app .arc-brain .ft .farch:disabled { opacity: 0.4; cursor: default; }
@@ -1226,7 +1530,6 @@
 .arc-app .arc-brain .empty { color: var(--muted); font-size: 13px; padding: 30px 4px; }
 
 @media (max-width: 900px) {
-  .arc-app .arc-brain .bstats { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* ── Knowledge Web graph (ported from build-brain.html) ── */
@@ -1360,6 +1663,22 @@
 .arc-app .fmenu-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .arc-app .fmenu-item.on { color: var(--accent); }
 .arc-app .fmenu-c { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* Footer link inside a filter menu — "where do these choices come from?". Ruled
+   off from the choices above it because it navigates away rather than filtering. */
+.arc-app .fmenu-foot {
+  display: block;
+  margin: 6px -6px -6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.arc-app .fmenu-foot:hover { color: var(--accent); background: rgba(255, 255, 255, 0.035); }
+.arc-app .fmenu-foot:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .arc-app .selbar { display: none; align-items: center; gap: 12px; height: 0; overflow: hidden; border: 1px solid var(--accent-border); border-radius: 9px; background: linear-gradient(180deg, var(--accent-soft), transparent); padding: 0 14px; margin-bottom: 0; transition: 0.18s var(--ease); }
 .arc-app .selbar.show { display: flex; height: 46px; margin-bottom: 11px; }
@@ -1370,6 +1689,11 @@
 .arc-app .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 5px 9px; border-radius: 7px; transition: 0.14s; border: none; background: none; font-family: inherit; }
 .arc-app .selbar .sa:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .arc-app .selbar .sa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+/* Not "coming soon" — "not applicable to what you have selected". This used
+   data-soon, so bulk-adding a COMPANY to a campaign popped a clock icon saying
+   a shipped feature was unbuilt. The capability exists; it just belongs to the
+   People tab (BSR-688). */
+.arc-app .selbar .sa.is-inapplicable { opacity: 0.45; cursor: default; }
 .arc-app .selbar .sa-wrap { position: relative; display: inline-flex; }
 .arc-app .selbar .sa-backdrop { position: fixed; inset: 0; z-index: 40; background: none; border: none; cursor: default; }
 .arc-app .selbar .sa-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; min-width: 200px; max-height: 300px; overflow-y: auto; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; gap: 1px; }
@@ -1387,7 +1711,10 @@
 .arc-app .pager .rpp { display: flex; align-items: center; gap: 7px; }
 .arc-app .pager select { background: var(--inset); border: 1px solid var(--line-2); border-radius: 7px; color: var(--text-2); font-family: inherit; font-size: 12px; padding: 4px 7px; cursor: pointer; }
 .arc-app .pager .pgbtn { width: 28px; height: 28px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: 0.14s; }
-.arc-app .pager .pgbtn:hover { border-color: var(--accent-border); color: var(--text); }
+.arc-app .pager .pgbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
+/* First/last page. Matches the Brain pager's disabled treatment so the two
+   pagers in the app read the same. */
+.arc-app .pager .pgbtn:disabled { opacity: 0.4; cursor: default; }
 .arc-app .pager .pgbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
 .arc-app .arc-grid .dt thead th.cselect, .arc-app .arc-grid .dt tbody td.cselect { width: 40px; padding-left: 16px; cursor: default; }
 .arc-app .arc-grid .dt thead th.cnum, .arc-app .arc-grid .dt tbody td.cnum { text-align: right; }
@@ -1429,11 +1756,14 @@
 .arc-app .arc-opps .orow .ot { font-size: 13px; font-weight: 600; letter-spacing: -.005em; display: flex; align-items: baseline; gap: 7px; }
 .arc-app .arc-opps .orow .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-app .arc-opps .orow .pct { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
-.arc-app .arc-opps .orow .om { font-size: 10.5px; color: var(--muted); margin-top: 3px; display: flex; align-items: center; gap: 7px; }
+/* The part of the title the row's short name cuts. Two live flood advisories over
+   different counties are otherwise two rows both reading "Flood Advisory". */
+.arc-app .arc-opps .orow .oq { font-size: 11px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-app .arc-opps .orow .om { font-size: 10.5px; color: var(--muted); margin-top: 5px; display: flex; align-items: center; gap: 7px; }
 .arc-app .arc-opps .orow .src { border: 1px solid var(--line-2); background: var(--inset); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; color: var(--text-2); }
 .arc-app .arc-opps .orow .stale { font-family: var(--mono); font-size: 9.5px; color: var(--muted); white-space: nowrap; }
 .arc-app .arc-opps .orow .ostat { border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; font-weight: 600; color: var(--accent-contrast); }
-.arc-app .arc-opps .odetail { min-width: 0; overflow: auto; padding: 30px clamp(22px, 3.2vw, 44px) 56px; }
+.arc-app .arc-opps .odetail { min-width: 0; overflow: auto; padding: 30px clamp(22px, 3.2vw, 44px) 56px; container-type: inline-size; container-name: oppdetail; }
 .arc-app .arc-opps .odetail .inner { max-width: 1000px; }
 .arc-app .arc-opps .metarow { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; flex-wrap: wrap; }
 .arc-app .arc-opps .tchip { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 11px; border: 1px solid var(--line-2); background: var(--inset); border-radius: 7px; font-size: 11px; color: var(--text-2); }
@@ -1447,17 +1777,28 @@
 .arc-app .arc-opps .dttl { font-family: var(--serif); font-weight: 500; font-size: clamp(1.5rem, 2.5vw, 2.05rem); line-height: 1.1; letter-spacing: -.018em; margin: 0; }
 .arc-app .arc-opps .opp-quick-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .arc-app .arc-opps .dgrid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 30px; margin-top: 24px; align-items: start; }
-@media (max-width: 1080px) { .arc-app .arc-opps .dgrid { grid-template-columns: 1fr; } }
+/* Two columns only while the detail pane is genuinely wide enough for two.
+   The rule this replaces was keyed to the VIEWPORT (max-width: 1080px), but the
+   pane is what has to fit the columns: the nav rail and the 362px inbox take
+   ~600px before the detail pane starts, so a 1280px laptop — the common case —
+   left the reading column 259px wide and the evidence values 35px, and the
+   viewport query never fired because 1280 > 1080. A container query asks the
+   question the layout actually depends on. */
+@container oppdetail (max-width: 760px) { .arc-app .arc-opps .dgrid { grid-template-columns: minmax(0, 1fr); gap: 22px; } }
 .arc-app .arc-opps .lab { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--muted); text-transform: uppercase; margin-bottom: 11px; }
 .arc-app .arc-opps .summary { font-size: 13.5px; color: var(--text-2); line-height: 1.6; margin: 0 0 4px; max-width: 68ch; }
 .arc-app .arc-opps .blk { margin-top: 26px; }
-.arc-app .arc-opps .evrow { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); cursor: pointer; transition: border-color .15s, transform .15s var(--ease); margin-bottom: 9px; }
-.arc-app .arc-opps .evrow:hover { border-color: var(--accent-border); transform: translateX(2px); }
-.arc-app .arc-opps .evrow .n { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; font-family: var(--mono); font-size: 10px; color: var(--accent); }
-.arc-app .arc-opps .evrow .es { font-size: 12.5px; font-weight: 600; }
-.arc-app .arc-opps .evrow .ed { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-.arc-app .arc-opps .evrow .go { color: var(--muted); font-size: 14px; }
-.arc-app .arc-opps .evrow:hover .go { color: var(--accent); }
+/* Evidence reads as a fact table: hairline rows, label left, value right. It was
+   a stack of numbered cards — nested panels inside the detail pane, numbered as
+   though the facts were steps, each with a pointer cursor and hover nudge for a
+   row nothing has ever been able to click. */
+.arc-app .arc-opps .evlist { margin: 0; max-width: 76ch; border-top: 1px solid var(--line-2); }
+/* Proportional, not a fixed 200px: the label must never starve the value it
+   labels, however narrow the pane gets. */
+.arc-app .arc-opps .evitem { display: grid; grid-template-columns: minmax(0, 0.42fr) minmax(0, 1fr); gap: 18px; align-items: baseline; padding: 11px 2px; border-bottom: 1px solid var(--line-2); }
+.arc-app .arc-opps .evitem dt { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.arc-app .arc-opps .evitem dd { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 620px) { .arc-app .arc-opps .evitem { grid-template-columns: minmax(0, 1fr); gap: 3px; } }
 .arc-app .arc-opps .recpanel { border: 1px solid var(--line-2); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent); padding: 18px 20px; }
 .arc-app .arc-opps .recpanel .rl { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--accent); text-transform: uppercase; }
 .arc-app .arc-opps .recpanel .rtxt { font-size: 13.5px; color: var(--text); line-height: 1.6; margin-top: 9px; }
@@ -1472,6 +1813,10 @@
 .arc-app .arc-opps .btn.ghost:hover { border-color: var(--line-3); color: var(--text); }
 .arc-app .arc-opps .btn:disabled { opacity: .6; cursor: default; transform: none; filter: none; }
 .arc-app .arc-opps .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; }
+/* Stacked under the content there is nothing to stick to, and sticky on the last
+   child only makes the block lag the scroll. Declared after the rule it overrides
+   — same specificity, so source order is what decides it. */
+@container oppdetail (max-width: 760px) { .arc-app .arc-opps .side { position: static; } }
 .arc-app .arc-opps .card { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 16px; }
 .arc-app .arc-opps .card .cl { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
 .arc-app .arc-opps .bignum { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -.02em; color: var(--accent-contrast); line-height: 1; }
@@ -1484,10 +1829,6 @@
 .arc-app .arc-opps .audrow a.ac:hover { color: var(--accent-contrast); }
 .arc-app .arc-opps .audrow .ap { font-size: 12px; color: var(--text-2); }
 .arc-app .arc-opps .audnote { font-size: 11px; color: var(--muted); margin-top: 6px; }
-.arc-app .arc-opps .impact { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
-.arc-app .arc-opps .icell { background: var(--panel); padding: 11px 12px; }
-.arc-app .arc-opps .icell .il { font-size: 9.5px; color: var(--muted); }
-.arc-app .arc-opps .icell .iv { font-size: 16px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 .arc-app .arc-opps .tl { position: relative; padding-left: 6px; }
 .arc-app .arc-opps .tlstep { position: relative; padding: 0 0 14px 20px; }
 .arc-app .arc-opps .tlstep:last-child { padding-bottom: 0; }
@@ -1512,6 +1853,12 @@
 .arc-app .arc-opps .triage-menu { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 21; min-width: 128px; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .9); }
 .arc-app .arc-opps .triage-menu button { text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: .12s; }
 .arc-app .arc-opps .triage-menu button:hover { background: var(--inset); color: var(--text); }
+/* The dismiss reasons are sentences, not "3 days" — they need the room, or every
+   item wraps to two lines and the picker stops being scannable (BSR-686). */
+.arc-app .arc-opps .triage-menu-wide { min-width: 190px; }
+/* "Just dismiss" is the no-reason escape hatch. Set apart and quieter than the
+   reasons above it, so the useful answers read as the default. */
+.arc-app .arc-opps .triage-menu .triage-menu-plain { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); }
 .arc-app .arc-opps .empty { padding: 60px 24px; color: var(--muted); font-size: 13px; }
 /* Empty inbox: the two-pane layout is gone, so this state carries the page title itself. */
 .arc-app .arc-opps .oempty { padding: 56px 34px; max-width: 62ch; }
@@ -1690,11 +2037,11 @@
 
 /* ============================================================================
    Customer Journeys (/journeys) — P0 journey layer. Self-contained, namespaced
-   .jr-* classes on the global theme vars. --blue/--vio aren't global, so the
+   .jr-* classes on the global theme vars. --blue isn't global, so the
    scope defines local fallbacks; --ok/--warn/--accent are inherited.
    ============================================================================ */
-.arc-app .journeys { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px clamp(16px, 3vw, 30px) 48px; --jr-blue: #88b6d8; --jr-blue-soft: rgba(136, 182, 216, 0.14); --jr-vio: #cdbbe6; --jr-vio-soft: rgba(205, 187, 230, 0.14); }
-.arc-app .journeys h1 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 10px; }
+.arc-app .journeys { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px clamp(16px, 3vw, 30px) 48px; --jr-blue: #88b6d8; --jr-blue-soft: rgba(136, 182, 216, 0.14); }
+.arc-app .journeys .jr-head h2 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 10px; }
 .arc-app .journeys h2 { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 .arc-app .journeys .jr-sub2 { font-size: 11.5px; font-weight: 400; color: var(--muted); }
 .arc-app .journeys .jr-sub { font-size: 12.5px; color: var(--muted); padding: 8px 2px; }
@@ -1709,13 +2056,6 @@
 .arc-app .journeys .jr-modelval { font-size: 13px; font-weight: 600; color: var(--accent); }
 
 /* KPI row */
-.arc-app .journeys .jr-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
-.arc-app .journeys .jr-kpi { display: flex; flex-direction: column; gap: 3px; padding: 13px 15px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); }
-.arc-app .journeys .jr-klab { font-size: 11px; color: var(--muted); }
-.arc-app .journeys .jr-kval { font-size: 22px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.05; }
-.arc-app .journeys .jr-khint { font-size: 10.5px; color: var(--muted); }
-.arc-app .journeys .jr-kpi.t-green .jr-kval { color: var(--ok-text); }
-.arc-app .journeys .jr-kpi.t-amber .jr-kval { color: var(--warn-text); }
 
 /* Panels */
 .arc-app .journeys .jr-panel { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); padding: 16px 18px; margin-bottom: 16px; }
@@ -1728,7 +2068,21 @@
 .arc-app .journeys .jr-flabel { font-size: 12.5px; font-weight: 500; color: var(--text-2); display: flex; align-items: center; gap: 7px; }
 .arc-app .journeys .jr-anon { font-size: 9px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 4px; }
 .arc-app .journeys .jr-fbar { height: 22px; border-radius: 6px; background: var(--inset); overflow: hidden; }
-.arc-app .journeys .jr-fbar i { display: block; height: 100%; border-radius: 6px; min-width: 3px; transition: width 0.4s var(--ease); }
+.arc-app .journeys .jr-fbar i { display: block; height: 100%; border-radius: 6px; min-width: 3px; background: var(--accent); transition: width 0.4s var(--ease); }
+/* The attribution choice is collapsed by default: the sentence above says what
+   the numbers mean, and the control is there for anyone who wants it without
+   being the first thing an owner-operator meets (BSR-669). */
+.arc-app .journeys .jr-lenswrap { margin-top: 8px; }
+.arc-app .journeys .jr-lenswrap > summary { cursor: pointer; font-size: 10.5px; color: var(--muted); list-style: none; }
+.arc-app .journeys .jr-lenswrap > summary::-webkit-details-marker { display: none; }
+.arc-app .journeys .jr-lenswrap > summary::before { content: "▸ "; }
+.arc-app .journeys .jr-lenswrap[open] > summary::before { content: "▾ "; }
+.arc-app .journeys .jr-lenswrap > summary:hover { color: var(--text-2); }
+.arc-app .journeys .jr-lenswrap .jr-lens { margin-top: 8px; flex-wrap: wrap; }
+
+.arc-app .journeys .jr-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; font-size: 10.5px; color: var(--muted); }
+.arc-app .journeys .jr-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.arc-app .journeys .jr-legend i { width: 8px; height: 8px; border-radius: 2px; }
 .arc-app .journeys .jr-fcount { font-size: 14px; font-weight: 600; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
 .arc-app .journeys .jr-frate { font-size: 11px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 .arc-app .journeys .jr-filternote { margin-top: 10px; font-size: 12px; color: var(--text-2); }
@@ -1821,20 +2175,263 @@
 .arc-app .journeys .jr-empty p { font-size: 12.5px; color: var(--muted); max-width: 48ch; line-height: 1.5; }
 
 /* Tone tokens — solid fills (dots, bars) + soft pills */
-.arc-app .journeys .jr-dot.t-blue, .arc-app .journeys .jr-fbar i.t-blue, .arc-app .journeys .jr-tldot.t-blue { background: var(--jr-blue); }
-.arc-app .journeys .jr-dot.t-gold, .arc-app .journeys .jr-fbar i.t-gold, .arc-app .journeys .jr-tldot.t-gold { background: var(--accent); }
+.arc-app .journeys .jr-legend i.t-blue, .arc-app .journeys .jr-dot.t-blue, .arc-app .journeys .jr-tldot.t-blue { background: var(--jr-blue); }
+.arc-app .journeys .jr-legend i.t-gold, .arc-app .journeys .jr-dot.t-gold, .arc-app .journeys .jr-tldot.t-gold { background: var(--accent); }
 .arc-app .journeys .jr-dot.t-amber, .arc-app .journeys .jr-fbar i.t-amber, .arc-app .journeys .jr-tldot.t-amber { background: var(--warn); }
-.arc-app .journeys .jr-dot.t-green, .arc-app .journeys .jr-fbar i.t-green, .arc-app .journeys .jr-tldot.t-green { background: var(--ok); }
-.arc-app .journeys .jr-dot.t-vio, .arc-app .journeys .jr-fbar i.t-vio, .arc-app .journeys .jr-tldot.t-vio { background: var(--jr-vio); }
+.arc-app .journeys .jr-legend i.t-green, .arc-app .journeys .jr-dot.t-green, .arc-app .journeys .jr-tldot.t-green { background: var(--ok); }
 .arc-app .journeys .jr-pill.t-blue { background: var(--jr-blue-soft); color: var(--jr-blue); }
 .arc-app .journeys .jr-pill.t-gold { background: var(--accent-soft); color: var(--accent); }
 .arc-app .journeys .jr-pill.t-amber { background: var(--warn-soft); color: var(--warn-text); }
 .arc-app .journeys .jr-pill.t-green { background: var(--ok-soft); color: var(--ok-text); }
-.arc-app .journeys .jr-pill.t-vio { background: var(--jr-vio-soft); color: var(--jr-vio); }
 
 @media (max-width: 900px) {
-  .arc-app .journeys .jr-kpis { grid-template-columns: repeat(2, 1fr); }
   .arc-app .journeys .jr-grid { grid-template-columns: 1fr; }
   .arc-app .journeys .jr-rowhead { grid-template-columns: minmax(0, 1fr) auto 92px 62px 16px; }
   .arc-app .journeys .jr-span { display: none; }
+}
+
+/* ── Touch targets ──────────────────────────────────────────────────────────
+   Measured on /home at 375px: the "more" links rendered 17–21px tall and the
+   setup-card dismiss 43×18 — under the 24×24 minimum in WCAG 2.2 (2.5.8), and
+   uncomfortable well before that. The inline buttons sat at 34px, over the AA
+   floor but short of a confident tap.
+
+   Padding rather than height, so nothing shifts on desktop and the text keeps
+   its position within the row. */
+@media (max-width: 900px) {
+  .arc-app .more,
+  .arc-app .queue-more {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+  .arc-app .setup-x {
+    min-height: 32px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .arc-app .btn,
+  .arc-app .btn.ghost {
+    min-height: 40px;
+  }
+}
+
+/* Brain fact correction dialog (BSR-531). */
+.fcorr-l {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fcorr-l small {
+  display: block;
+  margin-top: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.fcorr-i {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: 0;
+  resize: vertical;
+}
+.fcorr-i:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+}
+
+/* ── Full-screen state pages (404, error boundary) ──────────────────────────
+   These render inside the shell, so the operator keeps the rail and header and
+   stays oriented. Before this the app had no not-found.tsx and no error.tsx at
+   all: a missing record fell through to Next's stock unstyled 404, and an
+   uncaught render error to a bare "Application error" with no way onward. */
+.arc-app .state-page {
+  max-width: 560px;
+  padding: 72px 28px;
+  margin: 0 auto;
+}
+.arc-app .state-eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent-contrast);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.arc-app .state-page h1 {
+  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 550;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+.arc-app .state-body {
+  margin: 0 0 24px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.arc-app .state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.arc-app .state-ref {
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+/* ---------------------------------------------------------------------------
+   Touch targets.
+
+   The icon buttons are sized for a mouse — 26–32px squares. On a phone that is
+   a miss-tap, and they are dense enough that the wrong one is easy to hit. This
+   raises them to the 44px WCAG 2.5.5 target size for COARSE POINTERS ONLY, so
+   the desktop density the layouts are built around is untouched. The wide-but-
+   short controls (tabs, chips, ~30-40px tall but 60px+ wide) are left alone:
+   they clear the 24px WCAG 2.5.8 floor and inflating them would wreck the
+   layouts they sit in.
+
+   Brain's archive button needed one more fix — it was invisible on touch, not
+   just small — but that lives with its own rule above, under `(hover: hover)`.
+   ------------------------------------------------------------------------ */
+@media (pointer: coarse) {
+  .arc-app .iconf,
+  .arc-app .pager .pgbtn,
+  .arc-app .arc-library .selwrap .sb,
+  .arc-app .arc-studio .iconbtn,
+  .arc-app .arc-brain .ft .farch {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
+    border-radius: 10px;
+  }
+
+  .arc-app .iconf svg,
+  .arc-app .pager .pgbtn svg,
+  .arc-app .arc-library .selwrap .sb svg,
+  .arc-app .arc-studio .iconbtn svg,
+  .arc-app .arc-brain .ft .farch svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* ============================================================
+   Not-yet-built controls, and the toast that explains them (BSR-688)
+   ============================================================
+
+   `ComingSoonToasts` has shipped since the mockup port with NO stylesheet at
+   all. The wrapper defaulted to `position: static`, so it appended itself after
+   `.app` inside `.arc-app`: measured on /brand at 1440x900 it rendered at
+   y=900 — below the fold, invisible — 1450px tall, growing the document from
+   900px to 2350px. Clicking a "coming soon" control therefore did nothing a
+   person could see and quietly added a screenful of blank space.
+
+   Which is the exact state the toast exists to prevent. A dead control that
+   silently does nothing reads as broken; that was the whole argument for the
+   mechanism, and the mechanism was doing it too.
+
+   Two rules here, and they are separate concerns:
+     1. The toast must be a toast — fixed, on top, visible, self-dismissing.
+     2. An unbuilt control must not look identical to a working one. */
+
+.arc-app .soon-toasts {
+  position: fixed;
+  /* Above the rail and any page chrome, below modals (which sit at 100+). */
+  z-index: 60;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  /* Never intercept a click meant for the page underneath. */
+  pointer-events: none;
+}
+
+.arc-app .soon-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(92vw, 420px);
+  padding: 10px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.9);
+  animation: soonToastIn 0.22s var(--ease) both;
+}
+
+.arc-app .soon-toast svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  stroke: var(--muted);
+  fill: none;
+  stroke-width: 1.8;
+}
+
+@keyframes soonToastIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arc-app .soon-toast { animation: none; }
+}
+
+/* Rule 2. Attribute-scoped rather than class-scoped on purpose: these controls
+   wear five different classes (.gbtn, .iconbtn, .editlink, .sa, .iconf) and the
+   thing they have in common is the attribute, not the styling. Muted rather
+   than greyed-out-disabled — the control is real and will work later, it just
+   is not offering to do anything today. */
+/* Doubled attribute selector on purpose. Per-screen stylesheets (brand.css,
+   studio.css, library.css…) load AFTER arc-app.css and set `cursor: pointer` on
+   these same controls at equal specificity, so a single `[data-soon]` loses on
+   source order alone — `.arc-brand .editlink` beat it and the palette link kept
+   a pointer cursor. `[data-soon][data-soon]` outranks every per-screen rule
+   without reaching for !important. */
+.arc-app [data-soon][data-soon] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* No hover affordance: a lift or a border-brighten promises a response the
+   control cannot give. The gold gradient is dropped for the same reason —
+   nothing unbuilt should carry the one accent per screen (DESIGN.md §4). */
+.arc-app [data-soon][data-soon]:hover {
+  opacity: 0.72;
+  transform: none;
+  filter: none;
+}
+
+.arc-app [data-soon][data-soon].gold,
+.arc-app .arc-grid [data-soon][data-soon].gbtn.gold {
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
 }

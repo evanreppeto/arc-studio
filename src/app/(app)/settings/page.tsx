@@ -1,8 +1,16 @@
 import { resolveAgentConnection } from "@/lib/agent/connection";
 import { getViewerAvatarUrl } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
-import { CUSTOM_FIELD_OBJECT_KEYS, type CustomFieldObjectKey } from "@/domain";
+import {
+  CUSTOM_FIELD_OBJECT_KEYS,
+  DEFAULT_PIPELINE_STAGES,
+  PIPELINE_OBJECT_KEYS,
+  type CustomFieldObjectKey,
+  type PipelineObjectKey,
+  type PipelineStage,
+} from "@/domain";
 import { listAllFieldDefinitions } from "@/lib/custom-fields/definitions";
+import { countRecordsByStage, listAllStageSets } from "@/lib/pipeline-stages/definitions";
 import { getProductLanguage } from "@/lib/product-language";
 import { getSettingsTeamView } from "@/lib/auth/team-view";
 import { getSettingsWorkspacesView } from "@/lib/auth/workspaces-view";
@@ -19,10 +27,12 @@ import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getAppSettings } from "@/lib/settings/store";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
+import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { getWaitlistView } from "@/lib/waitlist/read-model";
 import { getHealthConsoleView } from "@/lib/observability/health-console";
 
 import { SettingsView } from "./_components/settings-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import "./settings.css";
 
 export const metadata = { title: "Settings — Arc Studio" };
@@ -32,24 +42,67 @@ export default async function SettingsPage() {
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   const [user, team, usage, connectorSpend, billing, settings, connectors, workspaces, emailConnection, agentConnection] = await Promise.all([
     getSupabaseAuthenticatedUser().catch(() => null),
-    getSettingsTeamView().catch(() => ({ workspaceId: null, isDemo: false, members: [], invites: [], activity: [] })),
-    getSettingsUsageView().catch(() => null),
-    getConnectorSpendView().catch(() => null),
+    // The read handles its own failures now and reports them on `failed`; this
+    // is only for an unexpected throw, and it must not erase that distinction
+    // by handing the view a benign empty team (BSR-578).
+    getSettingsTeamView().catch((error) => {
+      reportDegraded(error, { scope: "settings.getSettingsTeamView", surface: "primary" });
+      return {
+        workspaceId: null,
+        isDemo: false,
+        members: [],
+        invites: [],
+        activity: [],
+        failed: error instanceof Error ? error.message : "Could not read this workspace's team.",
+      };
+    }),
+    // PRIMARY: these render SPEND. Failing to null shows no usage and no cost,
+    // which is a false statement about money — an operator reads "nothing spent"
+    // and either relaxes about a cap they are actually near, or files a bug
+    // because the numbers vanished. Either way they act on a wrong figure.
+    getSettingsUsageView().catch((error) => {
+      reportDegraded(error, { scope: "settings.getSettingsUsageView", surface: "primary" });
+      return null;
+    }),
+    getConnectorSpendView().catch((error) => {
+      reportDegraded(error, { scope: "settings.getConnectorSpendView", surface: "primary" });
+      return null;
+    }),
     getSettingsBillingView().catch(() => null),
     getAppSettings(ctx?.orgId ?? null),
     getSettingsConnectorsView().catch(() => ({ configured: false, connectors: [] })),
-    getSettingsWorkspacesView().catch(() => ({ isDemo: false, workspaces: [] })),
-    getEmailConnection().catch(() => null),
-    resolveAgentConnection().catch(() => null),
+    getSettingsWorkspacesView().catch((error) => {
+      reportDegraded(error, { scope: "settings.getSettingsWorkspacesView", surface: "primary" });
+      return {
+        isDemo: false,
+        workspaces: [],
+        failed: error instanceof Error ? error.message : "Could not list your workspaces.",
+      };
+    }),
+    // PRIMARY: a failed connection READ renders identically to "not connected".
+    // The operator reconnects something that was already fine, or concludes
+    // sending is off when it isn't. Status that lies is worse than status absent.
+    getEmailConnection().catch((error) => {
+      reportDegraded(error, { scope: "settings.getEmailConnection", surface: "primary" });
+      return null;
+    }),
+    resolveAgentConnection().catch((error) => {
+      reportDegraded(error, { scope: "settings.resolveAgentConnection", surface: "primary" });
+      return null;
+    }),
   ]);
   // Platform waitlist — null unless the viewer is on ARC_PLATFORM_ADMIN_EMAILS.
   // The gate runs server-side inside the read-model, so a non-admin never reads a row.
+  // Correctly silent (BSR-546): null here means "not a platform admin" far more
+  // often than "failed", and the section simply doesn't render. Alerting would
+  // fire for every non-admin page load.
   const waitlist = await getWaitlistView().catch(() => null);
   // Operator health console — same platform-admin gate as the waitlist, enforced
   // server-side inside the read-model, so a non-admin never reads a connector row
   // and the section never reaches their browser.
   const health = await getHealthConsoleView().catch(() => null);
   // The workspace's own personas, for the connector "Default persona" picker.
+  // Correctly silent (BSR-546): picker options; an empty dropdown is visible.
   const personaOptions = await getOrgPersonaOptions(ctx?.orgId ?? undefined).catch(() => []);
   const brandName = ctx?.orgName?.trim() || "Your workspace";
   // No fabricated fallback. This renders under "Signed in as" in a panel whose
@@ -77,11 +130,64 @@ export default async function SettingsPage() {
   // settings screen must not be the one place the product reverts to our
   // internal vocabulary ("Properties" to a firm that calls them Matters).
   const customFields = ctx?.orgId
-    ? await listAllFieldDefinitions(ctx.orgId, { includeArchived: true }).catch(() => [])
+    ? await listAllFieldDefinitions(ctx.orgId, { includeArchived: true }).catch((error) => {
+        // I wrote this silent yesterday so a missing field layer couldn't take
+        // the screen down — right instinct, wrong on reflection. Empty renders
+        // as "No custom fields yet", which tells a tenant their own schema is
+        // gone. Keep degrading; stop asserting.
+        reportDegraded(error, { scope: "settings.listAllFieldDefinitions", surface: "primary" });
+        return [];
+      })
     : [];
-  const language = getProductLanguage(settings.industry || businessProfile?.industry);
+  // The tenant's own pipeline, plus how many records sit in each stage — the
+  // occupancy is what lets the panel refuse to archive a stage full of records
+  // without asking where they go.
+  //
+  // PRIMARY on both halves. Falling back to the defaults here would show a
+  // tenant a pipeline that isn't theirs and invite them to "fix" it, overwriting
+  // the one they have; reporting zero occupants would let them archive an
+  // occupied stage with no warning at all. Null renders as unavailable instead.
+  const pipeline = ctx?.orgId && isSupabaseAdminConfigured()
+    ? await Promise.all([
+        listAllStageSets(ctx.orgId),
+        Promise.all(
+          PIPELINE_OBJECT_KEYS.map((k) =>
+            countRecordsByStage(ctx.orgId, k).then((counts) => [k, counts] as const),
+          ),
+        ).then((entries) => Object.fromEntries(entries) as Record<PipelineObjectKey, Record<string, number>>),
+      ]).catch((error) => {
+        reportDegraded(error, { scope: "settings.pipelineStages", surface: "primary" });
+        return null;
+      })
+    : // No workspace, or no database at all — the backend-less preview. The
+      // defaults are honest there, being exactly what every read falls back to in
+      // that state, and it stays distinct from the FAILED read above, which shows
+      // nothing rather than inviting an edit over data we could not see.
+      //
+      // The distinction matters: "there is no database" and "the database did not
+      // answer" look identical from a null, and only one of them is safe to show
+      // an editable pipeline for.
+      ([
+        DEFAULT_PIPELINE_STAGES as unknown as Record<PipelineObjectKey, PipelineStage[]>,
+        Object.fromEntries(PIPELINE_OBJECT_KEYS.map((k) => [k, {}])) as Record<
+          PipelineObjectKey,
+          Record<string, number>
+        >,
+      ] as [Record<PipelineObjectKey, PipelineStage[]>, Record<PipelineObjectKey, Record<string, number>>]);
+
+  const industryValue = settings.industry || businessProfile?.industry;
+  // Two resolutions on purpose. `language` is what this workspace calls things —
+  // it labels the fields and stages panels. `industryLanguage` is what its
+  // industry would call them, and it is what the rename panel shows as
+  // placeholders: an operator needs to see the default they'd fall back to, not
+  // their own override echoed at them.
+  const language = getProductLanguage(industryValue, settings.objectLabels);
+  const industryLanguage = getProductLanguage(industryValue);
   const crmObjectLabels = Object.fromEntries(
     CUSTOM_FIELD_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<CustomFieldObjectKey, string>;
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} customFields={customFields} crmObjectLabels={crmObjectLabels} />;
+  const pipelineObjectLabels = Object.fromEntries(
+    PIPELINE_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
+  ) as Record<PipelineObjectKey, string>;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
 }

@@ -43,7 +43,7 @@ type FieldConfig = {
 const FORM: Record<CrmObjectKey, FieldConfig> = {
   companies: {
     nameLabel: "Company name",
-    namePlaceholder: "Acme Restoration Co.",
+    namePlaceholder: "Acme Inc.",
     detail: { label: "Website", placeholder: "https://example.com", type: "url" },
     status: { label: "Status", options: ["active", "inactive"] },
   },
@@ -95,6 +95,7 @@ export function AddRecordModal({
   singular,
   linkOptions = [],
   personaOptions,
+  stageOptions,
   customFieldDefs = [],
   onClose,
   onSubmit,
@@ -107,6 +108,15 @@ export function AddRecordModal({
   /** The org's own personas. Falls back to the BSR demo set when not provided. */
   personaOptions?: PersonaOption[];
   /**
+   * The org's own pipeline stages for this object, in its own words.
+   *
+   * Absent for companies, contacts and properties — those are not pipelines and
+   * keep their fixed statuses. Absent also when stages could not be read, in
+   * which case the built-in defaults below stand in, exactly as every other
+   * stage read falls back rather than offering an empty picker.
+   */
+  stageOptions?: { key: string; label: string }[];
+  /**
    * This object's custom field definitions. Collected at creation so a field the
    * tenant marked required is satisfied up front rather than leaving a record
    * that violates its own schema until someone opens it.
@@ -117,6 +127,9 @@ export function AddRecordModal({
   onSubmit: (value: AddRecordValue) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const cfg = FORM[objectKey];
+  const statusChoices = stageOptions?.length
+    ? stageOptions
+    : cfg.status.options.map((key) => ({ key, label: titleize(key) }));
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const setCustom = (key: string, value: unknown) => setCustomValues((v) => ({ ...v, [key]: value }));
   const personaChoices =
@@ -128,7 +141,7 @@ export function AddRecordModal({
   const [postalCode, setPostalCode] = useState("");
   const [persona, setPersona] = useState("");
   const [link, setLink] = useState(""); // "type::id"
-  const [status, setStatus] = useState(cfg.status.options[0]);
+  const [status, setStatus] = useState(statusChoices[0]?.key ?? cfg.status.options[0]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -265,9 +278,9 @@ export function AddRecordModal({
           <label className="mfield">
             <span className="mlabel">{cfg.status.label}</span>
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              {cfg.status.options.map((opt) => (
-                <option key={opt} value={opt}>
-                  {titleize(opt)}
+              {statusChoices.map((opt) => (
+                <option key={opt.key} value={opt.key}>
+                  {opt.label}
                 </option>
               ))}
             </select>

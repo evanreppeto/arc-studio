@@ -1,6 +1,8 @@
+import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { getCurrentOrgId } from "@/lib/auth/org";
+import { isDismissReason, type DismissReasonTally } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { resolveTenantReadHandle } from "@/lib/supabase/tenant-client";
@@ -42,6 +44,13 @@ type OpportunityEvidence = {
   topAsset?: string;
   /** Ready-to-send Arc prompt for the follow-up draft. */
   arcPrompt?: string;
+  /**
+   * The keys above are what the DETERMINISTIC detectors emit. Arc's generative
+   * scan names its own key per finding, so the shape is genuinely open — the
+   * inbox renders unrecognized keys generically rather than dropping them
+   * (see opportunities/evidence.ts).
+   */
+  [key: string]: unknown;
 };
 
 type OpportunityRecord = {
@@ -138,12 +147,13 @@ export async function countPendingOpportunities(client?: SupabaseClient): Promis
     return isDemoDataEnabled() ? buildDemoOpportunities().filter((o) => o.status === "pending").length : 0;
   }
   const { client: db, orgId } = client ? { client, orgId: await getCurrentOrgId() } : await resolveTenantReadHandle();
-  const { count } = await db
+  const { count, error } = await db
     .from("opportunities")
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId)
     .or(openOrWokenFilter(["pending"], new Date().toISOString()));
-  return count ?? 0;
+  // null count = missing/inaccessible relation, not zero rows (BSR-575).
+  return requireCount("opportunities", { count, error });
 }
 
 export type OpportunityForDraft = {
@@ -276,4 +286,53 @@ export async function getOpportunityForDraft(
     recommendedAction: data.recommended_action,
     persona: typeof evidence.persona === "string" ? evidence.persona : "",
   };
+}
+
+/**
+ * What this workspace keeps dismissing, and why (BSR-686).
+ *
+ * Grouped by (reason, kind) because that pair is what an operator is actually
+ * telling us: "not relevant" on `crm_inactivity` is a statement about who they
+ * sell to, while the same words on `weather_event` is a statement about their
+ * service area. Collapsing to either axis alone loses the sentence.
+ *
+ * Reads only rows that carry a reason. The 46 dismissals recorded before the
+ * column existed have no recoverable answer, and counting them as anything —
+ * including a bucket labelled "unknown" — would put a number in front of Arc
+ * that means nothing.
+ *
+ * Fails soft to an empty list: this feeds Arc's per-turn context, and a
+ * degraded read must not take a turn down with it.
+ */
+export async function getDismissalPatterns(
+  orgId?: string,
+  client?: SupabaseClient,
+): Promise<DismissReasonTally[]> {
+  if (!client && !isSupabaseAdminConfigured()) return [];
+  try {
+    const { client: db, orgId: handleOrgId } = client
+      ? { client, orgId: null }
+      : await resolveTenantReadHandle();
+    const resolvedOrgId = orgId ?? handleOrgId ?? (await getCurrentOrgId());
+    const { data, error } = await db
+      .from("opportunities")
+      .select("kind, dismissed_reason")
+      .eq("org_id", resolvedOrgId)
+      .not("dismissed_reason", "is", null);
+    if (error || !data) return [];
+
+    const counts = new Map<string, DismissReasonTally>();
+    for (const row of data as Array<{ kind: string | null; dismissed_reason: string | null }>) {
+      const reason = row.dismissed_reason;
+      const kind = row.kind ?? "unknown";
+      if (!isDismissReason(reason)) continue;
+      const key = `${reason}::${kind}`;
+      const existing = counts.get(key);
+      if (existing) existing.count += 1;
+      else counts.set(key, { reason, kind, count: 1 });
+    }
+    return [...counts.values()].sort((a, b) => b.count - a.count);
+  } catch {
+    return [];
+  }
 }

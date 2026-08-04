@@ -143,10 +143,12 @@ async function extractKnowledge(
   asset: BrandKnowledgeAsset,
   classification: BrandSourceClassification,
   deps: BrainSyncDeps,
+  orgId: string,
 ): Promise<BrandKnowledgeExtraction> {
   if (deps.extractKnowledge) return deps.extractKnowledge(asset, classification);
   if (deps.extractNodes) return { nodes: await deps.extractNodes(asset, classification), profile: null };
-  return extractBrandKnowledgeBundleWithGemini(asset);
+  // orgId is threaded purely so the Gemini call can be billed to someone (BSR-502).
+  return extractBrandKnowledgeBundleWithGemini(asset, { orgId });
 }
 
 export async function learnBrandKnowledgeFromAsset(
@@ -158,7 +160,7 @@ export async function learnBrandKnowledgeFromAsset(
 
   const classification = classifyBrandSource(asset);
   const sourceProposals = proposeBrandKnowledgeNodes(asset, classification);
-  const extracted = await extractKnowledge(asset, classification, deps).catch(() => ({ nodes: [], profile: null }));
+  const extracted = await extractKnowledge(asset, classification, deps, resolved.orgId).catch(() => ({ nodes: [], profile: null }));
   const proposals = [...sourceProposals, ...extracted.nodes];
   if (proposals.length === 0 && !extracted.profile) return { created: 0, skipped: 1, errors: [] };
 

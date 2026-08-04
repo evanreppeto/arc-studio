@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createSupabaseQueryMock, type MockResponse } from "@/lib/repos/__tests__/test-helpers";
 
-import { buildReasoning, getCampaignWorkspaceDetail, getCampaignWorkspaceList, listCampaignNames } from "./read-model";
+import { buildReasoning, getCampaignWorkspaceDetail, getCampaignWorkspaceList, listCampaignNames, selectIn } from "./read-model";
 
 // buildReasoning only reads a handful of fields; cast minimal fixtures to the
 // row shapes to keep the test focused on the distillation logic.
@@ -467,7 +467,10 @@ describe("getCampaignWorkspaceList rollup", () => {
         title: "Partner intro email",
         kind: "Email",
         channel: "Email",
-        status: "Pending approval",
+        // The STORED status, not a label: this field mirrors
+        // CampaignWorkspaceAsset.status, which the detail view re-parses and
+        // writes raw values back into. Labelling happens at render.
+        status: "pending_approval",
         preview: "Subject: Fast help when a leak turns into a water-loss claim",
         media: [],
       }),
@@ -478,6 +481,69 @@ describe("getCampaignWorkspaceList rollup", () => {
         media: [expect.objectContaining({ url: "https://cdn.example/storm.png", type: "image" })],
       }),
     ]);
+  });
+
+  // The board renders these two as the row's cover image and its asset count.
+  // They were computed here for a long time before anything consumed them.
+  it("exposes a cover thumbnail and media count for the board row", async () => {
+    const supabase = createSupabaseQueryMock({
+      campaigns: { data: [ROLLUP_CAMPAIGN], error: null },
+      campaign_assets: {
+        data: [
+          {
+            ...rollupAsset("asset-video", "video"),
+            audit_payload: {
+              media_assets: [
+                { url: "https://cdn.example/clip.mp4", type: "video", thumbnail_url: "https://cdn.example/poster.jpg" },
+              ],
+            },
+          },
+          {
+            ...rollupAsset("asset-image", "social_ad"),
+            audit_payload: { media_assets: [{ url: "https://cdn.example/hero.png", type: "image" }] },
+          },
+        ],
+        error: null,
+      },
+      approval_items: { data: [], error: null },
+    });
+
+    const list = await getCampaignWorkspaceList(supabase, "Arc", "org-1");
+
+    expect(list.status).toBe("live");
+    if (list.status !== "live") return;
+
+    // A real image outranks a video poster even when the video comes first.
+    expect(list.campaigns[0].thumbnailUrl).toBe("https://cdn.example/hero.png");
+    expect(list.campaigns[0].mediaCount).toBe(2);
+  });
+
+  it("never covers a row with a URL scavenged out of prose", async () => {
+    const supabase = createSupabaseQueryMock({
+      campaigns: { data: [ROLLUP_CAMPAIGN], error: null },
+      campaign_assets: {
+        data: [
+          {
+            ...rollupAsset("asset-email", "email"),
+            // A bare image URL sitting in the draft copy is `referenced`, not
+            // creative. Promoting one to the campaign's cover is precisely the
+            // fabricated-image failure the origin split exists to prevent.
+            draft_body: "See the example at https://untrusted.example/scraped.png for reference.",
+            audit_payload: {},
+          },
+        ],
+        error: null,
+      },
+      approval_items: { data: [], error: null },
+    });
+
+    const list = await getCampaignWorkspaceList(supabase, "Arc", "org-1");
+
+    expect(list.status).toBe("live");
+    if (list.status !== "live") return;
+
+    expect(list.campaigns[0].thumbnailUrl).toBeNull();
+    expect(list.campaigns[0].mediaCount).toBe(0);
   });
 });
 
@@ -753,5 +819,104 @@ describe("getCampaignWorkspaceDetail claims-review state", () => {
   it("stays unreviewed when the recommendations read fails, rather than claiming a review", async () => {
     const asset = await assetFrom({ data: null, error: { message: "boom" } });
     expect(asset.claimsReviewed).toBe(false);
+  });
+});
+
+// BSR-639. Campaigns are workspace-owned (BSR-637), so a campaign must not be
+// listed outside the workspace that owns it. Before this, `campaigns.workspace_id`
+// existed, was nullable, and no read filtered on it — a campaign created in one
+// workspace appeared in every workspace of the org.
+describe("campaign reads are workspace-scoped", () => {
+  function eqCalls(supabase: { calls: Array<[string, ...unknown[]]> }) {
+    return supabase.calls.filter(([method]) => method === "eq").map(([, column, value]) => [column, value]);
+  }
+
+  it("filters listCampaignNames on the workspace as well as the org", async () => {
+    const supabase = createSupabaseQueryMock({ campaigns: { data: [], error: null } });
+
+    await listCampaignNames("org-1", supabase, "workspace-1");
+
+    expect(eqCalls(supabase)).toEqual(
+      expect.arrayContaining([
+        ["org_id", "org-1"],
+        ["workspace_id", "workspace-1"],
+      ]),
+    );
+  });
+
+  it("filters the campaign list on the workspace as well as the org", async () => {
+    // A campaign must come back, or selectIn short-circuits on an empty id list
+    // and never reaches the filter this test is about.
+    const supabase = createSupabaseQueryMock({
+      campaigns: { data: [{ id: "camp-1", name: "C", persona: "p", status: "draft" }], error: null },
+      campaign_assets: { data: [], error: null },
+      approval_items: { data: [], error: null },
+    });
+
+    await getCampaignWorkspaceList(supabase, "Arc", "org-1", "workspace-1");
+
+    expect(eqCalls(supabase)).toEqual(
+      expect.arrayContaining([
+        ["org_id", "org-1"],
+        ["workspace_id", "workspace-1"],
+      ]),
+    );
+  });
+
+  it("degrades to org-only scoping when no workspace is resolved, rather than returning nothing", async () => {
+    // Real paths arrive without a workspace: the offline demo, open/operator auth
+    // mode, and bearer tokens issued before workspace scoping. Those must keep
+    // working — silently returning an empty list would read as data loss.
+    const supabase = createSupabaseQueryMock({ campaigns: { data: [], error: null } });
+
+    await listCampaignNames("org-1", supabase);
+
+    expect(eqCalls(supabase)).toContainEqual(["org_id", "org-1"]);
+    expect(eqCalls(supabase).some(([column]) => column === "workspace_id")).toBe(false);
+  });
+});
+
+// BSR-711. Phase B narrows RLS to workspace membership, but every read model here
+// runs on the service-role client, which bypasses RLS entirely — so this app-layer
+// filter IS the boundary for these tables, not a belt-and-braces extra.
+describe("adjacent campaign tables are workspace-filtered too", () => {
+  function eqCalls(supabase: { calls: Array<[string, ...unknown[]]> }) {
+    return supabase.calls.filter(([m]) => m === "eq").map(([, c, v]) => [c, v]);
+  }
+
+  it("filters the campaign-adjacent tables on workspace, not just campaigns", async () => {
+    // A campaign must come back, or selectIn short-circuits on an empty id list
+    // and never reaches the filter this test is about.
+    const supabase = createSupabaseQueryMock({
+      campaigns: { data: [{ id: "camp-1", name: "C", persona: "p", status: "draft" }], error: null },
+      campaign_assets: { data: [], error: null },
+      approval_items: { data: [], error: null },
+    });
+
+    await getCampaignWorkspaceList(supabase, "Arc", "org-1", "workspace-1");
+
+    // campaign_assets / approval_items go through selectIn, which used to apply
+    // org scope alone — the gap Phase B closes.
+    const workspaceFilters = eqCalls(supabase).filter(([c]) => c === "workspace_id");
+    expect(workspaceFilters.length).toBeGreaterThan(1);
+    for (const [, value] of workspaceFilters) expect(value).toBe("workspace-1");
+  });
+
+  it("does NOT filter org-owned tables on a column they do not have", async () => {
+    // companies/contacts/leads are org-owned by the BSR-637 boundary. Filtering
+    // them on workspace_id would not error — it would return NOTHING, and a CRM
+    // panel that silently empties is indistinguishable from data loss.
+    const supabase = createSupabaseQueryMock({ companies: { data: [], error: null } });
+
+    await selectIn(supabase, "companies", "id,name", "id", ["c1"], undefined, "org-1", "workspace-1");
+
+    expect(eqCalls(supabase)).toContainEqual(["org_id", "org-1"]);
+    expect(eqCalls(supabase).some(([c]) => c === "workspace_id")).toBe(false);
+  });
+
+  it("still filters a workspace-owned table when asked", async () => {
+    const supabase = createSupabaseQueryMock({ campaign_assets: { data: [], error: null } });
+    await selectIn(supabase, "campaign_assets", "id", "campaign_id", ["c1"], undefined, "org-1", "workspace-1");
+    expect(eqCalls(supabase)).toContainEqual(["workspace_id", "workspace-1"]);
   });
 });

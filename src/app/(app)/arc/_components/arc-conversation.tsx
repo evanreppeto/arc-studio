@@ -11,6 +11,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { ArrowRight, ArrowUpRight, Bookmark, Brain, Check, CircleAlert, ClipboardCheck, Copy, CornerUpLeft, Database, Link2, MessageSquareText, PanelRightOpen, PencilLine, RefreshCcw, RotateCcw, ShieldCheck, Target, X, Zap } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
+import { WORK_STATE_LABEL } from "@/domain";
 import type { ArcActionCard, ArcAssetStatus, ArcMention, ArcMode, ArcRecall, ArcRoute } from "@/domain";
 import type { ArcMessage, ArcStep } from "@/lib/arc-chat/persistence";
 import { buildArcLauncherRecommendation } from "@/lib/arc-chat/launcher-state";
@@ -18,7 +19,7 @@ import { buildArcOutcomeView, type ArcOutcomeBadge } from "@/lib/arc-chat/outcom
 import { buildArcRunContract, type ArcRunContract } from "@/lib/arc-chat/run-contract";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 
-import { MARKDOWN_COMPONENTS, REHYPE_HIGHLIGHT_PLUGINS, REMARK_PLUGINS } from "./arc-markdown";
+import { ArcAnswer, MARKDOWN_COMPONENTS, REHYPE_HIGHLIGHT_PLUGINS, REMARK_PLUGINS } from "./arc-markdown";
 import {
   ArcDraftCard,
   AssistantMessage,
@@ -68,6 +69,52 @@ function OutcomeBadgeIcon({ badge }: { badge: ArcOutcomeBadge }) {
   if (badge.kind === "memory") return <Brain size={12} />;
   if (badge.kind === "created") return <ClipboardCheck size={12} />;
   return <CircleAlert size={12} />;
+}
+
+/**
+ * Everything we can say *about* a reply — the safety label, the evidence badges,
+ * the sources Arc read, and the memory it recalled — collected below the answer
+ * at metadata scale.
+ *
+ * This used to sit *above* the response as an uppercase kicker, a safety label,
+ * a generated serif headline, and a badge row: four rows of app-authored chrome
+ * before the reader reached Arc's first word, with the most prominent line on
+ * screen being a sentence Arc never wrote. The evidence is worth keeping — the
+ * "Nothing sent" guarantee especially, given nothing here goes outbound without
+ * a human — it just isn't more important than the answer.
+ */
+function ResponseMeta({
+  outcome,
+  mentions,
+  recall,
+  onMentionContextMenu,
+  onRecallContextMenu,
+}: {
+  outcome: { safetyLabel: string; badges: ArcOutcomeBadge[] } | null;
+  mentions: ArcMention[];
+  recall: ArcRecall[];
+  onMentionContextMenu?: (event: React.MouseEvent, mention: ArcMention) => void;
+  onRecallContextMenu?: (event: React.MouseEvent, item: ArcRecall) => void;
+}) {
+  const badges = outcome?.badges ?? [];
+  const safetyLabel = outcome?.safetyLabel ?? null;
+  if (!safetyLabel && badges.length === 0 && mentions.length === 0 && recall.length === 0) return null;
+  return (
+    <div className="arc-response-evidence">
+      {safetyLabel || badges.length > 0 ? (
+        <div className="arc-answer-meta" aria-label="Result details">
+          {safetyLabel ? <span className="arc-answer-safety"><ShieldCheck size={12} />{safetyLabel}</span> : null}
+          {badges.map((badge) => (
+            <span key={`${badge.kind}-${badge.label}`} className="arc-answer-badge" data-kind={badge.kind}>
+              <OutcomeBadgeIcon badge={badge} />{badge.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {mentions.length > 0 ? <SourcesRow mentions={mentions} onMentionContextMenu={onMentionContextMenu} /> : null}
+      {recall.length > 0 ? <RecallRow recall={recall} onRecallContextMenu={onRecallContextMenu} /> : null}
+    </div>
+  );
 }
 
 /* ── Right-click item builders shared by the live and demo conversations ── */
@@ -161,7 +208,7 @@ function packageMenuItems({
 }): MessageMenuItem[] {
   const remaining = cards.filter((card) => card.approval && statusOf(card) !== "approved" && statusOf(card) !== "rejected");
   return [
-    { kind: "item", label: "Review package", icon: <PanelRightOpen size={14} />, onSelect: onOpen },
+    { kind: "item", label: "Review assets", icon: <PanelRightOpen size={14} />, onSelect: onOpen },
     { kind: "separator" },
     {
       kind: "item",
@@ -189,9 +236,12 @@ function packageMenuItems({
 function ReviewableWork({ children }: { children: ReactNode }) {
   return (
     <section className="arc-response-output" aria-label="Reviewable work">
+      {/* The right-hand label used to read "Ready for review" while the pill on
+          the card inside said "Needs review" — one card, two states, saying
+          opposite things (BSR-656). Both are the queue label now. */}
       <div className="arc-response-output-label">
         <span><ClipboardCheck size={13} />Created by Arc</span>
-        <b>Ready for review</b>
+        <b>{WORK_STATE_LABEL.needs_you}</b>
       </div>
       {children}
     </section>
@@ -409,33 +459,19 @@ export function LiveConversation({
         const failed = message.status === "failed";
         return (
           <AssistantMessage key={message.id} timeIso={message.createdAt} active={pending} onContextMenu={pending ? undefined : (event) => openMenu(event, arcMenuItems(message, index))}>
-            <RunTrace pending={pending} liveText={pending ? message.body : null} reasoning={message.reasoning} steps={message.steps} toolCalls={message.toolCalls} contract={contract} thoughtSeconds={thoughtSeconds} onStop={pending && message.agentTaskId ? () => onCancelRun(message.agentTaskId as string, message.conversationId) : undefined} stopping={stoppingTaskId === message.agentTaskId} outcome={message.status === "failed" ? (message.body.startsWith("Stopped by you") ? "canceled" : "failed") : "complete"} />
+            <RunTrace pending={pending} responding={pending && Boolean(message.body.trim())} reasoning={message.reasoning} steps={message.steps} toolCalls={message.toolCalls} contract={contract} thoughtSeconds={thoughtSeconds} startedAtIso={message.createdAt} answerText={message.body} onStop={pending && message.agentTaskId ? () => onCancelRun(message.agentTaskId as string, message.conversationId) : undefined} stopping={stoppingTaskId === message.agentTaskId} outcome={message.status === "failed" ? (message.body.startsWith("Stopped by you") ? "canceled" : "failed") : "complete"} />
+            {/* One container across the whole lifecycle: `message.body` is the
+                partial reply while pending and the final reply once settled, so
+                completion patches this node instead of replacing it. */}
+            <ArcAnswer text={message.body} streaming={pending} />
             {!pending ? (
-              failed ? (
-                <div className="arc-markdown"><ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_HIGHLIGHT_PLUGINS} components={MARKDOWN_COMPONENTS}>{message.body}</ReactMarkdown></div>
-              ) : (
-                <div className="arc-live-result" data-intent={outcomeView.intent}>
-                  <div className="arc-live-result-kicker">
-                    <span><Check size={13} />{outcomeView.label}</span>
-                    <em>{outcomeView.safetyLabel}</em>
-                  </div>
-                  <div className="arc-live-result-head">
-                    <h2>{outcomeView.headline}</h2>
-                    {outcomeView.badges.length > 0 ? (
-                      <div className="arc-outcome-badges" aria-label="Result details">
-                        {outcomeView.badges.map((badge) => <span key={`${badge.kind}-${badge.label}`} data-kind={badge.kind}><OutcomeBadgeIcon badge={badge} />{badge.label}</span>)}
-                      </div>
-                    ) : null}
-                  </div>
-                  {outcomeView.body ? <div className="arc-markdown"><ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_HIGHLIGHT_PLUGINS} components={MARKDOWN_COMPONENTS}>{outcomeView.body}</ReactMarkdown></div> : null}
-                </div>
-              )
-            ) : null}
-            {!pending && (message.mentions.length || message.recall?.length) ? (
-              <div className="arc-response-evidence">
-                {message.mentions.length ? <SourcesRow mentions={message.mentions} onMentionContextMenu={(event, mention) => openMenu(event, mentionMenuItems(mention, navigate))} /> : null}
-                {message.recall?.length ? <RecallRow recall={message.recall} onRecallContextMenu={(event, item) => openMenu(event, recallMenuItems(item, navigate))} /> : null}
-              </div>
+              <ResponseMeta
+                outcome={failed ? null : outcomeView}
+                mentions={message.mentions}
+                recall={message.recall ?? []}
+                onMentionContextMenu={(event, mention) => openMenu(event, mentionMenuItems(mention, navigate))}
+                onRecallContextMenu={(event, item) => openMenu(event, recallMenuItems(item, navigate))}
+              />
             ) : null}
             {!pending && message.actions.length ? (() => {
               const approvalCards = message.actions.filter((card) => card.approval);
@@ -587,16 +623,8 @@ export function DemoConversation({
               steps={completedSteps}
               contract={turnContract}
             />
-            {turn.outcome === "canceled" ? (
-              <div className="arc-answer"><p>{turn.body}</p></div>
-            ) : (
-              <div className="arc-result-receipt" data-intent={outcomeView.intent}>
-                <div className="arc-result-receipt-kicker"><Check size={13} /><span>{outcomeView.label}</span><em>{outcomeView.safetyLabel}</em></div>
-                <h2>{outcomeView.headline}</h2>
-                <p>{outcomeView.body}</p>
-                <div className="arc-result-next"><ArrowRight size={14} /><span>{outcomeView.nextAction}</span></div>
-              </div>
-            )}
+            <ArcAnswer text={turn.body} streaming={false} />
+            {turn.outcome === "canceled" ? null : <ResponseMeta outcome={outcomeView} mentions={[]} recall={[]} />}
           </AssistantMessage>
         );
       })}
