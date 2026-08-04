@@ -11,6 +11,14 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { getSettingsTeamView } from "./team-view";
+import { getSettingsWorkspacesView } from "./workspaces-view";
+import { reportDegraded } from "@/lib/observability/report-degraded";
+
 vi.mock("@/lib/supabase/server", () => ({ isSupabaseAdminConfigured: () => true }));
 vi.mock("@/lib/demo/demo-mode", () => ({ isDemoDataEnabled: () => false }));
 vi.mock("@/lib/observability/report-degraded", () => ({ reportDegraded: vi.fn() }));
@@ -34,7 +42,6 @@ afterEach(() => vi.clearAllMocks());
 
 describe("a failed team read says so", () => {
   it("reports the failure instead of an empty team", async () => {
-    const { getSettingsTeamView } = await import("./team-view");
     const view = await getSettingsTeamView();
 
     // The distinction that matters: not "0 members" but "we do not know".
@@ -44,8 +51,6 @@ describe("a failed team read says so", () => {
   });
 
   it("tells someone about it", async () => {
-    const { reportDegraded } = await import("@/lib/observability/report-degraded");
-    const { getSettingsTeamView } = await import("./team-view");
     await getSettingsTeamView();
 
     // The old empty catch left no trace anywhere — no Sentry event, no log line.
@@ -55,7 +60,6 @@ describe("a failed team read says so", () => {
 
 describe("a failed workspace list says so", () => {
   it("reports the failure instead of an empty list", async () => {
-    const { getSettingsWorkspacesView } = await import("./workspaces-view");
     const view = await getSettingsWorkspacesView();
 
     // This one also feeds the app shell's switcher, so an erased failure reads
