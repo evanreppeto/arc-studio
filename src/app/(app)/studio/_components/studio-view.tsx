@@ -22,7 +22,10 @@ const SC: Record<string, string> = {
   beforeafter: '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice"><rect width="50" height="100" fill="#34302a"/><rect x="50" width="50" height="100" fill="#2a3b34"/><path d="M8 72 L25 56 L42 72 Z" fill="#4a443a"/><path d="M58 72 L75 56 L92 72 Z" fill="#3e5a4c"/><rect x="48" width="4" height="100" fill="rgba(200,162,74,.5)"/></svg>',
 };
 type Prov = "real" | "ai" | "comp" | "upload" | "stock";
-export type Item = { s: string; l: string; p: Prov; url?: string };
+/** `id` is the media_assets uuid when the item came from the workspace's real
+ *  library. Optional because the demo fixtures and session uploads have none —
+ *  which is exactly why a deep link falls back rather than showing nothing. */
+export type Item = { s: string; l: string; p: Prov; url?: string; id?: string };
 const PVLABEL: Record<Prov, string> = { real: "Real media", ai: "AI-generated", comp: "Composite", upload: "Imported", stock: "Stock" };
 const SRC: Record<string, { title: string; items: Item[] }> = {
   library: { title: "Approved media", items: [{ s: SC.roof, l: "Roof — exterior", p: "real" }, { s: SC.beforeafter, l: "Before / after", p: "real" }, { s: SC.roof, l: "Crew on site", p: "real" }, { s: SC.comp, l: "Logo lockup", p: "comp" }] },
@@ -260,7 +263,7 @@ const SAMPLE_COPY = {
 };
 const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
 
-export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null }) {
+export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null, initialAssetId = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null; /** ?asset=<media_assets uuid> — Library deep-links here so "Edit in Studio" opens on the asset the operator clicked rather than on whatever happens to be first. */ initialAssetId?: string | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
   // The "Approved media" source shows the workspace's real media_assets. Live, it
   // shows ONLY those — never the built-in samples, which would present stock art as
@@ -283,8 +286,18 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // so bg is nullable and the canvas below renders an empty state rather than
   // dereferencing undefined — which crashed the whole page on prod (React #418 /
   // "cannot read properties of undefined (reading 'url')").
-  const [bg, setBg] = useState<Item | undefined>(sources.library.items[0]);
-  const [selTile, setSelTile] = useState(-1);
+  // Open on the deep-linked asset when there is one and it resolves. An id that
+  // matches nothing (stale link, asset deleted, different workspace) falls back
+  // to the default rather than opening on an empty canvas.
+  const deepLinkedIndex = initialAssetId
+    ? sources.library.items.findIndex((it) => it.id === initialAssetId)
+    : -1;
+  const [bg, setBg] = useState<Item | undefined>(
+    deepLinkedIndex >= 0 ? sources.library.items[deepLinkedIndex] : sources.library.items[0],
+  );
+  // Highlight the deep-linked tile too, or Studio opens on an asset with
+  // nothing in the sources panel showing which one it is.
+  const [selTile, setSelTile] = useState(deepLinkedIndex);
   const [selSession, setSelSession] = useState("v0");
   const [fmt, setFmt] = useState(0);
   const [mode, setMode] = useState<"image" | "video">("image");
