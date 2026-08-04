@@ -470,3 +470,58 @@
   .arc-campaign .perflearn-cta { transition: background 0.15s var(--ease); }
   .arc-campaign .perflearn-cta:hover { transform: none; }
 }
+
+/* The review queue — one deliverable at a time.
+   A full overlay rather than a route: it is the same state as the list, shown
+   at a different density, and nothing about it should survive a reload. */
+.arc-campaign .rqstart { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12px; color: var(--text-2); }
+.arc-campaign .rqstart b { color: var(--text); }
+.arc-campaign .rqstart .cbtn { margin-left: auto; }
+
+.arc-campaign .rqwrap { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--canvas-deep); }
+.arc-campaign .rqwrap:focus { outline: none; }
+
+.arc-campaign .rqbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line-2); flex: none; }
+.arc-campaign .rqcount { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.arc-campaign .rqcount b { color: var(--text); font-size: 13px; }
+.arc-campaign .rqname { margin-left: 12px; color: var(--text-2); }
+.arc-campaign .rqtrack { flex: 1; height: 2px; background: var(--line-3); border-radius: 99px; overflow: hidden; }
+.arc-campaign .rqtrack i { display: block; height: 100%; background: var(--accent); transition: width 0.25s var(--ease); }
+.arc-campaign .rqclose { display: flex; padding: 6px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 7px; }
+.arc-campaign .rqclose:hover { color: var(--text); background: var(--inset); }
+.arc-campaign .rqclose svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+
+/* One column, centred, capped — the reviewer is reading, not scanning a table. */
+.arc-campaign .rqbody { flex: 1; overflow-y: auto; padding: 26px 24px 8px; }
+.arc-campaign .rqcard { max-width: 720px; margin: 0 auto; }
+.arc-campaign .rqhead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.arc-campaign .rqhead h2 { font-family: var(--serif); font-weight: 500; font-size: 20px; letter-spacing: -0.01em; color: var(--text); margin: 0; }
+.arc-campaign .rqchannel { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.arc-campaign .rqhead .pill { margin-left: auto; }
+.arc-campaign .rqerr { max-width: 720px; margin: 0 auto; padding: 0 24px 8px; font-size: 12px; color: var(--red-text); }
+
+.arc-campaign .rqfoot { flex: none; border-top: 1px solid var(--line-2); background: var(--panel); padding: 13px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.arc-campaign .rqacts { display: flex; gap: 8px; flex-wrap: wrap; }
+.arc-campaign .rqacts .cbtn { height: 34px; }
+.arc-campaign .rqfoot kbd { font-family: var(--mono); font-size: 9px; line-height: 1; padding: 3px 4px; margin-left: 2px; border-radius: 4px; border: 1px solid var(--line-2); background: var(--raised); color: var(--muted); }
+.arc-campaign .cbtn.gold kbd { border-color: rgba(32, 24, 8, 0.28); background: rgba(32, 24, 8, 0.12); color: #201808; }
+.arc-campaign .rqnav { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.arc-campaign .rqhint { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.arc-campaign .rqstep { display: flex; padding: 6px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); cursor: pointer; }
+.arc-campaign .rqstep:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
+.arc-campaign .rqstep:disabled { opacity: 0.35; cursor: default; }
+.arc-campaign .rqstep svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+.arc-campaign .rqrevise { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
+.arc-campaign .rqrevise textarea { flex: 1; resize: vertical; font: inherit; font-size: 12.5px; color: var(--text); background: var(--inset); border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 10px; }
+.arc-campaign .rqrevise textarea:focus { outline: none; border-color: var(--accent-border); }
+
+.arc-campaign .rqdone { margin: auto; text-align: center; max-width: 420px; padding: 0 24px; }
+.arc-campaign .rqdone b { display: block; font-family: var(--serif); font-weight: 500; font-size: 19px; color: var(--text); margin-bottom: 8px; }
+.arc-campaign .rqdone p { font-size: 12.5px; color: var(--text-2); line-height: 1.6; margin-bottom: 18px; }
+.arc-campaign .rqtick { display: inline-flex; padding: 11px; border-radius: 99px; background: var(--ok-soft); color: var(--ok-text); margin-bottom: 14px; }
+.arc-campaign .rqtick svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+@media (max-width: 720px) {
+  .arc-campaign .rqnav { margin-left: 0; }
+  .arc-campaign .rqname { display: none; }
+}
