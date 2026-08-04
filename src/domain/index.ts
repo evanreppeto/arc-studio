@@ -144,3 +144,6 @@ export * from "./definitions";
 
 // Why an operator dismissed an opportunity, and what Arc should learn (BSR-686).
 export * from "./dismissal-reasons";
+
+// What the operator sent back, and why — corrections Arc should learn (BSR-685).
+export * from "./correction-feedback";

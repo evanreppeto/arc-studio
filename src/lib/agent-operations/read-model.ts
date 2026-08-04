@@ -1,4 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
+import { WORK_STATE_LABEL } from "@/domain";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getCurrentAgentTaskTenantFields, type AgentTaskTenantFields } from "../agent-tasks/scope";
@@ -461,7 +462,7 @@ export async function getAgentOperationsDashboard(
       metrics: [
         { label: "Active agents", value: agents.filter((agent) => agent.status !== "paused").length, delta: "Supabase registry" },
         { label: "Tasks running", value: openTasks.length, delta: "Open queue" },
-        { label: "Awaiting approval", value: activeApprovals.length, delta: "Human gate" },
+        { label: WORK_STATE_LABEL.needs_you, value: activeApprovals.length, delta: "Human gate" },
         { label: "Blocked outputs", value: countBlocked(tasks, outputs), delta: "Guardrails visible" },
         { label: "Approved this week", value: approvals.filter((item) => item.status === "approved").length, delta: "Recent decisions" },
         { label: "Risk flags", value: countRiskFlags(approvals, outputs), delta: "Review signals" },

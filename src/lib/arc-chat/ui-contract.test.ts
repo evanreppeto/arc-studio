@@ -17,8 +17,12 @@ describe("Arc UI accessibility contract", () => {
     expect(VIEW_SOURCE).toContain('aria-label={composerMenu === "commands" ? "Skills menu" : composerMenu === "mode" ? "Capability menu"');
   });
 
-  it("keeps the icon-only mobile review action named", () => {
-    expect(VIEW_SOURCE).toContain('aria-label={`${needsReviewCards.length} items need review`}');
+  it("keeps the icon-only mobile review action named, in the shared vocabulary", () => {
+    // The visible chip and its accessible name must agree, and both must use the
+    // one label for this state — the chip said "need review" while every pill it
+    // pointed at said "Needs you" (BSR-656).
+    expect(VIEW_SOURCE).toContain('aria-label={`${needsReviewCards.length} items need you`}');
+    expect(VIEW_SOURCE).toContain('<span>{needsReviewCards.length} need you</span>');
   });
 
   it("does not steal the global Command-K shortcut for drawer search", () => {

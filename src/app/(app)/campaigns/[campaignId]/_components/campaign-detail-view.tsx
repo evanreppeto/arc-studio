@@ -7,7 +7,9 @@ import {
   humanizePersonaLabel as humanizePersona,
   toWorkState,
   WORK_STATE_LABEL,
+  WORK_STATE_TONE,
   type AudienceResolution,
+  type WorkStateTone,
 } from "@/domain";
 import { type AttachableMediaItem } from "@/lib/campaigns/attach-media";
 import {
@@ -99,11 +101,36 @@ function awaitingClaimsReview(asset: CampaignWorkspaceAsset): boolean {
   return !asset.claimsReviewed && Boolean(asset.body.trim()) && isActionable(asset.status);
 }
 
+/**
+ * The campaign's own state, in the shared vocabulary.
+ *
+ * `launchState.lifecycle` is a parallel set of display words baked into the
+ * domain type — "Drafting" | "In review" | "Ready" | "Live" — which is exactly
+ * what `vocabulary.ts` says not to do: a state is a state, and the label is
+ * decided in one place. Rendering it raw is why this screen said "In review" on
+ * the header pill and in Launch readiness while the asset cards below said
+ * "Needs you", for one campaign, in one viewport.
+ *
+ * The union is left alone (it is a real state machine, used for gating), and
+ * translated here at the display boundary. `toWorkState` already maps all four:
+ * Drafting→draft, In review→needs_you, Ready→approved, Live→sending.
+ */
+function lifecycleLabel(lifecycle: string): string {
+  return WORK_STATE_LABEL[toWorkState(lifecycle)];
+}
+
+const WORK_STATE_TONE_CLASS: Record<WorkStateTone, Tone> = {
+  attention: "amber",
+  ok: "ok",
+  neutral: "gray",
+};
+
 function lifecycleTone(lifecycle: string): Tone {
-  if (lifecycle === "Live") return "blue";
-  if (lifecycle === "Ready") return "ok";
-  if (lifecycle === "In review") return "amber";
-  return "gray";
+  // "Live" keeps blue: on this screen blue means "out in the world", which is a
+  // stronger statement than the shared `ok` and the one the operator most needs
+  // to spot. Everything else follows the vocabulary's tone.
+  if (toWorkState(lifecycle) === "sending") return "blue";
+  return WORK_STATE_TONE_CLASS[WORK_STATE_TONE[toWorkState(lifecycle)]];
 }
 
 /** Step the lightbox, wrapping at both ends. Exported for test: the demo
@@ -127,12 +154,17 @@ const MEDIA_ORIGIN_LABEL: Record<CampaignMediaAsset["origin"], string> = {
  * looked at must not read like one that passed.
  */
 const MEDIA_REVIEW_LABEL: Record<CampaignMediaAsset["review"]["state"], string> = {
+  // "Not reviewed" is its own state and stays: it means nobody has looked, which
+  // is neither "waiting on you" nor "done" and is the whole point of the note
+  // above. Everything else is the shared vocabulary — a media asset waiting on a
+  // decision is in the same state as a deliverable waiting on one, and used to
+  // say "Awaiting review" two inches from a card saying "Needs you".
   unreviewed: "Not reviewed",
-  pending: "Awaiting review",
-  approved: "Approved",
-  declined: "Declined",
-  needs_revision: "Revision requested",
-  archived: "Archived",
+  pending: WORK_STATE_LABEL.needs_you,
+  approved: WORK_STATE_LABEL.approved,
+  declined: WORK_STATE_LABEL.declined,
+  needs_revision: WORK_STATE_LABEL.needs_changes,
+  archived: WORK_STATE_LABEL.archived,
 };
 
 function mediaReviewTone(state: CampaignMediaAsset["review"]["state"]): Tone {
@@ -929,7 +961,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
               )}
               <span className={`pill ${lifecycleTone(launchState.lifecycle)}`}>
                 <span className="pd" />
-                {launchState.lifecycle}
+                {lifecycleLabel(launchState.lifecycle)}
               </span>
               {campaign.owner && (
                 <span className="chip ghost">
@@ -954,7 +986,9 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
               <i style={{ width: `${launchState.requiredCount ? Math.round((launchState.approvedCount / launchState.requiredCount) * 100) : 0}%` }} />
             </div>
             <div className="csmeta">
-              {launchState.pendingCount} pending · {launchState.deployedCount} live
+              {/* "pending" and "live" were a fifth and sixth word for states the
+                  rest of this screen calls "Needs you" and "Sending". */}
+              {launchState.pendingCount} need you · {launchState.deployedCount} sending
             </div>
           </div>
         </div>
@@ -1379,13 +1413,16 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
           <div className="snsec">
             <h3 className="snh">Launch readiness</h3>
             <div className="lstate">
-              <div className={`lpill ${lifecycleTone(launchState.lifecycle)}`}>{launchState.lifecycle}</div>
+              <div className={`lpill ${lifecycleTone(launchState.lifecycle)}`}>{lifecycleLabel(launchState.lifecycle)}</div>
               <div className="lrow">
                 <span>Approved</span>
                 <b>{launchState.approvedCount}</b>
               </div>
               <div className="lrow">
-                <span>Pending</span>
+                {/* Sits directly under a pill that now reads "Needs you"; a row
+                    labelled "Pending" made that a second name for the same
+                    two assets. */}
+                <span>{WORK_STATE_LABEL.needs_you}</span>
                 <b>{launchState.pendingCount}</b>
               </div>
               <div className="lrow">

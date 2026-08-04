@@ -1,7 +1,9 @@
+import { toWorkState, WORK_STATE_LABEL } from "@/domain";
 import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { buildDemoCampaignWorkspaceList } from "../campaigns/read-model";
+import { type CorrectionInput } from "@/domain";
 import { isDemoDataEnabled } from "../demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 
@@ -240,7 +242,7 @@ function buildDemoApprovalCards(filter: ApprovalQueueFilter = {}): ApprovalCard[
         title: deliverable.title,
         previewText: campaign.previewText ?? deliverable.title,
         status: "pending_approval",
-        statusLabel: "Pending approval",
+        statusLabel: WORK_STATE_LABEL.needs_you,
         riskLevel: "low",
         persona: campaign.persona,
         channel: campaign.previewLabel ?? deliverable.kind,
@@ -946,12 +948,12 @@ function buildEvidence(leadMetadata: JsonObject, sourceData: JsonObject, structu
   return [...evidence];
 }
 
+/** The stored status in the product's one vocabulary — see the twin in
+ *  `campaigns/read-model.ts`. Approval items and campaign assets describe the
+ *  same decision, so they must not describe it in different words. */
 function statusLabel(status: string) {
-  if (status === "pending_owner_approval") return "Pending owner approval";
-  if (status === "pending_approval") return "Pending approval";
-  if (status === "needs_compliance") return "Needs compliance";
-  if (status === "revision_requested") return "Revision requested";
-  return humanize(status);
+  if (status === "needs_compliance") return "Blocked by a rule";
+  return WORK_STATE_LABEL[toWorkState(status)];
 }
 
 function humanize(value: string) {
@@ -1109,4 +1111,70 @@ export async function listApprovalHistory(
       riskLevel: item?.risk_level ?? null,
     };
   });
+}
+
+/**
+ * The operator's recent corrections, for Arc's per-turn context (BSR-685).
+ *
+ * Reads the decision log rather than the items, because a correction is an
+ * EVENT: the same asset can be sent back twice with different notes, and the
+ * item only remembers the last one. `item_type` comes from a second read so a
+ * note about a creative is not presented to Arc as copy guidance.
+ *
+ * Org-scoped, and that scoping is load-bearing rather than routine. The
+ * archived demo org carries nine identical "Nightly smoke check — no action
+ * needed" notes from the prod smoke workflow, one per night. Unscoped, those
+ * would be nine-twelfths of everything Arc learned about being corrected.
+ *
+ * Fails soft to an empty list: this feeds a per-turn prompt, and a degraded
+ * read must not take a turn down with it.
+ */
+export async function getRecentCorrections(
+  orgId: string,
+  client?: SupabaseClient,
+  limit = 25,
+): Promise<CorrectionInput[]> {
+  if (!client && !isSupabaseAdminConfigured()) return [];
+  try {
+    const db = client ?? getSupabaseAdminClient();
+    const { data: decisions, error } = await db
+      .from("approval_decisions")
+      .select("approval_item_id,decision,decided_at,decision_notes")
+      .eq("org_id", orgId)
+      .in("decision", ["revision_requested", "declined"])
+      .not("decision_notes", "is", null)
+      .order("decided_at", { ascending: false })
+      .limit(limit);
+    if (error || !decisions) return [];
+
+    const rows = decisions as Array<{
+      approval_item_id: string | null;
+      decision: string;
+      decided_at: string;
+      decision_notes: string | null;
+    }>;
+    if (rows.length === 0) return [];
+
+    const itemIds = [...new Set(rows.map((r) => r.approval_item_id).filter((v): v is string => Boolean(v)))];
+    const typeById = new Map<string, string>();
+    if (itemIds.length > 0) {
+      const { data: items } = await db
+        .from("approval_items")
+        .select("id,item_type")
+        .eq("org_id", orgId)
+        .in("id", itemIds);
+      for (const item of (items ?? []) as Array<{ id: string; item_type: string | null }>) {
+        if (item.item_type) typeById.set(item.id, item.item_type);
+      }
+    }
+
+    return rows.map((r) => ({
+      decision: r.decision,
+      note: r.decision_notes,
+      itemType: r.approval_item_id ? typeById.get(r.approval_item_id) ?? null : null,
+      decidedAt: r.decided_at,
+    }));
+  } catch {
+    return [];
+  }
 }

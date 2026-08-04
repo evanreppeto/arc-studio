@@ -1,4 +1,4 @@
-import { assessProvenance, describeExternalMediaProvenance } from "@/domain";
+import { assessProvenance, describeExternalMediaProvenance, toWorkState, WORK_STATE_LABEL } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
@@ -52,15 +52,15 @@ function addedLabel(iso: string | null): string {
   return months === 1 ? "1mo ago" : `${months}mo ago`;
 }
 
-/** approval_status → the word a reviewer recognises on a card. */
+/**
+ * approval_status → the word a reviewer recognises on a card.
+ *
+ * The same decision as the one on a campaign deliverable, so the same words: an
+ * asset here used to read "In review" while the identical state on /campaigns
+ * read "Needs you" (BSR-656).
+ */
 function reviewLabel(status: string): string {
-  switch (status) {
-    case "approved": return "Approved";
-    case "declined": return "Declined";
-    case "needs_revision": return "Revision requested";
-    case "archived": return "Archived";
-    default: return "In review";
-  }
+  return WORK_STATE_LABEL[toWorkState(status)];
 }
 
 function mapAsset(v: MediaAssetView, i: number): Asset {

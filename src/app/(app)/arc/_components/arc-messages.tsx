@@ -46,6 +46,8 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import {
   arcToolLabel,
+  ASSET_NOUN,
+  countOf,
   summarizeSteps,
   WORK_STATE_LABEL,
   type ArcActionCard,
@@ -67,7 +69,7 @@ import { visibleStepNarration } from "@/lib/arc-chat/step-narration";
 import { collapseTraceRows } from "@/lib/arc-chat/trace-rows";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import { resolveArcRunViewState } from "@/lib/arc-chat/run-view-state";
-import { formatToolName, getToolKind } from "@/lib/arc-chat/tool-labels";
+import { getToolKind } from "@/lib/arc-chat/tool-labels";
 import {
   buildArcWorkspaceEvidence,
   buildArcWorkspaceRuns,
@@ -94,7 +96,7 @@ import { LiveReasoning, ReasoningMarkdown } from "./arc-markdown";
 import { buildDemoLiveWork, DEMO_STEPS, DEMO_TOOLS, DEMO_WORKSPACE_MESSAGES } from "./arc-demo-data";
 import type { RunKind, RunRow } from "./arc-view.types";
 
-export { formatToolName, getToolKind };
+export { getToolKind };
 
 export function formatMessageTime(iso: string) {
   const value = new Date(iso);
@@ -251,7 +253,7 @@ export function RunTrace({
       // trace — the protocol prefix is how Arc reaches the tool, not what it did.
       // Found by the dev identifier check, not by reading the screen (BSR-709).
       label: arcToolLabel(tool.name),
-      detail: tool.input ?? `Running ${formatToolName(tool.name).toLowerCase()}`,
+      detail: tool.input ?? `Running ${arcToolLabel(tool.name).toLowerCase()}`,
       result: tool.output,
       isTool: true,
       status: tool.status === "complete" ? "done" as const : tool.status === "error" ? "error" as const : "running" as const,
@@ -585,17 +587,17 @@ export function DraftPackageCard({ cards, statuses, onReview, onContextMenu }: {
   const approvedCount = cards.filter((card) => statusOf(card) === "approved").length;
   return (
     <div className="arc-package" onContextMenu={onContextMenu}>
-      <div className="arc-package-kicker">Campaign package · {approvedCount}/{cards.length} approved</div>
+      <div className="arc-package-kicker">Campaign · {approvedCount}/{cards.length} approved</div>
       <div className="arc-package-row">
         <span className="arc-package-icon"><MessageSquareText size={18} /></span>
-        <span className="arc-package-title"><b>{cards.length} assets ready for review</b><small>Review each channel in the workspace</small></span>
+        <span className="arc-package-title"><b>{countOf(cards.length, ASSET_NOUN)} need you</b><small>Review each channel in the workspace</small></span>
         <div className="arc-package-channels">
           {cards.slice(0, 4).map((card, index) => {
             const meta = assetStatusMeta(statusOf(card));
             return <span key={`${card.title}-${index}`} data-tone={meta.tone}><i />{card.channel ?? card.title}<small>{meta.label}</small></span>;
           })}
         </div>
-        <button type="button" className="arc-review-button" data-arc-review-trigger="true" onClick={onReview}>Review package <PanelRightOpen size={15} /></button>
+        <button type="button" className="arc-review-button" data-arc-review-trigger="true" onClick={onReview}>Review assets <PanelRightOpen size={15} /></button>
       </div>
     </div>
   );
@@ -716,7 +718,7 @@ export function ArcWorkPanel({
         ?? (demoSeed
           ? [
               ...DEMO_STEPS.map((step, index) => ({ id: `demo-panel-step-${index}`, label: step.label, detail: step.detail?.join(" · "), status: "done" as const, kind: step.kind ?? "think" })),
-              ...DEMO_TOOLS.map((tool, index) => ({ id: `demo-panel-tool-${index}`, label: formatToolName(tool.name), detail: tool.output, status: "done" as const, kind: getToolKind(tool.name) })),
+              ...DEMO_TOOLS.map((tool, index) => ({ id: `demo-panel-tool-${index}`, label: arcToolLabel(tool.name), detail: tool.output, status: "done" as const, kind: getToolKind(tool.name) })),
             ]
           : []);
 
@@ -1058,7 +1060,7 @@ export function AssetReviewPanel({ cards, statuses, onStatus, onClose }: { cards
       transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
     >
       <header className="arc-artifact-header">
-        <div><span>Review workspace</span><h2>{cards.length === 1 ? "Asset review" : "Campaign package"}</h2><p>{cards.length} {cards.length === 1 ? "asset" : "assets"} · {approvedCount} approved</p></div>
+        <div><span>Review workspace</span><h2>{cards.length === 1 ? "Asset review" : "Campaign assets"}</h2><p>{countOf(cards.length, ASSET_NOUN)} · {approvedCount} approved</p></div>
         <button type="button" onClick={onClose} aria-label="Close review workspace"><PanelRightClose size={17} /></button>
       </header>
       <div className="arc-artifact-shell">

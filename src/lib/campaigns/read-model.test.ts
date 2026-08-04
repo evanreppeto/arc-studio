@@ -467,7 +467,10 @@ describe("getCampaignWorkspaceList rollup", () => {
         title: "Partner intro email",
         kind: "Email",
         channel: "Email",
-        status: "Pending approval",
+        // The STORED status, not a label: this field mirrors
+        // CampaignWorkspaceAsset.status, which the detail view re-parses and
+        // writes raw values back into. Labelling happens at render.
+        status: "pending_approval",
         preview: "Subject: Fast help when a leak turns into a water-loss claim",
         media: [],
       }),
