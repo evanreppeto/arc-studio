@@ -82,5 +82,7 @@ export function emitCardTool(collectCard: (card: ArcActionCard) => void) {
       collectCard(card);
       return textResult(`Attached ${args.kind} card: ${args.title}`);
     },
+    // Never deferred behind tool search: see ALWAYS_LOADED_REPLY_TOOLS in ./index.
+    { alwaysLoad: true },
   );
 }
