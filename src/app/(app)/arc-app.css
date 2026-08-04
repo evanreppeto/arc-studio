@@ -188,12 +188,29 @@
   & .rail-recents-head h2 { margin: 0; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); font: 600 10.5px/1.4 var(--sans); letter-spacing: 0.11em; text-transform: uppercase; }
   & .rail-recents-head a { color: var(--muted); font-size: 10.5px; font-weight: 600; text-decoration: none; transition: color 0.15s var(--ease); }
   & .rail-recents-head a:hover { color: var(--accent); }
+  /* "New" reads as an action, not a caption: a bordered chip with a plus, sized
+     to stay quieter than the nav rows above it. */
+  & .rail-recents-new { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border: 1px solid var(--line-2); border-radius: 6px; transition: color 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease); }
+  & .rail-recents-new svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.1; stroke-linecap: round; }
+  & .rail-recents-head a.rail-recents-new:hover { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
   & .rail-recents-list { display: grid; gap: 1px; }
   & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: 7px; color: var(--text-2); text-decoration: none; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
   & .rail-recent:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
+  /* The chat you're reading, marked the same way the rail marks the page you're
+     on — otherwise /arc is the one destination that never says where you are. */
+  & .rail-recent.on { color: var(--text); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); }
+  & .rail-recent.on .rail-recent-title { font-weight: 600; }
   & .rail-recent-dot { width: 5px; height: 5px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 72%, var(--muted)); opacity: 0.72; }
+  & .rail-recent.on .rail-recent-dot { background: var(--accent); opacity: 1; }
   & .rail-recent-title { min-width: 0; overflow: hidden; font-size: 11.5px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
   & .rail-recent time { color: var(--muted); font: 500 9.5px/1 var(--mono); }
+  /* An Arc run in flight. The rail is on every screen, so this is how work
+     started in a chat stays visible after you navigate away from it. */
+  & .rail-recent.working .rail-recent-dot { background: var(--accent); opacity: 1; }
+  & .rail-recent-working { color: var(--accent); font: 600 9.5px/1 var(--mono); letter-spacing: 0.04em; }
+  @media (prefers-reduced-motion: no-preference) {
+    & .rail-recent.working .rail-recent-dot { animation: arcBreathe 2.2s var(--ease) infinite; }
+  }
   & .rail-recents-empty { margin: 0; padding: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; }
   & .nav-more { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding: 7px 10px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; transition: color 0.15s var(--ease); }
   & .nav-more:hover { color: var(--text-2); }
