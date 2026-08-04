@@ -58,7 +58,9 @@ describe("getArcChatModel", () => {
   it("uses demo mode only when the real backend is not configured", async () => {
     mocks.isConfigured.mockReturnValue(false);
 
-    await expect(getArcChatModel()).resolves.toEqual({ status: "unavailable" });
+    // `not_configured`, not `unavailable`: nothing failed, there is no backend
+    // to ask. /arc reads this exact status to fall back to the mock.
+    await expect(getArcChatModel()).resolves.toEqual({ status: "not_configured" });
     expect(mocks.listConversations).not.toHaveBeenCalled();
   });
 
