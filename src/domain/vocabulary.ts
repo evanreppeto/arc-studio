@@ -472,6 +472,97 @@ export function campaignEventActivityPredicate(eventType: string | null | undefi
 }
 
 // ---------------------------------------------------------------------------
+// Campaign detail (BSR-742)
+//
+// Four stored columns reached the campaign screen verbatim. Values censused
+// from prod 2026-08-04, counts in brackets.
+//
+//   campaign_assets.tool_source            arc_saved [34], creative_generator [8],
+//                                          "Arc Orchestrator" [1], "Arc Demo Orchestrator" [9]
+//   approval_recommendations.agent         draft-critic [6]
+//   approval_recommendations.recommendation "request revision" [4], approve [2]
+//   approval_recommendations.risk_flags[]  unsupported_claim [3], claim_risk [1]
+//
+// Note the mixed shapes in tool_source: some writers already store prose. That
+// is exactly why every mapper here falls through to `humanizeIdentifier` rather
+// than an exhaustive lookup — "Arc Orchestrator" must pass through untouched
+// while `arc_saved` must not.
+// ---------------------------------------------------------------------------
+
+/** Where a deliverable came from, as the operator would say it. */
+const ASSET_SOURCE_LABEL: Record<string, string> = {
+  arc_saved: "Saved from a chat",
+  creative_generator: "Generated creative",
+  approved_media: "Approved media",
+  library: "From your library",
+};
+
+/**
+ * Who is advising on this deliverable.
+ *
+ * `draft-critic` is the independent claims reviewer — the read-model only counts
+ * a `draft-critic` row as a real review, because `recommend_on_approval` writes
+ * as `arc` and Arc's own note must not read as an independent check of Arc's own
+ * work. The label keeps that distinction visible.
+ */
+const REVIEW_AGENT_LABEL: Record<string, string> = {
+  "draft-critic": "Arc's claims reviewer",
+  arc: "Arc",
+};
+
+/** What the reviewer is advising. Slots after "… recommends". */
+const REVIEW_VERDICT_LABEL: Record<string, string> = {
+  approve: "approval",
+  "request revision": "changes",
+  request_revision: "changes",
+  decline: "declining it",
+  reject: "declining it",
+};
+
+/** Why a deliverable is flagged. These are the operator's risk vocabulary. */
+const RISK_FLAG_LABEL: Record<string, string> = {
+  unsupported_claim: "Claim we cannot back up",
+  claim_risk: "Risky claim",
+  embedded_text: "Text baked into the image",
+  logo_issue: "Logo problem",
+  privacy: "Someone identifiable",
+  unrealistic_scene: "Scene looks staged",
+};
+
+/**
+ * Where a deliverable came from, or null when nothing is recorded — the meta
+ * line omits the segment rather than printing a placeholder.
+ *
+ * `tool_source` holds BOTH shapes in prod: `arc_saved` and `creative_generator`
+ * are identifiers, `Arc Orchestrator` and `Arc Demo Orchestrator` are prose a
+ * person wrote. So this cannot just fall through to `humanizeIdentifier` the way
+ * the other mappers do — that sentence-cases the prose into "Arc orchestrator",
+ * which reads as a typo. Same reasoning as `arcToolLabel` and `ToolSearch`:
+ * something already written to be read is a name, not a key.
+ */
+export function assetSourceLabel(source: string | null | undefined): string | null {
+  const raw = source?.trim();
+  if (!raw) return null;
+  const mapped = ASSET_SOURCE_LABEL[raw];
+  if (mapped) return mapped;
+  // Whitespace means someone wrote it as words. Leave it exactly as written.
+  if (/\s/.test(raw)) return raw;
+  return humanizeIdentifier(raw);
+}
+
+export function reviewAgentLabel(agent: string | null | undefined): string {
+  return labelled(REVIEW_AGENT_LABEL, agent) ?? "A reviewer";
+}
+
+export function reviewVerdictLabel(verdict: string | null | undefined): string {
+  return labelled(REVIEW_VERDICT_LABEL, verdict) ?? "a decision";
+}
+
+export function riskFlagLabel(flag: string | null | undefined): string {
+  return labelled(RISK_FLAG_LABEL, flag) ?? "Flagged for review";
+}
+
+// ---------------------------------------------------------------------------
 // The registry (BSR-709, option B)
 //
 // Every mapper above turns a value the database stores into something a person
@@ -563,6 +654,37 @@ export const STORED_VALUE_LABELLERS: StoredValueLabeller[] = [
     map: CAMPAIGN_EVENT_PREDICATE,
     nullable: false,
     label: campaignEventActivityPredicate,
+  },
+  // Campaign detail (BSR-742). `assetSourceLabel` is the one nullable entry
+  // here: the meta line omits the segment entirely rather than printing a
+  // placeholder where a provenance would go.
+  {
+    name: "assetSourceLabel",
+    source: "campaign_assets.tool_source",
+    map: ASSET_SOURCE_LABEL,
+    nullable: true,
+    label: assetSourceLabel,
+  },
+  {
+    name: "reviewAgentLabel",
+    source: "approval_recommendations.agent",
+    map: REVIEW_AGENT_LABEL,
+    nullable: false,
+    label: reviewAgentLabel,
+  },
+  {
+    name: "reviewVerdictLabel",
+    source: "approval_recommendations.recommendation",
+    map: REVIEW_VERDICT_LABEL,
+    nullable: false,
+    label: reviewVerdictLabel,
+  },
+  {
+    name: "riskFlagLabel",
+    source: "approval_recommendations.risk_flags[]",
+    map: RISK_FLAG_LABEL,
+    nullable: false,
+    label: riskFlagLabel,
   },
   {
     name: "arcToolLabel",
