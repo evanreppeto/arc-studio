@@ -27,16 +27,18 @@ describe("GET /api/v1/arc/vault", () => {
     expect((await GET(req("Bearer wrong"))).status).toBe(401);
     expect(notesMock).not.toHaveBeenCalled();
   });
-  it("lists notes when no slug, scoped to the token org", async () => {
+  it("lists notes when no slug, scoped to the token org AND workspace", async () => {
     configure();
     expect(await (await GET(req("Bearer secret"))).json()).toMatchObject({ ok: true, notes: [{ slug: "n1" }] });
-    expect(notesMock).toHaveBeenCalledWith("org-1");
+    // Both, not just the org: the read-model uses the service-role client, which
+    // bypasses RLS, so the org filter alone would span every workspace (BSR-729).
+    expect(notesMock).toHaveBeenCalledWith("org-1", "workspace-1");
   });
-  it("returns a single note for ?slug=, scoped to the token org", async () => {
+  it("returns a single note for ?slug=, scoped to the token org AND workspace", async () => {
     configure();
     const res = await GET(req("Bearer secret", "n1"));
     expect(await res.json()).toMatchObject({ ok: true, note: { slug: "n1" } });
-    expect(noteMock).toHaveBeenCalledWith("n1", "org-1");
+    expect(noteMock).toHaveBeenCalledWith("n1", "org-1", "workspace-1");
   });
   it("404s when the slug is not found", async () => {
     configure(); noteMock.mockResolvedValue(null as never);
