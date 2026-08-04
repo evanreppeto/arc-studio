@@ -86,7 +86,7 @@ beforeEach(() => {
   getOppMock.mockResolvedValue(null);
   fromOppMock.mockResolvedValue({ campaignId: "camp_from_opp" });
   summaryMock.mockReset();
-  summaryMock.mockResolvedValue(undefined);
+  summaryMock.mockResolvedValue(true);
 });
 
 afterEach(() => {

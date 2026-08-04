@@ -347,6 +347,10 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
 
 export type CampaignPackageSummaryInput = {
   campaignId: string;
+  /** One line: what this campaign is for. */
+  objective?: unknown;
+  /** One line: who it targets and why they were grouped. */
+  audienceSummary?: unknown;
   /** Sales/partner handoff note — the "what a human needs to know" half of the package. */
   handoffNote?: unknown;
   /** Audiences weighed and set aside, each with the reason it lost. */
@@ -373,9 +377,23 @@ export type CampaignPackageSummaryInput = {
  * package arrive across several calls and a later asset must not blank the
  * handoff note an earlier one recorded.
  */
-export async function recordCampaignPackageSummary(input: CampaignPackageSummaryInput): Promise<void> {
+export async function recordCampaignPackageSummary(input: CampaignPackageSummaryInput): Promise<boolean> {
   const update: Record<string, unknown> = {};
 
+  // objective/audience_summary were previously only written by
+  // createCampaignFromOpportunity, i.e. only when a campaign was CREATED from an
+  // opportunity. Documenting an existing campaign could not set them at all:
+  // measured on prod, a run that filled handoff_note and considered_audiences on
+  // campaign 7bef0d89 left both of these null, because the update path had no
+  // way to reach them.
+  if (input.objective !== undefined) {
+    const objective = typeof input.objective === "string" ? input.objective.trim() : "";
+    if (objective) update.objective = objective;
+  }
+  if (input.audienceSummary !== undefined) {
+    const audience = typeof input.audienceSummary === "string" ? input.audienceSummary.trim() : "";
+    if (audience) update.audience_summary = audience;
+  }
   if (input.handoffNote !== undefined) {
     const note = normalizeHandoffNote(input.handoffNote);
     if (note) update.handoff_note = note;
@@ -387,12 +405,15 @@ export async function recordCampaignPackageSummary(input: CampaignPackageSummary
     // records.
     if (audiences.length) update.considered_audiences = audiences;
   }
-  if (Object.keys(update).length === 0) return;
+  // False, not a silent no-op: a caller that supplied only malformed input needs
+  // to be able to tell "nothing was worth writing" from "written".
+  if (Object.keys(update).length === 0) return false;
 
   const client = input.client ?? getSupabaseAdminClient();
   let query = client.from("campaigns").update(update as never).eq("id", input.campaignId);
   if (input.tenant?.org_id) query = query.eq("org_id", input.tenant.org_id);
   await query;
+  return true;
 }
 
 /**
