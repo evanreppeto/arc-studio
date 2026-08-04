@@ -183,7 +183,7 @@ async function main() {
   const { readFile } = await import("node:fs/promises");
 
   const webhook = process.env.SLACK_DEPLOY_WEBHOOK_URL;
-  const repo = process.env.GITHUB_REPOSITORY ?? "evanreppeto/marketing";
+  const repo = process.env.GITHUB_REPOSITORY ?? "evanreppeto/arc-studio";
 
   let message;
   if (process.env.DEPLOY_NOTIFY_DRILL === "1") {

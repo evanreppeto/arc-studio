@@ -123,8 +123,8 @@ describe("getRecentArcConversations", () => {
       orgId: "org-1",
       workspaceId: "workspace-1",
     })).resolves.toEqual([
-        { id: "conversation-2", title: "Untitled chat", when: "30m", running: false, defaultActive: false },
-        { id: "conversation-1", title: "Growth plan", when: "2h", running: false, defaultActive: true },
+        { id: "conversation-2", title: "Untitled chat", when: "30m", running: false, defaultActive: false, campaignId: null, campaignName: null },
+        { id: "conversation-1", title: "Growth plan", when: "2h", running: false, defaultActive: true, campaignId: null, campaignName: null },
       ]);
   });
 
