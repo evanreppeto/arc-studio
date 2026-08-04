@@ -1753,6 +1753,27 @@
 
 /* ===================== Opportunities inbox (build-opportunities.html) ===================== */
 .arc-app .arc-opps { flex: 1; min-height: 0; display: grid; grid-template-columns: 362px minmax(0, 1fr); }
+/* The list column is a fixed 362px, so every pixel lost comes off the DETAIL —
+   the pane carrying the reasoning, the evidence and the actions. At 768px it
+   set body text at ~35 characters per line beside a list column sitting
+   three-quarters empty (BSR-746).
+   1058px, not the shell's usual 900px, and the difference is the rail. The rail
+   is 236px and stays docked down to 900, so the squeeze is WORST just above the
+   shell breakpoint: at 901px the detail measures 303px — narrower than at 768px,
+   where the rail has collapsed and given its width back. Stacking at the shell
+   breakpoint would have left the worst case untouched.
+   236 rail + 362 list + 460 detail = 1058, where 460 is the narrowest the detail
+   reads acceptably.
+   Stacking gives the detail the full width. The list keeps its own scroll in a
+   capped strip above it, so it stays reachable without pushing the card it
+   describes off the bottom of the screen. */
+@media (max-width: 1058px) {
+  .arc-app .arc-opps {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 38vh) minmax(0, 1fr);
+  }
+  .arc-app .arc-opps .olist { border-right: 0; border-bottom: 1px solid var(--line); }
+}
 .arc-app .arc-opps .olist { border-right: 1px solid var(--line); min-height: 0; overflow: auto; padding: 14px 12px; background: color-mix(in srgb, var(--canvas-deep) 14%, transparent); }
 .arc-app .arc-opps .olisthd { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 12px; }
 .arc-app .arc-opps .olisthd .h { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
