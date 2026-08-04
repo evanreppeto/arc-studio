@@ -24,6 +24,12 @@ export type OppRouting = { step: string; note: string; done: boolean };
 export type OpportunityVM = {
   id: string;
   name: string;
+  /**
+   * The distinguishing tail of the title — "Cook, IL / DuPage, IL +1 more" — when
+   * `name` alone would not tell two cards apart. Null when a more specific field
+   * (staleness) already carries it.
+   */
+  qualifier: string | null;
   title: string;
   confidence: number;
   urgencyTone: "red" | "amber" | "info";
@@ -382,6 +388,7 @@ export function OpportunityInbox({
                   <span className="nm">{it.name}</span>
                   <span className="pct" title={`Confidence — ${definitionText("confidence")}`}>{it.confidence}%</span>
                 </div>
+                {it.qualifier && <div className="oq">{it.qualifier}</div>}
                 <div className="om">
                   <span className="src">{it.sourceLabel}</span>
                   {it.staleLabel && <span className="stale">{it.staleLabel}</span>}
@@ -457,15 +464,18 @@ export function OpportunityInbox({
               {o.evidence.length > 0 && (
                 <div className="blk">
                   <div className="lab">What Arc saw</div>
-                  {o.evidence.map((e, i) => (
-                    <div className="evrow" key={i}>
-                      <span className="n">{i + 1}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="es" title={e.hint}>{e.label}</div>
-                        <div className="ed">{e.value}</div>
+                  {/* A definition list, not numbered cards. These are parallel
+                      facts, and the numbers claimed an order they never had —
+                      while the card treatment gave each one a pointer cursor and
+                      a hover nudge for a row that has never been clickable. */}
+                  <dl className="evlist">
+                    {o.evidence.map((e, i) => (
+                      <div className="evitem" key={i}>
+                        <dt title={e.hint}>{e.label}</dt>
+                        <dd>{e.value}</dd>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </dl>
                 </div>
               )}
 
