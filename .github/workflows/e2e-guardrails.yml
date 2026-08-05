@@ -13,11 +13,32 @@ name: E2E Guardrails (deployed)
 # check), plus on demand. It is a deployed-app health guardrail — not a gate on
 # an individual PR's own code.
 #
-# Credentials: the authenticated guardrails need the PROD_E2E_PASSWORD secret
-# (PROD_E2E_EMAIL optional; defaults to the seeded owner@bsr.test). Without it
-# they SKIP — visibly, in the report — rather than fail the run, and no working
-# prod credential lives in the repo. The unauthenticated login-wall check and
-# the prod-smoke job always run.
+# WHICH TENANT (BSR-708, and again here): prod holds TWO organizations whose
+# workspaces are both named "Big Shoulders Restoration". They are distinguishable
+# only by id, so a run signed into the wrong one looks completely normal.
+#
+#   - big-shoulders-restoration-2  workspace 840470d3…  the LIVE tenant. These
+#     read-only guardrails belong here, because "is the live product working" is
+#     the question they exist to answer.
+#   - big-shoulders-restoration    workspace 0d2ddb28…  the ARCHIVED seeded org,
+#     drained 2026-08-04. It belongs to the nightly smoke, which WRITES.
+#
+# This workflow used to fall back to the nightly's `owner@bsr.test`, whose only
+# membership is the archived org. After the drain, the "Opportunity inbox is
+# populated" check went red on every merge to main and stayed red — reporting an
+# empty inbox rather than a dead tenant, because nothing on screen tells the two
+# apart. E2E_EXPECTED_WORKSPACE_ID now pins the tenant and the suite asserts it
+# before any content assertion, so that failure names itself.
+#
+# The suites no longer share a credential, deliberately: one repointed secret
+# must not be able to move a WRITING suite onto the live tenant.
+#
+# Credentials: the authenticated guardrails need PROD_GUARDRAIL_EMAIL +
+# PROD_GUARDRAIL_PASSWORD — an account whose active membership is the LIVE
+# workspace. There is no fallback (the old one is what caused this), so without
+# them the authenticated checks SKIP, visibly, and the step below raises a
+# warning rather than letting a hollow green pass unremarked. The unauthenticated
+# login-wall check and the prod-smoke job always run.
 
 on:
   push:
@@ -51,10 +72,29 @@ jobs:
       - name: Guardrails against prod
         run: pnpm test:e2e:guardrails:prod
         env:
-          E2E_EMAIL: ${{ secrets.PROD_E2E_EMAIL || 'owner@bsr.test' }}
-          # No literal fallback — this signs in to production. Unset ⇒ the
+          # No literal fallback on EITHER of these — a default email is not a
+          # convenience, it is a hidden tenant selector, and that is exactly how
+          # this workflow ended up signed into a drained org. Unset ⇒ the
           # authenticated guardrails skip; the login-wall check still runs.
-          E2E_PASSWORD: ${{ secrets.PROD_E2E_PASSWORD }}
+          E2E_EMAIL: ${{ secrets.PROD_GUARDRAIL_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.PROD_GUARDRAIL_PASSWORD }}
+          # The LIVE workspace. Not a secret — it is an internal id, and keeping
+          # it in the file means the tenant this runs against is reviewable in a
+          # diff instead of living in invisible repo state. The `vars` override
+          # exists so another deployment can repoint it without a code change.
+          E2E_EXPECTED_WORKSPACE_ID: ${{ vars.PROD_GUARDRAIL_WORKSPACE_ID || '840470d3-8b4a-49e7-bd5f-5e52bdc62cf7' }}
+          E2E_EXPECTED_ORG_SLUG: ${{ vars.PROD_GUARDRAIL_ORG_SLUG || 'big-shoulders-restoration-2' }}
+
+      # A skipped check is indistinguishable from a passing one on the checks UI,
+      # and these guardrails are the only continuous proof that the deployed app
+      # works at all. Say so out loud when they are not running.
+      - name: Report skipped guardrails
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.PROD_GUARDRAIL_EMAIL }}" ] || [ -z "${{ secrets.PROD_GUARDRAIL_PASSWORD }}" ]; then
+            echo "::warning title=The authenticated guardrails are SKIPPED::Only the login wall was checked. Nothing is verifying that the live tenant renders, that the Opportunity inbox is populated, or that the campaign approval gate exists — and the run still reports green. Set PROD_GUARDRAIL_EMAIL / PROD_GUARDRAIL_PASSWORD to a read-only operator account whose active workspace membership is the LIVE workspace (840470d3-8b4a-49e7-bd5f-5e52bdc62cf7, org big-shoulders-restoration-2). Do NOT reuse the nightly smoke's PROD_E2E_* credential: it belongs to the archived seeded org, which is what made this check red on every merge."
+          fi
 
       - name: Upload Playwright report on failure
         if: ${{ failure() }}
