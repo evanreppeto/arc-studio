@@ -891,15 +891,68 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-campaigns .cmp-empty strong { color: var(--text); }
 .arc-app .arc-campaigns .cmp-empty-detail { margin-top: 8px; opacity: .75; font-family: var(--mono); font-size: 11px; }
 
+/* --- Motion ---------------------------------------------------------------
+   `grid-template-rows: 0fr → 1fr` animates to content height without measuring
+   it in JS, so the drawer closes as smoothly as it opens. Conditional rendering
+   gave an entrance and no exit — the drawer simply vanished. */
+.arc-app .arc-campaigns .cmp-drawer {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows .34s var(--ease);
+}
+.arc-app .arc-campaigns .cmp-card.open .cmp-drawer { grid-template-rows: 1fr; }
+.arc-app .arc-campaigns .cmp-drawer-in { overflow: hidden; min-height: 0; }
+/* Nothing inside a closed drawer is focusable — otherwise Tab walks into a
+   collapsed panel and the focus ring lands on something nobody can see. */
+.arc-app .arc-campaigns .cmp-drawer[aria-hidden="true"] .cmp-drawer-in { visibility: hidden; }
+
+.arc-app .arc-campaigns .cmp-card.openable { cursor: pointer; }
+/* A border and background step, NOT a lift. `.btn` is the one element that
+   levitates; ordinary cards do not (DESIGN.md §6, guarded by
+   no-levitation.test.ts). Lift-plus-shadow on every card is the generic SaaS
+   reflex the obsidian system exists to avoid, and "it looked flat without it" is
+   precisely the reason the guard says to refuse. */
+.arc-app .arc-campaigns .cmp-card { transition: border-color .16s var(--ease), background .16s var(--ease); }
+.arc-app .arc-campaigns .cmp-card.openable:hover { background: color-mix(in srgb, var(--accent) 3%, var(--panel)); }
+.arc-app .arc-campaigns .cmp-card.needsyou.openable:hover { background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft, #1a1a1e)); }
+
 .arc-app .arc-campaigns .cmp-card .dstrip { margin-top: 12px; padding-top: 13px; border-top: 1px solid var(--line); }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Assets arrive just behind one another, ~40ms apart. `--i` comes from the
+     element so the ladder holds for any number of assets — an nth-child list
+     silently stops staggering past whatever depth it was written to. */
+  .arc-app .arc-campaigns .cmp-card.open .dcard {
+    animation: cmpAsset .34s var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 40ms + 60ms);
+  }
+}
+@keyframes cmpAsset {
+  from { opacity: 0; transform: translateY(6px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+/* The stagger sits inside a no-preference query already; these do not, because
+   the layout values (0fr/1fr, the hover lift) have to apply either way — it is
+   only their TRANSITION that must not run. */
+@media (prefers-reduced-motion: reduce) {
+  .arc-app .arc-campaigns .cmp-drawer,
+  .arc-app .arc-campaigns .cmp-card,
+  .arc-app .arc-campaigns .dcard,
+  .arc-app .arc-campaigns .cmp-more svg { transition: none; }
+}
 .arc-app .arc-campaigns .dstrip { display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
 .arc-app .arc-campaigns .dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 7px; width: 100%; }
 .arc-app .arc-campaigns .dcard {
-  display: flex; align-items: center; gap: 9px; min-width: 0; padding: 7px 9px;
+  display: flex; align-items: center; gap: 9px; min-width: 0; width: 100%; padding: 7px 9px;
   border: 1px solid var(--line); border-radius: 9px; background: var(--panel);
+  font-family: inherit; text-align: left; color: inherit;
+  transition: border-color .14s var(--ease), background .14s var(--ease), transform .14s var(--ease);
 }
-/* Undecided pieces are the work; settled ones are context for it. */
-.arc-app .arc-campaigns .dcard.waiting { border-color: var(--accent-border); background: var(--inset); }
+/* Undecided pieces are the work; settled ones are context for it. Only the
+   undecided ones are buttons — the rest have nothing to decide. */
+.arc-app .arc-campaigns .dcard.waiting { border-color: var(--accent-border); background: var(--inset); cursor: pointer; }
+.arc-app .arc-campaigns .dcard.waiting:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-raised, #23232a); }
+.arc-app .arc-campaigns .dcard.waiting:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arc-app .arc-campaigns .dcard.waiting:disabled { cursor: default; opacity: .6; }
 .arc-app .arc-campaigns .dcard:not(.waiting) { opacity: .72; }
 .arc-app .arc-campaigns .dthumb {
   flex: none; width: 34px; height: 34px; border-radius: 7px; overflow: hidden; display: grid; place-items: center;

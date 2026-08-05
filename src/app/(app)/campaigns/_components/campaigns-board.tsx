@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -176,7 +176,8 @@ function DeliverableStrip({
   reviewing,
 }: {
   pieces: CampaignPiece[];
-  onReview: () => void;
+  /** Opens the review queue. Given an asset id, that asset is dealt first. */
+  onReview: (focusAssetId?: string) => void;
   reviewing: boolean;
 }) {
   const ordered = useMemo(
@@ -188,34 +189,62 @@ function DeliverableStrip({
   return (
     <div className="dstrip">
       <div className="dgrid">
-        {ordered.map((piece) => (
-          <div key={piece.id} className={`dcard${piece.needsReview ? " waiting" : ""}`}>
-            <span className="dthumb">
-              {piece.thumbnailUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
-                <img src={piece.thumbnailUrl} alt="" loading="lazy" />
-              ) : (
-                svgIcon('<path d="M4 5h16v14H4z"/><path d="M4 10h16M9 10v9"/>')
-              )}
-            </span>
-            <div className="dmeta">
-              <div className="dtitle">{piece.title}</div>
-              {/* Absent when the title already IS the kind — see `pieceLabel`. */}
-              {piece.kind && <div className="dkind">{piece.kind}</div>}
+        {ordered.map((piece, i) => {
+          const label = [piece.title, piece.kind].filter(Boolean).join(" · ");
+          const body = (
+            <>
+              <span className="dthumb">
+                {piece.thumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+                  <img src={piece.thumbnailUrl} alt="" loading="lazy" />
+                ) : (
+                  svgIcon('<path d="M4 5h16v14H4z"/><path d="M4 10h16M9 10v9"/>')
+                )}
+              </span>
+              <div className="dmeta">
+                <div className="dtitle">{piece.title}</div>
+                {/* Absent when the title already IS the kind — see `pieceLabel`. */}
+                {piece.kind && <div className="dkind">{piece.kind}</div>}
+              </div>
+              <span className={`pill ${piece.tone}`}>
+                <span className="pd" />
+                {piece.statusLabel}
+              </span>
+            </>
+          );
+          // Each card enters just behind the one before it. The delay is an
+          // inline custom property rather than an nth-child ladder so it holds
+          // for any number of assets.
+          const style = { "--i": i } as CSSProperties;
+
+          // An undecided asset is a thing you can act on, so it is a button and
+          // it deals ITSELF first. Reviewing one specific piece used to mean
+          // opening the whole queue and paging to it.
+          return piece.needsReview ? (
+            <button
+              key={piece.id}
+              type="button"
+              className="dcard waiting"
+              style={style}
+              onClick={() => onReview(piece.id)}
+              disabled={reviewing}
+              aria-label={`Review ${label}`}
+            >
+              {body}
+            </button>
+          ) : (
+            <div key={piece.id} className="dcard" style={style}>
+              {body}
             </div>
-            <span className={`pill ${piece.tone}`}>
-              <span className="pd" />
-              {piece.statusLabel}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {/* `.gbtn`, not `.cbtn` — campaign.css scopes `.cbtn` under `.arc-campaign`
           (the detail route). This board's root is `.arc-campaigns`, which that
           selector does not match, so a `.cbtn` here renders as bare text with a
           full-size raw SVG beside it. */}
       {waiting > 0 && (
-        <button type="button" className="gbtn dreview" onClick={onReview} disabled={reviewing}>
+        <button type="button" className="gbtn dreview" onClick={() => onReview()} disabled={reviewing}>
           {svgIcon('<path d="M20 6L9 17l-5-5"/>')}
           {reviewing ? "Loading…" : `Review ${countOf(waiting, ASSET_NOUN)}`}
         </button>
@@ -270,8 +299,14 @@ export function CampaignsBoard({
   const [queueError, setQueueError] = useState<string | null>(null);
   const [queuePending, startQueueTransition] = useTransition();
 
-  /** Open the review queue, scoped to one campaign when given one. */
-  async function openQueue(campaign?: { id: string; name: string }) {
+  /**
+   * Open the review queue, scoped to one campaign when given one, and dealing
+   * `focusAssetId` first when the operator picked a specific asset.
+   *
+   * Reordering rather than filtering: they asked to start at that piece, not to
+   * be shut off from the rest, so the queue still walks the whole set after it.
+   */
+  async function openQueue(campaign?: { id: string; name: string }, focusAssetId?: string) {
     if (queueLoadingFor) return;
     setQueueLoadingFor(campaign?.id ?? "all");
     setQueueError(null);
@@ -280,6 +315,10 @@ export function CampaignsBoard({
       if (!res.ok) {
         setError(res.error);
         return;
+      }
+      if (focusAssetId) {
+        const at = res.entries.findIndex((e) => e.asset.id === focusAssetId);
+        if (at > 0) res.entries.unshift(...res.entries.splice(at, 1));
       }
       if (res.entries.length === 0) {
         // The count and the queue disagreeing means something was decided while
@@ -511,7 +550,15 @@ export function CampaignsBoard({
             return (
               <article
                 key={r.id}
-                className={`cmp-card${r.pendingCount > 0 ? " needsyou" : ""}${isOpen ? " open" : ""}${local ? " fresh" : ""}`}
+                className={`cmp-card${r.pendingCount > 0 ? " needsyou" : ""}${isOpen ? " open" : ""}${local ? " fresh" : ""}${r.pieces.length > 0 ? " openable" : ""}`}
+                // Mouse convenience: anywhere that isn't already a control
+                // toggles the card. A 900px-wide target beats a 90px text link,
+                // and the real control below stays the keyboard/AT path.
+                onClick={(e) => {
+                  if (r.pieces.length === 0) return;
+                  if ((e.target as HTMLElement).closest("a,button")) return;
+                  setOpen((cur) => (cur === r.id ? null : r.id));
+                }}
               >
                 <div className="cmp-head">
                   <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
@@ -572,12 +619,20 @@ export function CampaignsBoard({
                   </button>
                 )}
 
-                {isOpen && (
-                  <DeliverableStrip
-                    pieces={r.pieces}
-                    reviewing={queueLoadingFor === r.id}
-                    onReview={() => openQueue({ id: r.id, name: r.name })}
-                  />
+                {/* Always mounted, height animated by grid-template-rows — so it
+                    collapses as smoothly as it opens. Conditional rendering gave
+                    an entrance and no exit: the drawer just vanished. Images stay
+                    `loading="lazy"`, so a closed drawer costs no fetches. */}
+                {r.pieces.length > 0 && (
+                  <div className="cmp-drawer" aria-hidden={!isOpen}>
+                    <div className="cmp-drawer-in">
+                      <DeliverableStrip
+                        pieces={r.pieces}
+                        reviewing={queueLoadingFor === r.id}
+                        onReview={(assetId) => openQueue({ id: r.id, name: r.name }, assetId)}
+                      />
+                    </div>
+                  </div>
                 )}
               </article>
             );
