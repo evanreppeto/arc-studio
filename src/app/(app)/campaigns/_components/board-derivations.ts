@@ -22,7 +22,20 @@ export type NextAction = { next: string; nextTone: "" | "go" | "warn" };
  * this column says has to match the page the operator lands on when they click
  * the row.
  */
-export type DeliverableCounts = { approved: number; required: number };
+export type DeliverableCounts = {
+  approved: number;
+  required: number;
+  /**
+   * How many deliverables the row actually SHOWS, i.e. `contentPieces.length`.
+   *
+   * Distinct from `required`, which counts non-archived gating work and is 0 for
+   * an archived campaign by definition. Reporting `required` on an archived row
+   * printed "Nothing in it" directly above a disclosure reading "Show 5 assets"
+   * — the row contradicting itself in adjacent controls. Optional so existing
+   * callers keep their behaviour; falls back to `required`.
+   */
+  held?: number;
+};
 
 /**
  * What happens next on this campaign.
@@ -60,7 +73,8 @@ export function nextActionFor(tone: CampaignTone, pendingCount: number, counts: 
   // approved/required lines below. "All 6 assets approved" on a put-away
   // campaign reads like live, ready work; "6 assets kept" says what it holds.
   if (tone === "archived") {
-    return { next: counts.required > 0 ? `${countOf(counts.required, ASSET_NOUN)} kept` : "Nothing in it", nextTone: "" };
+    const held = counts.held ?? counts.required;
+    return { next: held > 0 ? `${countOf(held, ASSET_NOUN)} kept` : "Nothing in it", nextTone: "" };
   }
   if (counts.required === 0) return { next: "Arc is still building it", nextTone: "" };
   if (counts.approved === counts.required) return { next: `All ${countOf(counts.required, ASSET_NOUN)} approved`, nextTone: "" };
@@ -129,11 +143,42 @@ const PLAIN_KIND: Record<string, string> = {
   "one-pager": "a one-pager",
 };
 
+/**
+ * "a" or "an", by SOUND rather than by first letter.
+ *
+ * The letter test put "an one pager" on the live campaigns board — `one_pager`
+ * is not in `PLAIN_KIND` (that map is keyed "one-pager", with a hyphen), so it
+ * fell through to the fallback, and `o` is a vowel letter. It is not a vowel
+ * sound: "one" starts /w/.
+ *
+ * Two exception classes, both of which a first-letter test gets backwards:
+ *
+ *  - **Vowel letter, consonant sound** → "a". `u` pronounced /juː/ (a user
+ *    guide, a unit), and `one`/`once` (a one-pager), and `eu` (a European).
+ *  - **Consonant letter, vowel sound** → "an". Silent `h` (an hour-long ad,
+ *    an honest review).
+ *
+ * Deliberately explicit prefixes rather than a pronunciation heuristic. A
+ * cleverer rule ("u" + consonant + vowel → /juː/) reads as more general and
+ * quietly answers "a unable"; this list only claims the words it names, and
+ * anything outside it falls through to the ordinary letter rule.
+ */
+const SOUNDS_CONSONANT = /^(?:one|once|uni|user|use|usual|utility|eu)/;
+const SOUNDS_VOWEL = /^(?:hour|honest|hono|heir)/;
+
+export function indefiniteArticle(word: string): "a" | "an" {
+  const key = word.trim().toLowerCase();
+  if (!key) return "a";
+  if (SOUNDS_VOWEL.test(key)) return "an";
+  if (SOUNDS_CONSONANT.test(key)) return "a";
+  return /^[aeiou]/.test(key) ? "an" : "a";
+}
+
 function plainKind(kind: string): string {
   const key = kind.trim().toLowerCase();
   if (PLAIN_KIND[key]) return PLAIN_KIND[key];
   if (!key) return "a draft";
-  return `${/^[aeiou]/.test(key) ? "an" : "a"} ${key.toLowerCase()}`;
+  return `${indefiniteArticle(key)} ${key}`;
 }
 
 /**

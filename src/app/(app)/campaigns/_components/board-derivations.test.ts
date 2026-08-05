@@ -4,8 +4,8 @@ import { buildLaunchState, type CampaignWorkspaceAsset } from "@/lib/campaigns/r
 
 import { constantAudience, describeContents, nextActionFor, pieceLabel, signalTiming, type DeliverableCounts } from "./board-derivations";
 
-function counts(approved: number, required: number): DeliverableCounts {
-  return { approved, required };
+function counts(approved: number, required: number, held?: number): DeliverableCounts {
+  return { approved, required, ...(held === undefined ? {} : { held }) };
 }
 
 describe("nextActionFor", () => {
@@ -52,6 +52,23 @@ describe("nextActionFor", () => {
   it("does not let an archived package read as ready work", () => {
     // "All 6 assets approved" is true and misleading on something put away.
     expect(nextActionFor("archived", 0, counts(6, 6)).next).not.toMatch(/approved/);
+  });
+
+  /**
+   * Archiving a campaign archives its deliverables, so `required` — which counts
+   * non-archived gating work — is 0 for every archived row. Reading that number
+   * printed "Nothing in it" on the live board directly above a disclosure
+   * offering "Show 5 assets": the row contradicting itself in adjacent controls.
+   *
+   * `held` is what the row will actually disclose, so the two agree.
+   */
+  it("counts what an archived row holds, not what it still requires", () => {
+    expect(nextActionFor("archived", 0, counts(0, 0, 5)).next).toBe("5 assets kept");
+    expect(nextActionFor("archived", 0, counts(0, 0, 1)).next).toBe("1 asset kept");
+  });
+
+  it("still says nothing-in-it for an archived row that really is empty", () => {
+    expect(nextActionFor("archived", 0, counts(0, 0, 0)).next).toBe("Nothing in it");
   });
 
   it("reports progress when a row asks nothing", () => {
@@ -236,6 +253,26 @@ describe("describeContents", () => {
     expect(describeContents(["Postcard"])).toBe("A postcard");
     expect(describeContents(["Advert"])).toBe("An advert");
     expect(describeContents([""])).toBe("A draft");
+  });
+
+  /**
+   * "an one pager" shipped to the live campaigns board.
+   *
+   * `one_pager` is not in PLAIN_KIND (keyed "one-pager", with a hyphen), so it
+   * fell through to a fallback that picked the article from the first LETTER.
+   * English picks it from the first SOUND, and "one" starts /w/.
+   */
+  it("picks the article by sound, not by first letter", () => {
+    expect(describeContents(["one pager"])).toBe("A one pager");
+    expect(describeContents(["user guide"])).toBe("A user guide");
+    expect(describeContents(["hour-long ad"])).toBe("An hour-long ad");
+    expect(describeContents(["honest review"])).toBe("An honest review");
+  });
+
+  it("leaves the ordinary letter rule alone for everything else", () => {
+    expect(describeContents(["umbrella insert"])).toBe("An umbrella insert");
+    expect(describeContents(["update"])).toBe("An update");
+    expect(describeContents(["postcard"])).toBe("A postcard");
   });
 
   it("never leads with a lowercase letter", () => {
