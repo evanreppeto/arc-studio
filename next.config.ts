@@ -37,6 +37,22 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_SENTRY_RELEASE:
       process.env.NEXT_PUBLIC_SENTRY_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || "",
   },
+  // The creative renderer's .ttf files, declared rather than inferred.
+  //
+  // nft traces `import`/`require`/`fs` usage STATICALLY, and `readFile(join(...,
+  // relative))` picks its file at runtime — so no analysis can know which of the
+  // ten faces a request will want. The previous code reached for `new URL('./fonts/'
+  // + x, import.meta.url)` to get traced, and that is what broke on prod: Turbopack
+  // rewrites that expression into its own asset reference, which is not a `file:`
+  // URL, so `fileURLToPath` threw and every composed creative failed (#1008, #1010).
+  //
+  // Declaring the directory is the documented way out and removes the dependency on
+  // bundler rewriting entirely. 2 MB, on the two route trees that compose creative:
+  // the Studio server action and Arc's compose endpoint.
+  outputFileTracingIncludes: {
+    "/studio": ["./src/lib/media/compose/fonts/**"],
+    "/api/v1/arc/media/compose": ["./src/lib/media/compose/fonts/**"],
+  },
   async redirects() {
     return [
       { source: "/persona-intelligence", destination: "/personas", permanent: true },
