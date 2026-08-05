@@ -202,6 +202,7 @@ export const DEMO_ASSET_BODIES: Record<string, ArcAssetBody> = {
   "demo-asset-email": {
     id: "demo-asset-email",
     edited: false,
+    title: "Demo follow-up email",
     body: [
       "SUBJECT: You looked at pricing — here's a walkthrough",
       "PREHEADER: Fifteen minutes, no pitch. We'll map Meridian to how your team already works.",
@@ -224,10 +225,15 @@ export const DEMO_ASSET_BODIES: Record<string, ArcAssetBody> = {
   "demo-asset-sms": {
     id: "demo-asset-sms",
     edited: false,
+    // Drifted from the card's frozen "Warm demo check-in", and SMS carries no
+    // lead-in headline — so this is the one fixture that actually exercises the
+    // live-title tier rather than being shadowed by the copy's own headline.
+    title: "Warm demo check-in (revised, opt-out added)",
     body: "Hi {first_name} — it's the {brand} team. Saw your team exploring Meridian, no charge and no pressure. Want a quick walkthrough? Reply STOP to opt out.",
   },
   "demo-asset-social": {
     id: "demo-asset-social",
+    title: "High-intent awareness — \"See it on your data\"",
     edited: false,
     body: [
       "Headline: See Meridian tailored to your team",

@@ -77,6 +77,22 @@ function resolveDraftText(card: ArcActionCard, bodies: Record<string, ArcAssetBo
   return { text: card.preview ?? "", full: false };
 }
 
+/**
+ * What to call a deliverable, best source first.
+ *
+ * The copy's own headline wins — it is the thing itself. Then the asset's LIVE
+ * title, because the card's is frozen at draft time and drifts: on prod, cards
+ * still read "needs revision (placeholder)" for drafts Arc has since revised.
+ * The frozen title is the last resort, not the default.
+ */
+function deliverableHeading(
+  card: ArcActionCard,
+  content: ArcDraftContent,
+  bodies: Record<string, ArcAssetBody>,
+): string {
+  return content.headline ?? bodies[card.approval?.assetId ?? ""]?.title ?? card.title;
+}
+
 /** Pull a named lead-in field out of the parsed content, case-insensitively. */
 function field(content: ArcDraftContent, label: string): string | undefined {
   return content.fields.find((f) => f.label.toLowerCase() === label.toLowerCase())?.value;
@@ -390,7 +406,10 @@ export function InlineDeliverable({
   // card is on its stored preview the honest control is "Open" — the rest of the
   // text is not in the browser yet.
   const canExpand = full && isLongDraftBody(content.body, CLAMP_LINES);
-  const heading = content.headline ?? card.title;
+  // Live asset title beats the card's frozen one: on prod, cards still read
+  // "needs revision (placeholder)" for drafts Arc has since revised. The
+  // content's own headline still wins over both — it is the copy itself.
+  const heading = deliverableHeading(card, content, bodies);
 
   if (collapsed) {
     return (
@@ -502,7 +521,7 @@ function IndexTile({
       <span className="arc-dlv-tile-preview" aria-hidden="true">
         <DeliverableCanvas card={card} content={content} />
       </span>
-      <span className="arc-dlv-tile-foot">{content.headline ?? card.title}</span>
+      <span className="arc-dlv-tile-foot">{deliverableHeading(card, content, bodies)}</span>
     </button>
   );
 }
@@ -626,7 +645,7 @@ export function DeliverableReview({
             <ArrowLeft size={15} />{backLabel}
           </button>
           <div className="arc-dlv-review-title">
-            <h2>{showingIndex ? "Campaign deliverables" : content.headline ?? card.title}</h2>
+            <h2>{showingIndex ? "Campaign deliverables" : deliverableHeading(card, content, bodies)}</h2>
             <p>{showingIndex ? `${countOf(cards.length, ASSET_NOUN)} · ${approved} approved` : `${ARC_MEDIUM_LABEL[medium]}${card.format ? ` · ${card.format}` : ""}`}</p>
           </div>
           {!showingIndex && cards.length > 1 ? (
