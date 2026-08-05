@@ -234,6 +234,25 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
     revalidatePath("/studio");
     return { ok: true, persisted: true, campaignId, assetId, media };
   } catch (error) {
+    // Report before returning. This catch used to discard the stack and hand the
+    // operator `error.message` alone, which is how the compose path could be dead
+    // on prod with NOTHING in the logs: "Invalid URL" reached the panel, the
+    // server kept no record, and there was no way to learn which of the several
+    // URLs in the render was the bad one without shipping a build to find out.
+    // The primary action on the page must not fail silently server-side.
+    reportDegraded(error, {
+      scope: "studio.generateStudioAsset",
+      surface: "primary",
+      detail: {
+        engine: input.engine,
+        format: input.format,
+        template: input.template ?? null,
+        // The values, not the secrets — every URL the render touches, so a bad
+        // one is identifiable from the log line alone.
+        backgroundUrl: input.backgroundUrl ?? null,
+        hasCampaign: Boolean(input.campaignId?.trim()),
+      },
+    });
     return { ok: false, code: "failed", error: error instanceof Error ? error.message : "Generation failed." };
   }
 }
