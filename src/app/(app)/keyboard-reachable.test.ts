@@ -38,7 +38,18 @@ const APP_DIR = new URL(".", import.meta.url).pathname;
  * A file absent from this map must have zero.
  */
 const BASELINE: Record<string, number> = {
-  "library/_components/library-view.tsx": 19,
+  // Was 19. The folder rail moved to folder-tree.tsx and became a real ARIA
+  // tree on the way, which took nine of them with it: every folder row, its
+  // rename input wrapper and its two manage buttons used to be click-spans.
+  "library/_components/library-view.tsx": 10,
+  // The rail's disclosure chevron, and honest at 1 for the same reason as
+  // crm-board below: it is a redundant convenience target. Expanding and
+  // collapsing is already on the row itself as ArrowRight/ArrowLeft, which is
+  // what the ARIA tree pattern specifies — and a nested <button> inside a
+  // `treeitem` is the thing that pattern tells you not to do, so "fixing" the
+  // count here would make the component worse for the people it is counted on
+  // behalf of.
+  "library/_components/folder-tree.tsx": 1,
   "studio/_components/studio-view.tsx": 18,
   "crm/[objectKey]/[recordId]/_components/record-view.tsx": 2,
   // Was 2, now 1. "Clear" became a <button>, and the record name became a real
