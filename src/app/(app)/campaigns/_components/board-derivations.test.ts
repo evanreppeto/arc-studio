@@ -10,11 +10,27 @@ function counts(approved: number, required: number): DeliverableCounts {
 
 describe("nextActionFor", () => {
   it("puts the human instruction ahead of everything else", () => {
-    expect(nextActionFor("draft", 6, counts(4, 10))).toEqual({ next: "Approve 6 assets", nextTone: "go" });
+    expect(nextActionFor("draft", 6, counts(4, 10))).toEqual({ next: "Review 6 assets", nextTone: "go" });
   });
 
   it("singularizes the instruction", () => {
-    expect(nextActionFor("draft", 1, counts(0, 1)).next).toBe("Approve 1 asset");
+    expect(nextActionFor("draft", 1, counts(0, 1)).next).toBe("Review 1 asset");
+  });
+
+  /**
+   * The verb has to match what the control does.
+   *
+   * This button calls `openQueue(...)` — it opens the one-at-a-time review
+   * queue and approves nothing on its own. While it read "Approve N assets" the
+   * board's most prominent control advertised a blind bulk-approve of
+   * customer-facing copy, which is the exact action the approval gate exists to
+   * prevent. Nobody had to click it wrongly for that to be a problem: the label
+   * is what an owner reads when deciding whether to open it at all.
+   */
+  it("never tells the operator the button approves anything", () => {
+    for (const n of [1, 2, 6, 17]) {
+      expect(nextActionFor("draft", n, counts(0, n)).next).not.toMatch(/approve/i);
+    }
   });
 
   it.each([

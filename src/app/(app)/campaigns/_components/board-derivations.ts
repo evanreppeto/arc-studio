@@ -29,8 +29,15 @@ export type DeliverableCounts = { approved: number; required: number };
  *
  * Two rules, in order:
  *
- *  1. **An instruction to a human always wins.** "Approve 6 assets" is the whole
+ *  1. **An instruction to a human always wins.** "Review 6 assets" is the whole
  *     reason this column exists.
+ *
+ *     The verb is `Review`, not `Approve`, because review is what the button
+ *     does: it opens the one-at-a-time queue (`ReviewQueue`) with this
+ *     campaign's undecided deliverables. It has never approved anything in
+ *     bulk. Labelling it "Approve 6 assets" advertised a blind bulk-approve of
+ *     six pieces of customer-facing copy — the one action this product exists
+ *     to prevent — and undersold the queue, which is the good path.
  *  2. **With no instruction, say where the package STANDS — never restate the
  *     status pill sitting beside it.** An archived row used to read `Archived` /
  *     "Put away", which is one fact printed twice and a column's worth of space
@@ -41,7 +48,7 @@ export type DeliverableCounts = { approved: number; required: number };
  */
 export function nextActionFor(tone: CampaignTone, pendingCount: number, counts: DeliverableCounts): NextAction {
   // 1 — instructions.
-  if (pendingCount > 0) return { next: `Approve ${countOf(pendingCount, ASSET_NOUN)}`, nextTone: "go" };
+  if (pendingCount > 0) return { next: `Review ${countOf(pendingCount, ASSET_NOUN)}`, nextTone: "go" };
   if (tone === "review") return { next: "Waiting on your decision", nextTone: "go" };
   if (tone === "approved") return { next: "Waiting to send", nextTone: "go" };
   if (tone === "live") return { next: "Going out now", nextTone: "" };
