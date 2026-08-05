@@ -2,7 +2,7 @@
 .arc-campaign { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 .arc-campaign .cband { padding: 18px clamp(22px, 3vw, 38px) 0; flex-shrink: 0; }
-.arc-campaign .back { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); cursor: pointer; margin-bottom: 14px; transition: color 0.14s var(--ease); }
+.arc-campaign .back { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); cursor: pointer; margin-bottom: 14px; transition: color var(--dur-base) var(--ease); }
 .arc-campaign .back:hover { color: var(--text-2); }
 .arc-campaign .back svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 
@@ -44,7 +44,7 @@
    opaque background: transparent, it would let the deliverables scroll through
    the words. */
 .arc-campaign .ctabs { position: sticky; top: 0; z-index: 6; display: flex; gap: 2px; padding: 0 clamp(22px, 3vw, 38px); border-bottom: 1px solid var(--line-2); margin-top: 18px; flex-shrink: 0; background: var(--canvas); }
-.arc-campaign .ctab { position: relative; display: flex; align-items: center; gap: 8px; padding: 11px 14px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: color 0.15s var(--ease); }
+.arc-campaign .ctab { position: relative; display: flex; align-items: center; gap: 8px; padding: 11px 14px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: color var(--dur-base) var(--ease); }
 .arc-campaign .ctab:hover { color: var(--text); }
 .arc-campaign .ctab.on { color: var(--text); }
 .arc-campaign .ctab.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px; }
@@ -102,7 +102,7 @@
 .arc-campaign .deliver.open .dsum { border-radius: 13px 13px 0 0; }
 .arc-campaign .dsum:hover { background: var(--inset); }
 .arc-campaign .dsum:focus-visible { outline: 2px solid var(--accent-border); outline-offset: -2px; }
-.arc-campaign .dchev { flex: none; display: flex; color: var(--muted); transition: transform 0.18s var(--ease); }
+.arc-campaign .dchev { flex: none; display: flex; color: var(--muted); transition: transform var(--dur-slow) var(--ease); }
 .arc-campaign .dchev svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-campaign .deliver.open .dchev { transform: rotate(90deg); }
 .arc-campaign .dsumhead { flex: 1; min-width: 0; }
@@ -166,7 +166,7 @@
 .arc-campaign .rvlist { list-style: none; margin: 9px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .arc-campaign .rvrow { border-left: 2px solid var(--warn); }
 .arc-campaign .rvrow.blk { border-left-color: var(--accent); }
-.arc-campaign .rvbtn { display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 4px 8px 5px 9px; border-radius: 0 5px 5px 0; transition: background 0.15s var(--ease); }
+.arc-campaign .rvbtn { display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 4px 8px 5px 9px; border-radius: 0 5px 5px 0; transition: background var(--dur-base) var(--ease); }
 .arc-campaign .rvbtn:hover { background: var(--raised); }
 .arc-campaign .rvq { display: block; font-size: 11.5px; font-style: italic; color: var(--text); line-height: 1.45; }
 .arc-campaign .rvq::before, .arc-campaign .rvq::after { content: none; }
@@ -179,7 +179,7 @@
 .arc-campaign .rvfold { margin-top: 8px; border-top: 1px solid var(--line-3); padding-top: 7px; }
 .arc-campaign .rvfold > summary { font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; list-style: none; display: flex; align-items: center; gap: 7px; }
 .arc-campaign .rvfold > summary::-webkit-details-marker { display: none; }
-.arc-campaign .rvfold > summary::before { content: "▸"; font-size: 8px; transition: transform 0.15s var(--ease); }
+.arc-campaign .rvfold > summary::before { content: "▸"; font-size: 8px; transition: transform var(--dur-base) var(--ease); }
 .arc-campaign .rvfold[open] > summary::before { transform: rotate(90deg); }
 .arc-campaign .rvfold > summary:hover { color: var(--accent-contrast); }
 .arc-campaign .rvcount { color: var(--text-2); background: var(--raised); border-radius: 4px; padding: 0 5px; }
@@ -190,7 +190,7 @@
 .arc-campaign .rvfoot { font-size: 10.5px; color: var(--muted); margin-top: 8px; }
 
 .arc-campaign .dctrls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.arc-campaign .cbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; text-decoration: none; transition: 0.15s var(--ease); }
+.arc-campaign .cbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; text-decoration: none; transition: var(--dur-base) var(--ease); }
 .arc-campaign .cbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-campaign .cbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
 .arc-campaign .cbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
@@ -224,7 +224,7 @@
 /* Tiles keep a common width and take their height from the creative's declared
    ratio (set inline per tile), so a 9:16 reads as a 9:16 on the board. */
 .arc-campaign .mediagrid { align-items: start; }
-.arc-campaign .mediatile { position: relative; display: block; width: 100%; padding: 0; text-align: left; aspect-ratio: 4 / 3; border-radius: 9px; border: 1px solid var(--line-2); background-color: var(--inset); overflow: hidden; cursor: pointer; transition: border-color 0.14s var(--ease); }
+.arc-campaign .mediatile { position: relative; display: block; width: 100%; padding: 0; text-align: left; aspect-ratio: 4 / 3; border-radius: 9px; border: 1px solid var(--line-2); background-color: var(--inset); overflow: hidden; cursor: pointer; transition: border-color var(--dur-base) var(--ease); }
 .arc-campaign .mediatile:hover { border-color: var(--accent-border); }
 .arc-campaign .mediatile.flagged { border-color: var(--red-border); }
 .arc-campaign .mediatile .mtrisk { position: absolute; top: 6px; right: 30px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: var(--red-soft); border: 1px solid var(--red-border); }
@@ -232,7 +232,7 @@
 .arc-campaign .mediatile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-campaign .mediatile .mtimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 /* Zoom affordance: the tile used to look like a picture, not a control. */
-.arc-campaign .mediatile .mtzoom { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: rgba(20, 20, 24, 0.66); opacity: 0; transition: opacity 0.14s var(--ease); }
+.arc-campaign .mediatile .mtzoom { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: rgba(20, 20, 24, 0.66); opacity: 0; transition: opacity var(--dur-base) var(--ease); }
 .arc-campaign .mediatile:hover .mtzoom, .arc-campaign .mediatile:focus-visible .mtzoom { opacity: 1; }
 .arc-campaign .mediatile .mtzoom svg { width: 12px; height: 12px; stroke: #ecebe6; fill: none; stroke-width: 1.9; }
 .arc-campaign .mediatile .mtscrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 10, 12, 0.05), rgba(10, 10, 12, 0.62)); }
@@ -243,7 +243,7 @@
 .arc-campaign .mediatile .mtlineage { display: block; font-family: var(--mono); font-size: 8px; font-weight: 500; font-style: normal; color: #cfc9ba; opacity: 0.9; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* attach approved Library media to a deliverable */
-.arc-campaign .addmedia { display: inline-flex; align-items: center; gap: 6px; height: 30px; margin-top: 10px; padding: 0 12px; border-radius: 8px; border: 1px dashed var(--line-3); background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: 0.14s; }
+.arc-campaign .addmedia { display: inline-flex; align-items: center; gap: 6px; height: 30px; margin-top: 10px; padding: 0 12px; border-radius: 8px; border: 1px dashed var(--line-3); background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: var(--dur-base); }
 .arc-campaign .addmedia:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text-2); }
 .arc-campaign .addmedia svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
 .arc-campaign .addmedia:disabled { opacity: 0.5; cursor: default; }
@@ -256,7 +256,7 @@
 .arc-campaign .mpgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
 .arc-campaign .mpitem { display: flex; flex-direction: column; gap: 5px; padding: 0; border: none; background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
 .arc-campaign .mpitem:disabled { opacity: 0.5; cursor: default; }
-.arc-campaign .mpitem .mpthumb { aspect-ratio: 4 / 3; border-radius: 8px; border: 1px solid var(--line-2); background-color: var(--panel); background-size: cover; background-position: center; transition: 0.14s; }
+.arc-campaign .mpitem .mpthumb { aspect-ratio: 4 / 3; border-radius: 8px; border: 1px solid var(--line-2); background-color: var(--panel); background-size: cover; background-position: center; transition: var(--dur-base); }
 .arc-campaign .mpitem:hover:not(:disabled) .mpthumb { border-color: var(--accent-border); }
 .arc-campaign .mpitem .mpname { font-size: 9.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -274,7 +274,7 @@
 .arc-campaign .tools { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 11px; }
 
 /* Sources */
-.arc-campaign .srcrow { display: flex; align-items: center; gap: 12px; padding: 12px 13px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); margin-bottom: 8px; cursor: pointer; transition: 0.14s var(--ease); }
+.arc-campaign .srcrow { display: flex; align-items: center; gap: 12px; padding: 12px 13px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); margin-bottom: 8px; cursor: pointer; transition: var(--dur-base) var(--ease); }
 .arc-campaign .srcrow:hover { border-color: var(--accent-border); }
 .arc-campaign .srck { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 7px; flex-shrink: 0; }
 .arc-campaign .srct { font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -408,7 +408,7 @@
 .arc-campaign .perflearn-wins li::before { content: ""; position: absolute; left: 3px; top: 0.62em; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 .arc-campaign .perflearn-move { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--accent-border); }
 .arc-campaign .perflearn-rec { flex: 1; min-width: 240px; color: var(--text); font-size: 13px; font-weight: 550; line-height: 1.5; }
-.arc-campaign .perflearn-cta { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 15px; border: 1px solid var(--accent-border-strong); border-radius: 9px; background: var(--accent); color: var(--on-accent); font-size: 12.5px; font-weight: 600; text-decoration: none; transition: background 0.15s var(--ease), transform 0.15s var(--ease); }
+.arc-campaign .perflearn-cta { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 15px; border: 1px solid var(--accent-border-strong); border-radius: 9px; background: var(--accent); color: var(--on-accent); font-size: 12.5px; font-weight: 600; text-decoration: none; transition: background var(--dur-base) var(--ease), transform var(--dur-base) var(--ease); }
 .arc-campaign .perflearn-cta:hover { background: var(--accent-hover); transform: translateY(-1px); }
 .arc-campaign .perflearn-cta svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .arc-campaign .perflearn-lock { margin: 12px 0 0; color: var(--muted); font-size: 10.5px; }
@@ -417,7 +417,7 @@
    by default; the open state drops the chip's tint so the +/- lines carry the
    only colour in the block. */
 .arc-campaign .revdiff { padding: 0; }
-.arc-campaign .revdiff > summary { list-style: none; cursor: pointer; padding: 6px 9px; border-radius: 7px; transition: color 0.14s var(--ease); }
+.arc-campaign .revdiff > summary { list-style: none; cursor: pointer; padding: 6px 9px; border-radius: 7px; transition: color var(--dur-base) var(--ease); }
 .arc-campaign .revdiff > summary::-webkit-details-marker { display: none; }
 .arc-campaign .revdiff > summary:hover { color: var(--text-2); }
 .arc-campaign .revdiff > summary:focus-visible { outline: 2px solid var(--accent-border-strong); outline-offset: 1px; }
@@ -534,7 +534,7 @@
    escape. Everything here is a short colour transition except `.perflearn-cta`,
    which also moves — drop the movement, keep the colour feedback. */
 @media (prefers-reduced-motion: reduce) {
-  .arc-campaign .perflearn-cta { transition: background 0.15s var(--ease); }
+  .arc-campaign .perflearn-cta { transition: background var(--dur-base) var(--ease); }
   .arc-campaign .perflearn-cta:hover { transform: none; }
 }
 
@@ -561,7 +561,7 @@
 .arc-campaign .rqcount b { color: var(--text); font-size: 13px; }
 .arc-campaign .rqname { margin-left: 12px; font-family: var(--ff-body, inherit); font-size: 12.5px; color: var(--text-2); }
 .arc-campaign .rqtrack { flex: 1; height: 2px; background: var(--line-3); border-radius: 99px; overflow: hidden; }
-.arc-campaign .rqtrack i { display: block; height: 100%; background: var(--accent); transition: width 0.25s var(--ease); }
+.arc-campaign .rqtrack i { display: block; height: 100%; background: var(--accent); transition: width var(--dur-slower) var(--ease); }
 .arc-campaign .rqclose { display: flex; padding: 6px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 7px; }
 .arc-campaign .rqclose:hover { color: var(--text); background: var(--inset); }
 .arc-campaign .rqclose svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.9; }
