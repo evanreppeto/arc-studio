@@ -67,6 +67,7 @@ import { undoArcDraftDecisionAction } from "../actions";
 import { OverlayPortal } from "../../_components/overlay-portal";
 import { assetStatusMeta, ChannelIcon, isDecidedAssetStatus, useDraftDecision } from "./arc-messages";
 import type { PaneBox } from "./arc-view.types";
+import { AppImage } from "../../_components/app-image";
 
 const CLAMP_LINES = 10;
 
@@ -114,11 +115,9 @@ function DeliverableMedia({ media, className }: { media: ArcMedia; className?: s
       {media.kind === "video" && media.url ? (
         // eslint-disable-next-line jsx-a11y/media-has-caption -- generated creative; the copy below is the caption
         <video src={media.url} poster={poster} controls preload="metadata" onError={() => setFailed(true)} />
-      ) : (
-        // Signed asset URLs aren't in next/image's configured remote patterns.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={media.alt ?? ""} loading="lazy" onError={() => setFailed(true)} />
-      )}
+      ) : src ? (
+        <AppImage src={src} alt={media.alt ?? ""} onError={() => setFailed(true)} />
+      ) : null}
       {media.caption ? <figcaption>{media.caption}</figcaption> : null}
     </figure>
   );

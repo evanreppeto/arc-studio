@@ -14,6 +14,7 @@ import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevi
 import { uploadLibraryAsset } from "../../library/actions";
 import { generateStudioAsset, pollStudioVideo, startStudioVideo } from "../actions";
 import { StudioCanvas, type CanvasBrand, type CanvasLayer } from "./studio-canvas";
+import { AppImage } from "../../_components/app-image";
 
 const HOUSE = '<svg viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4654"/><stop offset="1" stop-color="#27303a"/></linearGradient></defs><rect width="600" height="300" fill="url(#sky)"/><path d="M0 210 L150 120 L300 200 L450 110 L600 190 V300 H0 Z" fill="#2b343d"/><path d="M120 230 L300 130 L480 230 Z" fill="#4a5663"/><path d="M120 230 L300 130 L300 250 L120 250 Z" fill="#3d4854"/><rect x="180" y="230" width="240" height="70" fill="#323b45"/><rect x="210" y="248" width="34" height="34" fill="#566270"/><rect x="356" y="248" width="34" height="34" fill="#566270"/></svg>';
 const SC: Record<string, string> = {
@@ -82,8 +83,7 @@ const Raw = ({ html }: { html: string }) => <span style={{ position: "absolute",
 // items carry an inline SVG in `s`. Render whichever is present.
 const ItemMedia = ({ item }: { item: Item }) =>
   item.url ? (
-    // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
-    <img src={item.url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+    <AppImage src={item.url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
   ) : (
     <Raw html={item.s} />
   );
@@ -1123,8 +1123,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     {preview.kind === "video" ? (
                       <video src={preview.url} controls playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000" }} />
                     ) : (
-                      // eslint-disable-next-line @next/next/no-img-element -- generated media URL
-                      <img src={preview.url} alt={preview.title} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                      <AppImage src={preview.url} alt={preview.title} loading="eager" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                     )}
                   </div>
                 ) : (
@@ -1211,8 +1210,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     {d.kind === "video" ? (
                       <video src={d.url} muted playsInline preload="metadata" />
                     ) : (
-                      // eslint-disable-next-line @next/next/no-img-element -- generated media URL
-                      <img src={d.url} alt="" />
+                      <AppImage src={d.url} alt="" />
                     )}
                     <span className="vtag">{d.format}</span>
                   </span>
@@ -1293,8 +1291,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                             // an <img> pointed at an MP4 renders a broken thumbnail.
                             <video src={d.url} muted playsInline preload="metadata" />
                           ) : (
-                            // eslint-disable-next-line @next/next/no-img-element -- generated media URL
-                            <img src={d.url} alt="" />
+                            <AppImage src={d.url} alt="" />
                           )}
                         </button>
                         <div className="draftmeta">
@@ -1482,7 +1479,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <div className="archead">
                   {/* Arc's own mark, not a serif "A" in a box — the monogram read as a
                       stray letter next to the name it was already spelling out. */}
-                  <span className="am"><img src="/brand/arc-mark.png" alt="" /></span>
+                  <span className="am"><AppImage src="/brand/arc-mark.png" alt="" /></span>
                   <div style={{ minWidth: 0 }}>
                     <div className="at">Arc</div>
                     <div className="ad"><i /><span>{selectedCampaignLabel ? `Working in ${selectedCampaignLabel}` : "No campaign selected"}</span></div>
@@ -1584,8 +1581,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                                     {md.kind === "video" ? (
                                       <video src={md.url} muted playsInline preload="metadata" />
                                     ) : (
-                                      // eslint-disable-next-line @next/next/no-img-element -- generated media URL
-                                      <img src={md.url} alt={md.caption ?? "Arc draft"} />
+                                      <AppImage src={md.url} alt={md.caption ?? "Arc draft"} />
                                     )}
                                     <span className={`arcshotm${md.assetId ? "" : " loose"}`}>
                                       {md.assetId ? md.format ?? "draft" : "unattached"}

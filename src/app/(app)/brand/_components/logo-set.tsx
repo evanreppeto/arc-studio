@@ -5,6 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import { BRAND_LOGO_LABELS, BRAND_LOGO_ROLES, type BrandLogo, type BrandLogoRole } from "@/domain";
 
 import { removeBrandLogoVariantAction, saveBrandLogoVariants, type BrandLogoSetResult } from "../actions";
+import { AppImage } from "../../_components/app-image";
 
 // Mirrors uploadBrandingImage's accepted types — the action re-checks server-side.
 const LOGO_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
@@ -150,8 +151,7 @@ export function LogoSet({ logos, onChange }: { logos: BrandLogo[]; onChange: (ne
                 onDrop={(e) => onDrop(role, e)}
               >
                 {logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded URL on any host
-                  <img src={logo.url} alt={`${meta.label} preview`} />
+                  <AppImage src={logo.url} alt={`${meta.label} preview`} />
                 ) : (
                   <span className="logoempty">
                     <svg viewBox="0 0 24 24"><path d="M12 16V6M8 10l4-4 4 4" /><path d="M5 16v3a1 1 0 001 1h12a1 1 0 001-1v-3" /></svg>
