@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { KpiStrip } from "../../_components/kpi-strip";
 import { createContext, useContext, useEffect, useState, useTransition, type ReactNode } from "react";
 
 import type { SettingsTeamInvite, SettingsTeamMember, SettingsTeamView, WorkspaceActivityEntry } from "@/lib/auth/team-view";
@@ -1268,7 +1269,17 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
             <div className="panel">
               <div className="panel-h"><h2>This month</h2><span className="tg ok" style={{ marginLeft: "auto" }}>{usageView.isDemo ? DEMO_DATA_LABEL : "Live"}</span></div>
               <div className="panel-b" style={{ padding: 16 }}>
-                <div className="ukpis">{[[usageView.tokensLabel, "Tokens"], [usageView.runsLabel, "Agent runs"], [usageView.costLabel, "Est. cost"]].map(([v, l]) => <div className="ukpi" key={l}><div className="uv">{v}</div><div className="ul">{l}</div></div>)}</div>
+                {/* The shared strip. This was `repeat(3, 1fr)` — the equal
+                    dashboard row DESIGN.md bans — and one of seven hand-rolled
+                    KPI grids BSR-658 set out to retire; it lived in a per-route
+                    stylesheet the guard for that never scanned. */}
+                <KpiStrip
+                  items={[
+                    { label: "Tokens", value: usageView.tokensLabel },
+                    { label: "Agent runs", value: usageView.runsLabel },
+                    { label: "Est. cost", value: usageView.costLabel },
+                  ]}
+                />
                 <div className="ubar"><i style={{ width: `${Math.min(usageView.pctOfCap, 100)}%`, ...(usageView.isNearCap ? { background: "var(--warn)" } : {}) }} /></div>
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 7 }}>{usageView.pctOfCap}% of your {usageView.capLabel}{usageView.planLabel ? ` ${usageView.planLabel}` : ""} plan cap · {usageView.rangeLabel}</div>
               </div>
@@ -2919,11 +2930,15 @@ function ConnectorSpendPanel({ spend }: { spend: ConnectorSpendView | null }) {
     <>
       <Panel title="Metered connector spend" tag={usageTag(spend.isDemo)} foot="This workspace · this month">
         <div style={{ padding: 4 }}>
-          <div className="ukpis">
-            {[[spend.spentLabel, "Spent"], [spend.remainingLabel, "Remaining"], [spend.capLabel, "Spend cap"]].map(([v, l]) => (
-              <div className="ukpi" key={l}><div className="uv">{v}</div><div className="ul">{l}</div></div>
-            ))}
-          </div>
+          {/* The second of two `.ukpis` rows in this file — the widened guard
+              found this one after the first was converted. */}
+          <KpiStrip
+            items={[
+              { label: "Spent", value: spend.spentLabel },
+              { label: "Remaining", value: spend.remainingLabel },
+              { label: "Spend cap", value: spend.capLabel },
+            ]}
+          />
           <div className="ubar"><i style={{ width: `${Math.min(spend.pctOfCap, 100)}%`, ...(barTone ? { background: barTone } : {}) }} /></div>
           <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 7 }}>
             {spend.pctOfCap}% of your {spend.capLabel} cap · {spend.periodLabel}

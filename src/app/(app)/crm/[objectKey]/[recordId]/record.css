@@ -64,7 +64,6 @@
 }
 @media (max-width: 560px) {
   .arc-record .mstrip { grid-template-columns: repeat(2, 1fr); }
-  .arc-record .egrid { grid-template-columns: repeat(2, 1fr); }
 }
 .arc-record .recscroll { min-width: 0; overflow: auto; padding: 22px clamp(22px, 3vw, 38px) 44px; }
 .arc-record .snap { border-left: 1px solid var(--line); overflow: auto; padding: 20px 20px 40px; background: color-mix(in srgb, var(--canvas-deep) 18%, transparent); }
@@ -110,16 +109,18 @@
 .arc-record .connrow:hover .go { opacity: 1; color: var(--accent); }
 .arc-record .relgraph { border: 1px solid var(--line-2); border-radius: 12px; background: radial-gradient(120% 120% at 50% 40%, rgba(200, 162, 74, 0.05), transparent 60%), var(--panel); padding: 8px; }
 .arc-record .relgraph svg { width: 100%; height: auto; display: block; }
-.arc-record .egrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
-.arc-record .ecell { border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); padding: 13px; }
-.arc-record .ecell .ev { font-family: var(--serif); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
-.arc-record .ecell .el { font-size: 10.5px; color: var(--muted); margin-top: 3px; }
 .arc-record .qbar { height: 8px; border-radius: 99px; background: var(--inset); overflow: hidden; margin: 10px 0 8px; }
 .arc-record .qbar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); }
 .arc-record .qmiss { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .arc-record .qm { font-size: 10px; color: var(--muted); border: 1px dashed var(--line-3); border-radius: 5px; padding: 2px 7px; }
-.arc-record .scards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-@media (max-width: 560px) { .arc-record .scards { grid-template-columns: repeat(2, 1fr); } }
+/* Not a KPI strip — these carry a progress bar and a caption the shared strip
+   has no slot for, so they stay their own component. What DID need fixing is
+   the grid: `repeat(3, 1fr)` with a single score left two dead columns and read
+   as an unfinished row, and a lead record has exactly one. Flex sizes to the
+   count instead, which is also the asymmetry DESIGN.md §5 asks for. */
+.arc-record .scards { display: flex; flex-wrap: wrap; gap: 12px; }
+.arc-record .scards > * { flex: 1 1 200px; max-width: 300px; }
+@media (max-width: 560px) { .arc-record .scards > * { max-width: none; } }
 .arc-record .scard { border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); padding: 14px; }
 .arc-record .scard .sl { font-size: 10.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .arc-record .scard .srow { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: 8px; }
