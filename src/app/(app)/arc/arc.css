@@ -2351,37 +2351,55 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-drawer-nav button.is-active { border-color: var(--accent-border); background: var(--panel); color: var(--text); box-shadow: 0 5px 14px rgba(0, 0, 0, .18); }
 .arc-drawer-nav button.is-active > svg { color: var(--accent); }
 .arc-drawer-view { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.arc-drawer-view-head { flex: none; margin-bottom: 14px; }
-.arc-drawer-view-head h2 { margin: 0; font-family: var(--serif); color: var(--text); font-size: var(--dz-h); font-weight: 550; letter-spacing: -.015em; }
-.arc-drawer-view-head p { margin: 5px 0 0; color: var(--muted); font-size: var(--dz-sm); line-height: 1.5; }
+/* The one section head in the drawer: an uppercase label, a mono count on the
+   right. Skills and Connectors each had their own; Saved and the empty states
+   had none, which is why a filtered list could not say how much it was hiding. */
+.arc-drawer-section-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 13px 2px 6px; }
+.arc-drawer-section-head > span { min-width: 0; overflow: hidden; color: var(--muted); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.arc-drawer-section-head > small { flex: none; color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-drawer-section-head a { flex: none; min-height: 24px; display: inline-flex; align-items: center; gap: 4px; margin-right: -6px; border-radius: 6px; padding: 0 6px; color: var(--accent-contrast); font-size: var(--dz-xs); font-weight: 600; text-decoration: none; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-drawer-section-head a:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
+/* The count/total line under a list rather than above it. */
+.arc-drawer-section-head.is-footer { flex: none; margin: 8px 2px 0; border-top: 1px solid var(--line); padding-top: 9px; }
+/* Every empty state in the drawer, one shape — see DrawerEmpty in arc-view.tsx. */
+.arc-drawer-empty { flex: 1; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-align: center; padding: 20px 24px; }
+.arc-drawer-empty-mark { width: 38px; height: 38px; display: grid; place-items: center; margin-bottom: 8px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--inset); color: var(--muted); }
+.arc-drawer-empty b { color: var(--text-2); font-size: var(--dz-md); font-weight: 620; }
+.arc-drawer-empty > span { max-width: 27ch; font-size: var(--dz-sm); line-height: 1.5; }
 
 /* Saved items drawer view */
 .arc-drawer-saved .arc-saved-error { margin: 0 0 10px; font-size: var(--dz-sm); color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: 8px; padding: 7px 10px; }
-.arc-saved-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
-.arc-saved-item { display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); padding: 10px 11px; transition: border-color var(--arc-fast); }
-.arc-saved-item:hover { border-color: var(--accent-border); }
+.arc-saved-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 0 -4px; padding: 0 4px 4px; }
+/* `flex: none` — a flex child would otherwise shrink below its own content once
+   an item has no preview line, which put the actions row over the title. */
+.arc-saved-item { flex: none; display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 9px 10px; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-saved-item:hover { border-color: var(--accent-border); background: color-mix(in srgb, var(--panel) 90%, var(--accent-soft)); }
 .arc-saved-main { min-width: 0; flex: 1; }
-.arc-saved-kind { display: inline-block; font-size: var(--dz-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; margin-bottom: 6px; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); }
+/* Title first, kind second. The badge used to sit on its own line above the
+   title, which spent a whole row saying "Angle" and pushed the thing you
+   actually scan for down — three items filled the panel. */
+.arc-saved-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.arc-saved-kind { flex: none; font-size: var(--dz-xs); font-weight: 620; letter-spacing: .04em; text-transform: uppercase; border-radius: 999px; padding: 2px 7px; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
 .arc-saved-kind.is-draft { color: var(--accent-contrast); background: var(--accent-soft); border-color: var(--accent-border); }
-.arc-saved-title { display: block; font-size: var(--dz-md); font-weight: 600; color: var(--text); line-height: 1.35; }
-.arc-saved-preview { margin: 4px 0 0; font-size: var(--dz-sm); color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.arc-saved-title { min-width: 0; display: block; font-size: var(--dz-md); font-weight: 620; color: var(--text); line-height: 1.35; }
+.arc-saved-preview { margin: 3px 0 0; font-size: var(--dz-sm); color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* Reuse actions. "Use in chat" is the primary one — it is the whole reason the
    Saved tab exists — so it carries the accent; copy and the source link sit
    beside it as quieter alternatives. */
-.arc-saved-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.arc-saved-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; }
 .arc-history .arc-saved-use,
 .arc-history .arc-saved-copy { min-height: 26px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 8px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast), color var(--arc-fast); }
 .arc-history .arc-saved-use { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
 .arc-history .arc-saved-use:hover { border-color: var(--accent-border-strong); background: color-mix(in srgb, var(--accent-soft) 55%, var(--canvas-deep)); }
 .arc-history .arc-saved-copy:hover { border-color: var(--line-3); background: rgba(255, 255, 255, .04); color: var(--text); }
-.arc-saved-open { display: inline-flex; align-items: center; gap: 4px; font-size: var(--dz-xs); font-weight: 600; color: var(--muted); text-decoration: none; }
-.arc-saved-open:hover { color: var(--text-2); }
+/* Sits in a row with two 26px buttons and was a 15px text link — the same
+   action group, half the target. */
+.arc-saved-open { min-height: 26px; display: inline-flex; align-items: center; gap: 4px; border-radius: 7px; padding: 0 7px; font-size: var(--dz-xs); font-weight: 620; color: var(--muted); text-decoration: none; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-saved-open:hover { color: var(--text-2); background: rgba(255, 255, 255, .04); }
 .arc-saved-remove { flex: none; width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast); }
 .arc-saved-item:hover .arc-saved-remove, .arc-saved-remove:focus-visible { opacity: 1; }
 .arc-saved-remove:hover { color: var(--red-text); border-color: var(--red-border); background: var(--red-soft); }
-.arc-saved-empty { display: flex; align-items: center; gap: 11px; color: var(--muted); font-size: var(--dz-sm); padding: 18px 4px; }
-.arc-saved-empty b { display: block; color: var(--text-2); font-size: var(--dz-md); }
-.arc-saved-empty span { display: block; margin-top: 2px; }
+.arc-drawer-saved .arc-drawer-footnote { flex: none; margin-top: auto; }
 
 /* Archived-conversations disclosure at the bottom of the Conversations view */
 .arc-archived { flex: none; border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
@@ -2400,9 +2418,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-history .arc-archived-restore { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-family: inherit; font-size: var(--dz-xs); font-weight: 600; cursor: pointer; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast); }
 .arc-archived-item:hover .arc-archived-restore, .arc-archived-restore:focus-visible { opacity: 1; }
 .arc-archived-restore:hover { color: var(--accent-contrast); border-color: var(--accent-border); }
-.arc-drawer-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.arc-drawer-title-row > span { flex: none; border: 1px solid var(--accent-border); border-radius: 999px; background: var(--accent-soft); color: var(--accent-contrast); padding: 3px 8px; font-family: var(--mono); font-size: var(--dz-xs); }
-.arc-drawer-title-row > span.is-connector-count { border-color: var(--ok-border); background: var(--ok-soft); color: var(--ok-text); }
 .arc-history-head,
 .arc-share-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 15px; }
 .arc-history-head > div,
@@ -2411,7 +2426,10 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-share-head h2 { margin: 0; font-family: var(--serif); color: var(--text); font-size: 18px; font-weight: 550; }
 .arc-history-head p,
 .arc-share-head p { margin: 4px 0 0; color: var(--muted); font-size: var(--dz-sm); }
-.arc-history-eyebrow { display: block; margin-bottom: 7px; color: var(--accent-contrast); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+.arc-history-eyebrow { min-width: 0; display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; color: var(--muted); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+/* The workspace's own name is the fact here; "Arc workspace" is the label on
+   it, so the name carries the accent and the label steps back to muted. */
+.arc-history-eyebrow b { min-width: 0; overflow: hidden; color: var(--accent-contrast); font-weight: 650; letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
 /* The conversations view is a list, so everything above the list is overhead.
    It carries one quiet action row, one search field and one control row — the
    panel used to spend ~260px on a serif title, a subtitle, a bordered button, a
@@ -2436,35 +2454,56 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-new-chat > svg { flex: none; color: var(--muted); transition: color var(--arc-fast); }
 .arc-new-chat:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
 .arc-new-chat:hover > svg { color: var(--accent); }
-.arc-history-search {
-  height: 30px;
+/* ── One grammar for all four tabs ───────────────────────────────────────────
+   Every tab is the same shape: a line saying what it is for, a search field, a
+   row of narrowing chips, a section head with a count, then the list. Before
+   this each tab invented its own: Conversations had a 30px search and
+   Skills/Connectors a 38px one at a different radius and font size; three tabs
+   opened with a 19px serif <h2> repeating the word the operator had just
+   clicked in the tab bar directly above, plus a subtitle — ~66px of chrome
+   before any content, and the reason no two tabs' first row sat at the same
+   height. Saved had none of it and could not be searched at all. */
+.arc-drawer-purpose { flex: none; margin: 0 2px 9px; color: var(--muted); font-size: var(--dz-sm); line-height: 1.45; }
+.arc-drawer-purpose code { border-radius: 4px; background: var(--accent-soft); color: var(--accent-contrast); padding: 1px 4px; font-family: var(--mono); font-size: 1em; }
+.arc-drawer-back { flex: none; margin-bottom: 8px; }
+.arc-drawer-back > button { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px; background: transparent; color: var(--accent-contrast); padding: 3px 6px 3px 2px; font-family: inherit; font-size: var(--dz-sm); font-weight: 600; cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-drawer-back > button:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
+.arc-drawer-search {
+  height: 32px;
+  flex: none;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 7px;
-  margin-top: 4px;
-  padding: 0 8px;
+  padding: 0 9px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 9px;
   background: transparent;
   color: var(--muted);
+  transition: border-color var(--arc-fast), background var(--arc-fast);
 }
-.arc-history-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-sm); }
-.arc-history-search:focus-within { border-color: var(--accent-border); background: var(--inset); }
-.arc-history-search input:focus-visible { outline: 0; }
-.arc-history-search input::placeholder { color: var(--muted); }
-.arc-history-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
-.arc-history-filters { min-width: 0; display: flex; align-items: center; gap: 2px; }
-.arc-history-filters button { min-height: 24px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); padding: 0 7px; font-size: var(--dz-xs); cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
-.arc-history-filters button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
-.arc-history-filters button.is-active { background: rgba(255, 255, 255, .06); color: var(--text); }
-.arc-history-filters small { color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-drawer-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-sm); }
+.arc-drawer-search:focus-within { border-color: var(--accent-border); background: var(--inset); }
+.arc-drawer-search input:focus-visible { outline: 0; }
+.arc-drawer-search input::placeholder { color: var(--muted); }
+.arc-drawer-filters { flex: none; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 6px; }
+.arc-history .arc-drawer-filters button { min-height: 24px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); padding: 0 7px; font-family: inherit; font-size: var(--dz-xs); cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-drawer-filters button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
+.arc-drawer-filters button.is-active { background: rgba(255, 255, 255, .06); color: var(--text); }
+.arc-drawer-filters small { color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-drawer-filters button.is-active small { color: var(--accent-contrast); }
+.arc-drawer-loading { flex: none; display: flex; align-items: center; gap: 7px; padding: 14px 4px; color: var(--muted); font-size: var(--dz-sm); }
 .arc-history-attention { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .arc-history-attention > button { min-height: 28px; flex: 1; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); color: var(--accent-contrast); padding: 0 9px; cursor: pointer; }
 .arc-history-attention > button > span { display: inline-flex; align-items: center; gap: 6px; }
 .arc-history-attention b { font-size: var(--dz-xs); font-weight: 620; }
 .arc-history-attention > span { flex: none; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); padding: 0 4px; font-size: var(--dz-xs); }
-.arc-history-list { min-height: 0; flex: 1; overflow: auto; margin: 6px -4px 0; padding: 0 4px; }
+/* A flex column, like the skills and connectors lists, so the shared empty
+   state can take the leftover height and sit in the middle of it. As a block
+   container its `flex: 1` was inert and "No conversations found" pinned itself
+   to the top of an otherwise empty panel — the one tab where it didn't centre. */
+.arc-history-list { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: auto; margin: 6px -4px 0; padding: 0 4px; }
+.arc-history-list > .arc-history-section { flex: none; }
 /* Two standing sections — Campaigns, then whatever isn't in one. Campaigns are
    folders rather than a grouping mode you switch to, because a campaign is
    what an operator looks a chat up by; the date headings live inside the
@@ -2576,9 +2615,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-history-menu-confirm button.is-danger { border-color: transparent; background: var(--red); color: #fff; font-weight: 600; }
 .arc-history-item.is-renaming { padding: 3px 6px; }
 .arc-history-item.is-renaming input { width: 100%; min-height: 32px; border: 1px solid var(--accent-border); border-radius: 8px; outline: 0; background: var(--inset); color: var(--text); padding: 0 10px; font-size: var(--dz-md); }
-.arc-history-empty { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); text-align: center; padding: 24px; }
-.arc-history-empty b { color: var(--text-2); font-size: var(--dz-md); font-weight: 600; }
-.arc-history-empty span { font-size: var(--dz-sm); }
 
 /* ── Skills and connectors ──────────────────────────────────────────────── */
 /* This block used to declare `--skill-blue: #5bb7e8` and friends — a hardcoded
@@ -2587,7 +2623,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
    accent tokens, so a gold, red, steel or emerald workspace gets its own accent
    here like everywhere else. */
 .arc-drawer-skills { overflow: hidden; }
-.arc-drawer-skills .arc-drawer-view-head code { border-radius: 4px; background: var(--accent-soft); color: var(--accent-contrast); padding: 1px 4px; font-family: var(--mono); font-size: 1em; }
 
 /* Skill authoring and installation are the rare case — they live in a collapsed
    disclosure pinned below the list, not in four cards above it. */
@@ -2619,13 +2654,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-skill-browse small { color: var(--muted); font-size: var(--dz-xs); line-height: 1.35; }
 .arc-skill-create > svg,
 .arc-skill-browse > svg { color: var(--muted); }
-.arc-skills-section-head,
-.arc-connectors-section-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 2px 7px; }
-.arc-skills-section-head:first-child { margin-top: 4px; }
-.arc-skills-section-head > span,
-.arc-connectors-section-head > span { color: var(--muted); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
-.arc-connectors-section-head a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-contrast); font-size: var(--dz-xs); text-decoration: none; }
-.arc-skills-section-head small { color: var(--muted); font-size: var(--dz-xs); }
 .arc-skills-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; margin: 0 -4px; padding: 0 4px 4px; }
 .arc-drawer-skills .arc-drawer-footnote { flex: none; margin-top: 0; }
 
@@ -2635,18 +2663,25 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-skill-item { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; border: 1px solid transparent; border-radius: 9px; transition: border-color var(--arc-fast), background var(--arc-fast); }
 .arc-skill-item:hover,
 .arc-skill-item:focus-within { border-color: var(--accent-border); background: var(--accent-soft); }
-.arc-skill-row { min-width: 0; width: 100%; min-height: 62px; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2); padding: 8px; text-align: left; cursor: pointer; }
+.arc-skill-row { min-width: 0; width: 100%; min-height: 58px; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2); padding: 8px; text-align: left; cursor: pointer; }
 .arc-skill-row:focus-visible { outline: 0; }
-.arc-skill-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); color: var(--text-2); }
+.arc-skill-icon { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--text-2); }
 .arc-skill-item:hover .arc-skill-icon,
 .arc-skill-item:focus-within .arc-skill-icon { border-color: var(--accent-border); color: var(--accent); }
 .arc-skill-row > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .arc-skill-row-title { min-width: 0; display: flex; align-items: center; gap: 6px; }
 .arc-skill-row b { min-width: 0; overflow: hidden; color: var(--text); font-size: var(--dz-md); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .arc-skill-row small { color: var(--muted); font-size: var(--dz-sm); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-/* Every command the skill answers to, not just the first. */
+/* Every command the skill answers to, not just the first. Neutral, not gold:
+   three accent-filled pills per row were the loudest thing in the list and beat
+   the skill's own name for attention, on eight rows at once. They take the
+   accent when the row is hovered or focused — the moment they become the thing
+   you are about to type. */
 .arc-skill-commands { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.arc-skill-commands em { border-radius: 5px; background: var(--accent-soft); color: var(--accent-contrast); padding: 2px 5px; font-family: var(--mono); font-size: var(--dz-xs); font-style: normal; }
+.arc-skill-commands em { border-radius: 5px; background: var(--inset); color: var(--muted); padding: 2px 5px; font-family: var(--mono); font-size: var(--dz-xs); font-style: normal; transition: background var(--arc-fast), color var(--arc-fast); }
+.arc-skill-item:hover .arc-skill-commands em,
+.arc-skill-item:focus-within .arc-skill-commands em,
+.arc-library-skill:hover .arc-skill-commands em { background: var(--accent-soft); color: var(--accent-contrast); }
 /* Source is a labelled badge. It used to be a 4.5% background tint, which made
    a built-in and an untrusted GitHub import look identical. */
 .arc-skill-source { flex: none; border: 1px solid var(--line-2); border-radius: 999px; background: var(--inset); color: var(--muted); padding: 1px 6px; font-size: var(--dz-xs); font-weight: 620; letter-spacing: .03em; text-transform: uppercase; }
@@ -2663,21 +2698,12 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-skill-requirement { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; margin: 0; border-top: 1px solid var(--line); padding: 7px 8px 8px; color: var(--warn-text); font-size: var(--dz-xs); line-height: 1.45; }
 .arc-skill-requirement > svg { flex: none; }
 .arc-skill-requirement > span { min-width: 0; flex: 1; }
-.arc-skill-requirement > button { flex: none; border: 1px solid var(--warn-border); border-radius: 6px; background: var(--warn-soft); color: var(--warn-text); padding: 3px 7px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; cursor: pointer; }
+.arc-skill-requirement > button { flex: none; min-height: 24px; display: inline-flex; align-items: center; border: 1px solid var(--warn-border); border-radius: 6px; background: var(--warn-soft); color: var(--warn-text); padding: 0 8px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; cursor: pointer; }
 .arc-skill-requirement > button:hover { background: color-mix(in srgb, var(--warn-soft) 55%, var(--canvas-deep)); }
 .arc-skill-item[data-unmet="true"] { grid-template-columns: minmax(0, 1fr) 28px; }
 /* Beside the composer chip: same message, no border, no jump-to — the operator
    is already where the decision gets made. */
 .arc-skill-requirement[data-compact="true"] { border-top: 0; margin: 0 2px 6px; padding: 0; }
-.arc-skill-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 140px; color: var(--muted); text-align: center; padding: 20px; }
-.arc-skill-empty b { color: var(--text-2); font-size: var(--dz-md); }
-.arc-skill-empty span { font-size: var(--dz-sm); }
-.arc-skill-library-head > button { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 11px; border: 0; background: transparent; color: var(--accent-contrast); padding: 0; font-size: var(--dz-sm); cursor: pointer; }
-.arc-skill-library-head > button:hover { color: var(--text); }
-.arc-skill-search { height: 38px; flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--muted); padding: 0 10px; }
-.arc-skill-search:focus-within { border-color: var(--accent-border); }
-.arc-skill-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-md); }
-.arc-skill-search input::placeholder { color: var(--muted); }
 .arc-github-toggle { flex: none; width: 100%; min-height: 46px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 14px; align-items: center; gap: 9px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--muted); padding: 7px 10px; text-align: left; cursor: pointer; }
 .arc-github-toggle:hover { border-color: var(--accent-border); color: var(--accent); }
 .arc-github-toggle > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -2728,36 +2754,49 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-connector-notice b { color: var(--text-2); font-size: var(--dz-sm); font-weight: 620; }
 .arc-connector-notice small { font-size: var(--dz-xs); }
 .arc-connector-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; margin: 0 -4px; padding: 0 4px 4px; }
-.arc-connector-list .arc-connectors-section-head { margin: 12px 2px 2px; }
-.arc-connector-list .arc-connectors-section-head:first-child { margin-top: 2px; }
-.arc-connector-list .arc-connectors-section-head small { color: var(--muted); font-size: var(--dz-xs); }
+.arc-connector-list .arc-drawer-section-head { margin: 12px 2px 2px; }
+.arc-connector-list .arc-drawer-section-head:first-child { margin-top: 2px; }
 /* `flex: none` — these are flex children and would otherwise shrink below their
    own content once a group head or toggle changes the row height. */
-.arc-connector-row { flex: none; min-height: 72px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 30px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--text-2); padding: 9px 10px; text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-connector-row { flex: none; min-height: 58px; display: grid; grid-template-columns: 34px minmax(0, 1fr) 30px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--text-2); padding: 9px 10px; text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast); }
 .arc-connector-row:hover { border-color: var(--line-3); background: color-mix(in srgb, var(--panel) 90%, var(--accent-soft)); }
 /* Arrived at from an unmet skill requirement — mark which row was meant. */
 .arc-connector-row[data-focused="true"] { border-color: var(--warn-border); background: color-mix(in srgb, var(--panel) 88%, var(--warn-soft)); }
-.arc-connector-logo { --connector-color: #9aa0ac; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--connector-color) 42%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--connector-color) 14%, transparent); color: var(--connector-color); font-family: var(--mono); font-size: var(--dz-xs); font-weight: 650; }
-.arc-connector-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.arc-connector-copy > span { min-width: 0; display: flex; align-items: center; gap: 7px; }
-.arc-connector-copy b { min-width: 0; flex: 1; overflow: hidden; color: var(--text); font-size: var(--dz-md); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.arc-connector-logo { --connector-color: #9aa0ac; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--connector-color) 42%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--connector-color) 14%, transparent); color: var(--connector-color); font-family: var(--mono); font-size: var(--dz-xs); font-weight: 650; }
+.arc-connector-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.arc-connector-copy > span { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.arc-connector-copy b { min-width: 0; flex: none; max-width: 100%; overflow: hidden; color: var(--text); font-size: var(--dz-md); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 /* Status is the reason to look at the row. It was 6.8px — the smallest text in
    the app — and is now the same size as every other piece of meta here. */
-.arc-connector-copy em { flex: none; border: 1px solid var(--line); border-radius: 999px; background: var(--inset); color: var(--muted); padding: 2px 6px; font-size: var(--dz-xs); font-style: normal; font-weight: 620; }
+.arc-connector-copy em { flex: none; margin-left: auto; border: 1px solid var(--line); border-radius: 999px; background: var(--inset); color: var(--muted); padding: 2px 6px; font-size: var(--dz-xs); font-style: normal; font-weight: 620; white-space: nowrap; }
+/* What Arc is allowed to do with this source, beside its name. It used to be
+   half of a "Signal source · read-only" line whose first half was already the
+   group heading the row sits under. */
+.arc-connector-copy > span > small { flex: none; color: var(--muted); font-size: var(--dz-xs); letter-spacing: .03em; white-space: nowrap; }
 .arc-connector-row[data-status="connected"] .arc-connector-copy em { border-color: var(--ok-border); background: var(--ok-soft); color: var(--ok-text); }
 .arc-connector-row[data-status="disabled"] .arc-connector-copy em { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
 .arc-connector-row[data-status="error"] .arc-connector-copy em { border-color: var(--red-border); background: var(--red-soft); color: var(--red-text); }
-.arc-connector-copy small { color: var(--muted); font-size: var(--dz-xs); }
 /* No line clamp. The old one cut settings-page prose mid-word ("…deduped on
    email/phone (a…"), which is worse than a slightly taller row: the operator
    could never read the rest. Rows now size to their one-line capability
-   summary, and the list is grouped and searchable to keep it navigable. */
+   summary, and the list is grouped, searchable and filterable by status to keep
+   it navigable. */
 .arc-connector-copy p { margin: 0; color: var(--muted); font-size: var(--dz-sm); line-height: 1.4; }
-.arc-connector-setup { display: grid; place-items: center; color: var(--muted); text-decoration: none; }
-.arc-connector-setup:hover { color: var(--text-2); }
+/* The way into Settings for a connector that isn't set up yet — which is most
+   of the catalog on a new workspace, so it is the most-used control on this
+   tab. It was a bare 14px chevron with no box: a hit target under half the
+   28px everything else in the drawer offers, on the one row whose whole point
+   is "this needs you". */
+.arc-connector-setup { width: 28px; height: 28px; justify-self: center; display: grid; place-items: center; border: 1px solid transparent; border-radius: 8px; color: var(--muted); text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast), color var(--arc-fast); }
+.arc-connector-setup:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
+.arc-connector-row[data-status="error"] .arc-connector-setup:hover { border-color: var(--red-border); background: var(--red-soft); color: var(--red-text); }
 /* Switch a connector on or off without leaving the conversation. Reads as a
    switch, not a nav chevron — the row is no longer a link. */
-.arc-connector-toggle { width: 30px; height: 18px; justify-self: center; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 999px; background: var(--inset); padding: 0; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-connector-toggle { position: relative; width: 30px; height: 18px; justify-self: center; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 999px; background: var(--inset); padding: 0; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast); }
+/* A switch reads right at 18px tall and is miserable to hit at 18px tall. The
+   pressable area is grown past the track rather than the track being drawn
+   bigger, so the control still looks like a switch. */
+.arc-connector-toggle::before { content: ""; position: absolute; inset: -6px -5px; border-radius: 999px; }
 .arc-connector-toggle i { width: 12px; height: 12px; display: block; border-radius: 50%; background: var(--muted); transform: translateX(-5px); transition: transform var(--arc-fast), background var(--arc-fast); }
 .arc-connector-toggle[aria-checked="true"] { border-color: var(--ok-border); background: var(--ok-soft); }
 .arc-connector-toggle[aria-checked="true"] i { background: var(--ok-text); transform: translateX(5px); }
@@ -2776,9 +2815,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-planned-item b { color: var(--text-2); font-size: var(--dz-sm); font-weight: 600; }
 .arc-planned-item small { font-size: var(--dz-xs); }
 .arc-connector-row > svg { color: var(--muted); }
-.arc-connector-empty { min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--muted); text-align: center; }
-.arc-connector-empty b { color: var(--text-2); font-size: var(--dz-md); }
-.arc-connector-empty span { font-size: var(--dz-sm); }
 .arc-drawer-connectors .arc-drawer-footnote { flex: none; margin-top: 0; }
 
 /* ── Share dialog ───────────────────────────────────────────────────────── */
@@ -2889,8 +2925,9 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   .arc-history-topline .arc-icon-button { width: 44px; height: 44px; }
   .arc-drawer-nav button,
   .arc-new-chat,
-  .arc-history-search,
-  .arc-history-filters button,
+  .arc-drawer-search,
+  .arc-drawer-filters button,
+  .arc-drawer-back > button,
   .arc-campaign-folder-head,
   .arc-history-more,
   .arc-archived-toggle,
