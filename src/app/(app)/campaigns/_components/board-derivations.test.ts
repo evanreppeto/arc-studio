@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildLaunchState, type CampaignWorkspaceAsset } from "@/lib/campaigns/read-model";
 
-import { constantAudience, nextActionFor, pieceLabel, signalTiming, type DeliverableCounts } from "./board-derivations";
+import { constantAudience, describeContents, nextActionFor, pieceLabel, signalTiming, type DeliverableCounts } from "./board-derivations";
 
 function counts(approved: number, required: number): DeliverableCounts {
   return { approved, required };
@@ -193,5 +193,38 @@ describe("pieceLabel", () => {
     expect(pieceLabel("Spring push", "Spring push", "Email")).toEqual({ label: "Email", sub: "" });
     // And with no kind either, the original title is better than blank.
     expect(pieceLabel("Spring push", "Spring push", "").label).toBe("Spring push");
+  });
+});
+
+describe("describeContents", () => {
+  it("names the things in words an owner already uses", () => {
+    expect(describeContents(["Email", "Social Post", "SMS"])).toBe("An email, a social post and a text message");
+  });
+
+  it("collapses repeats into a count", () => {
+    expect(describeContents(["Email", "Email", "SMS"])).toBe("2 emails and a text message");
+    expect(describeContents(["Email", "Email"])).toBe("2 emails");
+  });
+
+  it("handles a single thing", () => {
+    expect(describeContents(["Email"])).toBe("An email");
+    expect(describeContents(["SMS"])).toBe("A text message");
+  });
+
+  it("says nothing when there is nothing", () => {
+    expect(describeContents([])).toBe("");
+  });
+
+  // An unmapped kind still reads as English rather than as a database value.
+  it("falls back to an article plus the kind", () => {
+    expect(describeContents(["Postcard"])).toBe("A postcard");
+    expect(describeContents(["Advert"])).toBe("An advert");
+    expect(describeContents([""])).toBe("A draft");
+  });
+
+  it("never leads with a lowercase letter", () => {
+    for (const kinds of [["SMS"], ["Email", "SMS"], ["Postcard"], ["Email", "Email"]]) {
+      expect(describeContents(kinds)[0]).toBe(describeContents(kinds)[0].toUpperCase());
+    }
   });
 });
