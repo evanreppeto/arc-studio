@@ -4093,7 +4093,10 @@ export function uniqueMedia(items: CampaignMediaAsset[]) {
 // Map an asset_type / channel enum value to the marketing-channel label the
 // Campaigns table shows (matches the mockup: Email · SMS · Paid · Landing · One-pager).
 // Creative-prompt asset types (image/video) collapse to their delivery channel (Paid).
-function humanizeChannel(raw: string): string {
+/** Channel/asset-type casing, e.g. `sms` → "SMS". Exported so the board's
+ *  deliverable labels use the same map as its Channels column — otherwise a
+ *  generic title-caser renders "Sms". */
+export function humanizeChannel(raw: string): string {
   const map: Record<string, string> = {
     email: "Email",
     sms: "SMS",
