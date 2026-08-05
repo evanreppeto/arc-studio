@@ -219,7 +219,7 @@ export function SupportView({
     <div className="support">
       <header className="sup-head">
         <div>
-          <h2>Help &amp; support</h2>
+          <h1>Help &amp; support</h1>
           <p className="sup-lede">
             Something broken, something confusing, or something you wish Arc could do — this reaches a human.
           </p>

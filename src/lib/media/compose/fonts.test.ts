@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { BRAND_FONTS, type BrandTokens } from "@/domain";
@@ -55,5 +58,36 @@ describe("loadCreativeFonts", () => {
     const loaded = await loadCreativeFonts(tokens("Fraunces", "Geist"));
     expect(loaded[0].data.byteLength).toBeGreaterThan(20_000);
     expect(loaded[1].data.byteLength).toBeGreaterThan(20_000);
+  });
+});
+
+/**
+ * The font path has to be handed on as a STRING.
+ *
+ * Passing the `URL` object works in every test above and fails in production:
+ * vitest runs in plain Node, where the global `URL` and the class `node:url`
+ * instance-checks against are the same, so both forms load bytes here. In the
+ * deployed bundle they are different classes, and the object form throws the
+ * self-refuting "must be of type string or an instance of URL. Received an
+ * instance of URL" — taking down BOTH compose paths: Studio's Generate button
+ * and Arc's `compose_creative` tool. Found by clicking Generate on prod
+ * (2026-08-05), not by any of the 5,300 tests.
+ *
+ * So this is a SOURCE assertion, deliberately. There is no behavioural test that
+ * can distinguish the two forms in this runner — the environment that tells them
+ * apart is the one we cannot execute here. Asserting on the text is weaker than a
+ * real test and is the strongest thing available; the alternative is no guard on
+ * a bug that is invisible until an operator clicks the primary button on the page.
+ */
+describe("font path is passed as a string, not a URL object", () => {
+  const source = readFileSync(join(__dirname, "fonts.ts"), "utf8");
+
+  it("never hands a bare URL instance to fileURLToPath", () => {
+    // Matches `fileURLToPath(new URL(...))` with no `.href`/String() conversion.
+    expect(source).not.toMatch(/fileURLToPath\(\s*new URL\([^)]*\)\s*\)/);
+  });
+
+  it("converts the URL to its href before use", () => {
+    expect(source).toMatch(/new URL\([^)]*\)\.href/);
   });
 });

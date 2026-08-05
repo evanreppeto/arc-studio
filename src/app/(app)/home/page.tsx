@@ -151,10 +151,10 @@ export default async function HomePage() {
     <div className="scroll">
       <section className="content">
         <div className="date">{dateLabel}</div>
-        <h2 className="greet">
+        <h1 className="greet">
           {greeting}
           {firstName ? `, ${firstName}` : ""}
-        </h2>
+        </h1>
         <div className="subline">
           {needsYouPhrase(approvalCount)}
           <span className="dot">·</span>

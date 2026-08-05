@@ -108,6 +108,7 @@ import type {
 import type { MentionGroup } from "@/lib/arc-chat/mention-search";
 import type { ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
 import { filterThreadGroups, type ArcThreadFilter } from "@/lib/arc-chat/thread-filter";
+import type { SavedKind } from "@/lib/arc-chat/saved";
 import {
   resolveArcComposerMode,
   type ArcComposerModePreference,
@@ -600,6 +601,10 @@ function ThreadDrawer({
   const [savedError, setSavedError] = useState<string | null>(null);
   /** Which item just went to the clipboard, so the button can confirm it. */
   const [copiedSavedId, setCopiedSavedId] = useState<string | null>(null);
+  /** Saved was the one list in the drawer you could not search or narrow — it
+   *  grows without bound and had no way through it but scrolling. */
+  const [savedSearch, setSavedSearch] = useState("");
+  const [savedKind, setSavedKind] = useState<SavedKindFilter>("all");
   // Archived conversations: a lazy-loaded disclosure at the bottom of the list.
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [archivedConvos, setArchivedConvos] = useState<ArchivedArcConversationVM[] | null>(null);
@@ -614,6 +619,9 @@ function ThreadDrawer({
   /** Connector the operator arrived at from an unmet skill requirement. */
   const [focusedConnector, setFocusedConnector] = useState<string | null>(null);
   const [connectorSearch, setConnectorSearch] = useState("");
+  /** The catalog is 16 rows deep and almost every question asked of it is
+   *  "what is on?" or "what still needs me?". Same chip row as Conversations. */
+  const [connectorFilter, setConnectorFilter] = useState<ConnectorFilter>("all");
   const [plannedOpen, setPlannedOpen] = useState(false);
   /** Key currently being switched, so only that row shows a spinner. */
   const [togglingConnector, setTogglingConnector] = useState<string | null>(null);
@@ -772,14 +780,23 @@ function ThreadDrawer({
     return rank[a.status] - rank[b.status] || a.label.localeCompare(b.label);
   });
   const connectedCount = connectorItems.filter((connector) => connector.status === "connected").length;
+  const offCount = connectorItems.filter((connector) => connector.status === "disabled").length;
+  const setupCount = connectorItems.filter((connector) => connector.status === "not_configured" || connector.status === "error").length;
   const matchesConnectorQuery = (connector: DrawerConnectorItem) => {
     const needle = connectorSearch.trim().toLocaleLowerCase();
     return !needle || `${connector.label} ${connector.description} ${connector.kindLabel}`.toLocaleLowerCase().includes(needle);
   };
+  const matchesConnectorFilter = (connector: DrawerConnectorItem) =>
+    connectorFilter === "all"
+    || (connectorFilter === "on" && connector.status === "connected")
+    || (connectorFilter === "off" && connector.status === "disabled")
+    || (connectorFilter === "setup" && (connector.status === "not_configured" || connector.status === "error"));
   /* "Not available yet" connectors aren't actionable and were sitting at the
      same visual weight as the real ones. They get their own disclosure so the
-     list you can actually do something about stays short. */
-  const visibleConnectors = connectorItems.filter((connector) => connector.status !== "unavailable" && matchesConnectorQuery(connector));
+     list you can actually do something about stays short. The status filter
+     deliberately doesn't reach them: none of its four buckets describes
+     "we haven't built this", so they stay behind their disclosure either way. */
+  const visibleConnectors = connectorItems.filter((connector) => connector.status !== "unavailable" && matchesConnectorQuery(connector) && matchesConnectorFilter(connector));
   const plannedConnectors = connectorItems.filter((connector) => connector.status === "unavailable" && matchesConnectorQuery(connector));
   const connectorGroups = CONNECTOR_KIND_ORDER
     .map((kind) => ({ kind, label: CONNECTOR_GROUP_LABEL[kind], items: visibleConnectors.filter((connector) => connector.kind === kind) }))
@@ -1053,6 +1070,21 @@ function ThreadDrawer({
     });
   };
 
+  /* Saved: narrow by kind, then by text. Counts come off the unfiltered list so
+     a chip never reads "0" only because the other chip is on. */
+  const savedCounts = {
+    all: savedItems?.length ?? 0,
+    draft: savedItems?.filter((item) => item.kind === "draft").length ?? 0,
+    angle: savedItems?.filter((item) => item.kind === "angle").length ?? 0,
+    media: savedItems?.filter((item) => item.kind === "media").length ?? 0,
+  };
+  const visibleSaved = (savedItems ?? []).filter((item) => {
+    if (savedKind !== "all" && item.kind !== savedKind) return false;
+    const needle = savedSearch.trim().toLocaleLowerCase();
+    return !needle || `${item.title} ${item.preview ?? ""} ${item.note ?? ""}`.toLocaleLowerCase().includes(needle);
+  });
+  const savedNarrowed = savedKind !== "all" || savedSearch.trim().length > 0;
+
   const searching = query.trim().length > 0;
   const renderThread = (thread: ArcThreadGroupVM["items"][number]) => (
     <ThreadRow
@@ -1073,7 +1105,14 @@ function ThreadDrawer({
 
   return (
     <motion.aside ref={drawerRef} className="arc-history" style={paneBox ? { top: paneBox.top, left: paneBox.left, height: paneBox.height, width: Math.min(386, paneBox.width - 28) } : undefined} initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} role="dialog" aria-modal="true" aria-label="Arc workspace">
-      <div className="arc-history-topline"><span className="arc-history-eyebrow">Your Arc workspace</span><button type="button" className="arc-icon-button" onClick={onDismiss} aria-label="Close Arc workspace" autoFocus><X size={17} /></button></div>
+      {/* Everything in this drawer — the chats, the installed skills, the
+          connector switches, the saved items — belongs to one workspace, and
+          the panel never said which. It matters most in the account that has
+          two of them open in two tabs. */}
+      <div className="arc-history-topline">
+        <span className="arc-history-eyebrow">Arc workspace{workspaceName ? <b>{workspaceName}</b> : null}</span>
+        <button type="button" className="arc-icon-button" onClick={onDismiss} aria-label="Close Arc workspace" autoFocus><X size={17} /></button>
+      </div>
       <nav className="arc-drawer-nav" aria-label="Arc workspace sections">
         <button type="button" className={view === "conversations" ? "is-active" : ""} aria-current={view === "conversations" ? "page" : undefined} onClick={() => setView("conversations")}><MessageSquareText size={14} /><span>Conversations</span></button>
         <button type="button" className={view === "skills" ? "is-active" : ""} aria-current={view === "skills" ? "page" : undefined} onClick={() => { setView("skills"); setSkillsMode("installed"); }}><Blocks size={14} /><span>Skills</span></button>
@@ -1085,15 +1124,13 @@ function ThreadDrawer({
         {/* No title block: the tab above already says "Conversations", and the
             explanatory subtitle cost a third of the panel before the first row. */}
         {live ? <Link href="/arc?new=1" className="arc-new-chat" prefetch={false} scroll={false} onClick={onStartNew}><Plus size={15} /> New conversation</Link> : <button type="button" className="arc-new-chat" onClick={() => onSelectDemo("new")}><Plus size={15} /> New conversation</button>}
-        <label className="arc-history-search"><Search size={14} /><input type="search" aria-label="Search conversations" placeholder="Search conversations" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-        <div className="arc-history-controls">
-          <div className="arc-history-filters" role="group" aria-label="Filter conversations">
-            {([
-              ["all", "All", allThreads.length],
-              ["running", "Working", runningCount],
-              ["pinned", "Pinned", pinnedCount],
-            ] as const).map(([id, label, count]) => <button type="button" key={id} className={filter === id ? "is-active" : ""} aria-pressed={filter === id} onClick={() => setFilter(id)}><span>{label}</span>{count > 0 ? <small>{count}</small> : null}</button>)}
-          </div>
+        <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search conversations" placeholder="Search conversations" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <div className="arc-drawer-filters" role="group" aria-label="Filter conversations">
+          {([
+            ["all", "All", allThreads.length],
+            ["running", "Working", runningCount],
+            ["pinned", "Pinned", pinnedCount],
+          ] as const).map(([id, label, count]) => <button type="button" key={id} className={filter === id ? "is-active" : ""} aria-pressed={filter === id} onClick={() => setFilter(id)}><span>{label}</span>{count > 0 ? <small>{count}</small> : null}</button>)}
         </div>
         {needsReviewCount > 0 || runningCount > 0 ? <div className="arc-history-attention">
           {/* "need you" is the shared vocabulary for this state (BSR-656) — the
@@ -1146,7 +1183,7 @@ function ThreadDrawer({
               ))}
             </div>
           ) : null}
-          {campaignFolders.length === 0 && recentGroups.length === 0 ? <div className="arc-history-empty"><Search size={17} /><b>No conversations found</b><span>Try a different title or date.</span></div> : null}
+          {campaignFolders.length === 0 && recentGroups.length === 0 ? <DrawerEmpty icon={<Search size={18} />} title="No conversations found" hint="Try a different title or date." /> : null}
         </div>
         <div className="arc-archived">
           <button type="button" className={`arc-archived-toggle${archivedOpen ? " is-open" : ""}`} onClick={toggleArchived} aria-expanded={archivedOpen}>
@@ -1173,11 +1210,11 @@ function ThreadDrawer({
         </div>
       </section> : null}
 
-      {view === "skills" && skillsMode === "installed" ? <section className="arc-drawer-view arc-drawer-skills" aria-labelledby="arc-skills-title">
-        <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-skills-title">Skills</h2><span>{installedSkills.length + generatedSkills.length} installed</span></div><p>Reusable workflows you can call with <code>/</code> in any conversation.</p></header>
-        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search your skills" placeholder="Search your skills" value={installedSearch} onChange={(event) => setInstalledSearch(event.target.value)} /></label>
+      {view === "skills" && skillsMode === "installed" ? <section className="arc-drawer-view arc-drawer-skills" aria-label="Skills">
+        <p className="arc-drawer-purpose">Reusable workflows you can call with <code>/</code> in any conversation.</p>
+        <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search your skills" placeholder="Search your skills" value={installedSearch} onChange={(event) => setInstalledSearch(event.target.value)} /></label>
         {voiceStatus ? <p className="arc-voice-status" data-tone={voiceStatus.tone}>{voiceStatus.tone === "ok" ? <Check size={13} /> : <Info size={13} />}{voiceStatus.text}</p> : null}
-        <div className="arc-skills-section-head"><span>Your skills</span><small>{installedEntries.length} of {installedSkills.length + generatedSkills.length}</small></div>
+        <div className="arc-drawer-section-head"><span>Your skills</span><small>{installedSearch.trim() ? `${installedEntries.length} of ${installedSkills.length + generatedSkills.length}` : `${installedSkills.length + generatedSkills.length} installed`}</small></div>
         <div className="arc-skills-list" onKeyDown={handleRovingListKeyDown}>
           {installedEntries.map(({ skill, detail, generated }) => {
             const removable = Boolean(generated) || skill.source === "github" || skill.source === "library";
@@ -1189,7 +1226,14 @@ function ThreadDrawer({
                   <span>
                     <span className="arc-skill-row-title">
                       <b>{skill.name}</b>
-                      <span className="arc-skill-source" data-source={skill.source}>{SKILL_SOURCE_LABEL[skill.source]}</span>
+                      {/* Only where it says something. The badge exists so a skill
+                          Arc ships and an untrusted public GitHub import don't
+                          look alike — and it was drawn on every row, including
+                          the eight built-ins, where it read "BUILT-IN" eight
+                          times and told you nothing. Absence now means built-in;
+                          a badge means you added this, which is the case worth
+                          the eye. */}
+                      {isBuiltInSkill(skill) ? null : <span className="arc-skill-source" data-source={skill.source}>{SKILL_SOURCE_LABEL[skill.source]}</span>}
                     </span>
                     <small>{detail}</small>
                     {/* Every command the skill answers to. Showing only the first
@@ -1204,7 +1248,7 @@ function ThreadDrawer({
               </div>
             );
           })}
-          {installedEntries.length === 0 ? <div className="arc-skill-empty"><Search size={17} /><b>No skills match</b><span>Try another workflow name or command.</span></div> : null}
+          {installedEntries.length === 0 ? <DrawerEmpty icon={<Search size={18} />} title="No skills match" hint="Try another workflow name or command." /> : null}
         </div>
         <div className="arc-skill-manage">
           <button type="button" className="arc-skill-manage-toggle" aria-expanded={manageOpen} onClick={() => setManageOpen((open) => !open)}>
@@ -1220,8 +1264,9 @@ function ThreadDrawer({
         <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Skills can prepare work, but outbound actions still require review.</p>
       </section> : null}
 
-      {view === "skills" && skillsMode === "library" ? <section className="arc-drawer-view arc-drawer-skills arc-skill-library" aria-labelledby="arc-skill-library-title">
-        <header className="arc-drawer-view-head arc-skill-library-head"><button type="button" onClick={() => setSkillsMode("installed")}><ArrowLeft size={14} /> Skills</button><div className="arc-drawer-title-row"><h2 id="arc-skill-library-title">Skill library</h2><span>Workspace</span></div><p>Install reviewed workflows from Arc or a public GitHub repository.</p></header>
+      {view === "skills" && skillsMode === "library" ? <section className="arc-drawer-view arc-drawer-skills arc-skill-library" aria-label="Skill library">
+        <div className="arc-drawer-back"><button type="button" onClick={() => setSkillsMode("installed")}><ArrowLeft size={13} /> Your skills</button></div>
+        <p className="arc-drawer-purpose">Install reviewed workflows from Arc or a public GitHub repository.</p>
         <button type="button" className="arc-github-toggle" aria-expanded={githubOpen} onClick={() => setGithubOpen((open) => !open)}><GitFork size={15} /><span><b>Import from GitHub</b><small>Repository or SKILL.md URL</small></span><ChevronDown size={13} /></button>
         {githubOpen ? <div className="arc-github-import">
           <label><span>GitHub URL</span><div><GitFork size={14} /><input type="url" value={githubUrl} placeholder="https://github.com/org/repo/blob/main/SKILL.md" onChange={(event) => { setGithubUrl(event.target.value); setGithubPreview(null); setGithubStatus(null); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void reviewGithubSkill(); } }} /></div></label>
@@ -1232,8 +1277,8 @@ function ThreadDrawer({
         {/* GitHub imports used to get their own list here, with the only remove
             button in the product. They now sit in the main Installed list with
             every other skill, badged and removable there. */}
-        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search online skills" placeholder="Search skills" value={skillSearch} onChange={(event) => setSkillSearch(event.target.value)} /></label>
-        <div className="arc-skills-section-head"><span>Discover</span><small>{visibleLibrarySkills.length} skills</small></div>
+        <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search online skills" placeholder="Search skills" value={skillSearch} onChange={(event) => setSkillSearch(event.target.value)} /></label>
+        <div className="arc-drawer-section-head"><span>Discover</span><small>{visibleLibrarySkills.length} skills</small></div>
         <div className="arc-skills-list arc-library-list" onKeyDown={handleRovingListKeyDown}>
           {visibleLibrarySkills.map((skill) => {
             const installed = installedSkillKeys.includes(skill.key);
@@ -1248,24 +1293,40 @@ function ThreadDrawer({
               <button type="button" disabled={saving} onClick={() => onSetSkillInstalled(skill, !installed)}>{saving ? <LoaderCircle size={13} className="is-spinning" /> : installed ? <Check size={13} /> : <Download size={13} />}{saving ? "Saving" : installed ? "Installed" : "Install"}</button>
             </article>;
           })}
-          {visibleLibrarySkills.length === 0 ? <div className="arc-connector-empty"><Search size={17} /><b>No skills found</b><span>Try a different workflow or command.</span></div> : null}
+          {visibleLibrarySkills.length === 0 ? <DrawerEmpty icon={<Search size={18} />} title="No skills found" hint="Try a different workflow or command." /> : null}
         </div>
         <p className="arc-drawer-footnote"><ShieldCheck size={13} /> GitHub skills are treated as untrusted text and cannot expand Arc&apos;s read-only tool boundary.</p>
       </section> : null}
 
-      {view === "connectors" ? <section className="arc-drawer-view arc-drawer-connectors" aria-labelledby="arc-connectors-title">
-        <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-connectors-title">Connectors</h2><span className="is-connector-count">{connectedCount} connected</span></div><p>Arc&apos;s plugins, with the live status for this workspace.</p></header>
+      {view === "connectors" ? <section className="arc-drawer-view arc-drawer-connectors" aria-label="Connectors">
+        <p className="arc-drawer-purpose">What Arc is allowed to read in this workspace, and what it still needs.</p>
         {!connectorsConfigured ? <div className="arc-connector-notice"><ShieldCheck size={14} /><span><b>Catalog preview</b><small>Connect a workspace to store credentials and live status.</small></span></div> : null}
-        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search connectors" placeholder="Search connectors" value={connectorSearch} onChange={(event) => setConnectorSearch(event.target.value)} /></label>
+        <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search connectors" placeholder="Search connectors" value={connectorSearch} onChange={(event) => setConnectorSearch(event.target.value)} /></label>
+        <div className="arc-drawer-filters" role="group" aria-label="Filter connectors by status">
+          {([
+            ["all", "All", connectorItems.filter((connector) => connector.status !== "unavailable").length],
+            ["on", "On", connectedCount],
+            ["off", "Off", offCount],
+            ["setup", "Needs setup", setupCount],
+          ] as const).map(([id, label, count]) => <button type="button" key={id} className={connectorFilter === id ? "is-active" : ""} aria-pressed={connectorFilter === id} onClick={() => setConnectorFilter(id)}><span>{label}</span>{count > 0 ? <small>{count}</small> : null}</button>)}
+        </div>
         {connectorError ? <p className="arc-connector-error" role="alert">{connectorError}</p> : null}
         <div className="arc-connector-list">
           {connectorGroups.map((group) => (
             <Fragment key={group.kind}>
-              <div className="arc-connectors-section-head"><span>{group.label}</span><small>{group.items.filter((item) => item.status === "connected").length} of {group.items.length} on</small></div>
+              <div className="arc-drawer-section-head"><span>{group.label}</span><small>{group.items.filter((item) => item.status === "connected").length} of {group.items.length} on</small></div>
               {group.items.map((connector) => (
                 <div className="arc-connector-row" data-status={connector.status} data-focused={focusedConnector === connector.key ? "true" : undefined} ref={focusedConnector === connector.key ? focusConnectorRef : undefined} key={connector.key}>
                   <span className="arc-connector-logo" style={{ "--connector-color": connector.color } as React.CSSProperties}>{connector.mark}</span>
-                  <span className="arc-connector-copy"><span><b>{connector.label}</b><em>{connector.statusLabel}</em></span><small>{connector.kindLabel} · {connector.accessLabel}</small><p>{connector.description}</p></span>
+                  {/* Three stacked lines became two. The kind was already the
+                      group heading this row sits under, and the status pill said
+                      "Connected"/"Off" beside a switch that says the same thing
+                      louder — so the pill is now only drawn for the states no
+                      switch can express (not set up, error, not armed). */}
+                  <span className="arc-connector-copy">
+                    <span><b>{connector.label}</b><small>{connector.accessLabel}</small>{connector.toggleable ? null : <em>{connector.statusLabel}</em>}</span>
+                    <p>{connector.description}</p>
+                  </span>
                   {/* Switchable here; credential entry still belongs in Settings. */}
                   {connector.toggleable ? (
                     <button
@@ -1287,7 +1348,7 @@ function ThreadDrawer({
               ))}
             </Fragment>
           ))}
-          {connectorGroups.length === 0 ? <div className="arc-connector-empty"><Link2 size={17} /><b>No connectors found</b><span>{connectorSearch.trim() ? "Try a different name or kind." : "Open Settings to refresh the workspace catalog."}</span></div> : null}
+          {connectorGroups.length === 0 ? <DrawerEmpty icon={<Link2 size={18} />} title="No connectors found" hint={connectorSearch.trim() || connectorFilter !== "all" ? "Try a different name, kind or status." : "Open Settings to refresh the workspace catalog."} /> : null}
           {/* Not built yet — nothing to act on, so out of the main list. */}
           {plannedConnectors.length > 0 ? (
             <div className="arc-planned">
@@ -1304,22 +1365,42 @@ function ThreadDrawer({
             </div>
           ) : null}
         </div>
-        <div className="arc-connectors-section-head"><span>{connectorItems.length} workspace connectors</span><Link href="/settings?s=connections">Manage all <ArrowRight size={12} /></Link></div>
+        <div className="arc-drawer-section-head is-footer"><span>{connectorItems.length} workspace connectors</span><Link href="/settings?s=connections">Manage all <ArrowRight size={12} /></Link></div>
         <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Switching a connector on lets Arc read it — signal sources only propose, and nothing sends without your approval.</p>
       </section> : null}
 
-      {view === "saved" ? <section className="arc-drawer-view arc-drawer-saved" aria-labelledby="arc-saved-title">
-        <header className="arc-drawer-view-head"><h2 id="arc-saved-title">Saved</h2><p>Responses, drafts and media you saved from Arc. Send one straight back into the conversation.</p></header>
+      {view === "saved" ? <section className="arc-drawer-view arc-drawer-saved" aria-label="Saved">
+        <p className="arc-drawer-purpose">Responses, drafts and media you kept, ready to send back into any conversation.</p>
+        {/* The search and chips only make sense once there is a list to narrow;
+            while it loads, or when it is empty, they would be dead controls. */}
+        {savedItems && savedItems.length > 0 ? <>
+          <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search saved items" placeholder="Search saved items" value={savedSearch} onChange={(event) => setSavedSearch(event.target.value)} /></label>
+          <div className="arc-drawer-filters" role="group" aria-label="Filter saved items by kind">
+            {([
+              ["all", "All", savedCounts.all],
+              ["draft", "Drafts", savedCounts.draft],
+              ["angle", "Angles", savedCounts.angle],
+              ["media", "Media", savedCounts.media],
+            ] as const).filter(([id, , count]) => id === "all" || count > 0)
+              .map(([id, label, count]) => <button type="button" key={id} className={savedKind === id ? "is-active" : ""} aria-pressed={savedKind === id} onClick={() => setSavedKind(id)}><span>{label}</span>{count > 0 ? <small>{count}</small> : null}</button>)}
+          </div>
+        </> : null}
         {savedError ? <p className="arc-saved-error" role="alert">{savedError}</p> : null}
         {savedLoading ? (
-          <div className="arc-saved-empty"><LoaderCircle size={16} className="is-spinning" /> Loading your saved items…</div>
-        ) : savedItems && savedItems.length > 0 ? (
+          <div className="arc-drawer-loading"><LoaderCircle size={14} className="is-spinning" /> Loading your saved items…</div>
+        ) : savedItems && savedItems.length > 0 ? (<>
+          <div className="arc-drawer-section-head"><span>{savedKind === "all" ? "Everything saved" : savedKind === "draft" ? "Drafts" : savedKind === "angle" ? "Angles" : "Media"}</span><small>{savedNarrowed ? `${visibleSaved.length} of ${savedCounts.all}` : `${savedCounts.all} item${savedCounts.all === 1 ? "" : "s"}`}</small></div>
+          {/* No roving arrow keys here, unlike the other lists: a saved card
+              carries up to four controls, so Down would step within a card
+              rather than between them. Tab is the honest traversal. */}
           <div className="arc-saved-list">
-            {savedItems.map((item) => (
+            {visibleSaved.map((item) => (
               <div className="arc-saved-item" key={item.id}>
                 <div className="arc-saved-main">
-                  <span className={`arc-saved-kind is-${item.kind}`}>{item.kind === "draft" ? "Draft" : item.kind === "media" ? "Media" : "Angle"}</span>
-                  <b className="arc-saved-title">{item.title}</b>
+                  <span className="arc-saved-head">
+                    <b className="arc-saved-title">{item.title}</b>
+                    <span className={`arc-saved-kind is-${item.kind}`}>{item.kind === "draft" ? "Draft" : item.kind === "media" ? "Media" : "Angle"}</span>
+                  </span>
                   {item.preview ? <p className="arc-saved-preview">{item.preview}</p> : null}
                   {/* The reuse the copy has always promised. Text goes into the
                       composer; media has no body to insert, so its reusable
@@ -1333,21 +1414,42 @@ function ThreadDrawer({
                     <button type="button" className="arc-saved-copy" onClick={() => void copySaved(item)}>
                       {copiedSavedId === item.id ? <><Check size={12} /> Copied</> : <><Copy size={12} /> {item.kind === "media" ? "Copy link" : "Copy"}</>}
                     </button>
-                    {item.conversationHref ? <Link href={item.conversationHref} className="arc-saved-open" onClick={onClose}>Open source chat <ArrowRight size={12} /></Link> : null}
+                    {item.conversationHref ? <Link href={item.conversationHref} className="arc-saved-open" onClick={onClose}>Source chat <ArrowRight size={12} /></Link> : null}
                   </div>
                 </div>
                 <button type="button" className="arc-saved-remove" onClick={() => removeSaved(item.id)} aria-label={`Remove saved item: ${item.title}`} title="Remove"><Trash2 size={14} /></button>
               </div>
             ))}
+            {visibleSaved.length === 0 ? <DrawerEmpty icon={<Search size={18} />} title="Nothing matches" hint="Try another title, or a different kind." /> : null}
           </div>
-        ) : (
-          <div className="arc-saved-empty">
-            <Bookmark size={18} />
-            <div><b>Nothing saved yet.</b><span>Bookmark any Arc response to keep it here and reuse it in a later conversation.</span></div>
-          </div>
+        </>) : (
+          <DrawerEmpty icon={<Bookmark size={18} />} title="Nothing saved yet" hint="Bookmark any Arc response to keep it here and reuse it in a later conversation." />
         )}
+        <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Reusing a saved item only fills the composer — the turn still runs, and outbound still waits on you.</p>
       </section> : null}
     </motion.aside>
+  );
+}
+
+/** Status buckets for the connector list. Deliberately about what the operator
+ *  can do next, not a mirror of `ConnectorStatus`: `not_configured` and `error`
+ *  are one bucket because the next step for both is opening Settings. */
+type ConnectorFilter = "all" | "on" | "off" | "setup";
+type SavedKindFilter = "all" | SavedKind;
+
+/**
+ * Every "nothing here" in the drawer, in one shape. There were four — one per
+ * tab — at three different heights, two icon sizes and two copy structures, so
+ * an empty Skills tab and an empty Connectors tab looked like different
+ * products. This is also why the tabs never lined up vertically when empty.
+ */
+function DrawerEmpty({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
+  return (
+    <div className="arc-drawer-empty">
+      <span className="arc-drawer-empty-mark">{icon}</span>
+      <b>{title}</b>
+      <span>{hint}</span>
+    </div>
   );
 }
 
@@ -1400,6 +1502,9 @@ const SKILL_SOURCE_LABEL: Record<ArcSkillDefinition["source"], string> = {
   github: "GitHub",
   generated: "Learned",
 };
+
+/** Ships with Arc — the default, and so the one that needs no badge. */
+const isBuiltInSkill = (skill: ArcSkillDefinition) => skill.source === "built-in" || skill.source === "system";
 
 const VOICE_TIER_LABEL: Record<GeneratedSkillRecord["evidenceTier"], string> = {
   outcome: "Backed by booked work",
@@ -2488,6 +2593,9 @@ export function ArcView({
 
   return (
     <div className="arc-chat" ref={chatRootRef} data-workspace-open={panelVisible ? "true" : "false"} data-new-conversation={live && !visibleConversationId && visibleMessages.length === 0 && !optimisticTurn ? "true" : "false"}>
+      {/* The chat surface has no visible title; this names the document so the
+          route still has exactly one h1 like every other. */}
+      <h1 className="sr-only">Arc</h1>
       <header className="arc-conversation-header">
         <button type="button" ref={historyButtonRef} className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-expanded={historyOpen} aria-haspopup="dialog" aria-label="Open conversations"><MessagesSquare size={17} /><span>Conversations</span></button>
         <div className="arc-conversation-title"><h2>{header.title}</h2><p>{header.subtitle}</p></div>

@@ -108,6 +108,62 @@ export function pieceLabel(
   return { label: rest, sub: kind };
 }
 
+/**
+ * Plain nouns for the things Arc makes. "SMS" is our word; "a text message" is
+ * the one an owner-operator already uses.
+ */
+const PLAIN_KIND: Record<string, string> = {
+  sms: "a text message",
+  email: "an email",
+  "social post": "a social post",
+  "social ad": "an ad",
+  paid: "an ad",
+  landing: "a landing page",
+  "one-pager": "a one-pager",
+};
+
+function plainKind(kind: string): string {
+  const key = kind.trim().toLowerCase();
+  if (PLAIN_KIND[key]) return PLAIN_KIND[key];
+  if (!key) return "a draft";
+  return `${/^[aeiou]/.test(key) ? "an" : "a"} ${key.toLowerCase()}`;
+}
+
+/**
+ * What is actually in this campaign, in words an owner reads once.
+ *
+ * The card used to lead with Arc's objective — "Turn recent high-intent interest
+ * into qualified conversations with a clear, low-friction next step" — which is
+ * consultant prose about a goal, and never says what the thing IS. This does:
+ * "An email, a social post and a text message." Same failure as
+ * arc-writes-for-engineers-not-owners, on the surface the owner sees first.
+ *
+ * Repeats collapse ("2 emails and a text message") because three cards reading
+ * "an email, an email, an email" is a list, not a description.
+ */
+export function describeContents(kinds: string[]): string {
+  if (kinds.length === 0) return "";
+
+  const counts = new Map<string, number>();
+  for (const kind of kinds) {
+    const plain = plainKind(kind);
+    counts.set(plain, (counts.get(plain) ?? 0) + 1);
+  }
+
+  const parts = [...counts.entries()].map(([plain, n]) => (n === 1 ? plain : pluralize(plain, n)));
+  const sentence =
+    parts.length === 1
+      ? parts[0]
+      : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/** "an email" + 2 → "2 emails". The article goes; the noun takes an s. */
+function pluralize(plain: string, n: number): string {
+  const noun = plain.replace(/^(a|an) /, "");
+  return `${n} ${noun.endsWith("s") ? noun : `${noun}s`}`;
+}
+
 /** The timing facts Arc recorded on the signal that produced a campaign. */
 export type CampaignSignal = {
   urgency: string | null;

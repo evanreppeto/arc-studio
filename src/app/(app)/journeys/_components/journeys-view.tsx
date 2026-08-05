@@ -214,7 +214,7 @@ export function JourneysView({
       <div className="journeys">
         <header className="jr-head">
           <div>
-            <h2>Customer Journeys</h2>
+            <h1>Customer Journeys</h1>
             <p className="jr-lede">Every contact&rsquo;s path from first touch to conversion — one stitched timeline.</p>
           </div>
         </header>
@@ -261,7 +261,7 @@ export function JourneysView({
         <div>
           {/* No per-screen demo tag: the console-wide DemoDataBar says it once,
               in one wording, on every screen. */}
-          <h2>Customer Journeys</h2>
+          <h1>Customer Journeys</h1>
           <p className="jr-lede">Every contact&rsquo;s path from first touch to conversion — one stitched timeline.</p>
         </div>
         <div className="jr-model" title={activeLens?.blurb ?? "How revenue is shared between the campaigns a customer saw"}>
