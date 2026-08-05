@@ -1,4 +1,5 @@
 import { runArcCampaignTask, runArcOpportunityDraft, runArcOpportunityScan, runArcTurn } from "./arc";
+import { describeRailStop, isRailStop } from "./inference";
 import { captureRunnerError } from "./observability";
 import type { Config } from "./config";
 import type { ArcClient } from "./arc-client";
@@ -45,14 +46,23 @@ export async function handleChatMessage(
     console.log(`[arc-runner] replied to task ${payload.agentTaskId} in ${Date.now() - started}ms`);
   } catch (error) {
     console.error("[arc-runner] Arc run failed:", error);
-    // The operator only sees "Arc hit an error… check the runner logs" — this is
-    // what makes the cause reach someone without them going to look.
-    captureRunnerError(error, { run: "chat", agentTaskId: payload.agentTaskId });
+    // A rail we set ourselves is not a crash, and the operator's next move is
+    // different: retry or escalate, not report a bug. Arc salvages a partial
+    // answer when it has one; reaching here means it had nothing to show, and
+    // even then the reason is worth naming (BSR-721).
+    const rail = isRailStop(error);
+    if (!rail) {
+      // Only a genuine fault is worth an alert — a rail firing as designed is
+      // not an incident, and paging on it teaches people to ignore the channel.
+      captureRunnerError(error, { run: "chat", agentTaskId: payload.agentTaskId });
+    }
     await client
       .postChatReply({
         agentTaskId: payload.agentTaskId,
         status: "failed",
-        body: "Arc hit an error generating a reply. Check the runner logs.",
+        body: rail
+          ? describeRailStop(payload.route, { partial: false, reason: error instanceof Error ? error.message : "" })
+          : "Arc hit an error generating a reply. Check the runner logs.",
       })
       .catch(() => undefined);
   }

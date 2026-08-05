@@ -5,7 +5,7 @@ import { resolveWorkspaceSummary } from "./workspace-summary";
 import { buildTurnContentAsync } from "./attachments";
 import { buildRecallQuery, resolveRecallMemory, type RecallItem } from "./recall";
 import { buildSystemPrompt, formatHistory, type ArcTurnContext } from "./context";
-import { buildQueryOptions, inferenceForRoute, type InferenceSettings } from "./inference";
+import { buildQueryOptions, describeRailStop, inferenceForRoute, type ArcRoute, type InferenceSettings } from "./inference";
 import type { ArcClient } from "./arc-client";
 import { ARC_SYSTEM_PROMPT } from "./prompt";
 import { allowedToolNames, toolsForMode, type ArcMode, type ToolContext } from "./tools";
@@ -82,9 +82,6 @@ export type ArcTurnResult = {
  */
 const RAIL_STOP_RE = /maximum number of turns|max(?:imum)? budget/i;
 
-/** Told to the operator when a turn stops on a rail with an answer in hand. */
-const RAIL_STOP_NOTE =
-  "_Arc stopped here — this turn ran out of steps before it finished. Ask again to pick up where it left off._";
 
 /**
  * Iterate a query stream, ending it cleanly when the run trips one of our own
@@ -249,6 +246,8 @@ async function runArcQuery(opts: {
   client: ArcClient;
   content: TurnContent;
   inference: InferenceSettings;
+  /** The tier this turn runs on, so a rail stop can name it (BSR-721). */
+  route: ArcRoute;
   toolContext?: ToolContext;
   skill?: ArcSkill | null;
   /** Live partial reply text, posted as the model streams (chat-turn only). */
@@ -599,7 +598,11 @@ async function runArcQuery(opts: {
     if (!replyChunks.some((chunk) => chunk.trim())) throw new Error(railStop);
   }
   const assembled = assembleReplyBody(replyChunks, resultText);
-  const body = railStop ? `${assembled}\n\n${RAIL_STOP_NOTE}` : assembled;
+  // Name the limit and the tier. "Ran out of steps" left the operator with no
+  // next move; the same request often finishes on a tier with more room.
+  const body = railStop
+    ? `${assembled}\n\n${describeRailStop(opts.route, { partial: true, reason: railStop })}`
+    : assembled;
   const reasoning = thinkingStream.value().trim() || null;
   console.log(
     `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars} | narration chunks: ${narrationChunks.size}/${assistantChunks.length} | tool calls: ${toolLog.value().length}${toolLog.dropped() ? ` (+${toolLog.dropped()} over cap, not recorded)` : ""} | timeline: ${timeline.join(" ")}`,
@@ -676,6 +679,7 @@ export async function runArcTurn(payload: MarkChatMessagePayload, client: ArcCli
     client,
     content,
     inference: inferenceForRoute(payload.route),
+    route: payload.route,
     // Thread the turn's level so media tools tell the generate endpoints which
     // tier (Swift=fast / Studio=standard) to resolve image/video models from.
     // Also thread conversationId so draft tools can link the chat to the campaign.
@@ -773,6 +777,7 @@ export async function runArcOpportunityDraft(
     client,
     content: payload.message,
     inference: inferenceForRoute("standard"),
+    route: "standard",
     toolContext: { opportunityId: payload.opportunityId },
     skill,
   });
@@ -818,6 +823,7 @@ export async function runArcOpportunityScan(
     client,
     content: payload.message,
     inference: inferenceForRoute("standard"),
+    route: "standard",
     skill,
   });
 }
@@ -898,6 +904,7 @@ export async function runArcCampaignTask(
     client,
     content: prompt,
     inference: inferenceForRoute("standard"),
+    route: "standard",
     toolContext: { campaignId: payload.campaignId, conversationId: payload.conversationId },
     skill,
   });
