@@ -307,7 +307,8 @@
 .arc-studio .draftmeta .actl { margin-top: 7px; padding: 0; }
 /* Permanently true, never derived — a footnote, not a second finding competing
    with the one computed above it. */
-.arc-studio .gnote { margin-top: 9px; font-size: 10px; line-height: 1.5; color: var(--muted); border-left: 2px solid var(--line-2); padding-left: 9px; }
+/* 1px, not 2px — §8 bans side-stripe borders wider than a hairline on callouts. */
+.arc-studio .gnote { margin-top: 9px; font-size: 10px; line-height: 1.5; color: var(--muted); border-left: 1px solid var(--line-2); padding-left: 9px; }
 .arc-studio .brief { border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, var(--accent-soft), transparent 70%); padding: 13px; margin-bottom: 20px; }
 .arc-studio .brief .bh { display: flex; align-items: center; gap: 8px; font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--accent-contrast); text-transform: uppercase; }
 .arc-studio .brief .bn { font-family: var(--serif); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 7px 0 3px; }

@@ -89,7 +89,9 @@
 /* voice */
 .arc-brand .tone { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 13px; }
 .arc-brand .tchip { font-size: 11.5px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--bbrand) 16%, transparent); border: 1px solid color-mix(in srgb, var(--bbrand) 40%, transparent); border-radius: 99px; padding: 4px 11px; }
-.arc-brand .guide { font-size: 13px; color: var(--text-2); line-height: 1.6; border-left: 2px solid var(--bbrand); padding: 2px 0 2px 13px; margin: 0 0 14px; }
+/* 1px, not 2px — §8 bans side-stripe borders wider than a hairline. The stripe
+   is the tenant's own brand colour, which is theirs to use; the width was ours. */
+.arc-brand .guide { font-size: 13px; color: var(--text-2); line-height: 1.6; border-left: 1px solid var(--bbrand); padding: 2px 0 2px 13px; margin: 0 0 14px; }
 .arc-brand .phr { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 520px) { .arc-brand .phr { grid-template-columns: 1fr; } }
 .arc-brand .phr .pl { font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
