@@ -3,9 +3,11 @@ import "server-only";
 import { ImageResponse } from "next/og";
 
 import {
+  CREATIVE_DESIGN_WIDTH,
   CREATIVE_DIMENSIONS,
   CREATIVE_LAYOUTS,
   pickLogoForBackground,
+  logoTransform,
   withLayoutOverride,
   type BrandTokens,
   type CreativeCopy,
@@ -83,7 +85,9 @@ export async function renderCreative(
   // handed, so an override cannot be applied differently by each of them — or
   // differently from the canvas, which folds it in the same way.
   const layout = withLayoutOverride(CREATIVE_LAYOUTS[input.template] ?? CREATIVE_LAYOUTS.bold, input.layoutOverride);
-  const element = template({ brand: input.brand, copy: input.copy, dims, layout, backgroundDataUrl, logoDataUrl });
+  // Design units -> export pixels, the same conversion every other value makes.
+  const logoStyle = logoTransform(input.layoutOverride, (n) => `${n * (dims.width / CREATIVE_DESIGN_WIDTH)}px`);
+  const element = template({ brand: input.brand, copy: input.copy, dims, layout, backgroundDataUrl, logoDataUrl, logoStyle });
   const response = new ImageResponse(element, { width: dims.width, height: dims.height, fonts });
   const bytes = Buffer.from(await response.arrayBuffer());
   return { bytes, contentType: "image/png" };

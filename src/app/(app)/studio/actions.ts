@@ -24,6 +24,7 @@ import { getMediaProviderWithKey, isMediaGenEnabled } from "@/lib/media";
 import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { renderCreative } from "@/lib/media/compose/renderer";
+import { assertPublicHttpUrl } from "@/lib/brand-kit/website";
 import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { hardenImagePrompt } from "@/lib/media/prompt";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
@@ -32,6 +33,9 @@ import { signVideoTicket, verifyVideoTicket } from "@/lib/media/video-ticket";
 import { getAppSettings } from "@/lib/settings/store";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { reportDegraded } from "@/lib/observability/report-degraded";
+
+const EDITED_RISK =
+  "AI-edited from an existing image — check the change did not alter anything the original was proof of.";
 
 const COMPOSITE_RISK =
   "Real logo overlaid on a background — the background is not proof of a real job.";
@@ -62,8 +66,12 @@ function videoAspectFor(format: string): string {
 
 export type GenerateStudioAssetInput = {
   /** "image" = raw AI scene from a prompt; "compose" = finished creative
-   *  (background + Brand Kit + copy). Compose is the primary Studio output. */
-  engine: "image" | "compose";
+   *  (background + Brand Kit + copy); "edit" = change a picture that already
+   *  exists. Compose is the primary Studio output. */
+  engine: "image" | "compose" | "edit";
+  /** edit engine: the picture being changed, and what to change about it. */
+  sourceImageUrl?: string;
+  instruction?: string;
   format: string; // "1:1" | "4:5" | "9:16" | "16:9"
   title: string;
   /** image engine: the scene prompt. */
@@ -138,7 +146,61 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
     let storedBytes = 0;
     let storedContentType = "image/png";
 
-    if (input.engine === "image") {
+    if (input.engine === "edit") {
+      // Change a picture that exists, instead of rolling the dice on a new one.
+      // Studio could only ever generate, which is why "put our logo on the van
+      // door" was answered with a rule rather than a result.
+      const sourceUrl = (input.sourceImageUrl ?? "").trim();
+      const instruction = (input.instruction ?? "").trim();
+      if (!sourceUrl) return { ok: false, code: "failed", error: "Pick the image you want to change." };
+      if (!instruction) return { ok: false, code: "failed", error: "Say what you want changed about it." };
+      // Same SSRF guard the compositor uses before fetching an operator-supplied
+      // URL — this one arrives from a client too.
+      assertPublicHttpUrl(sourceUrl);
+      const sourceRes = await fetch(sourceUrl);
+      if (!sourceRes.ok) return { ok: false, code: "failed", error: `Couldn't read that image (${sourceRes.status}).` };
+      const sourceBytes = Buffer.from(await sourceRes.arrayBuffer());
+      const sourceType = sourceRes.headers.get("content-type") ?? "image/png";
+
+      const level = parseArcRoute(settings.markDefaultRoute);
+      const provider = getMediaProviderWithKey(access.credential, { level, imageModel: settings.imageModel, videoModel: settings.videoModel });
+      const metered = await meterConnectorCall(
+        undefined,
+        { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: 1, costTier: access.costTier, context: { surface: "studio", engine: "edit" } },
+        () => provider.editImage({ bytes: sourceBytes, contentType: sourceType, instruction }),
+      );
+      if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
+      const gen = metered.result;
+      const ext = gen.contentType.includes("png") ? "png" : gen.contentType.includes("webp") ? "webp" : "jpg";
+      objectPath = `arc-generated/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.${ext}`;
+      const url = await storeGeneratedImage(objectPath, gen.bytes, gen.contentType);
+      storedBytes = gen.bytes.byteLength;
+      storedContentType = gen.contentType;
+      await recordUsageEvent({
+        orgId: ctx.orgId,
+        workspaceId: tenant.workspace_id,
+        service: "gemini_image",
+        model: gen.model,
+        units: 1,
+        metadata: { route: "studio_edit", job_id: gen.jobId },
+      }).catch((error) =>
+        reportDegraded(error, { scope: "studio.recordUsageEvent", surface: "primary", detail: { service: "gemini_image", model: gen.model, jobId: gen.jobId } }),
+      );
+      media = {
+        kind: "image",
+        url,
+        source: "ai_generated",
+        format: normalizeCreativeFormat(input.format),
+        model: gen.model,
+        jobId: gen.jobId,
+        // An edit inherits the source's claims AND adds the model's: whatever it
+        // changed is now model output, on top of a picture whose provenance the
+        // operator already judged. Flagged so review does not treat it as either.
+        riskFlags: [EDITED_RISK, ...deriveImageRiskFlags(instruction)],
+      };
+      screenableText = instruction;
+      assetType = "image_prompt";
+    } else if (input.engine === "image") {
       const prompt = (input.prompt ?? "").trim();
       if (!prompt) return { ok: false, code: "failed", error: "Describe the image you want Arc to generate." };
       const level = parseArcRoute(settings.markDefaultRoute);

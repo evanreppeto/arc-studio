@@ -8,7 +8,7 @@ import { brandColor } from "./tokens";
  *  Geometry and type scale come from CREATIVE_LAYOUTS.bold so the Studio canvas
  *  can lay itself out from the same numbers (BSR-679). The structure below is
  *  unchanged — only the literals moved. */
-export const templateBold: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl }) => {
+export const templateBold: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl, logoStyle }) => {
   const u = creativeScale(dims.width); // scale unit so 16:9 (1920w) scales up proportionally
   const L = layout;
   const c = (ref: Parameters<typeof brandColor>[1]) => brandColor(brand, ref);
@@ -56,6 +56,7 @@ export const templateBold: CreativeTemplate = ({ brand, copy, dims, layout, back
             width: L.logo.width * u,
             height: L.logo.height * u,
             objectFit: "contain",
+            ...(logoStyle ?? {}),
           }}
         />
       ) : (
@@ -65,6 +66,7 @@ export const templateBold: CreativeTemplate = ({ brand, copy, dims, layout, back
             top: L.logoPosition!.top * u,
             left: L.logoPosition!.left * u,
             display: "flex",
+            ...(logoStyle ?? {}),
             alignItems: "center",
             justifyContent: "center",
             height: L.logo.height * u,

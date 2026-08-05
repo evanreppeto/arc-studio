@@ -9,6 +9,7 @@ import { resolveArcComposerMode } from "@/lib/arc-chat/composer-mode";
 import { hasRepliedToLastMessage } from "@/lib/arc-chat/thread-state";
 
 import { extractCanvasCopy, FIELD_LABEL_TEXT, type CopySuggestion } from "./arc-copy";
+import { wantsBrandingInScene } from "./logo-hint";
 
 import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
@@ -234,10 +235,6 @@ export function splitStudioContext(body: string): { body: string; context: strin
   return { body: body.slice(0, match.index).trim(), context: match[1] };
 }
 
-/** Terms that mean "put words or branding in the picture" — which generation
- *  refuses by design (hardenImagePrompt's NO_TEXT_DIRECTIVE strips all of it). */
-const BAKED_TEXT_RE = /\b(logo|logos|watermark|branding|brand name|signage|sign|text|words|lettering|caption)\b/i;
-
 type CampaignRef = { id: string; name: string; href: string };
 /** `at` is what lets Studio's own renders and Arc's interleave in one list in
  *  the order they actually happened, rather than one block after the other. */
@@ -324,7 +321,17 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // template keeps everything else, which is what keeps creative on brand.
   const [selectedLayer, setSelectedLayer] = useState<CanvasLayer | null>(null);
   const [layoutOverride, setLayoutOverride] = useState<CreativeLayoutOverride>({});
-  const nudged = Boolean(layoutOverride.copyDx || layoutOverride.copyDy || (layoutOverride.headlineScale ?? 1) !== 1);
+  // Includes the logo, or "Reset layout" would put the copy back and leave the
+  // mark stranded on the van panel with no way to say "never mind".
+  const nudged = Boolean(
+    layoutOverride.copyDx ||
+      layoutOverride.copyDy ||
+      (layoutOverride.headlineScale ?? 1) !== 1 ||
+      layoutOverride.logoDx ||
+      layoutOverride.logoDy ||
+      (layoutOverride.logoScale ?? 1) !== 1 ||
+      layoutOverride.logoRotate,
+  );
 
   // Escape drops the selection — but only when focus is not inside a field, or
   // it would fight the modals and the in-place text editor, which use Escape to
@@ -399,12 +406,25 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
 
   const replied = useMemo(() => hasRepliedToLastMessage(thread), [thread]);
 
-  /** The operator asked for baked-in text/branding, which generation strips by
-   *  design. Say so instead of letting the result quietly not contain it. */
+  /**
+   * The operator asked for branding painted INTO a generated scene, which
+   * generation strips by design. A footnote to Arc's answer — never a pre-emption
+   * of it.
+   *
+   * `replied` is load-bearing. This used to render the moment the operator hit
+   * send, from their message alone, and it sits below the pending bubble — so the
+   * app lectured them about what Arc can't do while Arc was still thinking, before
+   * it had a chance to do the part it can. Reported exactly that way.
+   *
+   * The trigger is narrow now too (see wantsBrandingInScene): the old word list
+   * matched "text", "words" and "caption", so editing the canvas copy summoned a
+   * warning about logos in generated images.
+   */
   const logoHint = useMemo(() => {
+    if (!replied) return false;
     const lastOperator = [...thread].reverse().find((m) => m.role === "operator");
-    return Boolean(lastOperator && BAKED_TEXT_RE.test(splitStudioContext(lastOperator.body).body));
-  }, [thread]);
+    return Boolean(lastOperator && wantsBrandingInScene(splitStudioContext(lastOperator.body).body));
+  }, [thread, replied]);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
@@ -647,9 +667,57 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // counts as approved-source, AI/stock/imported explicitly do not.
   const provenance = useMemo(() => describeProvenance(bg), [bg]);
 
+  /** Editing needs a real stored picture to act ON, which is a different
+   *  requirement from generating one — say which is missing. */
+  const editGate = !mediaEnabled
+    ? mediaOffReason ?? "Image generation isn't switched on for this workspace yet."
+    : !live
+      ? "Connect a workspace to edit images"
+      : !campaignId
+        ? campaignGateText
+        : !bg?.url
+          ? "Pick a photo to change first"
+          : null;
+
   // Compose the current canvas (selected background + Brand Kit + copy) into one
   // approval-gated draft per format. The action lands pending_approval + dispatch_
   // locked — never outbound.
+  /**
+   * Change the picture that's on the canvas, instead of generating a new one.
+   *
+   * The distinction is the whole feature: "put our logo on the van door" and
+   * "warm the light" are edits to a photo already chosen, and regenerating from
+   * a prompt throws it away and rolls the dice again. Studio could only generate,
+   * which is why that request used to be answered with a rule.
+   *
+   * Lands as an approval-gated draft exactly like every other output.
+   */
+  const runEdit = () => {
+    if (!live || gen || !bg?.url || !campaignId) return;
+    const instruction = typeof window !== "undefined"
+      ? window.prompt("What should change about this image?\n\ne.g. put our logo on the van door, warm the morning light")?.trim()
+      : "";
+    if (!instruction) return;
+    setGenErr(null);
+    startGen(async () => {
+      const res = await generateStudioAsset({
+        engine: "edit",
+        sourceImageUrl: bg.url!,
+        instruction,
+        format: FORMATS[fmt].r,
+        title: instruction.slice(0, 60),
+        campaignId,
+      });
+      if (res.ok && res.assetId && res.media) {
+        const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: res.media.url, source: res.media.source, format: res.media.format, title: instruction.slice(0, 60), status: "pending_approval", at: Date.now(), origin: "studio" };
+        setDrafts((prev) => [draft, ...prev]);
+        setPreview(draft);
+      } else if (!res.ok) {
+        setGenErr(res.error);
+      }
+    });
+  };
+
   const runGenerate = (formats: string[]) => {
     if (genGate || gen) return;
     // genGate already blocks when there's no background, but narrow explicitly so
@@ -1446,6 +1514,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                         the screen was not in the tab order and announced as nothing.
                         `aria-busy` while generating, and the gate reason is the
                         accessible description rather than only a hover toast. */}
+                    {/* Editing the chosen photo, above generating a new creative
+                        from it — it acts on what is already on the canvas. */}
+                    <button
+                      type="button"
+                      className="exrow"
+                      onClick={runEdit}
+                      disabled={Boolean(editGate) || gen}
+                      title={editGate ?? undefined}
+                      {...(editGate ? { "data-soon": editGate } : {})}
+                    >
+                      <svg viewBox="0 0 24 24"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                      Change this image…
+                    </button>
                     <button
                       type="button"
                       className="exrow gold"
@@ -1636,14 +1717,17 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                           {streamBody ? streamBody : <span className="arcdots">Arc is thinking…</span>}
                         </div>
                       )}
+                      {/* Folded. Five lines in a gold box was the loudest thing in
+                          the pane — louder than the answer it annotates — and it
+                          stayed up for the rest of the conversation. The headline
+                          is the whole point; the reasoning is there if wanted. */}
                       {logoHint ? (
-                        <div className="arcnote" role="note">
-                          {/* The lead-in is its own line, not a bold run-on: it ran straight
-                              into the body ("…not into it.Arc strips text…") and read as a
-                              typo in the one place the operator is being told why the thing
-                              they asked for isn't going to happen. */}
-                          <b className="arcnote-h">Your logo goes on top of the picture, not into it.</b>
-                          <span>
+                        <details className="arcnote" role="note">
+                          <summary className="arcnote-h">
+                            <span className="arcnote-c" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg></span>
+                            Your logo goes on top of the picture, not into it
+                          </summary>
+                          <span className="arcnote-b">
                             Arc strips text and branding out of every generated image on purpose, then
                             composites your real Brand kit logo as a corner lockup. It can&rsquo;t paint the
                             logo onto an object in the scene — a door, a van panel, a sign — because that
@@ -1651,7 +1735,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                             in shot, upload a real photo of it to the <b>Library</b> and use that as the
                             background.
                           </span>
-                        </div>
+                        </details>
                       ) : null}
                       {convId && (
                         <a className="arcopen" href={`/arc?c=${convId}`}>

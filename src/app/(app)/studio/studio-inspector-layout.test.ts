@@ -273,3 +273,72 @@ describe("Design pane controls are focusable and named", () => {
     expect(view).toMatch(/title=\{genGate \?\? undefined\}/);
   });
 });
+
+/**
+ * The logo note annotates an answer; it does not pre-empt one.
+ *
+ * Reported as "what is this? It appears before Arc even has a moment to respond."
+ * It was computed from the OPERATOR's message alone and rendered below the
+ * pending bubble, so it argued with a request while Arc was still working on it.
+ * The trigger was a bare word list including `text`, `words` and `caption`, so
+ * editing the canvas copy summoned a warning about logos in generated images.
+ */
+describe("logo hint", () => {
+  const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+
+  it("waits for Arc to have replied", () => {
+    const hint = view.match(/const logoHint = useMemo\([\s\S]*?\}, \[[^\]]*\]\);/)?.[0] ?? "";
+    expect(hint).toMatch(/if \(!replied\) return false;/);
+    expect(hint).toMatch(/\[thread, replied\]/);
+  });
+
+  it("no longer fires on any mention of text or a caption", () => {
+    expect(view).not.toMatch(/BAKED_TEXT_RE/);
+    expect(view).toMatch(/wantsBrandingInScene/);
+  });
+
+  it("folds, so it cannot outshout the reply it annotates", () => {
+    expect(view).toMatch(/<details className="arcnote"/);
+  });
+});
+
+/**
+ * Free logo placement.
+ *
+ * The templates pinned the mark — bold to a corner, editorial and minimal into a
+ * flowed foot row — and the app explained that as a rule: your logo "can't" go
+ * on the van panel. It never was one. The real constraint is that the MODEL must
+ * not draw your mark, which is why NO_TEXT_DIRECTIVE stays; compositing your own
+ * real file onto a surface is a different act entirely.
+ *
+ * Every logo mount in BOTH renderers must carry the transform, or the preview
+ * and the export disagree about where the logo is — the BSR-679 class of bug,
+ * and the one an operator cannot see until the PNG comes back.
+ */
+describe("logo placement", () => {
+  const canvas = readFileSync(join(__dirname, "_components", "studio-canvas.tsx"), "utf8");
+
+  it("arms the logo for dragging, like the copy block", () => {
+    expect(canvas).toMatch(/const logoArmed = selected === "Logo"/);
+    expect(canvas).toMatch(/"logo-move"/);
+    expect(canvas).toMatch(/"logo-scale"/);
+    expect(canvas).toMatch(/"logo-rotate"/);
+  });
+
+  it("gives every logo mount the drag props — a missed one is a dead layer", () => {
+    // Three mounts: bold's positioned lockup and the two flowed foot rows. One
+    // was missed on the first pass and selected without arming.
+    const mounts = canvas.match(/aria-label="Logo"/g) ?? [];
+    const wired = canvas.match(/\{\.\.\.logoDragProps\}/g) ?? [];
+    expect(mounts.length).toBeGreaterThan(0);
+    expect(wired).toHaveLength(mounts.length);
+  });
+
+  it("applies the transform in every template, fallback mark included", () => {
+    for (const file of ["bold", "editorial", "minimal"]) {
+      const t = readFileSync(join(__dirname, "..", "..", "..", "lib", "media", "compose", "templates", `${file}.tsx`), "utf8");
+      // destructure + real logo + fallback mark
+      expect((t.match(/logoStyle/g) ?? []).length, file).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
