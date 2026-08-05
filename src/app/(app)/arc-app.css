@@ -50,11 +50,11 @@
 .arc-app .navprogress.end {
   transform: scaleX(1);
   opacity: 0;
-  transition: transform 0.2s ease-out, opacity 0.3s ease-out;
+  transition: transform var(--dur-slow) ease-out, opacity var(--dur-slower) ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
   .arc-app .navprogress.run { animation: none; opacity: 1; transform: scaleX(0.5); }
-  .arc-app .navprogress.end { transition: opacity 0.2s; }
+  .arc-app .navprogress.end { transition: opacity var(--dur-slow); }
 }
 
 /* Consistent page entrance (see (app)/template.tsx). A transparent flex
@@ -166,16 +166,16 @@
 
   /* Workspace switcher — the .ws block is now a real dropdown. */
   & .wswrap { position: relative; }
-  & .wsbtn { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; transition: background 0.15s var(--ease); }
+  & .wsbtn { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; transition: background var(--dur-base) var(--ease); }
   & .wsbtn:hover { background: rgba(255, 255, 255, 0.035); }
   & .wswrap[data-open="true"] .wsbtn { background: rgba(255, 255, 255, 0.05); }
-  & .ws .wschev { margin-left: auto; display: grid; place-items: center; color: var(--muted); transition: color 0.15s, transform 0.25s var(--ease); }
+  & .ws .wschev { margin-left: auto; display: grid; place-items: center; color: var(--muted); transition: color var(--dur-base), transform var(--dur-slower) var(--ease); }
   & .ws .wschev svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
   & .wsbtn:hover .wschev { color: var(--text-2); }
   & .wswrap[data-open="true"] .wschev { color: var(--text); transform: rotate(180deg); }
   & .wsmenu { position: absolute; left: 4px; right: 4px; top: calc(100% + 6px); z-index: 40; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 6px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5); animation: acctIn 0.16s var(--ease); transform-origin: top center; }
   & .wsmenu-h { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 5px; }
-  & .ws-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; background: none; color: var(--text-2); font: inherit; text-align: left; border-radius: 8px; cursor: pointer; text-decoration: none; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
+  & .ws-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; background: none; color: var(--text-2); font: inherit; text-align: left; border-radius: 8px; cursor: pointer; text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .ws-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   & .ws-item:disabled { opacity: 0.55; cursor: default; }
   & .ws-item.on { background: rgba(255, 255, 255, 0.03); }
@@ -204,7 +204,7 @@
   & .navwrap { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 4px; }
   & .nav-primary { padding-bottom: 2px; }
   & .grp { font-size: 10.5px; font-weight: 600; letter-spacing: 0.11em; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); padding: 13px 10px 6px; }
-  & .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; color: var(--text-2); font-size: 13px; font-weight: 500; position: relative; cursor: pointer; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
+  & .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; color: var(--text-2); font-size: 13px; font-weight: 500; position: relative; cursor: pointer; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .nav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; opacity: 0.85; }
   & .nav .nav-image-icon { width: 16px; height: 16px; flex: 0 0 16px; color: currentColor; background: currentColor; opacity: 0.85; -webkit-mask: var(--nav-icon) center / contain no-repeat; mask: var(--nav-icon) center / contain no-repeat; }
   & .nav:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
@@ -213,7 +213,7 @@
   & .nav.on .nav-image-icon { color: var(--accent); opacity: 1; }
   & .nav .tick { position: absolute; left: -12px; top: 50%; transform: translateY(-50%); width: 2px; height: 18px; border-radius: 2px; background: var(--accent); }
   /* attention count — quiet by default, warms to the accent when the item is active/hovered */
-  & .nav .navbadge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.07); transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease); }
+  & .nav .navbadge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.07); transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease); }
   & .nav:hover .navbadge { color: var(--text); }
   & .nav.on .navbadge { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
   /* Recent Arc work gives the tall rail a useful second rhythm without turning
@@ -221,11 +221,11 @@
   & .rail-recents { margin: 20px 5px 12px; padding-top: 14px; border-top: 1px solid var(--line); }
   & .rail-recents-head { display: flex; align-items: center; justify-content: space-between; padding: 0 5px 6px; }
   & .rail-recents-head .rail-recents-title { margin: 0; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); font: 600 10.5px/1.4 var(--sans); letter-spacing: 0.11em; text-transform: uppercase; }
-  & .rail-recents-head a { color: var(--muted); font-size: 10.5px; font-weight: 600; text-decoration: none; transition: color 0.15s var(--ease); }
+  & .rail-recents-head a { color: var(--muted); font-size: 10.5px; font-weight: 600; text-decoration: none; transition: color var(--dur-base) var(--ease); }
   & .rail-recents-head a:hover { color: var(--accent); }
   /* "New" reads as an action, not a caption: a bordered chip with a plus, sized
      to stay quieter than the nav rows above it. */
-  & .rail-recents-new { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border: 1px solid var(--line-2); border-radius: 6px; transition: color 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease); }
+  & .rail-recents-new { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border: 1px solid var(--line-2); border-radius: 6px; transition: color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
   & .rail-recents-new svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.1; stroke-linecap: round; }
   & .rail-recents-head a.rail-recents-new:hover { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
   /* Blocks, not one undifferentiated column. At a 1px rhythm a campaign folder's
@@ -234,7 +234,7 @@
      indent — and the eye read five equal rows. Rows inside a block stay tight;
      the space goes BETWEEN blocks (see .rail-recent-group's margin). */
   & .rail-recents-list { display: grid; gap: 2px; }
-  & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: 7px; color: var(--text-2); text-decoration: none; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
+  & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: 7px; color: var(--text-2); text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .rail-recent:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
   /* The chat you're reading, marked the same way the rail marks the page you're
      on — otherwise /arc is the one destination that never says where you are. */
@@ -275,7 +275,7 @@
   & .rail-recent-group > summary::-webkit-details-marker { display: none; }
   /* A folder is a control, so the triangle reads as one: full-strength accent-ish
      text against the label's muted grey, rather than one more grey glyph. */
-  & .rail-recent-group > summary::before { content: "\25B8"; font-size: 8px; color: color-mix(in srgb, var(--accent) 55%, var(--muted)); transition: transform 0.15s var(--ease), color 0.15s var(--ease); }
+  & .rail-recent-group > summary::before { content: "\25B8"; font-size: 8px; color: color-mix(in srgb, var(--accent) 55%, var(--muted)); transition: transform var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .rail-recent-group[open] > summary::before { transform: rotate(90deg); }
   & .rail-recent-group > summary:hover { color: var(--text-2); background: rgba(255, 255, 255, 0.03); }
   & .rail-recent-group > summary:hover::before { color: var(--accent); }
@@ -289,25 +289,25 @@
      that job and losing. */
   & .rail-recent-group-items { display: grid; gap: 1px; margin-left: 9px; padding-left: 8px; border-left: 1px solid var(--line-2); }
   & .rail-recents-empty { margin: 0; padding: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; }
-  & .nav-more { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding: 7px 10px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; transition: color 0.15s var(--ease); }
+  & .nav-more { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding: 7px 10px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; transition: color var(--dur-base) var(--ease); }
   & .nav-more:hover { color: var(--text-2); }
-  & .nav-more svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; transition: transform 0.2s var(--ease); }
+  & .nav-more svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; transition: transform var(--dur-slow) var(--ease); }
   & .nav-more[aria-expanded="true"] svg { transform: rotate(180deg); }
   /* help link — pinned above the account control. Quieter than a nav item (it's
      not a workspace destination) but always visible, because the moment someone
      needs it is the moment the rest of the app isn't working. */
-  & .railhelp { display: flex; align-items: center; gap: 9px; margin-top: 8px; padding: 8px 10px; border-radius: 8px; color: var(--muted); font-size: 12px; font-weight: 500; text-decoration: none; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
+  & .railhelp { display: flex; align-items: center; gap: 9px; margin-top: 8px; padding: 8px 10px; border-radius: 8px; color: var(--muted); font-size: 12px; font-weight: 500; text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .railhelp svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; opacity: 0.9; }
   & .railhelp:hover { background: rgba(255, 255, 255, 0.035); color: var(--text-2); }
   & .railhelp.on { color: var(--text); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); }
   & .railhelp.on svg { color: var(--accent); opacity: 1; }
   /* account control — pinned to the bottom of the rail; toggles the menu below */
   & .acct { position: relative; margin-top: 8px; border-top: 1px solid var(--line); }
-  & .user { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 8px; transition: background 0.15s var(--ease); }
+  & .user { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 8px; transition: background var(--dur-base) var(--ease); }
   & .user:hover { background: rgba(255, 255, 255, 0.035); }
   & .user .av { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
   & .user .nm { font-size: 12.5px; font-weight: 600; }
-  & .user .cog { margin-left: auto; display: grid; place-items: center; color: var(--muted); transition: color 0.15s, transform 0.25s var(--ease); }
+  & .user .cog { margin-left: auto; display: grid; place-items: center; color: var(--muted); transition: color var(--dur-base), transform var(--dur-slower) var(--ease); }
   & .user .cog svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
   & .user:hover .cog { color: var(--text-2); }
   & .acct[data-open="true"] .user { background: rgba(255, 255, 255, 0.035); }
@@ -322,7 +322,7 @@
   & .acct-id-t .em { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   & .acct-sep { height: 1px; background: var(--line); margin: 2px 4px 4px; }
   & .acct-menu form { margin: 0; }
-  & .acct-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 500; text-align: left; border-radius: 8px; cursor: pointer; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
+  & .acct-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 500; text-align: left; border-radius: 8px; cursor: pointer; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .acct-item svg { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.6; opacity: 0.9; }
   & .acct-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   & .acct-item.danger { color: var(--red-text); }
@@ -340,16 +340,16 @@
   /* Mobile nav affordances — inert on desktop (the rail is docked). The
      hamburger and backdrop only become visible/active inside the shell
      breakpoint media query below. */
-  & .menubtn { display: none; width: 34px; height: 34px; flex-shrink: 0; margin-left: -4px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); place-items: center; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+  & .menubtn { display: none; width: 34px; height: 34px; flex-shrink: 0; margin-left: -4px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); place-items: center; cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
   & .menubtn:hover { border-color: var(--accent-border); color: var(--text); }
   & .menubtn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; }
   & .rail-scrim { display: none; }
-  & .search { margin: 0 auto; display: flex; align-items: center; gap: 9px; width: 340px; max-width: 38vw; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: color-mix(in srgb, var(--inset) 70%, transparent); color: var(--muted); font-size: 12.5px; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+  & .search { margin: 0 auto; display: flex; align-items: center; gap: 9px; width: 340px; max-width: 38vw; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: color-mix(in srgb, var(--inset) 70%, transparent); color: var(--muted); font-size: 12.5px; cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
   & .search:hover { border-color: var(--accent-border); color: var(--text-2); }
   & .search svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.7; }
   & .search .k { margin-left: auto; font-family: var(--mono); font-size: 10px; border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 6px; }
   & .topav { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 12px; overflow: hidden; }
-  & .topavbtn { flex-shrink: 0; padding: 0; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  & .topavbtn { flex-shrink: 0; padding: 0; cursor: pointer; transition: border-color var(--dur-base), background var(--dur-base); }
   & .topavbtn:hover { border-color: var(--accent-border); background: var(--raised); }
 
   /* Off-screen until focused, then it lands over the header where it is
@@ -368,7 +368,7 @@
     font-weight: 600;
     text-decoration: none;
     transform: translateY(-200%);
-    transition: transform var(--arc-fast, 0.15s) ease;
+    transition: transform var(--arc-fast, var(--dur-base)) ease;
   }
   & .skip-link:focus-visible { transform: translateY(0); }
   & main:focus { outline: none; }
@@ -441,7 +441,7 @@
   & .setup-sub { margin: 7px 0 0; font-size: 13px; color: var(--text-2); max-width: 56ch; }
   & .setup-meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
   & .setup-count { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
-  & .setup-x { background: none; border: 0; padding: 0; font-size: 12px; color: var(--muted); cursor: pointer; transition: color 140ms var(--ease); }
+  & .setup-x { background: none; border: 0; padding: 0; font-size: 12px; color: var(--muted); cursor: pointer; transition: color var(--dur-base) var(--ease); }
   & .setup-x:hover { color: var(--text); }
   & .setup-steps { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; }
   & .setup-step { display: flex; align-items: flex-start; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
@@ -464,7 +464,7 @@
   & .focal h4 { font-family: var(--serif); font-weight: 500; font-size: 19px; letter-spacing: -0.01em; margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   & .focal .cites { display: inline-flex; align-items: center; gap: 5px; }
   & .focal .cites-label { font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; color: var(--muted); text-transform: uppercase; }
-  & .focal .cite { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line-2); background: var(--inset); font-family: var(--mono); font-size: 10px; color: var(--accent); cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+  & .focal .cite { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line-2); background: var(--inset); font-family: var(--mono); font-size: 10px; color: var(--accent); cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
   & .focal .cite:hover { border-color: var(--accent-border); color: var(--accent-contrast); }
   & .focal .conf { margin-left: auto; display: flex; align-items: center; gap: 9px; }
   & .focal .conf .cl { font-size: 10.5px; color: var(--muted); }
@@ -473,7 +473,7 @@
   & .focal .conf .val { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
   & .focal p.d { font-size: 12.5px; color: var(--text-2); margin: 11px 0 0; max-width: 64ch; line-height: 1.6; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
   & .focal .fcta { display: flex; align-items: center; gap: 11px; margin-top: 15px; }
-  & .btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 15px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent) 66%, #fff 8%); cursor: pointer; background: linear-gradient(180deg, #e1c074, var(--accent) 58%, #a9842f); color: #1a1505; font-weight: 600; font-size: 12.5px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); transition: transform 0.15s var(--ease), filter 0.15s; text-decoration: none; }
+  & .btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 15px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent) 66%, #fff 8%); cursor: pointer; background: linear-gradient(180deg, #e1c074, var(--accent) 58%, #a9842f); color: #1a1505; font-weight: 600; font-size: 12.5px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); transition: transform var(--dur-base) var(--ease), filter var(--dur-base); text-decoration: none; }
   & .btn:hover { transform: translateY(-1px); filter: brightness(1.03); }
   & .btn.ghost { background: transparent; border: 1px solid var(--line-2); color: var(--text-2); box-shadow: none; }
   & .btn.ghost:hover { border-color: var(--accent-border); color: var(--text); filter: none; }
@@ -481,12 +481,12 @@
   & .sech { display: flex; align-items: baseline; justify-content: space-between; margin: 32px 0 0; }
   & .sech h3 { font-family: var(--serif); font-weight: 500; font-size: 17px; letter-spacing: -0.01em; margin: 0; }
   & .sech .ct { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-  & .sech a.more { font-size: 11.5px; color: var(--muted); font-weight: 500; cursor: pointer; transition: color 0.15s; text-decoration: none; }
+  & .sech a.more { font-size: 11.5px; color: var(--muted); font-weight: 500; cursor: pointer; transition: color var(--dur-base); text-decoration: none; }
   & .sech a.more:hover { color: var(--accent); }
   & .rule { height: 1px; background: linear-gradient(90deg, var(--accent-border), var(--line) 36%, transparent); margin: 12px 0 2px; }
 
   /* tasks */
-  & .task { display: flex; align-items: center; gap: 13px; padding: 13px 8px 13px 6px; margin: 0 -6px; border-bottom: 1px solid var(--line); border-radius: 8px; cursor: pointer; transition: background 0.15s var(--ease), padding-left 0.18s var(--ease); text-decoration: none; }
+  & .task { display: flex; align-items: center; gap: 13px; padding: 13px 8px 13px 6px; margin: 0 -6px; border-bottom: 1px solid var(--line); border-radius: 8px; cursor: pointer; transition: background var(--dur-base) var(--ease), padding-left var(--dur-slow) var(--ease); text-decoration: none; }
   & .task:hover { background: rgba(255, 255, 255, 0.025); padding-left: 12px; }
   & .pill { display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
   & .pill.warn { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); }
@@ -503,7 +503,7 @@
 
   /* opportunities */
   & .opps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-  & .opp { border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); padding: 15px 16px; display: flex; flex-direction: column; cursor: pointer; transition: border-color 0.16s var(--ease), transform 0.16s var(--ease); text-decoration: none; }
+  & .opp { border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); padding: 15px 16px; display: flex; flex-direction: column; cursor: pointer; transition: border-color var(--dur-base) var(--ease), transform var(--dur-base) var(--ease); text-decoration: none; }
   & .opp:hover { border-color: var(--accent-border); }
   & .opp .ot { font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; color: var(--text); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   & .opp .od { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
@@ -520,7 +520,7 @@
   & .ctable { margin-top: 14px; border: 1px solid var(--line-2); border-radius: 11px; overflow: hidden; }
   & .ctable .ch, & .ctable .cr { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) 110px; gap: 12px; align-items: center; padding: 12px 16px; }
   & .ctable .ch { background: color-mix(in srgb, var(--inset) 40%, transparent); border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; }
-  & .ctable .cr { border-bottom: 1px solid var(--line); font-size: 12.5px; cursor: pointer; transition: background 0.14s; text-decoration: none; }
+  & .ctable .cr { border-bottom: 1px solid var(--line); font-size: 12.5px; cursor: pointer; transition: background var(--dur-base); text-decoration: none; }
   & .ctable .cr:last-child { border-bottom: 0; }
   & .ctable .cr:hover { background: rgba(255, 255, 255, 0.028); }
   & .ctable .cn { font-weight: 600; color: var(--text); }
@@ -531,7 +531,7 @@
   & .rsub { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
   & .rsec { margin-top: 26px; }
   & .qa { display: grid; gap: 8px; margin-top: 4px; }
-  & .qbtn { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: border-color 0.15s, color 0.15s, transform 0.15s var(--ease); text-decoration: none; }
+  & .qbtn { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base), transform var(--dur-base) var(--ease); text-decoration: none; }
   & .qbtn:hover { border-color: var(--accent-border); color: var(--text); transform: translateY(-1px); }
   & .qbtn svg { width: 15px; height: 15px; stroke: var(--accent); fill: none; stroke-width: 1.7; }
   & .qbtn .kk { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
@@ -547,7 +547,7 @@
       position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
       width: min(84vw, 300px);
       transform: translateX(-100%);
-      transition: transform 0.28s var(--ease);
+      transition: transform var(--dur-slower) var(--ease);
       box-shadow: 0 24px 70px -12px rgba(0, 0, 0, 0.7);
       will-change: transform;
     }
@@ -561,7 +561,7 @@
     & .railclose {
       display: grid; width: 44px; height: 44px; padding: 0; place-items: center;
       border: 0; border-radius: 9px; background: transparent; color: var(--text-2);
-      cursor: pointer; transition: background 0.15s, color 0.15s;
+      cursor: pointer; transition: background var(--dur-base), color var(--dur-base);
     }
     & .railclose:hover { background: rgba(255, 255, 255, 0.045); color: var(--text); }
     & .railclose svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; }
@@ -571,7 +571,7 @@
       border: 0; padding: 0; cursor: default;
       background: rgba(0, 0, 0, 0.5);
       opacity: 0; pointer-events: none;
-      transition: opacity 0.24s var(--ease);
+      transition: opacity var(--dur-slower) var(--ease);
       -webkit-tap-highlight-color: transparent;
     }
     & .app[data-nav-open="true"] .rail-scrim { opacity: 1; pointer-events: auto; }
@@ -640,7 +640,7 @@
   line-height: 1;
   cursor: help;
   vertical-align: middle;
-  transition: color .14s, border-color .14s;
+  transition: color var(--dur-base), border-color var(--dur-base);
 }
 .arc-app .define:hover,
 .arc-app .define:focus-visible { color: var(--accent-contrast); border-color: var(--accent-border); outline: none; }
@@ -774,14 +774,14 @@
 /* The one fact a whole column was spending ~210px repeating on every row. */
 .arc-app .arc-grid .csub .csub-em { color: var(--text-2); font-weight: 500; }
 .arc-app .arc-grid .chrow .sp { margin-left: auto; display: flex; gap: 9px; align-items: center; }
-.arc-app .arc-grid .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; text-decoration: none; }
+.arc-app .arc-grid .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); text-decoration: none; }
 .arc-app .arc-grid .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-grid .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-grid .gbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
 .arc-app .arc-grid .gbtn.gold:hover { transform: translateY(-1px); filter: brightness(1.04); }
 
 .arc-app .arc-grid .subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line-2); flex-wrap: wrap; }
-.arc-app .arc-grid .subtab { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: color .15s; white-space: nowrap; background: none; border: none; font-family: inherit; }
+.arc-app .arc-grid .subtab { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: color var(--dur-base); white-space: nowrap; background: none; border: none; font-family: inherit; }
 .arc-app .arc-grid .subtab:hover { color: var(--text); }
 .arc-app .arc-grid .subtab.on { color: var(--text); }
 .arc-app .arc-grid .subtab.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
@@ -798,7 +798,7 @@
 .arc-app .arc-grid .tsearch svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.7; }
 .arc-app .arc-grid .tsearch input { border: none; background: transparent; color: var(--text); font-family: inherit; font-size: 12.5px; outline: none; width: 100%; }
 .arc-app .arc-grid .tsearch input::placeholder { color: var(--muted); }
-.arc-app .arc-grid .fbtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 500; cursor: pointer; transition: .14s; }
+.arc-app .arc-grid .fbtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 500; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-grid .fbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-grid .fbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; opacity: .85; }
 .arc-app .arc-grid .fbtn .cv { color: var(--muted); font-size: 10px; }
@@ -806,7 +806,7 @@
 .arc-app .arc-grid .sortwrap { position: relative; }
 .arc-app .arc-grid .sortscrim { position: fixed; inset: 0; z-index: 20; }
 .arc-app .arc-grid .sortmenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 21; min-width: 168px; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .9); }
-.arc-app .arc-grid .sortopt { text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: .12s; }
+.arc-app .arc-grid .sortopt { text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: var(--dur-fast); }
 .arc-app .arc-grid .sortopt:hover { background: var(--inset); color: var(--text); }
 .arc-app .arc-grid .sortopt.on { color: var(--accent-contrast); background: var(--accent-soft); }
 
@@ -820,7 +820,7 @@
 .arc-app .arc-grid .dt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .arc-app .arc-grid .dt thead th { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--panel) 96%, #000); text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 11px 14px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 .arc-app .arc-grid .dt tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--text-2); }
-.arc-app .arc-grid .dt tbody tr { cursor: pointer; transition: background .12s; }
+.arc-app .arc-grid .dt tbody tr { cursor: pointer; transition: background var(--dur-fast); }
 /* Row height (BSR-748). Compact trades the breathing room for rows on screen —
    worth having on a table that routinely holds a few hundred contacts. Only the
    vertical padding moves: the avatar, the chips and the two-line name cell all
@@ -860,7 +860,7 @@
 
 .arc-app .arc-campaigns .cmp-card {
   position: relative; border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel);
-  padding: 15px 17px; transition: border-color .16s var(--ease), background .16s var(--ease);
+  padding: 15px 17px; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease);
 }
 .arc-app .arc-campaigns .cmp-card:hover { border-color: color-mix(in srgb, var(--accent) 26%, var(--line-2)); }
 /* The focal cue. A card asking for a decision lifts and takes a gold edge; every
@@ -899,7 +899,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 /* The one instruction on the card, as a real button — `.gbtn.gold` carries the
    fill, so this only sets the arrow's nudge. Accent-coloured text asked to be
    recognised as a control; a button just is one. */
-.arc-app .arc-campaigns .cmp-act { height: 32px; padding: 0 13px; white-space: nowrap; transition: gap .16s var(--ease), filter .15s, transform .15s; }
+.arc-app .arc-campaigns .cmp-act { height: 32px; padding: 0 13px; white-space: nowrap; transition: gap var(--dur-base) var(--ease), filter var(--dur-base), transform var(--dur-base); }
 .arc-app .arc-campaigns .cmp-act:hover:not(:disabled) { gap: 9px; }
 .arc-app .arc-campaigns .cmp-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .arc-app .arc-campaigns .cmp-act:disabled { cursor: default; opacity: .6; }
@@ -908,7 +908,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   display: inline-flex; align-items: center; gap: 5px; margin-top: 11px; padding: 0; border: none; background: none;
   font-family: inherit; font-size: 11.5px; font-weight: 500; color: var(--muted); cursor: pointer; border-radius: 5px;
 }
-.arc-app .arc-campaigns .cmp-more svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; transition: transform .18s var(--ease); }
+.arc-app .arc-campaigns .cmp-more svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; transition: transform var(--dur-slow) var(--ease); }
 .arc-app .arc-campaigns .cmp-more:hover { color: var(--text-2); }
 .arc-app .arc-campaigns .cmp-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .arc-app .arc-campaigns .cmp-more.on svg { transform: rotate(180deg); }
@@ -944,7 +944,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    no-levitation.test.ts). Lift-plus-shadow on every card is the generic SaaS
    reflex the obsidian system exists to avoid, and "it looked flat without it" is
    precisely the reason the guard says to refuse. */
-.arc-app .arc-campaigns .cmp-card { transition: border-color .16s var(--ease), background .16s var(--ease); }
+.arc-app .arc-campaigns .cmp-card { transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
 .arc-app .arc-campaigns .cmp-card.openable:hover { background: color-mix(in srgb, var(--accent) 3%, var(--panel)); }
 .arc-app .arc-campaigns .cmp-card.needsyou.openable:hover { background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft, #1a1a1e)); }
 
@@ -978,7 +978,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   display: flex; align-items: center; gap: 9px; min-width: 0; width: 100%; padding: 7px 9px;
   border: 1px solid var(--line); border-radius: 9px; background: var(--panel);
   font-family: inherit; text-align: left; color: inherit;
-  transition: border-color .14s var(--ease), background .14s var(--ease), transform .14s var(--ease);
+  transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
 }
 /* Undecided pieces are the work; settled ones are context for it. Only the
    undecided ones are buttons — the rest have nothing to decide. */
@@ -1181,7 +1181,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .otitle { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .arc-app .arc-outbox .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-outbox .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; max-width: 60ch; }
-.arc-app .arc-outbox .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; font-family: inherit; cursor: pointer; transition: .15s; }
+.arc-app .arc-outbox .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; font-family: inherit; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-outbox .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-outbox .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
@@ -1190,14 +1190,14 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 /* tabbar: view tabs + channel filters */
 .arc-app .arc-outbox .tabbar { position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 12px; padding: 14px clamp(20px, 2.6vw, 30px) 0; border-bottom: 1px solid var(--line-2); flex-shrink: 0; flex-wrap: wrap; background: var(--canvas); }
 .arc-app .arc-outbox .vtabs { display: flex; gap: 4px; }
-.arc-app .arc-outbox .vtab { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: .14s; font-family: inherit; }
+.arc-app .arc-outbox .vtab { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: var(--dur-base); font-family: inherit; }
 .arc-app .arc-outbox .vtab:hover { color: var(--text-2); }
 .arc-app .arc-outbox .vtab.on { color: var(--text); border-bottom-color: var(--accent); }
 .arc-app .arc-outbox .vtab svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-outbox .vtab .ct { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: 5px; padding: 1px 6px; }
 .arc-app .arc-outbox .vtab.on .ct { color: var(--accent-contrast); }
 .arc-app .arc-outbox .ofilters { display: flex; align-items: center; gap: 7px; margin-left: auto; padding-bottom: 7px; flex-wrap: wrap; }
-.arc-app .arc-outbox .fchip { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 99px; padding: 4px 11px; cursor: pointer; transition: .14s; display: inline-flex; align-items: center; gap: 6px; background: none; font-family: inherit; }
+.arc-app .arc-outbox .fchip { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 99px; padding: 4px 11px; cursor: pointer; transition: var(--dur-base); display: inline-flex; align-items: center; gap: 6px; background: none; font-family: inherit; }
 .arc-app .arc-outbox .fchip:hover { color: var(--text-2); }
 .arc-app .arc-outbox .fchip.on { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-app .arc-outbox .fchip .fct { font-family: var(--mono); font-size: 9.5px; opacity: .75; }
@@ -1222,7 +1222,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 }
 
 /* cards */
-.arc-app .arc-outbox .card { border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); padding: 11px 12px; transition: .15s var(--ease); }
+.arc-app .arc-outbox .card { border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); padding: 11px 12px; transition: var(--dur-base) var(--ease); }
 .arc-app .arc-outbox .card.link { cursor: pointer; text-decoration: none; display: block; }
 .arc-app .arc-outbox .card.link:hover { border-color: var(--accent-border); }
 .arc-app .arc-outbox .card .crow { display: flex; align-items: center; gap: 8px; }
@@ -1314,7 +1314,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .card .ccancelconfirm > span:first-child { flex: 1 1 100%; }
 .arc-app .arc-outbox .card .ccancel.is-confirm { border-color: var(--priority); color: var(--priority); }
 .arc-app .arc-outbox .card .cactions .caction { margin-top: 0; flex: 1; }
-.arc-app .arc-outbox .card button.ccancel { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; transition: .14s; }
+.arc-app .arc-outbox .card button.ccancel { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; transition: var(--dur-base); }
 .arc-app .arc-outbox .card button.ccancel:hover { color: var(--text-2); border-color: var(--line-3); }
 .arc-app .arc-outbox .card button.ccancel:disabled { opacity: .55; cursor: default; }
 .arc-app .arc-outbox .card button.caction.ghost { border: 1px solid var(--line-2); background: transparent; color: var(--text-2); }
@@ -1351,7 +1351,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
 .arc-app .arc-analytics .ctrlbar { display: flex; align-items: center; gap: 10px; padding: 13px clamp(22px, 3vw, 38px); border-bottom: 1px solid var(--line-2); flex-wrap: wrap; flex-shrink: 0; }
 .arc-app .arc-analytics .vtabs { display: flex; gap: 2px; }
-.arc-app .arc-analytics .vtab { position: relative; padding: 7px 12px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; border-radius: 8px; transition: .14s; background: none; border: 1px solid transparent; font-family: inherit; }
+.arc-app .arc-analytics .vtab { position: relative; padding: 7px 12px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; border-radius: 8px; transition: var(--dur-base); background: none; border: 1px solid transparent; font-family: inherit; }
 .arc-app .arc-analytics .vtab:hover { color: var(--text); background: rgba(255, 255, 255, .035); }
 .arc-app .arc-analytics .vtab.on { color: var(--text); background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-app .arc-analytics .cspacer { margin-left: auto; }
@@ -1359,11 +1359,11 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics .ctl svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; opacity: .85; }
 .arc-app .arc-analytics .ctl .cv { color: var(--muted); font-size: 10px; }
 .arc-app .arc-analytics .rangectl { position: relative; }
-.arc-app .arc-analytics .rangectl .ctl { cursor: pointer; transition: border-color .14s, color .14s; }
+.arc-app .arc-analytics .rangectl .ctl { cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
 .arc-app .arc-analytics .rangectl .ctl:hover, .arc-app .arc-analytics .rangectl .ctl[aria-expanded="true"] { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-analytics .ctl-backdrop { position: fixed; inset: 0; z-index: 40; background: none; border: none; cursor: default; }
 .arc-app .arc-analytics .ctl-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 41; min-width: 160px; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 30px rgba(0,0,0,.34); display: flex; flex-direction: column; gap: 2px; }
-.arc-app .arc-analytics .ctl-opt { display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 10px; border: none; border-radius: 7px; background: none; color: var(--text-2); font-size: 12px; font-weight: 500; font-family: inherit; cursor: pointer; text-align: left; transition: background .12s, color .12s; }
+.arc-app .arc-analytics .ctl-opt { display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 10px; border: none; border-radius: 7px; background: none; color: var(--text-2); font-size: 12px; font-weight: 500; font-family: inherit; cursor: pointer; text-align: left; transition: background var(--dur-fast), color var(--dur-fast); }
 .arc-app .arc-analytics .ctl-opt:hover { background: var(--inset); color: var(--text); }
 .arc-app .arc-analytics .ctl-opt.on { color: var(--text); background: var(--accent-soft); }
 .arc-app .arc-analytics .ctl-opt.on::after { content: "✓"; color: var(--accent); font-size: 11px; }
@@ -1383,7 +1383,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics .ph { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .arc-app .arc-analytics .ph h2 { font-size: 13px; font-weight: 600; margin: 0; color: var(--text); }
 .arc-app .arc-analytics .seg { display: flex; gap: 2px; background: var(--inset); border: 1px solid var(--line-2); border-radius: 8px; padding: 2px; margin-left: auto; }
-.arc-app .arc-analytics .seg button { font: inherit; font-size: 11px; font-weight: 600; color: var(--muted); padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 0; background: transparent; transition: .14s; }
+.arc-app .arc-analytics .seg button { font: inherit; font-size: 11px; font-weight: 600; color: var(--muted); padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 0; background: transparent; transition: var(--dur-base); }
 .arc-app .arc-analytics .seg button:hover { color: var(--text-2); }
 .arc-app .arc-analytics .seg button.on { background: var(--panel); color: var(--text); }
 .arc-app .arc-analytics .legend { display: flex; gap: 13px; font-size: 11px; color: var(--text-2); }
@@ -1421,7 +1421,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics .recbox .rl { font-size: 9px; font-weight: 600; letter-spacing: .1em; color: var(--warn-text); text-transform: uppercase; margin-bottom: 5px; }
 .arc-app .arc-analytics .recbox .rt { font-size: 12px; color: var(--text); line-height: 1.5; }
 .arc-app .arc-analytics .abtns { display: flex; gap: 8px; flex-wrap: wrap; }
-.arc-app .arc-analytics .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 33px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; transition: .15s; }
+.arc-app .arc-analytics .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 33px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-analytics .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-analytics .gbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-analytics .gbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
@@ -1462,7 +1462,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics .cthead, .arc-app .arc-analytics .ctrow { display: grid; grid-template-columns: minmax(0, 2.4fr) 0.8fr 0.8fr 1.1fr 0.8fr 0.5fr; gap: 12px; align-items: center; }
 .arc-app .arc-analytics .cthead { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 0 6px 9px; border-bottom: 1px solid var(--line-2); }
 .arc-app .arc-analytics .cthead span:not(:first-child) { text-align: right; }
-.arc-app .arc-analytics .ctrow { padding: 11px 6px; border-bottom: 1px solid var(--line); border-radius: 8px; text-decoration: none; transition: background .14s; }
+.arc-app .arc-analytics .ctrow { padding: 11px 6px; border-bottom: 1px solid var(--line); border-radius: 8px; text-decoration: none; transition: background var(--dur-base); }
 .arc-app .arc-analytics .ctrow:last-child { border-bottom: 0; }
 .arc-app .arc-analytics .ctrow:hover { background: rgba(255, 255, 255, .035); }
 .arc-app .arc-analytics .ctname { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -1498,7 +1498,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics .smetric { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--ok-text); background: var(--ok-soft); border-radius: 5px; padding: 1px 6px; }
 .arc-app .arc-analytics .sdetail { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 4px; }
 .arc-app .arc-analytics .moves { display: flex; flex-direction: column; gap: 9px; }
-.arc-app .arc-analytics .move { display: block; border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); padding: 11px 13px; text-decoration: none; transition: border-color .14s; }
+.arc-app .arc-analytics .move { display: block; border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); padding: 11px 13px; text-decoration: none; transition: border-color var(--dur-base); }
 .arc-app .arc-analytics .move:hover { border-color: var(--accent-border); }
 .arc-app .arc-analytics .mtitle { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .arc-app .arc-analytics .mdetail { font-size: 11px; color: var(--muted); line-height: 1.5; margin: 5px 0 7px; }
@@ -1540,7 +1540,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-personas .ph1row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .arc-app .arc-personas h1.pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-personas .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; max-width: 60ch; white-space: normal; }
-.arc-app .arc-personas .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; }
+.arc-app .arc-personas .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-personas .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-personas .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-personas .phead .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; white-space: nowrap; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
@@ -1549,7 +1549,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-personas .arcalert .at { font-size: 12.5px; color: var(--text-2); }
 .arc-app .arc-personas .arcalert .at b { color: var(--text); font-weight: 600; }
 .arc-app .arc-personas .arcalert .ab { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
-.arc-app .arc-personas .miniabtn { font-size: 11.5px; font-weight: 600; color: var(--accent-contrast); border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 7px; padding: 6px 11px; cursor: pointer; transition: .14s; font-family: inherit; }
+.arc-app .arc-personas .miniabtn { font-size: 11.5px; font-weight: 600; color: var(--accent-contrast); border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 7px; padding: 6px 11px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
 .arc-app .arc-personas .miniabtn:hover { background: rgba(200, 162, 74, .2); }
 .arc-app .arc-personas .miniabtn.ghost { color: var(--muted); border-color: var(--line-2); background: transparent; }
 .arc-app .arc-personas .miniabtn.ghost:hover { color: var(--text-2); }
@@ -1563,12 +1563,12 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 }
 .arc-app .arc-personas .segbar { display: flex; align-items: center; gap: 12px; padding: 14px clamp(20px, 2.6vw, 30px); border-bottom: 1px solid var(--line-2); flex-shrink: 0; flex-wrap: wrap; }
 .arc-app .arc-personas .vtog { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); }
-.arc-app .arc-personas .vtog button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--muted); background: none; border: none; border-radius: 7px; cursor: pointer; transition: .14s; font-family: inherit; }
+.arc-app .arc-personas .vtog button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--muted); background: none; border: none; border-radius: 7px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
 .arc-app .arc-personas .vtog button:hover { color: var(--text-2); }
 .arc-app .arc-personas .vtog button.on { color: var(--text); background: var(--panel); box-shadow: 0 1px 0 rgba(0, 0, 0, .3); }
 .arc-app .arc-personas .vtog svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-personas .barsep { width: 1px; height: 22px; background: var(--line-2); }
-.arc-app .arc-personas .segpill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-2); padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: .14s; border: 1px solid transparent; background: none; font-family: inherit; }
+.arc-app .arc-personas .segpill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-2); padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: var(--dur-base); border: 1px solid transparent; background: none; font-family: inherit; }
 .arc-app .arc-personas .segpill:hover { color: var(--text); background: rgba(255, 255, 255, .035); }
 .arc-app .arc-personas .segpill.on { color: var(--text); background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-app .arc-personas .segpill .sc { font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
@@ -1583,7 +1583,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-personas .pbody.cmp { grid-template-columns: 1fr; }
 .arc-app .arc-personas .roster { border-right: 1px solid var(--line); min-width: 0; overflow: auto; padding: 6px 14px 30px; }
 .arc-app .arc-personas .seglabel { font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 14px 6px 8px; }
-.arc-app .arc-personas .prow { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); margin-bottom: 9px; cursor: pointer; transition: border-color .15s, transform .15s var(--ease); width: 100%; text-align: left; font-family: inherit; }
+.arc-app .arc-personas .prow { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); margin-bottom: 9px; cursor: pointer; transition: border-color var(--dur-base), transform var(--dur-base) var(--ease); width: 100%; text-align: left; font-family: inherit; }
 .arc-app .arc-personas .prow:hover { border-color: var(--accent-border); }
 .arc-app .arc-personas .prow.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft), 0 16px 40px -30px rgba(0, 0, 0, .9); }
 .arc-app .arc-personas .pav { width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 15px; flex-shrink: 0; }
@@ -1686,7 +1686,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-library .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-brain .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-brain .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
-.arc-app .arc-brain .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; }
+.arc-app .arc-brain .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-brain .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-brain .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-brain .covbanner { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: 11px; background: var(--accent-soft); padding: 11px 14px; }
@@ -1695,7 +1695,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .covbanner .ct b { color: var(--text); font-weight: 600; }
 
 .arc-app .arc-brain .btabs { position: sticky; top: 0; z-index: 6; display: flex; gap: 2px; padding: 0 clamp(22px, 3vw, 38px); border-bottom: 1px solid var(--line-2); margin-top: 16px; flex-shrink: 0; overflow-x: auto; background: var(--canvas); }
-.arc-app .arc-brain .btab { position: relative; display: flex; align-items: center; gap: 8px; padding: 11px 13px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: color .15s; white-space: nowrap; background: none; border: none; font-family: inherit; }
+.arc-app .arc-brain .btab { position: relative; display: flex; align-items: center; gap: 8px; padding: 11px 13px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: color var(--dur-base); white-space: nowrap; background: none; border: none; font-family: inherit; }
 .arc-app .arc-brain .btab svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; opacity: .8; }
 .arc-app .arc-brain .btab:hover { color: var(--text); }
 .arc-app .arc-brain .btab.on { color: var(--text); }
@@ -1714,11 +1714,11 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .lead b { color: var(--text-2); }
 
 .arc-app .arc-brain .factbar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.arc-app .arc-brain .fchip { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 99px; padding: 4px 11px; cursor: pointer; transition: .14s; background: none; font-family: inherit; }
+.arc-app .arc-brain .fchip { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 99px; padding: 4px 11px; cursor: pointer; transition: var(--dur-base); background: none; font-family: inherit; }
 .arc-app .arc-brain .fchip:hover { color: var(--text-2); }
 .arc-app .arc-brain .fchip.on { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-app .arc-brain .facttools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.arc-app .arc-brain .factsearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); min-width: 240px; flex: 1 1 240px; max-width: 360px; transition: border-color .14s; }
+.arc-app .arc-brain .factsearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); min-width: 240px; flex: 1 1 240px; max-width: 360px; transition: border-color var(--dur-base); }
 .arc-app .arc-brain .factsearch:focus-within { border-color: var(--accent-border); }
 .arc-app .arc-brain .factsearch svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.7; flex: none; }
 .arc-app .arc-brain .factsearch input { border: none; background: transparent; color: var(--text); font-size: 12.5px; outline: none; width: 100%; font-family: inherit; }
@@ -1735,7 +1735,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .ft tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 /* per-fact archive control — revealed on row hover, sits in a trailing cell */
 .arc-app .arc-brain .ft td.factact { width: 34px; text-align: right; padding-left: 0; }
-.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: opacity 0.14s, color 0.14s, border-color 0.14s; }
+.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: opacity var(--dur-base), color var(--dur-base), border-color var(--dur-base); }
 /* Reveal-on-hover, but only where hovering exists. A touch screen never hovers,
    so hiding it there left an invisible control that still accepted taps — worse
    than a visible one. Guarding the *hide* (rather than overriding it back to 1
@@ -1752,7 +1752,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
 .arc-app .arc-brain .pager .prange { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .arc-app .arc-brain .pager .pnav { display: flex; align-items: center; gap: 6px; }
-.arc-app .arc-brain .pager .pbtn { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: .14s; }
+.arc-app .arc-brain .pager .pbtn { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-brain .pager .pbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-brain .pager .pbtn:disabled { opacity: 0.4; cursor: default; }
 .arc-app .arc-brain .pager .pbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
@@ -1806,7 +1806,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .gsearch svg { width: 13px; height: 13px; stroke: var(--muted); fill: none; stroke-width: 1.7; }
 .arc-app .arc-brain .gsearch input { border: none; background: transparent; color: var(--text); font-size: 12px; outline: none; width: 100%; font-family: inherit; }
 .arc-app .arc-brain .gsearch input::placeholder { color: var(--muted); }
-.arc-app .arc-brain .gchip { font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(6px); border-radius: 7px; padding: 5px 10px; cursor: pointer; transition: .14s; font-family: inherit; }
+.arc-app .arc-brain .gchip { font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(6px); border-radius: 7px; padding: 5px 10px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
 .arc-app .arc-brain .gchip:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-brain .gchip.on { color: var(--accent-contrast); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-app .arc-brain .gsvg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
@@ -1816,19 +1816,19 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .gzoom button:hover { background: rgba(255, 255, 255, .06); color: var(--text); }
 .arc-app .arc-brain .gzoom button + button { border-top: 1px solid var(--line-2); }
 .arc-app .arc-brain .ghint { position: absolute; bottom: 18px; right: 56px; z-index: 4; font-family: var(--mono); font-size: 9.5px; color: var(--muted); pointer-events: none; background: color-mix(in srgb, var(--panel) 70%, transparent); padding: 3px 8px; border-radius: 6px; }
-.arc-app .arc-brain .gedge { stroke: rgba(232, 224, 205, .16); stroke-width: 1.2; transition: opacity .2s, stroke .2s; }
+.arc-app .arc-brain .gedge { stroke: rgba(232, 224, 205, .16); stroke-width: 1.2; transition: opacity var(--dur-slow), stroke var(--dur-slow); }
 .arc-app .arc-brain .gedge.hot { stroke: var(--accent); stroke-width: 1.8; opacity: 1 !important; filter: drop-shadow(0 0 3px rgba(200, 162, 74, .45)); }
 .arc-app .arc-brain .gedge.dim { opacity: .05; }
-.arc-app .arc-brain .gnode { cursor: grab; transition: opacity .2s; }
+.arc-app .arc-brain .gnode { cursor: grab; transition: opacity var(--dur-slow); }
 .arc-app .arc-brain .gsvg.panning .gnode { cursor: grabbing; }
 .arc-app .arc-brain .gnode.dim { opacity: .2; }
-.arc-app .arc-brain .gnode circle { transition: stroke-width .15s, transform .18s var(--ease, cubic-bezier(.16, 1, .3, 1)); }
+.arc-app .arc-brain .gnode circle { transition: stroke-width var(--dur-base), transform var(--dur-slow) var(--ease, cubic-bezier(.16, 1, .3, 1)); }
 .arc-app .arc-brain .gnode.lit circle { transform: scale(1.06); }
 .arc-app .arc-brain .gnode:hover circle { stroke-width: 3; transform: scale(1.16); }
 .arc-app .arc-brain .gnode.hub circle { stroke-width: 2; }
 .arc-app .arc-brain .hubring { pointer-events: none; }
 .arc-app .arc-brain .gnode text { pointer-events: none; }
-.arc-app .arc-brain .gnode .nlbl { font-family: var(--sans); font-size: 9px; fill: var(--text-2); opacity: 0; transition: opacity .18s; paint-order: stroke; stroke: rgba(16, 16, 19, .62); stroke-width: 2.6px; stroke-linejoin: round; }
+.arc-app .arc-brain .gnode .nlbl { font-family: var(--sans); font-size: 9px; fill: var(--text-2); opacity: 0; transition: opacity var(--dur-slow); paint-order: stroke; stroke: rgba(16, 16, 19, .62); stroke-width: 2.6px; stroke-linejoin: round; }
 .arc-app .arc-brain .gnode.major .nlbl { opacity: .74; }
 .arc-app .arc-brain .gnode.lit .nlbl { opacity: 1; }
 .arc-app .arc-brain .gnode.sel .nlbl { opacity: 1; fill: var(--text); font-weight: 600; }
@@ -1850,7 +1850,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .inrow .il { color: var(--muted); width: 96px; flex-shrink: 0; }
 .arc-app .arc-brain .inrow .iv { color: var(--text); font-weight: 500; display: flex; align-items: center; gap: 7px; }
 .arc-app .arc-brain .insec { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 20px 0 10px; }
-.arc-app .arc-brain .conn { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); margin-bottom: 7px; cursor: pointer; transition: border-color .14s; width: 100%; text-align: left; font: inherit; }
+.arc-app .arc-brain .conn { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); margin-bottom: 7px; cursor: pointer; transition: border-color var(--dur-base); width: 100%; text-align: left; font: inherit; }
 .arc-app .arc-brain .conn:hover { border-color: var(--accent-border); }
 .arc-app .arc-brain .conn .cd { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .arc-app .arc-brain .conn .crel { font-family: var(--mono); font-size: 9px; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
@@ -1863,7 +1863,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 }
 
 /* Home right-column: Signals + Arc activity feed (ported verbatim from build-home.html). */
-.arc-app .sig { display: block; padding: 12px 8px; margin: 0 -8px; border-top: 1px solid var(--line); border-radius: 8px; color: inherit; text-decoration: none; transition: background 0.15s var(--ease); }
+.arc-app .sig { display: block; padding: 12px 8px; margin: 0 -8px; border-top: 1px solid var(--line); border-radius: 8px; color: inherit; text-decoration: none; transition: background var(--dur-base) var(--ease); }
 .arc-app .sig:first-of-type { border-top: 0; }
 .arc-app .sig:hover { background: rgba(255, 255, 255, 0.025); }
 .arc-app .sig:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1879,7 +1879,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .act .ad b { color: var(--text); font-weight: 500; }
 
 /* CRM screen: classes ported verbatim from build-crm.html that the port was missing. */
-.arc-app .iconf { width: 32px; height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: 0.14s; }
+.arc-app .iconf { width: 32px; height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: var(--dur-base); }
 .arc-app .iconf:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .iconf svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
@@ -1923,7 +1923,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   white-space: nowrap;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 .arc-app .fmenu-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .arc-app .fmenu-item.on { color: var(--accent); }
@@ -1940,18 +1940,18 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
-  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+  transition: color var(--dur-base) var(--ease), background var(--dur-base) var(--ease);
 }
 .arc-app .fmenu-foot:hover { color: var(--accent); background: rgba(255, 255, 255, 0.035); }
 .arc-app .fmenu-foot:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.arc-app .selbar { display: none; align-items: center; gap: 12px; height: 0; overflow: hidden; border: 1px solid var(--accent-border); border-radius: 9px; background: linear-gradient(180deg, var(--accent-soft), transparent); padding: 0 14px; margin-bottom: 0; transition: 0.18s var(--ease); }
+.arc-app .selbar { display: none; align-items: center; gap: 12px; height: 0; overflow: hidden; border: 1px solid var(--accent-border); border-radius: 9px; background: linear-gradient(180deg, var(--accent-soft), transparent); padding: 0 14px; margin-bottom: 0; transition: var(--dur-slow) var(--ease); }
 .arc-app .selbar.show { display: flex; height: 46px; margin-bottom: 11px; }
 /* Lift the collapse clip only while a menu is open (the bar is already expanded),
    so the persona picker can drop below without a grow-animation glitch. */
 .arc-app .selbar.menuopen { overflow: visible; }
 .arc-app .selbar .sc { font-size: 12.5px; font-weight: 600; color: var(--accent-contrast); }
-.arc-app .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 5px 9px; border-radius: 7px; transition: 0.14s; border: none; background: none; font-family: inherit; }
+.arc-app .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 5px 9px; border-radius: 7px; transition: var(--dur-base); border: none; background: none; font-family: inherit; }
 .arc-app .selbar .sa:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .arc-app .selbar .sa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 /* Not "coming soon" — "not applicable to what you have selected". This used
@@ -1962,20 +1962,20 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .selbar .sa-wrap { position: relative; display: inline-flex; }
 .arc-app .selbar .sa-backdrop { position: fixed; inset: 0; z-index: 40; background: none; border: none; cursor: default; }
 .arc-app .selbar .sa-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; min-width: 200px; max-height: 300px; overflow-y: auto; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; gap: 1px; }
-.arc-app .selbar .sa-opt { display: block; width: 100%; text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: none; color: var(--text-2); font-size: 12.5px; font-family: inherit; cursor: pointer; transition: 0.12s; }
+.arc-app .selbar .sa-opt { display: block; width: 100%; text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: none; color: var(--text-2); font-size: 12.5px; font-family: inherit; cursor: pointer; transition: var(--dur-fast); }
 .arc-app .selbar .sa-opt:hover { background: var(--inset); color: var(--text); }
 .arc-app .selbar .sa-taskmenu { flex-direction: row; align-items: center; gap: 6px; min-width: 300px; padding: 7px; }
 .arc-app .selbar .sa-taskinput { flex: 1; min-width: 0; height: 30px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--inset); color: var(--text); font-size: 12.5px; font-family: inherit; outline: none; }
 .arc-app .selbar .sa-taskinput:focus { border-color: var(--accent-border); }
 .arc-app .selbar .sa-taskinput::placeholder { color: var(--muted); }
-.arc-app .selbar .sa-taskbtn { flex: none; height: 30px; padding: 0 12px; border: none; border-radius: 7px; background: var(--accent-soft); color: var(--accent-contrast); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: 0.12s; }
+.arc-app .selbar .sa-taskbtn { flex: none; height: 30px; padding: 0 12px; border: none; border-radius: 7px; background: var(--accent-soft); color: var(--accent-contrast); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: var(--dur-fast); }
 .arc-app .selbar .sa-taskbtn:hover:not(:disabled) { filter: brightness(1.08); }
 .arc-app .selbar .sa-taskbtn:disabled { opacity: 0.5; cursor: default; }
 .arc-app .selbar .clr { margin-left: auto; color: var(--muted); font-size: 11.5px; cursor: pointer; }
 .arc-app .selbar .clr:hover { color: var(--text); }
 .arc-app .pager .rpp { display: flex; align-items: center; gap: 7px; }
 .arc-app .pager select { background: var(--inset); border: 1px solid var(--line-2); border-radius: 7px; color: var(--text-2); font-family: inherit; font-size: 12px; padding: 4px 7px; cursor: pointer; }
-.arc-app .pager .pgbtn { width: 28px; height: 28px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: 0.14s; }
+.arc-app .pager .pgbtn { width: 28px; height: 28px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: var(--dur-base); }
 .arc-app .pager .pgbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
 /* First/last page. Matches the Brain pager's disabled treatment so the two
    pagers in the app read the same. */
@@ -1986,7 +1986,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-grid .dt tbody td.ccompany { white-space: normal; overflow: hidden; max-width: 170px; line-height: 1.25; }
 .arc-app .arc-grid .rowact { color: var(--muted); font-size: 15px; }
 /* Selection checkbox — verbatim from build-crm.html .ck */
-.arc-app .arc-grid .ck { width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; transition: 0.12s; flex-shrink: 0; }
+.arc-app .arc-grid .ck { width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; transition: var(--dur-fast); flex-shrink: 0; }
 .arc-app .arc-grid .ck:hover { border-color: var(--accent-border); }
 .arc-app .arc-grid .ck.on { background: var(--accent); border-color: var(--accent); }
 .arc-app .arc-grid .ck svg { width: 11px; height: 11px; stroke: #201808; fill: none; stroke-width: 3; opacity: 0; }
@@ -2032,19 +2032,19 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-opps .scanstat.warn { padding: 7px 9px; border-radius: 7px; border: 1px solid var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
 .arc-app .arc-opps .scanstat.warn .l i { opacity: 1; }
 .arc-app .arc-opps .ofilter { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 4px 10px; }
-.arc-app .arc-opps .ochip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); font: inherit; font-size: 10.5px; cursor: pointer; transition: background .15s var(--ease), border-color .15s, color .15s; }
+.arc-app .arc-opps .ochip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); font: inherit; font-size: 10.5px; cursor: pointer; transition: background var(--dur-base) var(--ease), border-color var(--dur-base), color var(--dur-base); }
 .arc-app .arc-opps .ochip:hover { background: rgba(255, 255, 255, .04); }
 .arc-app .arc-opps .ochip.on { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
 .arc-app .arc-opps .ochip .n { font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
 .arc-app .arc-opps .ochip.on .n { color: var(--accent-contrast); }
 .arc-app .arc-opps .osort { display: flex; align-items: center; gap: 6px; padding: 0 8px 10px; }
 .arc-app .arc-opps .osort .l { font-size: 10px; letter-spacing: .04em; color: var(--muted); margin-right: 2px; }
-.arc-app .arc-opps .osortb { height: 22px; padding: 0 8px; border-radius: 5px; border: 1px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; cursor: pointer; transition: color .15s, background .15s; }
+.arc-app .arc-opps .osortb { height: 22px; padding: 0 8px; border-radius: 5px; border: 1px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; cursor: pointer; transition: color var(--dur-base), background var(--dur-base); }
 .arc-app .arc-opps .osortb:hover { color: var(--text-2); }
 .arc-app .arc-opps .osortb.on { color: var(--accent-contrast); background: var(--accent-soft); border-color: var(--accent-border); font-weight: 600; }
-.arc-app .arc-opps .omore { width: 100%; margin-top: 6px; height: 32px; border-radius: 8px; border: 1px dashed var(--line-2); background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; transition: color .15s, border-color .15s; }
+.arc-app .arc-opps .omore { width: 100%; margin-top: 6px; height: 32px; border-radius: 8px; border: 1px dashed var(--line-2); background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; transition: color var(--dur-base), border-color var(--dur-base); }
 .arc-app .arc-opps .omore:hover { color: var(--text-2); border-color: var(--line); }
-.arc-app .arc-opps .orow { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; align-items: center; padding: 12px 12px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; transition: background .15s var(--ease), border-color .15s; width: 100%; text-align: left; background: transparent; font: inherit; color: inherit; }
+.arc-app .arc-opps .orow { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; align-items: center; padding: 12px 12px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; transition: background var(--dur-base) var(--ease), border-color var(--dur-base); width: 100%; text-align: left; background: transparent; font: inherit; color: inherit; }
 .arc-app .arc-opps .orow:hover { background: rgba(255, 255, 255, .03); }
 .arc-app .arc-opps .orow.on { background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-app .arc-opps .orow .ic { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; color: var(--accent); }
@@ -2105,7 +2105,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-opps .types { display: flex; flex-wrap: wrap; gap: 8px; }
 .arc-app .arc-opps .ty { font-size: 11px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--inset); border-radius: 6px; padding: 4px 10px; }
 .arc-app .arc-opps .racts { display: flex; align-items: center; gap: 10px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); flex-wrap: wrap; }
-.arc-app .arc-opps .btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 12.5px; transition: transform .15s var(--ease), filter .15s, border-color .15s, color .15s; }
+.arc-app .arc-opps .btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 12.5px; transition: transform var(--dur-base) var(--ease), filter var(--dur-base), border-color var(--dur-base), color var(--dur-base); }
 .arc-app .arc-opps .btn.gold { border: 1px solid color-mix(in srgb, var(--accent) 66%, #fff 8%); background: linear-gradient(180deg, #e1c074, var(--accent) 58%, #a9842f); color: #1a1505; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25); }
 .arc-app .arc-opps .btn.gold:hover { transform: translateY(-1px); filter: brightness(1.03); }
 .arc-app .arc-opps .btn.ghost { border: 1px solid var(--line-2); background: transparent; color: var(--text-2); }
@@ -2129,7 +2129,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    label into an eyebrow above a title, which §3 bans. The label is fine; the
    value was the problem. */
 .arc-app .arc-opps .audrow .ac { font-family: var(--serif); font-weight: 500; font-size: 15px; color: var(--text); letter-spacing: -.01em; }
-.arc-app .arc-opps .audrow a.ac { text-decoration: none; cursor: pointer; transition: color 0.14s var(--ease); }
+.arc-app .arc-opps .audrow a.ac { text-decoration: none; cursor: pointer; transition: color var(--dur-base) var(--ease); }
 .arc-app .arc-opps .audrow a.ac:hover { color: var(--accent-contrast); }
 .arc-app .arc-opps .audrow .ap { font-size: 12px; color: var(--text-2); }
 .arc-app .arc-opps .audnote { font-size: 11px; color: var(--muted); margin-top: 6px; }
@@ -2150,7 +2150,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-opps .signoff > summary { list-style: none; cursor: pointer; padding: 16px; display: flex; flex-direction: column; gap: 10px; border-radius: 12px; }
 .arc-app .arc-opps .signoff > summary::-webkit-details-marker { display: none; }
 .arc-app .arc-opps .signoff > summary .cl { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0; }
-.arc-app .arc-opps .signoff > summary .cl::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg) translate(-2px, -2px); transition: transform 0.16s var(--ease); }
+.arc-app .arc-opps .signoff > summary .cl::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg) translate(-2px, -2px); transition: transform var(--dur-base) var(--ease); }
 .arc-app .arc-opps .signoff[open] > summary .cl::after { transform: rotate(-135deg) translate(-2px, -2px); }
 .arc-app .arc-opps .signoff > summary:focus-visible { outline: 2px solid var(--accent-border); outline-offset: -2px; }
 .arc-app .arc-opps .signoff > summary .locknote { margin-top: 0; }
@@ -2162,13 +2162,13 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 /* triage row: dismiss / snooze the focused opportunity out of the inbox */
 .arc-app .arc-opps .triage { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .arc-app .arc-opps .triage-q { font-size: 11.5px; color: var(--muted); margin-right: auto; }
-.arc-app .arc-opps .triage-btn { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: .14s; }
+.arc-app .arc-opps .triage-btn { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-opps .triage-btn:hover { border-color: var(--line-3); color: var(--text-2); }
 .arc-app .arc-opps .triage-btn:disabled { opacity: .55; cursor: default; }
 .arc-app .arc-opps .triage-snooze { position: relative; }
 .arc-app .arc-opps .triage-scrim { position: fixed; inset: 0; z-index: 20; }
 .arc-app .arc-opps .triage-menu { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 21; min-width: 128px; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .9); }
-.arc-app .arc-opps .triage-menu button { text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: .12s; }
+.arc-app .arc-opps .triage-menu button { text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: var(--dur-fast); }
 .arc-app .arc-opps .triage-menu button:hover { background: var(--inset); color: var(--text); }
 /* The dismiss reasons are sentences, not "3 days" — they need the room, or every
    item wraps to two lines and the picker stops being scannable (BSR-686). */
@@ -2212,7 +2212,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .modal-desc { margin: 5px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
 .arc-app .modal-x {
   margin-left: auto; flex-shrink: 0; width: 30px; height: 30px; display: grid; place-items: center;
-  border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; transition: .15s;
+  border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; transition: var(--dur-base);
 }
 .arc-app .modal-x:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .modal-x svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; }
@@ -2230,7 +2230,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .mfield textarea,
 .arc-app .mfield select {
   width: 100%; font: inherit; font-size: 13px; color: var(--text); background: color-mix(in srgb, var(--inset) 70%, transparent);
-  border: 1px solid var(--line-2); border-radius: 8px; padding: 9px 11px; transition: border-color .15s, box-shadow .15s;
+  border: 1px solid var(--line-2); border-radius: 8px; padding: 9px 11px; transition: border-color var(--dur-base), box-shadow var(--dur-base);
 }
 .arc-app .mfield textarea { resize: vertical; min-height: 62px; line-height: 1.5; }
 .arc-app .mfield input::placeholder, .arc-app .mfield textarea::placeholder { color: var(--muted); }
@@ -2255,7 +2255,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .wsid-preview-tag i { width: 5px; height: 5px; border-radius: 50%; background: var(--ws-accent, var(--accent)); }
 
 .arc-app .wsid-swatches { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.arc-app .wsid-sw { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line-2); cursor: pointer; padding: 0; transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+.arc-app .wsid-sw { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line-2); cursor: pointer; padding: 0; transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease); }
 .arc-app .wsid-sw:hover { border-color: var(--line-3); }
 .arc-app .wsid-sw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--text-2); }
 .arc-app .wsid-sw-auto { width: auto; padding: 0 10px; font: inherit; font-size: 11px; font-weight: 600; color: var(--text-2); background: color-mix(in srgb, var(--inset) 70%, transparent); }
@@ -2276,7 +2276,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 /* Modal footer buttons */
 .arc-app .mbtn {
   display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 15px; border-radius: 8px;
-  border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s;
+  border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base);
 }
 .arc-app .mbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
 .arc-app .mbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
@@ -2341,7 +2341,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .qcard .qactions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-2); }
 .arc-app .arc-brain .qbtn {
   display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border-radius: 8px;
-  border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s;
+  border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base);
 }
 .arc-app .arc-brain .qbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
 .arc-app .arc-brain .qbtn.approve { border-color: var(--ok-border); background: var(--ok-soft); color: var(--ok-text); }
@@ -2382,7 +2382,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 /* Funnel */
 .arc-app .journeys .jr-funnel { display: flex; flex-direction: column; gap: 4px; }
-.arc-app .journeys .jr-fstage { display: grid; grid-template-columns: 148px 1fr 52px 44px; align-items: center; gap: 12px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: 9px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background 0.15s var(--ease), border-color 0.15s var(--ease); }
+.arc-app .journeys .jr-fstage { display: grid; grid-template-columns: 148px 1fr 52px 44px; align-items: center; gap: 12px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: 9px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-fstage:hover { background: var(--inset); }
 .arc-app .journeys .jr-fstage.active { border-color: var(--accent-border); background: var(--inset); }
 .arc-app .journeys .jr-flabel { font-size: 12.5px; font-weight: 500; color: var(--text-2); display: flex; align-items: center; gap: 7px; }
@@ -2414,9 +2414,9 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 /* Journey list */
 .arc-app .journeys .jr-list { display: flex; flex-direction: column; gap: 8px; }
-.arc-app .journeys .jr-row { border: 1px solid var(--line); border-radius: 10px; background: var(--inset); overflow: hidden; transition: border-color 0.15s var(--ease); }
+.arc-app .journeys .jr-row { border: 1px solid var(--line); border-radius: 10px; background: var(--inset); overflow: hidden; transition: border-color var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-row.open { border-color: var(--line-3); }
-.arc-app .journeys .jr-rowhead { display: grid; grid-template-columns: minmax(120px, 1fr) auto 96px 84px 62px 16px; align-items: center; gap: 10px; width: 100%; padding: 10px 13px; background: none; border: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background 0.15s var(--ease); }
+.arc-app .journeys .jr-rowhead { display: grid; grid-template-columns: minmax(120px, 1fr) auto 96px 84px 62px 16px; align-items: center; gap: 10px; width: 100%; padding: 10px 13px; background: none; border: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-rowhead:hover { background: var(--raised); }
 .arc-app .journeys .jr-who { display: flex; align-items: center; gap: 9px; min-width: 0; overflow: hidden; }
 .arc-app .journeys .jr-who b { flex-shrink: 0; max-width: 190px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2431,7 +2431,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .journeys .jr-val { font-size: 12.5px; font-weight: 600; color: var(--ok-text); text-align: right; font-variant-numeric: tabular-nums; }
 .arc-app .journeys .jr-muted { color: var(--muted); font-weight: 400; font-style: italic; }
 .arc-app .journeys .jr-touches { font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
-.arc-app .journeys .jr-caret { color: var(--muted); font-size: 13px; transition: transform 0.18s var(--ease); justify-self: center; }
+.arc-app .journeys .jr-caret { color: var(--muted); font-size: 13px; transition: transform var(--dur-slow) var(--ease); justify-self: center; }
 .arc-app .journeys .jr-caret.up { transform: rotate(180deg); }
 
 /* Expanded detail + timeline */
@@ -2464,7 +2464,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 /* Attribution lens picker */
 .arc-app .journeys .jr-lens { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 9px; }
-.arc-app .journeys .jr-lensbtn { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background 0.15s var(--ease); }
+.arc-app .journeys .jr-lensbtn { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: border-color var(--dur-base) var(--ease), color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-lensbtn:hover { color: var(--text); border-color: var(--line-3); }
 .arc-app .journeys .jr-lensbtn.on { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-app .journeys .jr-lensblurb { font-size: 11px; color: var(--muted); line-height: 1.45; margin-bottom: 11px; }
@@ -2480,7 +2480,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .journeys .jr-install .jr-installlede { font-size: 12.5px; line-height: 1.55; color: var(--text-2); margin-bottom: 11px; }
 .arc-app .journeys .jr-code { display: flex; align-items: flex-start; gap: 8px; background: var(--canvas-deep); border: 1px solid var(--line-2); border-radius: 8px; padding: 10px 11px; }
 .arc-app .journeys .jr-code code { flex: 1; min-width: 0; font-family: var(--mono); font-size: 10.5px; line-height: 1.55; color: var(--text-2); word-break: break-all; }
-.arc-app .journeys .jr-copy { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: var(--accent); background: none; border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 10px; cursor: pointer; transition: border-color 0.15s var(--ease); }
+.arc-app .journeys .jr-copy { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: var(--accent); background: none; border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 10px; cursor: pointer; transition: border-color var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-copy:hover { border-color: var(--accent-border); }
 .arc-app .journeys .jr-installnote { font-size: 11.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
 .arc-app .journeys .jr-installnote code { font-family: var(--mono); font-size: 10px; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 4px; }

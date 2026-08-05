@@ -3,7 +3,7 @@
 .arc-brand { --bbrand: #3b6ef5; --bactive: #3b6ef5; flex: 1; min-height: 0; overflow: auto; display: block; }
 
 /* buttons + tags */
-.arc-brand .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: 0.15s; font-family: inherit; }
+.arc-brand .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
 .arc-brand .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-brand .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-brand .gbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
@@ -52,7 +52,7 @@
 .arc-brand .bsh .sx { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 /* Real <button> where it acts: font/background/border are reset so it keeps the
    quiet inline-link look the surrounding <span> versions have. */
-.arc-brand .editlink { font-size: 11.5px; font-family: inherit; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: 0.14s; background: transparent; border: 0; padding: 0; }
+.arc-brand .editlink { font-size: 11.5px; font-family: inherit; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: var(--dur-base); background: transparent; border: 0; padding: 0; }
 .arc-brand .editlink:hover { color: var(--accent-contrast); }
 .arc-brand .editlink svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-brand .bsb { padding: 15px 16px; }
@@ -62,7 +62,7 @@
 /* palette */
 .arc-brand .swrow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
 @media (max-width: 520px) { .arc-brand .swrow { grid-template-columns: repeat(2, 1fr); } }
-.arc-brand .sw { border: 1px solid var(--line-2); border-radius: 11px; overflow: hidden; cursor: pointer; transition: 0.16s var(--ease); background: var(--inset); }
+.arc-brand .sw { border: 1px solid var(--line-2); border-radius: 11px; overflow: hidden; cursor: pointer; transition: var(--dur-base) var(--ease); background: var(--inset); }
 .arc-brand .sw:hover { border-color: var(--line-3); }
 .arc-brand .sw.on { border-color: #fff; box-shadow: 0 0 0 1px #fff, 0 10px 26px -14px rgba(0, 0, 0, 0.8); }
 /* display/width/padding are set explicitly to defeat the broadly-scoped
@@ -129,24 +129,24 @@
 .arc-brand .preview { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); overflow: hidden; }
 .arc-brand .pvhead { display: flex; align-items: center; gap: 9px; padding: 12px 15px; border-bottom: 1px solid var(--line); }
 .arc-brand .pvhead h3 { font-size: 12.5px; font-weight: 600; margin: 0; }
-.arc-brand .pvframe { position: relative; aspect-ratio: 1 / 1; overflow: hidden; transition: aspect-ratio 0.25s var(--ease); background: #0c0c0f; }
+.arc-brand .pvframe { position: relative; aspect-ratio: 1 / 1; overflow: hidden; transition: aspect-ratio var(--dur-slower) var(--ease); background: #0c0c0f; }
 .arc-brand .pvframe img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .arc-brand .pvgrad { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 10, 16, 0.15) 0%, rgba(8, 10, 16, 0.55) 55%, rgba(8, 10, 16, 0.92) 100%); }
 .arc-brand .pvcontent { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 18px 18px 20px; gap: 9px; }
 .arc-brand .pvlogo { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-weight: 600; font-size: 16px; color: #fff; opacity: 0.96; }
-.arc-brand .pvlogo i { width: 22px; height: 22px; border-radius: 6px; background: var(--bactive); display: grid; place-items: center; transition: background 0.2s; }
+.arc-brand .pvlogo i { width: 22px; height: 22px; border-radius: 6px; background: var(--bactive); display: grid; place-items: center; transition: background var(--dur-slow); }
 .arc-brand .pvlogo i svg { width: 13px; height: 13px; stroke: #fff; fill: none; stroke-width: 2.4; }
 .arc-brand .pvh { font-family: var(--serif); font-weight: 600; font-size: 25px; line-height: 1.08; letter-spacing: -0.02em; color: #fff; max-width: 15ch; }
 .arc-brand .pvs { font-size: 12px; color: rgba(255, 255, 255, 0.82); max-width: 32ch; }
-.arc-brand .pvcta { align-self: flex-start; margin-top: 5px; font-size: 12.5px; font-weight: 700; color: #fff; background: var(--bactive); border-radius: 8px; padding: 8px 15px; transition: background 0.2s; box-shadow: 0 8px 22px -10px var(--bactive); }
+.arc-brand .pvcta { align-self: flex-start; margin-top: 5px; font-size: 12.5px; font-weight: 700; color: #fff; background: var(--bactive); border-radius: 8px; padding: 8px 15px; transition: background var(--dur-slow); box-shadow: 0 8px 22px -10px var(--bactive); }
 .arc-brand .pvbar { display: flex; align-items: center; gap: 7px; padding: 11px 15px; border-top: 1px solid var(--line); flex-wrap: wrap; }
-.arc-brand .arat { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; cursor: pointer; transition: 0.14s; }
+.arc-brand .arat { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; cursor: pointer; transition: var(--dur-base); }
 .arc-brand .arat:hover { color: var(--text-2); border-color: var(--line-3); }
 .arc-brand .arat.on { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-brand .pvcap { font-size: 11px; color: var(--muted); padding: 0 15px 14px; display: flex; align-items: center; gap: 8px; line-height: 1.5; }
 
 /* sources */
-.arc-brand .src { display: flex; align-items: center; gap: 11px; padding: 10px 4px; border-bottom: 1px solid var(--line); cursor: pointer; transition: 0.14s; }
+.arc-brand .src { display: flex; align-items: center; gap: 11px; padding: 10px 4px; border-bottom: 1px solid var(--line); cursor: pointer; transition: var(--dur-base); }
 .arc-brand .src:last-child { border-bottom: 0; }
 .arc-brand .src:hover { background: rgba(255, 255, 255, 0.025); }
 .arc-brand .src .di { width: 32px; height: 38px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; flex-shrink: 0; position: relative; }
@@ -156,13 +156,13 @@
 .arc-brand .src .sn { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-brand .src .sm { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
 .arc-brand .src .sm b { color: var(--ok-text); font-weight: 600; }
-.arc-brand .src .sgo { color: var(--muted); font-size: 12px; flex-shrink: 0; opacity: 0; transition: 0.14s; }
+.arc-brand .src .sgo { color: var(--muted); font-size: 12px; flex-shrink: 0; opacity: 0; transition: var(--dur-base); }
 .arc-brand .src:hover .sgo { opacity: 1; color: var(--accent-contrast); }
 .arc-brand .stale { margin-left: 7px; font-size: 8.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 4px; padding: 1px 5px; vertical-align: 1px; }
-.arc-brand .resyncall { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; cursor: pointer; transition: 0.14s; }
+.arc-brand .resyncall { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; cursor: pointer; transition: var(--dur-base); }
 .arc-brand .resyncall:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-brand .resyncall svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.9; }
-.arc-brand .resync { flex-shrink: 0; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; transition: 0.14s; }
+.arc-brand .resync { flex-shrink: 0; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; transition: var(--dur-base); }
 .arc-brand .resync svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-brand .src:hover .resync { opacity: 0.7; }
 .arc-brand .resync:hover { opacity: 1 !important; color: var(--text); background: rgba(255, 255, 255, 0.06); }
@@ -177,7 +177,7 @@
 .arc-brand .intake { margin: 18px clamp(20px, 2.6vw, 30px) 0; border: 1px solid var(--accent-border); border-radius: 16px; background: linear-gradient(180deg, var(--accent-soft), transparent 72%); overflow: hidden; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 30px 70px -50px rgba(0, 0, 0, 0.9); }
 .arc-brand .intakehead { display: flex; align-items: center; gap: 14px; padding: 15px 18px 2px; }
 .arc-brand .ih-title { font-family: var(--serif); font-weight: 600; font-size: 17px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 9px; }
-.arc-brand .ih-title .sp { width: 24px; height: 24px; border-radius: 8px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; color: var(--accent); transition: transform 0.25s var(--ease), box-shadow 0.25s; }
+.arc-brand .ih-title .sp { width: 24px; height: 24px; border-radius: 8px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; color: var(--accent); transition: transform var(--dur-slower) var(--ease), box-shadow var(--dur-slower); }
 .arc-brand .ih-title .sp svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-brand .intakehead:hover .sp { transform: rotate(8deg) scale(1.06); box-shadow: 0 0 16px -2px var(--accent-border); }
 .arc-brand .ih-sub { font-size: 12px; color: var(--text-2); margin-top: 4px; max-width: 62ch; line-height: 1.5; }
@@ -190,7 +190,7 @@
 .arc-brand .bc-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); box-shadow: 0 0 12px -1px var(--accent-border); transform-origin: left; }
 .arc-brand .bc-pct { font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--accent-contrast); white-space: nowrap; }
 .arc-brand .bc-miss { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.arc-brand .bc-miss a { color: var(--blue-text); cursor: pointer; transition: 0.12s; }
+.arc-brand .bc-miss a { color: var(--blue-text); cursor: pointer; transition: var(--dur-fast); }
 .arc-brand .bc-miss a:hover { color: var(--accent-contrast); }
 .arc-brand .sources { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; padding: 14px 18px 16px; }
 @media (max-width: 1080px) { .arc-brand .sources { grid-template-columns: repeat(2, 1fr); } }
@@ -199,10 +199,10 @@
   .arc-brand .ih-prog { margin-left: 0; }
   .arc-brand .sources { grid-template-columns: 1fr; }
 }
-.arc-brand .isrc { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 13px; display: flex; flex-direction: column; gap: 10px; min-height: 128px; transition: 0.16s var(--ease); position: relative; }
+.arc-brand .isrc { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 13px; display: flex; flex-direction: column; gap: 10px; min-height: 128px; transition: var(--dur-base) var(--ease); position: relative; }
 .arc-brand .isrc:hover { border-color: var(--accent-border); }
 .arc-brand .isrc .si { display: flex; align-items: flex-start; gap: 10px; }
-.arc-brand .isrc .ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; transition: transform 0.16s var(--ease), background 0.16s; }
+.arc-brand .isrc .ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; transition: transform var(--dur-base) var(--ease), background var(--dur-base); }
 .arc-brand .isrc:hover .ic { transform: scale(1.07); }
 .arc-brand .isrc .ic svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-brand .ic.bl { background: rgba(136, 182, 216, 0.14); color: var(--blue-text); }
@@ -217,16 +217,16 @@
    the title at full width — no collision at any tag length, and no squeezed
    description from sharing the line. */
 .arc-brand .isrc .tg { align-self: flex-end; }
-.arc-brand .isrc .ucta { font-size: 11px; color: var(--muted); border: 1px dashed var(--line-3); border-radius: 9px; padding: 10px; text-align: center; cursor: pointer; transition: 0.14s; margin-top: auto; }
+.arc-brand .isrc .ucta { font-size: 11px; color: var(--muted); border: 1px dashed var(--line-3); border-radius: 9px; padding: 10px; text-align: center; cursor: pointer; transition: var(--dur-base); margin-top: auto; }
 .arc-brand .isrc .ucta:hover { border-color: var(--accent-border); color: var(--text); background: rgba(255, 255, 255, 0.025); }
 .arc-brand .isrc .ucta b { color: var(--text-2); font-weight: 600; }
 .arc-brand .ucta.drop { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 13px 10px; }
-.arc-brand .ucta.drop .upi { width: 22px; height: 22px; stroke: var(--muted); fill: none; stroke-width: 1.5; transition: 0.16s var(--ease); }
+.arc-brand .ucta.drop .upi { width: 22px; height: 22px; stroke: var(--muted); fill: none; stroke-width: 1.5; transition: var(--dur-base) var(--ease); }
 .arc-brand .ucta.drop:hover .upi { stroke: var(--accent); transform: translateY(-2px); }
 .arc-brand .urow { display: flex; gap: 7px; margin-top: auto; }
 .arc-brand .urow input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font-family: inherit; font-size: 11.5px; padding: 8px 9px; outline: none; }
 .arc-brand .urow input:focus { border-color: var(--accent-border); }
-.arc-brand .ibtn { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #201808; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); border: 1px solid #b8974a; border-radius: 8px; padding: 0 15px; cursor: pointer; white-space: nowrap; box-shadow: 0 6px 16px -9px rgba(200, 162, 74, 0.7); transition: 0.14s var(--ease); }
+.arc-brand .ibtn { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #201808; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); border: 1px solid #b8974a; border-radius: 8px; padding: 0 15px; cursor: pointer; white-space: nowrap; box-shadow: 0 6px 16px -9px rgba(200, 162, 74, 0.7); transition: var(--dur-base) var(--ease); }
 .arc-brand .ibtn:hover { filter: brightness(1.05); transform: translateY(-1px); }
 .arc-brand .ibtn:disabled { opacity: 0.6; cursor: default; transform: none; filter: none; }
 
@@ -282,7 +282,7 @@
 
 /* Empty-state call to action — a real button, because "no palette yet" is the
    one moment the operator most needs a way in, and a paragraph offers none. */
-.arc-brand .bsempty { display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); margin: 0 16px 4px; padding: 14px 16px; border: 1px dashed var(--line-2); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; line-height: 1.5; text-align: left; cursor: pointer; transition: border-color 0.15s var(--ease), background 0.15s var(--ease), color 0.15s var(--ease); }
+.arc-brand .bsempty { display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); margin: 0 16px 4px; padding: 14px 16px; border: 1px dashed var(--line-2); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; line-height: 1.5; text-align: left; cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
 .arc-brand .bsempty:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text-2); }
 .arc-brand .bsempty b { color: var(--text); }
 .arc-brand .bsempty svg { width: 16px; height: 16px; flex: 0 0 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
@@ -308,7 +308,7 @@
 
 /* Typeface picker (edit-typography-modal.tsx) */
 .typform .typtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.typform .typtab { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 9px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s var(--ease), background 0.15s var(--ease), color 0.15s var(--ease); }
+.typform .typtab { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 9px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
 .typform .typtab:hover { border-color: var(--line-3); color: var(--text); }
 .typform .typtab.on { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
 .typform .typtab-t { font-size: 12px; font-weight: 600; }
@@ -316,7 +316,7 @@
 .typform .typtab.on .typtab-v { color: var(--accent); }
 .typform .typhint { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
 .typform .fontlist { display: grid; gap: 7px; }
-.typform .fontopt { display: flex; flex-direction: column; gap: 5px; padding: 11px 13px; border: 1px solid var(--line-2); border-radius: 10px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s var(--ease), background 0.15s var(--ease); }
+.typform .fontopt { display: flex; flex-direction: column; gap: 5px; padding: 11px 13px; border: 1px solid var(--line-2); border-radius: 10px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
 .typform .fontopt:hover { border-color: var(--line-3); background: rgba(255, 255, 255, 0.02); }
 .typform .fontopt.on { border-color: var(--accent-border); background: var(--accent-soft); }
 .typform .fontopt-h { display: flex; align-items: baseline; gap: 8px; }
@@ -334,7 +334,7 @@
 .arc-brand .logoset-err { padding: 8px 11px; border: 1px solid var(--red-border, rgba(204, 102, 102, 0.4)); border-radius: 8px; color: var(--red-text); font-size: 11.5px; line-height: 1.45; }
 .arc-brand .logogrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
 .arc-brand .logotile { display: flex; flex-direction: column; gap: 7px; }
-.arc-brand .logodrop { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 10; padding: 12px; border: 1px dashed var(--line-2); border-radius: 10px; background: var(--inset); cursor: pointer; transition: border-color 0.15s var(--ease), background 0.15s var(--ease); }
+.arc-brand .logodrop { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 10; padding: 12px; border: 1px dashed var(--line-2); border-radius: 10px; background: var(--inset); cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
 .arc-brand .logodrop:hover:not(:disabled) { border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-brand .logotile.over .logodrop { border-color: var(--accent); background: var(--accent-soft); }
 .arc-brand .logotile.filled .logodrop { border-style: solid; }

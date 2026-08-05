@@ -36,7 +36,7 @@
 .arc-app .support .sup-form select {
   width: 100%; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 9px;
   background: var(--inset); color: var(--text); font: inherit; font-size: 13px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
 }
 .arc-app .support .sup-form textarea { resize: vertical; min-height: 120px; line-height: 1.55; }
 .arc-app .support .sup-form input::placeholder,
@@ -55,7 +55,7 @@
 .arc-app .support .sup-cat {
   height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2);
   background: transparent; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 500;
-  cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s;
+  cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base), background var(--dur-base);
 }
 .arc-app .support .sup-cat:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .support .sup-cat.on { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
@@ -65,7 +65,7 @@
 .arc-app .support .sup-impact {
   display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px;
   border: 1px solid var(--line-2); border-radius: 10px; background: transparent;
-  color: var(--text-2); font: inherit; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  color: var(--text-2); font: inherit; cursor: pointer; transition: border-color var(--dur-base), background var(--dur-base);
 }
 .arc-app .support .sup-impact:hover { border-color: var(--accent-border); }
 .arc-app .support .sup-impact b { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
@@ -117,12 +117,12 @@
 .arc-app .support .sup-faq summary {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 11px; font-size: 12.5px; font-weight: 500; color: var(--text-2);
-  cursor: pointer; list-style: none; transition: color 0.15s;
+  cursor: pointer; list-style: none; transition: color var(--dur-base);
 }
 .arc-app .support .sup-faq summary::-webkit-details-marker { display: none; }
 .arc-app .support .sup-faq summary:hover { color: var(--text); }
 .arc-app .support .sup-faq details[open] summary { color: var(--text); }
-.arc-app .support .sup-plus { color: var(--muted); font-size: 15px; line-height: 1; transition: transform 0.2s var(--ease); flex-shrink: 0; }
+.arc-app .support .sup-plus { color: var(--muted); font-size: 15px; line-height: 1; transition: transform var(--dur-slow) var(--ease); flex-shrink: 0; }
 .arc-app .support .sup-faq details[open] .sup-plus { transform: rotate(45deg); color: var(--accent); }
 .arc-app .support .sup-a { padding: 0 11px 14px; font-size: 12px; line-height: 1.65; color: var(--muted); }
 .arc-app .support .sup-a b { color: var(--text-2); font-weight: 600; }
@@ -131,7 +131,7 @@
 .arc-app .support .sup-ways { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
 .arc-app .support .sup-way {
   display: flex; align-items: flex-start; gap: 11px; padding: 11px; border-radius: 10px;
-  border: 1px solid transparent; text-decoration: none; transition: border-color 0.15s, background 0.15s;
+  border: 1px solid transparent; text-decoration: none; transition: border-color var(--dur-base), background var(--dur-base);
 }
 .arc-app .support a.sup-way:hover { border-color: var(--accent-border); background: rgba(255, 255, 255, 0.03); }
 .arc-app .support .sup-waymk { width: 26px; height: 26px; flex-shrink: 0; border-radius: 8px; display: grid; place-items: center; font-size: 13px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border); }
@@ -146,7 +146,7 @@
 .arc-app .support .sup-list > li:last-child { border-bottom: 0; }
 .arc-app .support .sup-list summary {
   display: grid; grid-template-columns: 88px minmax(0, 1fr) auto auto; align-items: center; gap: 14px;
-  padding: 12px 17px; cursor: pointer; list-style: none; transition: background 0.15s;
+  padding: 12px 17px; cursor: pointer; list-style: none; transition: background var(--dur-base);
 }
 .arc-app .support .sup-list summary::-webkit-details-marker { display: none; }
 .arc-app .support .sup-list summary:hover { background: rgba(255, 255, 255, 0.02); }

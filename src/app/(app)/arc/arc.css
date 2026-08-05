@@ -488,7 +488,7 @@
   font-size: 11.5px;
   font-weight: 560;
   cursor: pointer;
-  transition: background .16s ease, color .16s ease;
+  transition: background var(--dur-base) ease, color var(--dur-base) ease;
 }
 .arc-stalled-reply button:hover { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--text); }
 .arc-stalled-reply button:focus-visible { outline: 2px solid var(--red-text); outline-offset: 2px; }
@@ -1888,7 +1888,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-  transition: opacity 180ms ease, stroke-width 180ms ease;
+  transition: opacity var(--dur-slow) ease, stroke-width var(--dur-slow) ease;
 }
 .arc-auto-mark-bridge { opacity: .58; }
 .arc-auto-mark circle { fill: currentColor; stroke: none; }
