@@ -142,6 +142,10 @@ export * from "./identifier-leak";
 export * from "./arc-prose";
 export * from "./inline-fix";
 
+// When an in-flight reply has actually died, so the bubble stops claiming work
+// is happening. Read-side only — nothing here rewrites persisted state.
+export * from "./arc-stalled-run";
+
 // One colour per persona, everywhere (BSR-661). Import personaAccent rather
 // than re-deriving a hue from a regex ladder.
 export * from "./persona-accent";

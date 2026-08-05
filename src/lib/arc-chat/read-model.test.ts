@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ArcConversation } from "./persistence";
+import type { ArcConversation, ArcMessage } from "./persistence";
 
 const mocks = vi.hoisted(() => ({
   isConfigured: vi.fn(),
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   listConversations: vi.fn(),
   listMessages: vi.fn(),
   listActiveRuns: vi.fn(),
+  listTaskStates: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -20,6 +21,7 @@ vi.mock("./persistence", () => ({
   listConversationsForViewer: mocks.listConversations,
   listMessages: mocks.listMessages,
   listActiveArcRunConversationIds: mocks.listActiveRuns,
+  listArcRunTaskStates: mocks.listTaskStates,
 }));
 
 import { getArcChatModel, getRecentArcConversations } from "./read-model";
@@ -52,7 +54,29 @@ beforeEach(() => {
   mocks.listConversations.mockResolvedValue([conversation]);
   mocks.listMessages.mockResolvedValue([]);
   mocks.listActiveRuns.mockResolvedValue([]);
+  mocks.listTaskStates.mockResolvedValue(new Map());
 });
+
+/** A `pending` Arc reply — the row shape a stranded turn leaves behind. */
+function pendingReply(overrides: Partial<ArcMessage> = {}): ArcMessage {
+  return {
+    id: "message-1",
+    conversationId: conversation.id,
+    role: "arc",
+    body: "",
+    status: "pending",
+    agentTaskId: "task-1",
+    mentions: [],
+    media: [],
+    steps: [],
+    feedback: null,
+    actions: [],
+    suggestions: [],
+    attachments: [],
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
 
 describe("getArcChatModel", () => {
   it("uses demo mode only when the real backend is not configured", async () => {
@@ -95,6 +119,60 @@ describe("getArcChatModel", () => {
 
     expect(model.status === "live" ? model.threadGroups[0]?.items[0]?.preview : null)
       .toBe("Homeowner outreach Drafted a storm follow-up sequence.");
+  });
+
+  /**
+   * The bug these cover: a turn whose runner died leaves `arc_messages.status`
+   * at "pending" forever, so the bubble spun with no way out — and because the
+   * row really was pending, reloading reproduced the spinner instead of
+   * clearing it. The read model has to notice.
+   */
+  describe("stranded runs", () => {
+    const messagesOf = (model: Awaited<ReturnType<typeof getArcChatModel>>) =>
+      model.status === "live" ? model.messages : [];
+
+    it("marks a pending reply whose task already settled", async () => {
+      mocks.listMessages.mockResolvedValue([pendingReply()]);
+      mocks.listTaskStates.mockResolvedValue(
+        new Map([["task-1", { status: "failed", startedAt: new Date().toISOString(), createdAt: null }]]),
+      );
+
+      expect(messagesOf(await getArcChatModel())[0]).toMatchObject({
+        status: "pending",
+        stalled: true,
+        stalledReason: "task_settled",
+      });
+    });
+
+    it("leaves a run that is genuinely still working alone", async () => {
+      mocks.listMessages.mockResolvedValue([pendingReply()]);
+      mocks.listTaskStates.mockResolvedValue(
+        new Map([["task-1", { status: "running", startedAt: new Date().toISOString(), createdAt: null }]]),
+      );
+
+      expect(messagesOf(await getArcChatModel())[0]?.stalled).toBeUndefined();
+    });
+
+    it("does not touch a settled reply, however old", async () => {
+      mocks.listMessages.mockResolvedValue([
+        pendingReply({ status: "complete", body: "Here you go.", createdAt: "2020-01-01T00:00:00.000Z" }),
+      ]);
+
+      expect(messagesOf(await getArcChatModel())[0]?.stalled).toBeUndefined();
+      // No pending rows means no reason to ask the queue anything.
+      expect(mocks.listTaskStates).not.toHaveBeenCalled();
+    });
+
+    it("leaves messages alone when the task lookup fails", async () => {
+      // No evidence a run is dead is not evidence that it is. A spinner is a
+      // smaller lie than a false "Arc stopped responding" on live work.
+      mocks.listMessages.mockResolvedValue([pendingReply()]);
+      mocks.listTaskStates.mockRejectedValue(new Error("queue read failed"));
+
+      const model = await getArcChatModel();
+      expect(model.status).toBe("live");
+      expect(messagesOf(model)[0]?.stalled).toBeUndefined();
+    });
   });
 });
 
