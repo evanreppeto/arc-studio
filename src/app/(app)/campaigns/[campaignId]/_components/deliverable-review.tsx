@@ -112,11 +112,6 @@ export function ReviewBlock({
         <div className="rvhead">
           <span className="rvdot" aria-hidden="true" />
           <b className="rvline">{summary.headline}</b>
-          {rec && (
-            <span className="rvverdict">
-              {reviewAgentLabel(rec.agent)} recommends {reviewVerdictLabel(rec.verdict)}
-            </span>
-          )}
         </div>
       )}
 
@@ -186,10 +181,19 @@ export function ReviewBlock({
         </details>
       )}
 
-      {showDetail && rec?.rationale && (
+      {showDetail && (rec?.rationale || rec) && (
         <details className="rvfold">
           <summary>Why Arc flagged it</summary>
-          <p className="rvbody">{rec.rationale}</p>
+          {/* Who reviewed, said once and here. Beside the headline it was a
+              third phrasing of the state already given by the status pill and
+              the headline itself — but WHICH reviewer is a real distinction
+              (Arc's own note vs an independent check), so it keeps a home. */}
+          {rec && (
+            <p className="rvverdict">
+              {reviewAgentLabel(rec.agent)} recommends {reviewVerdictLabel(rec.verdict)}.
+            </p>
+          )}
+          {rec?.rationale && <p className="rvbody">{rec.rationale}</p>}
         </details>
       )}
 

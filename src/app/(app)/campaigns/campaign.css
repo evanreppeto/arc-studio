@@ -134,7 +134,7 @@
 .arc-campaign .review.tone-amber .rvdot { background: var(--warn); }
 .arc-campaign .review.tone-ok .rvdot { background: var(--ok); }
 .arc-campaign .rvline { font-size: 12.5px; font-weight: 600; color: var(--text); }
-.arc-campaign .rvverdict { margin-left: auto; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.arc-campaign .rvverdict { font-size: 11.5px; color: var(--muted); margin: 7px 0 0; }
 .arc-campaign .rvbanned { font-size: 11.5px; color: var(--red-text); line-height: 1.5; margin-top: 8px; }
 
 /* Findings. One line each by default — the quoted words plus the first clause of
