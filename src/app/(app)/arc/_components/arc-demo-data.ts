@@ -149,7 +149,12 @@ export const DEMO_PACKAGE_CARDS: ArcActionCard[] = [
     status: "draft",
     preview: "Free personalized walkthrough for teams evaluating Meridian. See how it fits your workflow before your trial winds down.",
     rows: [{ name: "Destination", meta: "Campaign-matched" }],
-    flags: [{ tone: "ok", label: "No overclaim" }],
+    // Deliberately flagless, and it is the COMMON case: a census of prod found
+    // 13 of 16 approval-bearing draft cards carrying no flags at all. With every
+    // fixture flagged, the preview only ever showed "checks passed" and the
+    // state an operator actually meets most often — "no checks recorded" —
+    // could not be reviewed on the one screen where this design gets reviewed.
+    flags: [],
     approval: { kind: "campaign", campaignId: "demo-campaign", assetId: "demo-asset-landing" },
   },
 ];

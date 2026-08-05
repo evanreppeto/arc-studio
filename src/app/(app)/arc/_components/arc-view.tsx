@@ -2600,7 +2600,7 @@ export function ArcView({
           one from cross-fading its text under the incoming one. */}
       <AnimatePresence mode="wait">
         {reviewCards && reviewCards.length > 0
-          ? <DeliverableReview key="asset-review" cards={reviewCards} statuses={assetStatuses} bodies={assetBodies} paneBox={panelPaneBox} onStatus={recordAssetStatus} onClose={() => setReviewCards(null)} />
+          ? <DeliverableReview key="asset-review" cards={reviewCards} statuses={assetStatuses} bodies={assetBodies} paneBox={panelPaneBox} returnLabel={workPanelOpen ? "Workspace" : undefined} onStatus={recordAssetStatus} onClose={() => setReviewCards(null)} />
           : workPanelOpen
             ? <ArcWorkPanel key="work-panel" message={latestArcMessage} messages={live ? renderedMessages : undefined} cards={workCards} statuses={assetStatuses} demoSeed={demoSeed} demoPending={demoPending} demoRequest={latestDemoRequest} demoOutcome={latestDemoArcTurn ? latestDemoArcTurn.outcome ?? "complete" : undefined} paneBox={panelPaneBox} onReview={openReview} onRecover={recoverRun} onClose={() => setWorkPanelVisibility(false)} />
             : null}

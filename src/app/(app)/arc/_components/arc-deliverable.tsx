@@ -38,12 +38,15 @@ import {
   ChevronRight,
   Maximize2,
   PencilLine,
+  ShieldQuestion,
   X,
 } from "lucide-react";
 
 import {
-  ARC_MEDIUM_LABEL,
+  ARC_CHECK_LABEL,
   arcDeliverableMedium,
+  arcDraftCheckState,
+  ARC_MEDIUM_LABEL,
   ASSET_NOUN,
   countOf,
   isLongDraftBody,
@@ -221,6 +224,32 @@ export function DeliverableCanvas({ card, content }: { card: ArcActionCard; cont
   );
 }
 
+/**
+ * What Arc checked, including when it checked nothing.
+ *
+ * The chat used to render `flags` when present and nothing when absent. On prod
+ * that meant silence for 13 of 16 draft cards — the operator could not tell an
+ * inspected draft from an uninspected one, on the screen where they decide
+ * whether copy reaches a customer. `unchecked` gets its own colourless tone and
+ * never borrows the "passed" green.
+ */
+function DraftChecks({ flags, limit }: { flags: ArcActionCard["flags"]; limit?: number }) {
+  const state = arcDraftCheckState(flags);
+  return (
+    <div className="arc-dlv-flags" data-check={state}>
+      {state === "unchecked" ? (
+        <span className="arc-dlv-unchecked" title="Arc recorded no guardrail result for this draft. Read it before approving.">
+          <ShieldQuestion size={12} />{ARC_CHECK_LABEL.unchecked}
+        </span>
+      ) : (
+        (limit ? flags.slice(0, limit) : flags).map((flag, index) => (
+          <span key={`${flag.label}-${index}`} className={`arc-action-flag is-${flag.tone}`}>{flag.label}</span>
+        ))
+      )}
+    </div>
+  );
+}
+
 /* ── Decisions ──────────────────────────────────────────────────────────── */
 
 /** Approve / Revise / Decline plus the revise composer. One component so the
@@ -351,13 +380,10 @@ export function InlineDeliverable({
         </button>
       ) : null}
 
-      {card.flags.length > 0 ? (
-        <div className="arc-dlv-flags">
-          {card.flags.slice(0, 4).map((flag, index) => (
-            <span key={`${flag.label}-${index}`} className={`arc-action-flag is-${flag.tone}`}>{flag.label}</span>
-          ))}
-        </div>
-      ) : null}
+      {/* Always rendered, including when there is nothing to report — an empty
+          flag list used to render nothing at all, which made a draft nobody had
+          checked look exactly like one that passed. */}
+      <DraftChecks flags={card.flags} limit={4} />
 
       <footer className="arc-dlv-foot">
         <DecisionBar card={card} decision={decision} status={status} />
@@ -445,6 +471,7 @@ export function DeliverableReview({
   statuses,
   bodies,
   paneBox,
+  returnLabel,
   onStatus,
   onClose,
 }: {
@@ -452,6 +479,9 @@ export function DeliverableReview({
   statuses: Record<string, ArcAssetStatus>;
   bodies: Record<string, ArcAssetBody>;
   paneBox: PaneBox | null;
+  /** Where closing returns to, when that isn't the conversation — e.g. the
+   *  workspace sidebar the operator selected this from. */
+  returnLabel?: string;
   onStatus: (assetId: string, status: ArcAssetStatus) => void;
   onClose: () => void;
 }) {
@@ -500,10 +530,16 @@ export function DeliverableReview({
   }, [goBack, step, showingIndex, cards.length]);
 
   const returningToIndex = !showingIndex && cards.length > 1;
-  const backLabel = returningToIndex ? `All ${countOf(cards.length, ASSET_NOUN)}` : "Back to chat";
+  // Closing lands wherever the operator opened this from. Selecting a
+  // deliverable in the workspace sidebar leaves that sidebar open underneath, so
+  // "Back to chat" would name a place this button does not go.
+  const exitLabel = returnLabel ?? "Back to chat";
+  const backLabel = returningToIndex ? `All ${countOf(cards.length, ASSET_NOUN)}` : exitLabel;
   // Spelled out for a screen reader: the visible label is a destination, and out
   // of context "All 4 assets" doesn't say it is the way back to them.
-  const backAria = returningToIndex ? `Back to all ${countOf(cards.length, ASSET_NOUN)}` : "Back to the conversation";
+  const backAria = returningToIndex
+    ? `Back to all ${countOf(cards.length, ASSET_NOUN)}`
+    : returnLabel ? `Back to ${returnLabel.toLowerCase()}` : "Back to the conversation";
 
   return (
     <OverlayPortal>
@@ -594,16 +630,10 @@ export function DeliverableReview({
                       ))}
                     </section>
                   ) : null}
-                  {card.flags.length > 0 ? (
-                    <section>
-                      <h4>Checks</h4>
-                      <div className="arc-dlv-flags">
-                        {card.flags.map((flag, flagIndex) => (
-                          <span key={`${flag.label}-${flagIndex}`} className={`arc-action-flag is-${flag.tone}`}>{flag.label}</span>
-                        ))}
-                      </div>
-                    </section>
-                  ) : null}
+                  <section>
+                    <h4>Checks</h4>
+                    <DraftChecks flags={card.flags} />
+                  </section>
                 </aside>
               </motion.div>
             )}
