@@ -2,7 +2,46 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
-import { buildStoragePath, createFolder, insertAsset, insertAssetWithUrl, moveAsset, sanitizeFileName, setAvailableToArc, DEFAULT_MEDIA_FOLDERS, seedDefaultMediaFolders } from "./persistence";
+import { buildStoragePath, createFolder, createsFolderCycle, insertAsset, insertAssetWithUrl, moveAsset, sanitizeFileName, setAvailableToArc, DEFAULT_MEDIA_FOLDERS, seedDefaultMediaFolders } from "./persistence";
+
+/**
+ * The invariant behind dragging one folder onto another.
+ *
+ * A cycle is not a cosmetic problem: `buildFolderViews` and the rail's renderer
+ * both walk children recursively, so a folder made its own ancestor either
+ * vanishes from the tree or recurses without end in the browser. The check is
+ * pure so it can be exercised here rather than only against a database.
+ */
+describe("createsFolderCycle", () => {
+  const rows = [
+    { id: "a", parent_id: null },
+    { id: "b", parent_id: "a" },
+    { id: "c", parent_id: "b" },
+    { id: "d", parent_id: null },
+  ];
+
+  it("refuses a folder's direct child", () => {
+    expect(createsFolderCycle(rows, "a", "b")).toBe(true);
+  });
+
+  it("refuses a deeper descendant, not just the child", () => {
+    expect(createsFolderCycle(rows, "a", "c")).toBe(true);
+  });
+
+  it("allows an unrelated branch, and allows moving a child up under a sibling", () => {
+    expect(createsFolderCycle(rows, "a", "d")).toBe(false);
+    expect(createsFolderCycle(rows, "c", "d")).toBe(false);
+  });
+
+  it("terminates on data that is already cyclic, and refuses rather than widening it", () => {
+    const broken = [
+      { id: "x", parent_id: "y" },
+      { id: "y", parent_id: "x" },
+      { id: "z", parent_id: null },
+    ];
+    expect(createsFolderCycle(broken, "z", "x")).toBe(true);
+  });
+});
 
 describe("sanitizeFileName", () => {
   it("strips path separators and unsafe chars", () => {

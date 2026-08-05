@@ -112,6 +112,78 @@ export async function deleteFolder(id: string, orgId: string, client: SupabaseCl
   return (data ?? []).length > 0;
 }
 
+/**
+ * Would filing `id` under `parentId` make the folder its own ancestor?
+ *
+ * Pure, and separated from the write so it can be tested without a database.
+ * Walks UP from the proposed parent: if the chain reaches the folder being
+ * moved, the move would close a loop.
+ *
+ * A chain that revisits a node it has already seen means the stored data is
+ * *already* cyclic. That answers "true" — refusing to move anything deeper into
+ * a subtree that is broken is the conservative call, and it keeps this function
+ * total rather than letting it spin.
+ */
+export function createsFolderCycle(
+  rows: { id: string; parent_id: string | null }[],
+  id: string,
+  parentId: string,
+): boolean {
+  const parents = new Map(rows.map((row) => [row.id, row.parent_id]));
+  const seen = new Set<string>();
+  let cursor: string | null = parentId;
+  while (cursor) {
+    if (cursor === id) return true;
+    if (seen.has(cursor)) return true;
+    seen.add(cursor);
+    cursor = parents.get(cursor) ?? null;
+  }
+  return false;
+}
+
+/**
+ * Re-parent a folder — the write behind dragging one folder onto another.
+ *
+ * Org-scoped like its siblings above, plus one invariant they don't need: a
+ * folder may not become its own descendant. That is not cosmetic. Both
+ * `buildFolderViews` and the rail's renderer walk children recursively, so a
+ * folder made its own ancestor either disappears from the tree (the read
+ * model's `visited` set halts the walk) or recurses without end in the browser.
+ *
+ * `parentId: null` is the root and a real destination — the same reason
+ * `moveAsset` accepts it. Distinct return values rather than a boolean, because
+ * "that folder isn't in this workspace" and "that would nest it inside itself"
+ * need different sentences on screen.
+ */
+export async function moveFolder(
+  id: string,
+  parentId: string | null,
+  orgId: string,
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<"moved" | "not_found" | "cycle"> {
+  if (parentId === id) return "cycle";
+
+  const { data, error } = await client.from("media_folders").select("id, parent_id").eq("org_id", orgId);
+  if (error) throw new Error(`media_folders read failed: ${error.message}`);
+  const rows = (data ?? []) as { id: string; parent_id: string | null }[];
+
+  // Both ends re-checked against the org's own rows: the folder being moved so
+  // a foreign id can't be re-filed, and the destination so this workspace's
+  // folder can't be parented into another tenant's tree.
+  if (!rows.some((row) => row.id === id)) return "not_found";
+  if (parentId && !rows.some((row) => row.id === parentId)) return "not_found";
+  if (parentId && createsFolderCycle(rows, id, parentId)) return "cycle";
+
+  const { data: updated, error: updateError } = await client
+    .from("media_folders")
+    .update({ parent_id: parentId })
+    .eq("id", id)
+    .eq("org_id", orgId)
+    .select("id");
+  if (updateError) throw new Error(`media_folders update failed: ${updateError.message}`);
+  return (updated ?? []).length > 0 ? "moved" : "not_found";
+}
+
 export type InsertAssetInput = {
   orgId: string;
   folderId: string | null;
