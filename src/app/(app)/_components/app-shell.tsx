@@ -436,7 +436,12 @@ export function AppShell({
             ))}
             <section className="rail-recents" aria-labelledby="rail-recents-title">
               <div className="rail-recents-head">
-                <h2 id="rail-recents-title">Recent chats</h2>
+                {/* A div, not an h2. As a heading this opened the document
+                    outline on EVERY route — a sidebar label announced before the
+                    page's own h1 — so "jump to the first heading" landed in the
+                    chat list. `aria-labelledby` on the section still names the
+                    region, so nothing is lost to a screen reader. */}
+                <div id="rail-recents-title" className="rail-recents-title">Recent chats</div>
                 <Link
                   href="/arc?new=1"
                   className="rail-recents-new"
