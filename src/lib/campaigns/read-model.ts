@@ -657,6 +657,66 @@ export async function getArcAssetStatuses(
   }
 }
 
+/** One deliverable's readable copy, for a surface that renders it rather than links to it. */
+export type ArcAssetBody = {
+  id: string;
+  /** The copy an operator should be reading: the newest authored version. */
+  body: string;
+  /** True when `body` came from `edited_body` / `approved_body` rather than Arc's original draft. */
+  edited: boolean;
+};
+
+/**
+ * The full copy behind a conversation's action cards, keyed by asset id.
+ *
+ * An action card carries `preview`, and `preview` is a ~280-character prefix of
+ * the body — verified against prod, where the longest one on record is 280 and
+ * the median cuts mid-word ("one of the "). It was sized for a receipt, and a
+ * receipt is what the chat could render from it. The copy itself only ever
+ * existed in `campaign_assets`, which is why reading a draft meant leaving the
+ * conversation.
+ *
+ * Read at render time rather than widened into the card at write time on
+ * purpose: cards are frozen JSON in `arc_messages.metadata`, so a card-shape
+ * change reaches nothing already written, and every draft an operator has open
+ * today predates it. Reading through the asset also means the chat shows the
+ * copy as it stands now — an edit made on the campaign page is visible in the
+ * conversation instead of the conversation quoting a superseded draft.
+ *
+ * Org-scoped, and returns {} rather than throwing, for the same reason
+ * `getArcAssetStatuses` does: a card that falls back to its stored preview still
+ * renders, and a chat that fails to render helps nobody.
+ */
+export async function getArcAssetBodies(
+  assetIds: readonly string[],
+  orgId?: string,
+  client?: SupabaseClient,
+): Promise<Record<string, ArcAssetBody>> {
+  const ids = [...new Set(assetIds.filter((id) => typeof id === "string" && id.trim()))];
+  if (ids.length === 0) return {};
+  if (!client && !isSupabaseAdminConfigured()) return {};
+  try {
+    const supabase = client ?? getSupabaseAdminClient();
+    const { data, error } = await applyOrgScope(
+      supabase.from("campaign_assets").select("id,draft_body,edited_body,approved_body"),
+      orgId,
+    ).in("id", ids);
+    assertSupabaseResult("campaign_assets", error);
+    const out: Record<string, ArcAssetBody> = {};
+    for (const row of (data ?? []) as Array<{ id: string; draft_body: string | null; edited_body: string | null; approved_body: string | null }>) {
+      // Newest authored version wins — approving an edit must not make the chat
+      // fall back to showing the copy that edit replaced.
+      const authored = row.approved_body?.trim() || row.edited_body?.trim() || null;
+      const body = authored ?? row.draft_body?.trim() ?? "";
+      if (!body) continue;
+      out[row.id] = { id: row.id, body, edited: Boolean(authored) };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Every deliverable in the workspace still waiting on a decision, wherever it
  * lives (BSR-702 follow-on).

@@ -17,7 +17,7 @@ import {
 } from "@/domain";
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 import { decideAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
-import { getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
+import { type ArcAssetBody, getArcAssetBodies, getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
 import { requestAssetRevision } from "@/lib/campaigns/revisions";
 import { getArcDisplayName } from "@/lib/arc-chat/agent-config";
 import { isAcceptedAttachment } from "@/lib/arc-chat/attachment-types";
@@ -616,6 +616,28 @@ export async function getArcAssetStatusesAction(
   try {
     const ctx = await getCurrentWorkspaceContext();
     return await getArcAssetStatuses(assetIds, ctx.orgId);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The readable copy behind a conversation's approval-gated cards.
+ *
+ * The inline deliverable card renders the draft itself, and the card's own
+ * `preview` is only the first ~280 characters of it. Fetched lazily per message
+ * so a long thread doesn't pull every body it has ever mentioned, and failing
+ * soft: an empty map leaves each card on its stored preview.
+ */
+export async function getArcAssetBodiesAction(
+  assetIds: string[],
+): Promise<Record<string, ArcAssetBody>> {
+  await requireOperator();
+  if (!Array.isArray(assetIds) || assetIds.length === 0) return {};
+  if (!isSupabaseAdminConfigured()) return {};
+  try {
+    const ctx = await getCurrentWorkspaceContext();
+    return await getArcAssetBodies(assetIds, ctx.orgId);
   } catch {
     return {};
   }

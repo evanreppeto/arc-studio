@@ -96,6 +96,7 @@ import {
   workPanelOpenOnConversationChange,
   writeWorkPanelPreference,
 } from "@/lib/arc-chat/work-panel-preference";
+import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 import type { ConnectionView } from "@/lib/connections/read-model";
 import type { ConnectorView } from "@/lib/connectors/read-model";
 import type {
@@ -126,6 +127,7 @@ import {
   cancelArcRunAction,
   deleteArcConversationAction,
   editAndResendArcMessageAction,
+  getArcAssetBodiesAction,
   getArcAssetStatusesAction,
   pinArcConversationAction,
   regenerateArcReplyAction,
@@ -162,10 +164,12 @@ import type {
   ArcWaiting,
   ComposerMenu,
   DemoTurn,
+  PaneBox,
   ThreadItem,
 } from "./arc-view.types";
-import { DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING, DEMO_WORKSPACE_CARDS } from "./arc-demo-data";
-import { ArcWorkPanel, AssetReviewPanel, ChipThumb, QuestionPrompt } from "./arc-messages";
+import { DEMO_ASSET_BODIES, DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING, DEMO_WORKSPACE_CARDS } from "./arc-demo-data";
+import { ArcWorkPanel, ChipThumb, QuestionPrompt } from "./arc-messages";
+import { DeliverableReview } from "./arc-deliverable";
 import { ArcLauncher, DemoConversation, LiveConversation, type OptimisticArcTurn } from "./arc-conversation";
 import { useBottomPin } from "./use-bottom-pin";
 
@@ -445,7 +449,6 @@ function connectorStatusLabel(status: DrawerConnectorStatus): string {
 }
 
 /** The Arc pane's box in viewport coordinates. */
-type PaneBox = { top: number; left: number; width: number; height: number };
 
 /**
  * Track an element's viewport rect while `active`.
@@ -1520,6 +1523,10 @@ export function ArcView({
   // the inline package summary.
   const [reviewCards, setReviewCards] = useState<ArcActionCard[] | null>(null);
   const [assetStatuses, setAssetStatuses] = useState<Record<string, ArcAssetStatus>>({});
+  // The readable copy behind each card, so the conversation renders the draft
+  // instead of a receipt pointing at one. Keyed by asset id, same as statuses.
+  // The offline preview seeds from fixtures; live seeds from the asset rows.
+  const [assetBodies, setAssetBodies] = useState<Record<string, ArcAssetBody>>(live ? {} : DEMO_ASSET_BODIES);
   const resolvedDemoConversationId =
     initialDemoConversationId &&
     (initialDemoConversationId === "new" ||
@@ -1540,6 +1547,9 @@ export function ArcView({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
   const chatRootRef = useRef<HTMLDivElement | null>(null);
+  // The review overlay and the workspace panel cover the pane instead of docking
+  // into it, so they need the same measured box the thread drawer does.
+  const panelPaneBox = usePaneBox(chatRootRef, workPanelOpen || Boolean(reviewCards?.length));
   // Measured only while the drawer is open — see usePaneBox. `.arc-chat` is the
   // element the drawer used to be `position: absolute` inside, so its rect is
   // exactly the box the drawer should keep occupying now that it is portaled.
@@ -2283,6 +2293,28 @@ export function ArcView({
     return () => { cancelled = true; };
   }, [live, conversationAssetKey]);
 
+  /**
+   * The copy itself, for the same set of assets.
+   *
+   * Separate from the status fetch on purpose: a status is four bytes and a body
+   * is a page of prose, so a failure to load the copy must not cost the chat its
+   * live decision state. Each falls back independently — no bodies means every
+   * card renders its stored preview, which is what it did before this existed.
+   */
+  useEffect(() => {
+    if (!live || !conversationAssetKey) return;
+    let cancelled = false;
+    getArcAssetBodiesAction(conversationAssetKey.split(","))
+      .then((fromDb) => {
+        if (cancelled || !fromDb || Object.keys(fromDb).length === 0) return;
+        setAssetBodies((current) => ({ ...current, ...fromDb }));
+      })
+      .catch(() => {
+        // Best-effort, as above: the card keeps its preview.
+      });
+    return () => { cancelled = true; };
+  }, [live, conversationAssetKey]);
+
   const needsReviewCards = reviewableWorkCards.filter((card) => {
     const status = assetStatuses[card.approval?.assetId ?? ""] ?? card.status ?? "draft";
     return status !== "approved" && status !== "rejected" && status !== "revision";
@@ -2368,7 +2400,7 @@ export function ArcView({
       <div className="arc-conversation-scroll" ref={scrollRef}>
         <div className="arc-conversation-column">
           {live && historyLoadError ? <div className="arc-history-load-error" role="status"><CircleAlert size={15} /><span><b>History is temporarily unavailable.</b>{historyLoadError}</span></div> : null}
-          {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
+          {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} assetBodies={assetBodies} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} assetBodies={assetBodies} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
           {/* Room for the reply to arrive into, so the question can sit at the
               top of the view while the answer grows downward beneath it.
               Always mounted, and sized to exactly the shortfall — it shrinks as
@@ -2509,18 +2541,17 @@ export function ArcView({
         </div>
       </footer>
 
-      {/* The two side panels swap in place, so they get their own presence scope:
-          mode="wait" lets the outgoing panel finish exiting before the next one
-          enters — rendering both at once cross-fades their text on top of each other. */}
+      {/* Both panels now cover the content pane rather than docking beside it, so
+          they still swap in one presence scope — mode="wait" keeps the outgoing
+          one from cross-fading its text under the incoming one. */}
       <AnimatePresence mode="wait">
         {reviewCards && reviewCards.length > 0
-          ? <AssetReviewPanel key="asset-review" cards={reviewCards} statuses={assetStatuses} onStatus={recordAssetStatus} onClose={() => setReviewCards(null)} />
+          ? <DeliverableReview key="asset-review" cards={reviewCards} statuses={assetStatuses} bodies={assetBodies} paneBox={panelPaneBox} onStatus={recordAssetStatus} onClose={() => setReviewCards(null)} />
           : workPanelOpen
-            ? <ArcWorkPanel key="work-panel" message={latestArcMessage} messages={live ? renderedMessages : undefined} cards={workCards} statuses={assetStatuses} demoSeed={demoSeed} demoPending={demoPending} demoRequest={latestDemoRequest} demoOutcome={latestDemoArcTurn ? latestDemoArcTurn.outcome ?? "complete" : undefined} onReview={openReview} onRecover={recoverRun} onClose={() => setWorkPanelVisibility(false)} />
+            ? <ArcWorkPanel key="work-panel" message={latestArcMessage} messages={live ? renderedMessages : undefined} cards={workCards} statuses={assetStatuses} demoSeed={demoSeed} demoPending={demoPending} demoRequest={latestDemoRequest} demoOutcome={latestDemoArcTurn ? latestDemoArcTurn.outcome ?? "complete" : undefined} paneBox={panelPaneBox} onReview={openReview} onRecover={recoverRun} onClose={() => setWorkPanelVisibility(false)} />
             : null}
       </AnimatePresence>
       <AnimatePresence>
-        {panelVisible ? <motion.button type="button" className="arc-workspace-scrim" aria-label="Close conversation workspace" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setReviewCards(null); setWorkPanelVisibility(false); }} /> : null}
         {/* Scrim AND drawer portal together, never one without the other. The
             drawer claims `aria-modal` and traps Tab across the whole document,
             so its scrim has to block the pointer across the whole shell to
