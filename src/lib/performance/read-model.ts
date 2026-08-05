@@ -4,6 +4,7 @@ import { reportDegraded } from "@/lib/observability/report-degraded";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
+import { demoCampaignSeeds } from "./campaign-demo-detail";
 import { buildTrendBuckets, computeDelta, sumTwoPeriods, type KpiDelta, type TrendPoint } from "./overview-shape";
 
 export type PerformanceTone = "amber" | "green" | "red" | "blue" | "gray";
@@ -319,6 +320,10 @@ function seeded(seed: number): () => number {
 }
 
 function buildDemoPerformanceReadModel(rangeDays: number): PerformanceReadModel {
+  // Whichever demo campaign set is being served — restoration or the generic
+  // default. Everything that NAMES or COUNTS a campaign reads from here, so the
+  // page can never describe a portfolio the campaigns list doesn't contain.
+  const seeds = demoCampaignSeeds();
   const DAY_MS = 24 * 60 * 60 * 1000;
   const now = Date.now();
   const weeks = Math.min(Math.max(Math.ceil(rangeDays / 7), 12), 18);
@@ -364,7 +369,10 @@ function buildDemoPerformanceReadModel(rangeDays: number): PerformanceReadModel 
   const convSpark = trend.map((p) => (p.leads > 0 ? (p.bookings / p.leads) * 100 : 0));
 
   const kpis: PerformanceKpi[] = [
-    { key: "campaigns", label: "Active campaigns", value: "6", hint: "2 awaiting approval", tone: "neutral", delta: "+2", deltaTone: "ok", spark: trend.map(() => 5 + rng()) },
+    // Counted, not typed in. A literal "6" survived the switch to a four-campaign
+    // default demo and told operators the portfolio held two campaigns the list
+    // below it did not show.
+    { key: "campaigns", label: "Active campaigns", value: String(seeds.length), hint: `${seeds.filter((c) => c.lifecycle === "In review").length} awaiting approval`, tone: "neutral", delta: "+2", deltaTone: "ok", spark: trend.map(() => 5 + rng()) },
     { key: "booked", label: "Booked work", value: String(bookedJobs), hint: "demos this range", tone: "ok", delta: "+18%", deltaTone: "ok", spark: bookedSpark },
     { key: "revenue", label: "Revenue impact", value: formatMoney(revenueImpactCents), hint: "attributed to marketing", tone: "accent", delta: "+24%", deltaTone: "ok", spark: revenueSpark },
     { key: "conversion", label: "Lead → booked", value: `${conversionPct}%`, hint: "qualified leads booked", tone: "ok", delta: "+6 pts", deltaTone: "ok", spark: convSpark },
@@ -379,30 +387,51 @@ function buildDemoPerformanceReadModel(rangeDays: number): PerformanceReadModel 
     { label: "Booked", count: bookedJobs },
   ];
 
-  // Per-campaign rows for the demo library (names mirror the campaigns demo fallback).
-  const campaignRows: CampaignPerformanceRow[] = [
-    { id: "demo-emergency-water-response-2026", name: "Pricing-Intent Fast Track 2026", persona: "High-Intent Evaluator", impressions: 68_400, clicks: 3_120, leads: 188, booked: 31, revenueCents: 7_240_000, conversion: 16, trend: "up" },
-    { id: "demo-spring-storm-prep", name: "Quarterly Nurture Refresh", persona: "Proactive Evaluator", impressions: 52_100, clicks: 2_410, leads: 142, booked: 18, revenueCents: 3_960_000, conversion: 13, trend: "up" },
-    { id: "demo-commercial-water-mitigation", name: "Enterprise Expansion Play", persona: "Team admin", impressions: 31_900, clicks: 1_180, leads: 74, booked: 14, revenueCents: 5_120_000, conversion: 19, trend: "flat" },
-    { id: "demo-mold-remediation-awareness", name: "Feature Adoption Awareness", persona: "Feature-Focused Evaluator", impressions: 28_600, clicks: 1_040, leads: 61, booked: 8, revenueCents: 1_840_000, conversion: 13, trend: "down" },
-    { id: "demo-burst-pipe-rapid-response", name: "Stalled-Trial Rescue", persona: "High-Intent Evaluator", impressions: 19_300, clicks: 980, leads: 58, booked: 7, revenueCents: 1_690_000, conversion: 12, trend: "up" },
-    { id: "demo-insurance-partner-referral", name: "Partner Referral Growth", persona: "Procurement", impressions: 14_500, clicks: 540, leads: 41, booked: 4, revenueCents: 1_020_000, conversion: 10, trend: "flat" },
-  ];
+  // Per-campaign rows, DERIVED from the same seeds that back each campaign's
+  // detail view — not restated here.
+  //
+  // Restating them is what broke this: the list used to be six literals whose
+  // display names had been genericised ("Pricing-Intent Fast Track 2026") while
+  // their ids stayed restoration's ("demo-emergency-water-response-2026"). The
+  // comment above them claimed the names mirrored the campaigns demo. They did
+  // not mirror anything — the ids resolved to no campaign the default preview
+  // serves, so every row in this table linked to a "not found" page, and the
+  // same campaign had one name here and a different one on its own detail page.
+  //
+  // Deriving makes both failures unrepresentable: one seed, one id, one name.
+  const campaignRows: CampaignPerformanceRow[] = seeds.map((c) => ({
+    id: c.id,
+    name: c.name,
+    persona: c.persona,
+    impressions: c.impressions,
+    clicks: c.clicks,
+    leads: c.leads,
+    booked: c.booked,
+    revenueCents: c.revenueCents,
+    conversion: c.conversion,
+    trend: c.trend,
+  }));
+
+  // Anomalies name campaigns, so the names have to come from the campaigns that
+  // exist. Hard-coded ones described a portfolio nobody was looking at — the
+  // strongest and weakest campaigns are picked from the active seeds instead.
+  const strongest = [...seeds].sort((a, b) => b.leads - a.leads)[0];
+  const weakest = [...seeds].sort((a, b) => a.conversion - b.conversion)[0];
 
   const anomalies: PerformanceAnomaly[] = [
     {
       id: "anom-storm-spike",
-      title: "Quarterly Nurture Refresh leads up 34% week-over-week",
+      title: `${strongest.name} leads up 34% week-over-week`,
       detail: "Pricing-intent demand spiked after the latest product update. Capacity to book demos is the current constraint, not demand.",
       tone: "ok",
       metric: "+34% leads",
     },
     {
       id: "anom-mold-decay",
-      title: "Feature Adoption Awareness conversion slipping",
-      detail: "Click-to-lead held steady but lead-to-booked fell to 13%. The landing CTA may be under-qualifying inquiries.",
+      title: `${weakest.name} conversion slipping`,
+      detail: `Click-to-lead held steady but lead-to-booked fell to ${weakest.conversion}%. The landing CTA may be under-qualifying inquiries.`,
       tone: "amber",
-      metric: "13% booked",
+      metric: `${weakest.conversion}% booked`,
     },
     {
       id: "anom-referral-revenue",
@@ -416,17 +445,20 @@ function buildDemoPerformanceReadModel(rangeDays: number): PerformanceReadModel 
   const nextMoves: PerformanceNextMove[] = [
     {
       id: "move-storm-capacity",
-      title: "Resize Quarterly Nurture Refresh creative for capacity",
+      title: `Resize ${strongest.name} creative for capacity`,
       detail: "Demand outpaces demo booking capacity. Arc drafted a 'priority scheduling' variant — review before it goes live.",
       cta: "Review draft",
       href: "/campaigns",
     },
     {
       id: "move-mold-cta",
-      title: "Tighten the Feature Adoption landing CTA",
+      title: `Tighten the ${weakest.name} landing CTA`,
       detail: "Arc proposes a qualifying question on the form to lift lead-to-booked. Approval-gated; nothing publishes until you sign off.",
       cta: "Open campaign",
-      href: "/campaigns/demo-mold-remediation-awareness",
+      // The one next-move that deep-links. It pointed at a fixed restoration id,
+      // so in the default demo the single most clickable thing on the page was a
+      // link to "That page isn't here".
+      href: `/campaigns/${weakest.id}`,
     },
     {
       id: "move-referral-expand",

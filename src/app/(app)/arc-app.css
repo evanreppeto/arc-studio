@@ -650,6 +650,11 @@
 .arc-app .kpistrip[data-count="3"] { grid-template-columns: 1.5fr 1fr 1fr; }
 .arc-app .kpistrip[data-count="4"] { grid-template-columns: 1.5fr 1fr 1fr 1fr; }
 .arc-app .kpistrip[data-count="5"] { grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; }
+/* Six wraps to 3×2 rather than squeezing six 23px serif values into one row.
+   Campaign performance is the only surface with six, on both its demo and its
+   attributed path. Same three columns the old `.perfkpis` used, but asymmetric —
+   the lead metric stays wider, which is the rule the equal grid was breaking. */
+.arc-app .kpistrip[data-count="6"] { grid-template-columns: 1.5fr 1fr 1fr; }
 
 /* Quiet MEANS quiet (BSR-738, following BSR-703's spend strip). Every number is
    still stated; the card treatment — grid, borders, 23px serif, sparkline rail —
@@ -703,7 +708,8 @@
 
 @media (max-width: 900px) {
   .arc-app .kpistrip[data-count="4"],
-  .arc-app .kpistrip[data-count="5"] { grid-template-columns: 1.3fr 1fr; }
+  .arc-app .kpistrip[data-count="5"],
+  .arc-app .kpistrip[data-count="6"] { grid-template-columns: 1.3fr 1fr; }
   .arc-app .kpistrip[data-count="3"] { grid-template-columns: 1.3fr 1fr; }
 }
 @media (max-width: 560px) {

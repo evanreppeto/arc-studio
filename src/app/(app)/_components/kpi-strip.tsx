@@ -42,8 +42,15 @@ export type KpiCell = {
  *
  * Layout is asymmetric on purpose: the first metric is the lead and takes ~1.5×
  * the width, which satisfies the design rule instead of fighting it. Four cells
- * or fewer is the intent; five is the ceiling, and only because Analytics and
- * Journeys genuinely track five things.
+ * or fewer is the intent; five is the ceiling for a single row, and only because
+ * Analytics and Journeys genuinely track five things.
+ *
+ * Six is the one count that wraps: campaign performance tracks six metrics on
+ * both its demo AND its attributed path, so the number is the surface's real
+ * shape rather than a strip that grew. It lays out 3×2 — the same footprint the
+ * hand-rolled `.perfkpis` grid had — but over the shared asymmetric columns
+ * instead of the `repeat(3, 1fr)` DESIGN.md §5 bans. Seven would be a prompt to
+ * cut a metric, not to add a rule.
  */
 export type KpiStripTone = "quiet" | "full";
 
@@ -93,7 +100,7 @@ export function KpiStrip({ items, className }: { items: KpiCell[]; className?: s
   }
 
   return (
-    <div className={`kpistrip${className ? ` ${className}` : ""}`} data-count={Math.min(items.length, 5)}>
+    <div className={`kpistrip${className ? ` ${className}` : ""}`} data-count={Math.min(items.length, 6)}>
       {items.map((m) => (
         <div className={`kpicell${m.tone && m.tone !== "default" ? ` ${m.tone}` : ""}`} key={m.label}>
           <div className="kpilabel">{m.label}</div>
