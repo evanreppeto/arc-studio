@@ -8,6 +8,20 @@
    ============================================================================ */
 
 :root {
+  /* Motion — four response times, not the 29 hand-typed values these replace.
+     `0.14s` and `0.15s` were each written ~120 times in two spellings apiece; no
+     one can perceive the difference, so it was 300 decisions maintained by hand.
+     Values are the dominant member of each cluster, so the app's existing feel is
+     codified rather than changed — the largest shift anywhere is 0.18s -> 0.2s.
+     The easing companion is `--ease` (arc-app.css, on .arc-app).
+     Deliberately NOT tokenised: the reduced-motion overrides (0.001ms), the
+     Chrome autofill suppression hack (600000s), and anything over 0.3s, which is
+     a considered one-off rather than a UI response. */
+  --dur-fast: 120ms;            /* tight feedback — hovers on small controls */
+  --dur-base: 150ms;            /* the default; ~85% of all transitions */
+  --dur-slow: 200ms;            /* panels, disclosure, larger surfaces */
+  --dur-slower: 250ms;          /* full-surface fades, overlays */
+
   /* Surface tiers — warm near-black, stepping up for separation */
   --canvas: #16161a;            /* page background, warm obsidian */
   --canvas-deep: #101013;       /* gutter / behind-rail void */
@@ -452,11 +466,11 @@ time,
   position: relative;
   transform: translateY(0) scale(1);
   transition:
-    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    color 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+    transform var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1),
+    border-color var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1),
+    background-color var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1),
+    color var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .chicago-dark :where(a, button)[class*="rounded"]:hover {
@@ -883,7 +897,7 @@ time,
 .focal-card {
   position: relative;
   overflow: hidden;
-  transition: border-color 220ms ease;
+  transition: border-color var(--dur-slow) ease;
 }
 .focal-card:hover {
   border-color: var(--accent-border-strong);
@@ -1154,7 +1168,7 @@ time,
 /* Composer focus glow: a soft gold ring blooms around the input box when it
    takes focus, layered over the existing panel elevation. Plain CSS (not a
    Tailwind arbitrary ring) so the two shadows compose reliably. */
-.arc-composer-glow { transition: box-shadow 200ms ease, border-color 200ms ease; }
+.arc-composer-glow { transition: box-shadow var(--dur-slow) ease, border-color var(--dur-slow) ease; }
 .arc-composer-glow:focus-within {
   box-shadow: var(--elev-panel), 0 0 0 3px var(--accent-soft);
 }
