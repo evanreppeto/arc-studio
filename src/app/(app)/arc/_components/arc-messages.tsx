@@ -96,7 +96,8 @@ import {
 } from "../actions";
 import { LiveReasoning, ReasoningMarkdown } from "./arc-markdown";
 import { buildDemoLiveWork, DEMO_STEPS, DEMO_TOOLS, DEMO_WORKSPACE_MESSAGES } from "./arc-demo-data";
-import type { RunKind, RunRow } from "./arc-view.types";
+import type { PaneBox, RunKind, RunRow } from "./arc-view.types";
+import { OverlayPortal } from "../../_components/overlay-portal";
 
 export { getToolKind };
 
@@ -643,43 +644,6 @@ function DeliverableThumb({ card }: { card: ArcActionCard }) {
 
 export { isDecidedAssetStatus };
 
-/** The compact package summary shown inline when Arc drafts a multi-asset
- *  campaign — a channel overview + a button into the review workspace. */
-export function DraftPackageCard({ cards, statuses, onReview, onContextMenu }: { cards: ArcActionCard[]; statuses: Record<string, ArcAssetStatus>; onReview: () => void; onContextMenu?: (event: React.MouseEvent) => void }) {
-  const statusOf = (card: ArcActionCard) => statuses[card.approval?.assetId ?? ""] ?? card.status ?? null;
-  const approvedCount = cards.filter((card) => statusOf(card) === "approved").length;
-  return (
-    <div className="arc-package" onContextMenu={onContextMenu}>
-      <div className="arc-package-kicker">Campaign · {approvedCount}/{cards.length} approved</div>
-      <div className="arc-package-row">
-        <span className="arc-package-icon"><MessageSquareText size={18} /></span>
-        <span className="arc-package-title"><b>{countOf(cards.length, ASSET_NOUN)} need you</b><small>Review each channel in the workspace</small></span>
-        <div className="arc-package-channels">
-          {cards.slice(0, 4).map((card, index) => {
-            const meta = assetStatusMeta(statusOf(card));
-            return <span key={`${card.title}-${index}`} data-tone={meta.tone}><i />{card.channel ?? card.title}<small>{meta.label}</small></span>;
-          })}
-        </div>
-        <button type="button" className="arc-review-button" data-arc-review-trigger="true" onClick={onReview}>Review assets <PanelRightOpen size={15} /></button>
-      </div>
-    </div>
-  );
-}
-
-/** Approval-gated assets stay compact in the conversation; the Workspace owns
- * the detailed preview and decision flow so the same content is not repeated. */
-export function DraftReceiptCard({ card, status, onReview, onContextMenu }: { card: ArcActionCard; status: ArcAssetStatus | null; onReview: () => void; onContextMenu?: (event: React.MouseEvent) => void }) {
-  const meta = assetStatusMeta(status);
-  return (
-    <button type="button" className="arc-created-receipt" data-arc-review-trigger="true" onClick={onReview} onContextMenu={onContextMenu}>
-      <span className="arc-created-receipt-icon"><ChannelIcon channel={card.channel} size={16} /></span>
-      <span><b>{card.title}</b><small>{[card.channel, card.format].filter(Boolean).join(" · ") || "Created by Arc"}</small></span>
-      <em className={`is-${meta.tone}`}><i />{meta.label}</em>
-      <ArrowRight size={14} />
-    </button>
-  );
-}
-
 /**
  * The conversation workspace.
  *
@@ -703,6 +667,7 @@ export function ArcWorkPanel({
   demoPending,
   demoRequest,
   demoOutcome,
+  paneBox,
   onReview,
   onRecover,
   onClose,
@@ -715,6 +680,10 @@ export function ArcWorkPanel({
   demoPending: boolean;
   demoRequest?: string;
   demoOutcome?: "complete" | "canceled";
+  /** Where the content pane is, in viewport coordinates. The panel covers the
+   *  pane rather than docking beside it, and it is portaled out to the shell, so
+   *  it has to be told the box — see usePaneBox in arc-view.tsx. */
+  paneBox?: PaneBox | null;
   onReview: (cards: ArcActionCard[]) => void;
   onRecover: (prompt: string) => void;
   onClose: () => void;
@@ -824,17 +793,29 @@ export function ArcWorkPanel({
   ].filter(Boolean).join(" · ");
 
   return (
+    <OverlayPortal>
+      {/* Scrim and panel portal together — see overlay-portal.tsx. */}
+      <motion.button
+        type="button"
+        className="arc-deliverable-scrim"
+        aria-label="Close conversation workspace"
+        initial={reduceMotion ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={reduceMotion ? undefined : { opacity: 0 }}
+        onClick={onClose}
+      />
     <motion.aside
       className="arc-artifact-workspace arc-work-panel"
       aria-label="Conversation workspace"
-      initial={reduceMotion ? false : { opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={reduceMotion ? undefined : { opacity: 0, x: 18 }}
+      style={paneBox ? { top: paneBox.top, left: paneBox.left, width: paneBox.width, height: paneBox.height } : undefined}
+      initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={reduceMotion ? undefined : { opacity: 0, y: 6 }}
       transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
     >
       <header className="arc-artifact-header">
         <div><h2>Workspace</h2><p>{summary || "Everything Arc makes here collects in this panel"}</p></div>
-        <button type="button" onClick={onClose} aria-label="Close conversation workspace"><PanelRightClose size={17} /></button>
+        <button type="button" onClick={onClose} aria-label="Close conversation workspace"><X size={18} /></button>
       </header>
 
       <div className="arc-work-body">
@@ -1049,6 +1030,7 @@ export function ArcWorkPanel({
         ) : null}
       </div>
     </motion.aside>
+    </OverlayPortal>
   );
 }
 
@@ -1122,86 +1104,6 @@ export function useDraftDecision({
   return { busy, notice, reviseOpen, reviseText, setReviseText, decided, decide, submitRevision, openRevise, cancelRevise, reset } as const;
 }
 
-/**
- * Card-driven review workspace: the assets Arc drafted, one tab each, with the
- * full draft content and per-asset Approve / Revise / Decline wired (via
- * `useDraftDecision`) to the real campaign decision flow. Decisions are lifted to
- * the parent (keyed by asset id) so they persist while the panel is open and
- * reflect back on the package summary.
- */
-export function AssetReviewPanel({ cards, statuses, onStatus, onClose }: { cards: ArcActionCard[]; statuses: Record<string, ArcAssetStatus>; onStatus: (assetId: string, status: ArcAssetStatus) => void; onClose: () => void }) {
-  const reduceMotion = useReducedMotion();
-  const [active, setActive] = useState(0);
-  const card = cards[Math.min(active, cards.length - 1)];
-  const assetId = card.approval?.assetId ?? "";
-  const status = statuses[assetId] ?? card.status ?? null;
-  const meta = assetStatusMeta(status);
-  const approvedCount = cards.filter((c) => (statuses[c.approval?.assetId ?? ""] ?? c.status) === "approved").length;
-  const { busy, notice, reviseOpen, reviseText, setReviseText, decided, decide, submitRevision, openRevise, cancelRevise, reset } = useDraftDecision({ approval: card.approval, status, onResolved: onStatus });
-
-  const selectTab = (index: number) => { setActive(index); reset(); };
-
-  return (
-    <motion.aside
-      className="arc-artifact-workspace"
-      aria-label="Asset review workspace"
-      initial={reduceMotion ? false : { opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={reduceMotion ? undefined : { opacity: 0, x: 18 }}
-      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <header className="arc-artifact-header">
-        <div><span>Review workspace</span><h2>{cards.length === 1 ? "Asset review" : "Campaign assets"}</h2><p>{countOf(cards.length, ASSET_NOUN)} · {approvedCount} approved</p></div>
-        <button type="button" onClick={onClose} aria-label="Close review workspace"><PanelRightClose size={17} /></button>
-      </header>
-      <div className="arc-artifact-shell">
-        <div className="arc-artifact-tabs" role="tablist" aria-label="Campaign assets">
-          {cards.map((tabCard, index) => {
-            const tabStatus = statuses[tabCard.approval?.assetId ?? ""] ?? tabCard.status ?? null;
-            return (
-              <button type="button" role="tab" key={`${tabCard.title}-${index}`} aria-selected={index === active} className={index === active ? "is-active" : ""} onClick={() => selectTab(index)}>
-                <ChannelIcon channel={tabCard.channel} />
-                <span>{tabCard.channel ?? tabCard.title}</span>
-                <i className={`arc-artifact-dot is-${assetStatusMeta(tabStatus).tone}`} aria-hidden="true" />
-              </button>
-            );
-          })}
-        </div>
-        <div className="arc-artifact-content">
-          <div className="arc-artifact-status" aria-live="polite"><span className={`is-${meta.tone}`}><CheckCircle2 size={14} />{meta.label}</span></div>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={active} role="tabpanel" className="arc-artifact-view" initial={reduceMotion ? false : { opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: -4 }} transition={{ duration: 0.16 }}>
-              <div className="arc-artifact-title"><span>{card.channel ?? "Asset"}</span><h3>{card.title}</h3>{card.format ? <p>{card.format}</p> : null}</div>
-              {card.preview ? <div className="arc-asset-preview">{card.preview}</div> : null}
-              {card.rows.length > 0 ? (
-                <section className="arc-artifact-section"><h4>Details</h4>{card.rows.slice(0, 6).map((row, index) => <div className="arc-asset-row" key={`${row.name}-${index}`}><b>{row.name}</b><span>{row.meta ?? ""}</span></div>)}</section>
-              ) : null}
-              {card.flags.length > 0 ? (
-                <section className="arc-artifact-section"><h4>Checks</h4><div className="arc-check-grid">{card.flags.slice(0, 4).map((flag, index) => <span key={`${flag.label}-${index}`} className={`is-${flag.tone}`}><CheckCircle2 size={14} />{flag.label}</span>)}</div></section>
-              ) : null}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </div>
-      <footer className="arc-artifact-footer" aria-busy={busy}>
-        {reviseOpen ? (
-          <form className="arc-revision-form" onSubmit={submitRevision}>
-            <label htmlFor="arc-revision-request">What should Arc change in the {(card.channel ?? "asset").toLowerCase()}?</label>
-            <textarea id="arc-revision-request" autoFocus value={reviseText} onChange={(event) => setReviseText(event.target.value)} placeholder="Describe the change…" rows={2} />
-            <div><button type="button" onClick={cancelRevise}>Cancel</button><button type="submit" className="is-primary" disabled={!reviseText.trim() || busy}>Send revision</button></div>
-          </form>
-        ) : (
-          <>
-            <div role="status" aria-live="polite">{notice ?? "Approve, revise, or decline each asset."}</div>
-            <button type="button" onClick={openRevise} disabled={busy || decided}>Revise</button>
-            <button type="button" onClick={() => decide("declined")} disabled={busy || decided}>Decline</button>
-            <button type="button" className="is-primary" onClick={() => decide("approved")} disabled={busy || decided}><Check size={14} />{status === "approved" ? "Approved" : "Approve"}</button>
-          </>
-        )}
-      </footer>
-    </motion.aside>
-  );
-}
 
 export const DRAFT_STATUS_META: Record<ArcAssetStatus | "review", { label: string; tone: string }> = {
   review: { label: WORK_STATE_LABEL.needs_you, tone: "muted" },
