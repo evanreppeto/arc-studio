@@ -76,6 +76,30 @@ describe("arcDraftCheckState", () => {
     expect(arcDraftCheckState({ flags: [flag("ok")], findings: [] })).toBe("clean");
   });
 
+  /**
+   * Verified against prod: all 4 assets with no body (`image_prompt`, channel
+   * `media`) were never critiqued, and all 10 with a body were. The critic
+   * grounds claims in TEXT, so an image has nothing for it to check — and
+   * reporting that as "No checks recorded" reads as a gap in the review rather
+   * than a medium the review does not cover.
+   */
+  it("reports no_copy for a deliverable with no copy at all", () => {
+    expect(arcDraftCheckState({ flags: [], findings: [], hasCopy: false })).toBe("no_copy");
+    expect(arcDraftCheckState({ flags: [], hasCopy: false })).toBe("no_copy");
+  });
+
+  it("still surfaces a finding raised against creative", () => {
+    // A guardrail CAN flag an image asset. Silence about copy must never
+    // silence an actual finding.
+    expect(arcDraftCheckState({ flags: [], findings: [finding()], hasCopy: false })).toBe("flagged");
+    expect(arcDraftCheckState({ flags: [flag("risk")], hasCopy: false })).toBe("flagged");
+  });
+
+  it("leaves deliverables that DO have copy unaffected", () => {
+    expect(arcDraftCheckState({ flags: [], findings: [], hasCopy: true })).toBe("unchecked");
+    expect(arcDraftCheckState({ flags: [], hasCopy: true })).toBe("unknown");
+  });
+
   it("never reports unchecked as clean", () => {
     expect(arcDraftCheckState({ flags: [], findings: [] })).not.toBe("clean");
   });
