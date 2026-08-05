@@ -3,7 +3,7 @@
 // lead→job→won funnel, and revenue-by-persona / leads-by-source breakdowns)
 // straight from real leads / jobs / outcomes rows. Everything is derived, so it
 // degrades gracefully when the tables are sparse or unconfigured.
-import { humanizePersonaLabel, personaAccent, PERSONA_ACCENTS,} from "@/domain";
+import { humanizePersonaLabel, personaAccent } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { isWonStatus } from "@/domain";
@@ -190,7 +190,12 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
     label,
     count: v,
     width: Math.round((v / srcMax) * 100),
-    dot: PERSONA_ACCENTS.gold,
+    // Neutral, not the accent. Every source row was assigned the SAME gold, so
+    // the colour carried no information at all — it was an ordinary magnitude
+    // wearing the one hue §4.4 reserves for "needs you". Width already encodes
+    // the magnitude. Persona rows above keep personaAccent(), where the colour
+    // is deterministic per persona and does mean something.
+    dot: "var(--text-2)",
   }));
 
   const trendLabels = Array.from({ length: windowDays }, (_, i) => {
@@ -354,7 +359,12 @@ export async function getAnalyticsOverview(
     label,
     count: v,
     width: Math.round((v / srcMax) * 100),
-    dot: PERSONA_ACCENTS.gold,
+    // Neutral, not the accent. Every source row was assigned the SAME gold, so
+    // the colour carried no information at all — it was an ordinary magnitude
+    // wearing the one hue §4.4 reserves for "needs you". Width already encodes
+    // the magnitude. Persona rows above keep personaAccent(), where the colour
+    // is deterministic per persona and does mean something.
+    dot: "var(--text-2)",
   }));
 
   // Arc's read — narrative from the real deltas.

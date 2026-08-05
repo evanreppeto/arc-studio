@@ -501,8 +501,31 @@ export function OpportunityInbox({
 
           <div className="dgrid">
             <div className="mainc">
-              <div className="lab">Why Arc flagged this</div>
-              <p className="summary">{o.summary}</p>
+              {/* The recommendation leads. It used to sit third, under "why" and
+                  "what Arc saw", so the reader worked through the reasoning
+                  before reaching the thing to decide — the same shape the
+                  campaign card had before #928 put the verdict first. Evidence
+                  is what you consult when the recommendation surprises you, so
+                  it belongs after it, not in front of it. */}
+              <div className="recpanel">
+                <div className="rl">Recommended action</div>
+                <div className="rtxt">{o.recommendedAction}</div>
+                {o.campaignTypes.length > 0 && (
+                  <>
+                    <div className="sub">Suggested campaign type</div>
+                    <div className="types">
+                      {o.campaignTypes.map((t) => (
+                        <span className="ty" key={t}>{t}</span>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="blk">
+                <div className="lab">Why Arc flagged this</div>
+                <p className="summary">{o.summary}</p>
+              </div>
 
               {o.evidence.length > 0 && (
                 <div className="blk">
@@ -521,21 +544,6 @@ export function OpportunityInbox({
                   </dl>
                 </div>
               )}
-
-              <div className="blk recpanel">
-                <div className="rl">Recommended action</div>
-                <div className="rtxt">{o.recommendedAction}</div>
-                {o.campaignTypes.length > 0 && (
-                  <>
-                    <div className="sub">Suggested campaign type</div>
-                    <div className="types">
-                      {o.campaignTypes.map((t) => (
-                        <span className="ty" key={t}>{t}</span>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
 
               {o.status !== "drafting" && (
                 <div className="triage" ref={triageRef}>
@@ -625,8 +633,18 @@ export function OpportunityInbox({
                 </div>
               )}
 
-              <div className="card">
-                <div className="cl">Who signs off</div>
+              {/* Folded, because the answer never changes. The approval chain is
+                  the same for every opportunity, so a permanently-open card
+                  spent a quarter of the side column restating it — while the
+                  one line that carries the reassurance stays visible. A native
+                  <details> rather than Radix: this needs no JS, works on first
+                  paint, and DESIGN.md §4.1 treats adopting Radix as a decision
+                  rather than a default. */}
+              <details className="card signoff">
+                <summary>
+                  <span className="cl">Who signs off</span>
+                  <span className="locknote"><i />Nothing sends until you approve</span>
+                </summary>
                 <div className="tl">
                   {o.routing.map((s, i) => (
                     <div className={`tlstep${s.done ? " done" : ""}`} key={i}>
@@ -635,8 +653,7 @@ export function OpportunityInbox({
                     </div>
                   ))}
                 </div>
-                <div className="locknote"><i />Nothing sends until you approve</div>
-              </div>
+              </details>
 
               <HowThisWorks>
                 <p>

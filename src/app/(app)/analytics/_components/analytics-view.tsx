@@ -72,8 +72,11 @@ function TrendChart({ metric, series, labels }: { metric: TrendKey; series: Tren
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${metric} trend, last ${n} days vs previous period`}>
       <defs>
         <linearGradient id="trendfill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+          {/* Neutral, matching the .cur stroke. This fill was the single largest
+              gold region on the screen, which is what drained the accent of its
+              "needs you" meaning (§4.4). */}
+          <stop offset="0%" stopColor="var(--text-2)" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="var(--text-2)" stopOpacity="0" />
         </linearGradient>
       </defs>
       {gridLines.map((g) => {
