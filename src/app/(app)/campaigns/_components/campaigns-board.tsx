@@ -83,15 +83,13 @@ function personaLabelOf(persona: string): string {
   const s = (persona || "").replace(/^persona[\s_-]+/i, "").replace(/[_-]+/g, " ").trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 }
-/** A campaign created seconds ago holds nothing: no assets, so nothing undecided
- *  and nothing in the roll-up. Arc drafts them after this row appears. */
-const EMPTY_ROLLUP = { state: "empty" as const, label: "", approved: 0, pending: 0, changes: 0, draft: 0, total: 0 };
-
 function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
   const audience = personaLabelOf(v.persona);
   // Through the shared derivation rather than a hardcoded string, so this row
   // cannot drift from what the server would have said about the same campaign.
-  const { next, nextTone } = nextActionFor("draft", 0, EMPTY_ROLLUP);
+  // A campaign created seconds ago holds nothing — Arc drafts its deliverables
+  // after this row appears.
+  const { next, nextTone } = nextActionFor("draft", 0, { approved: 0, required: 0 });
   return {
     id,
     name: v.name,

@@ -6,11 +6,23 @@
  * renderer — the same reason `tone.ts` sits beside this file.
  */
 
-import { ASSET_NOUN, countOf, type CampaignRollup } from "@/domain";
+import { ASSET_NOUN, countOf } from "@/domain";
 
 import { type CampaignTone } from "./tone";
 
 export type NextAction = { next: string; nextTone: "" | "go" | "warn" };
+
+/**
+ * Approved / non-archived deliverable counts, from `buildLaunchState`.
+ *
+ * Deliberately NOT `CampaignRollup`, which is the other count of the same thing
+ * and does not agree with it: the roll-up also counts standalone approvals
+ * (no `campaign_asset_id`), so a live campaign with 6 assets and 1 standalone
+ * approval rolls up to 7 while its own detail page renders "of 6". Whatever
+ * this column says has to match the page the operator lands on when they click
+ * the row.
+ */
+export type DeliverableCounts = { approved: number; required: number };
 
 /**
  * What happens next on this campaign.
@@ -22,36 +34,30 @@ export type NextAction = { next: string; nextTone: "" | "go" | "warn" };
  *  2. **With no instruction, say where the package STANDS — never restate the
  *     status pill sitting beside it.** An archived row used to read `Archived` /
  *     "Put away", which is one fact printed twice and a column's worth of space
- *     spent saying nothing. The roll-up (already computed by the read-model, and
- *     never surfaced on this board before) answers the question the operator
- *     actually has about a row that isn't asking for anything: how much of it is
- *     done.
+ *     spent saying nothing.
+ *
+ * The counts come from `buildLaunchState`, so a row and the campaign page behind
+ * it cannot print different totals — see `DeliverableCounts`.
  */
-export function nextActionFor(tone: CampaignTone, pendingCount: number, rollup: CampaignRollup): NextAction {
+export function nextActionFor(tone: CampaignTone, pendingCount: number, counts: DeliverableCounts): NextAction {
   // 1 — instructions.
   if (pendingCount > 0) return { next: `Approve ${countOf(pendingCount, ASSET_NOUN)}`, nextTone: "go" };
   if (tone === "review") return { next: "Waiting on your decision", nextTone: "go" };
   if (tone === "approved") return { next: "Waiting to send", nextTone: "go" };
   if (tone === "live") return { next: "Going out now", nextTone: "" };
-  if (tone === "revise") {
-    return {
-      next: rollup.changes > 0 ? `Arc is reworking ${countOf(rollup.changes, ASSET_NOUN)}` : "Arc is reworking it",
-      nextTone: "warn",
-    };
-  }
+  if (tone === "revise") return { next: "Arc is reworking it", nextTone: "warn" };
 
   // 2 — no instruction: report the package's state.
   //
   // Archived is deliberately its own phrasing rather than falling through to the
-  // approved/total lines below. "All 6 assets approved" on a put-away campaign
-  // reads like live, ready work; "6 assets kept" says what the archive holds.
+  // approved/required lines below. "All 6 assets approved" on a put-away
+  // campaign reads like live, ready work; "6 assets kept" says what it holds.
   if (tone === "archived") {
-    return { next: rollup.total > 0 ? `${countOf(rollup.total, ASSET_NOUN)} kept` : "Nothing in it", nextTone: "" };
+    return { next: counts.required > 0 ? `${countOf(counts.required, ASSET_NOUN)} kept` : "Nothing in it", nextTone: "" };
   }
-  if (rollup.total === 0) return { next: "Arc is still building it", nextTone: "" };
-  if (rollup.approved === rollup.total) return { next: `All ${countOf(rollup.total, ASSET_NOUN)} approved`, nextTone: "" };
-  if (rollup.approved > 0) return { next: `${rollup.approved} of ${rollup.total} approved`, nextTone: "" };
-  if (rollup.changes > 0) return { next: `${countOf(rollup.changes, ASSET_NOUN)} sent back`, nextTone: "warn" };
+  if (counts.required === 0) return { next: "Arc is still building it", nextTone: "" };
+  if (counts.approved === counts.required) return { next: `All ${countOf(counts.required, ASSET_NOUN)} approved`, nextTone: "" };
+  if (counts.approved > 0) return { next: `${counts.approved} of ${counts.required} approved`, nextTone: "" };
   return { next: "Arc is still building it", nextTone: "" };
 }
 

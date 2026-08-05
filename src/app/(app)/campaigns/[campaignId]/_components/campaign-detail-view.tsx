@@ -1097,7 +1097,14 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
         <div className="crow">
           <div className="cmain">
             <h2 className="cname">{campaign.name}</h2>
-            <div className="csub">{campaign.objective || campaign.audienceSummary}</div>
+            {/* `campaignTheme` joins the chain because it is the only one of the
+                three required at creation — the other two are null on most live
+                campaigns. The whole chain was previously inert: `objective` was
+                never empty, because the read-model substituted a placeholder
+                sentence for a null one. */}
+            {(campaign.objective || campaign.campaignTheme || campaign.audienceSummary) && (
+              <div className="csub">{campaign.objective || campaign.campaignTheme || campaign.audienceSummary}</div>
+            )}
             <div className="cchips">
               {persona && (
                 <span className="chip persona">
@@ -1530,6 +1537,15 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                     <p className="rbody">
                       <b>Recommended:</b> {reasoning.recommendedAction}
                     </p>
+                  )}
+                  {/* Said once, in the muted voice of an empty state — not twice
+                      in `.rbody`, which is the styling real reasoning uses. The
+                      section stays rather than disappearing: on an Arc-drafted
+                      campaign, "no reasoning was recorded" is itself worth
+                      knowing, and hiding it would make missing provenance
+                      indistinguishable from provenance nobody looked for. */}
+                  {!reasoning.whyBuilt && !reasoning.recommendedAction && (
+                    <p className="empty-note">Arc recorded no reasoning for this campaign.</p>
                   )}
                   {reasoning.guardrailFlags.length > 0 && (
                     <div className="flags">

@@ -1,69 +1,82 @@
 import { describe, expect, it } from "vitest";
 
-import { type CampaignRollup } from "@/domain";
+import { buildLaunchState, type CampaignWorkspaceAsset } from "@/lib/campaigns/read-model";
 
-import { constantAudience, nextActionFor, signalTiming } from "./board-derivations";
+import { constantAudience, nextActionFor, signalTiming, type DeliverableCounts } from "./board-derivations";
 
-function rollup(partial: Partial<CampaignRollup> = {}): CampaignRollup {
-  return { state: "empty", label: "", approved: 0, pending: 0, changes: 0, draft: 0, total: 0, ...partial };
+function counts(approved: number, required: number): DeliverableCounts {
+  return { approved, required };
 }
 
 describe("nextActionFor", () => {
   it("puts the human instruction ahead of everything else", () => {
-    // Even a fully-approved-looking roll-up loses to undecided work.
-    expect(nextActionFor("draft", 6, rollup({ approved: 4, total: 10, pending: 6 }))).toEqual({
-      next: "Approve 6 assets",
-      nextTone: "go",
-    });
+    expect(nextActionFor("draft", 6, counts(4, 10))).toEqual({ next: "Approve 6 assets", nextTone: "go" });
   });
 
   it("singularizes the instruction", () => {
-    expect(nextActionFor("draft", 1, rollup({ pending: 1, total: 1 })).next).toBe("Approve 1 asset");
+    expect(nextActionFor("draft", 1, counts(0, 1)).next).toBe("Approve 1 asset");
   });
 
   it.each([
     ["review", "Waiting on your decision", "go"],
     ["approved", "Waiting to send", "go"],
     ["live", "Going out now", ""],
+    ["revise", "Arc is reworking it", "warn"],
   ] as const)("keeps the %s instruction", (tone, next, nextTone) => {
-    expect(nextActionFor(tone, 0, rollup())).toEqual({ next, nextTone });
-  });
-
-  it("counts what Arc is reworking when the roll-up knows", () => {
-    expect(nextActionFor("revise", 0, rollup({ changes: 2, total: 5 }))).toEqual({
-      next: "Arc is reworking 2 assets",
-      nextTone: "warn",
-    });
-    expect(nextActionFor("revise", 0, rollup()).next).toBe("Arc is reworking it");
+    expect(nextActionFor(tone, 0, counts(0, 0))).toEqual({ next, nextTone });
   });
 
   // The redundancy this column existed to avoid, and kept committing anyway:
   // an archived row read `Archived` in one cell and "Put away" in the next.
   it("never restates the status pill on an archived row", () => {
-    expect(nextActionFor("archived", 0, rollup({ approved: 6, total: 6 }))).toEqual({
-      next: "6 assets kept",
-      nextTone: "",
-    });
-    expect(nextActionFor("archived", 0, rollup()).next).toBe("Nothing in it");
+    expect(nextActionFor("archived", 0, counts(6, 6))).toEqual({ next: "6 assets kept", nextTone: "" });
+    expect(nextActionFor("archived", 0, counts(0, 0)).next).toBe("Nothing in it");
   });
 
   it("does not let an archived package read as ready work", () => {
     // "All 6 assets approved" is true and misleading on something put away.
-    expect(nextActionFor("archived", 0, rollup({ approved: 6, total: 6 })).next).not.toMatch(/approved/);
+    expect(nextActionFor("archived", 0, counts(6, 6)).next).not.toMatch(/approved/);
   });
 
   it("reports progress when a row asks nothing", () => {
-    expect(nextActionFor("draft", 0, rollup({ approved: 3, total: 6 })).next).toBe("3 of 6 approved");
-    expect(nextActionFor("draft", 0, rollup({ approved: 6, total: 6 })).next).toBe("All 6 assets approved");
-    expect(nextActionFor("draft", 0, rollup({ changes: 2, total: 2 }))).toEqual({
-      next: "2 assets sent back",
-      nextTone: "warn",
-    });
+    expect(nextActionFor("draft", 0, counts(3, 6)).next).toBe("3 of 6 approved");
+    expect(nextActionFor("draft", 0, counts(6, 6)).next).toBe("All 6 assets approved");
   });
 
   it("falls back to the drafting line when there is nothing to report", () => {
-    expect(nextActionFor("draft", 0, rollup())).toEqual({ next: "Arc is still building it", nextTone: "" });
-    expect(nextActionFor("draft", 0, rollup({ draft: 3, total: 3 })).next).toBe("Arc is still building it");
+    expect(nextActionFor("draft", 0, counts(0, 0))).toEqual({ next: "Arc is still building it", nextTone: "" });
+    expect(nextActionFor("draft", 0, counts(0, 3)).next).toBe("Arc is still building it");
+  });
+});
+
+/**
+ * The board's total and the campaign page's total are one claim, so they are one
+ * computation. This locks the source: `buildLaunchState`, the function the
+ * detail page's `.cstate` already renders.
+ *
+ * The regression it guards is live data. `Chicago Flood Response (Aug 2026)`
+ * carries 6 assets AND 1 standalone approval (no `campaign_asset_id`).
+ * `deriveCampaignRollup` counts standalone approvals and returns 7; the detail
+ * page renders "of 6". Wiring this column to the roll-up made two screens
+ * disagree about one campaign.
+ */
+describe("the board's counts agree with the campaign page's", () => {
+  // buildLaunchState reads only `approval?.status ?? status` and `dispatchLocked`.
+  function asset(status: string): CampaignWorkspaceAsset {
+    return { status, approval: null, dispatchLocked: true } as unknown as CampaignWorkspaceAsset;
+  }
+
+  it("reads its numbers from buildLaunchState", () => {
+    const assets = [asset("approved"), asset("approved"), asset("pending_approval")];
+    const launch = buildLaunchState(assets, true);
+
+    // Exactly the call the page makes, with exactly the fields it passes.
+    const action = nextActionFor("draft", 0, { approved: launch.approvedCount, required: launch.requiredCount });
+
+    expect(launch.requiredCount).toBe(3);
+    expect(action.next).toBe(`${launch.approvedCount} of ${launch.requiredCount} approved`);
+    // And never the roll-up's denominator, which a standalone approval inflates.
+    expect(action.next).not.toContain("of 4");
   });
 });
 
