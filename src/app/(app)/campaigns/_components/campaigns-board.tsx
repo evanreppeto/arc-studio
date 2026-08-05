@@ -464,155 +464,125 @@ export function CampaignsBoard({
         </div>
       </div>
 
-      <div className="tablewrap">
-        <table className="dt">
-          <thead>
-            <tr>
-              <th>Campaign</th>
-              <th>Status</th>
-              <th>Next action</th>
-              {!sharedAudience && <th>Audience</th>}
-              <th>Channels</th>
-              <th>Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 ? (
-              <tr className="emptyrow">
-                {/* "Couldn't load" and "nothing here yet" are different facts and
-                    must read differently. Saying "No campaigns" over a failed
-                    query tells an operator the workspace is empty when it isn't. */}
-                <td colSpan={sharedAudience ? 5 : 6}>
-                  {loadError ? (
-                    <>
-                      <strong>Couldn’t load campaigns.</strong> This is a failure, not an empty workspace — campaigns may exist.
-                      <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
-                    </>
-                  ) : allRows.length === 0 ? (
-                    // A workspace with zero campaigns is a different fact from a
-                    // filter hiding them. "No campaigns match this view" tells a
-                    // brand-new owner to go hunting for a filter that isn't set,
-                    // when what they actually need is to know where campaigns
-                    // come from.
-                    <>
-                      <strong>No campaigns yet.</strong> Arc drafts these from opportunities it finds in your records
-                      — nothing is sent until you approve it.
-                      <div style={{ marginTop: 8 }}>
-                        {/* Was `.cbtn`, which this route does not style (see the
-                            note in DeliverableStrip) — so the one call to action
-                            a brand-new workspace ever sees rendered as bare
-                            unstyled text. */}
-                        <Link className="gbtn" href="/opportunities">
-                          See what Arc has found&nbsp;→
-                        </Link>
-                      </div>
-                    </>
-                  ) : (
-                    "No campaigns match this view."
-                  )}
-                </td>
-              </tr>
+      <div className="cmp-list">
+        {visible.length === 0 ? (
+          <div className="cmp-empty">
+            {/* "Couldn't load" and "nothing here yet" are different facts and must
+                read differently. Saying "No campaigns" over a failed query tells
+                an operator the workspace is empty when it isn't. */}
+            {loadError ? (
+              <>
+                <strong>Couldn’t load campaigns.</strong> This is a failure, not an empty workspace — campaigns may exist.
+                <div className="cmp-empty-detail">{loadError}</div>
+              </>
+            ) : allRows.length === 0 ? (
+              // A workspace with zero campaigns is a different fact from a filter
+              // hiding them. "No campaigns match this view" sends a brand-new
+              // owner hunting for a filter that isn't set, when what they need is
+              // to know where campaigns come from.
+              <>
+                <strong>No campaigns yet.</strong> Arc drafts these from opportunities it finds in your records
+                — nothing is sent until you approve it.
+                <div style={{ marginTop: 12 }}>
+                  {/* `.gbtn`, not `.cbtn`: campaign.css scopes `.cbtn` under
+                      `.arc-campaign` (the detail route), which does not match this
+                      board — so the one call to action a brand-new workspace ever
+                      sees rendered as bare unstyled text. */}
+                  <Link className="gbtn gold" href="/opportunities">
+                    See what Arc has found&nbsp;→
+                  </Link>
+                </div>
+              </>
             ) : (
-              visible.flatMap((r) => [
-                <tr
-                  key={r.id}
-                  className={`${r.id.startsWith("local-") ? "freshrow" : ""}${open === r.id ? " openrow" : ""}`.trim() || undefined}
-                >
-                  <td>
-                    <div className="namecell">
-                    {/* Outside the Link, not inside it — a button nested in an
-                        anchor is invalid and neither control would work. Rows
-                        with nothing to show get no control rather than one that
-                        opens an empty drawer. */}
-                    {r.pieces.length > 0 && (
-                      <button
-                        type="button"
-                        className={`drev${open === r.id ? " on" : ""}`}
-                        aria-expanded={open === r.id}
-                        aria-label={open === r.id ? `Hide ${r.name}'s deliverables` : `Show ${r.name}'s deliverables`}
-                        onClick={() => setOpen((cur) => (cur === r.id ? null : r.id))}
-                      >
-                        <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg>
-                      </button>
+              "No campaigns match this view."
+            )}
+          </div>
+        ) : (
+          visible.map((r) => {
+            const isOpen = open === r.id;
+            const local = r.id.startsWith("local-");
+            // The audience drops out of every card when every card has the same
+            // one — it is said once in the subhead instead. Repeating a constant
+            // on every row is what the Audience column was doing.
+            const showAudience = !sharedAudience && Boolean(r.audience);
+            const meta = [showAudience ? r.audience : "", r.channels, r.updatedRel]
+              .filter(Boolean)
+              .join("  ·  ");
+            return (
+              <article
+                key={r.id}
+                className={`cmp-card${r.pendingCount > 0 ? " needsyou" : ""}${isOpen ? " open" : ""}${local ? " fresh" : ""}`}
+              >
+                <div className="cmp-head">
+                  <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
+
+                  <div className="cmp-body">
+                    {local ? (
+                      <div className="cmp-name">{r.name}</div>
+                    ) : (
+                      <Link className="cmp-name" href={r.href}>
+                        {r.name}
+                      </Link>
                     )}
-                    {r.id.startsWith("local-") ? <div className="pcell">
-                      <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
-                      <div style={{ minWidth: 0 }}>
-                        <div className="pnm">{r.name}</div>
-                        <div className="psub">{r.brief}</div>
-                      </div>
-                    </div> : <Link className="pcell campaign-link" href={r.href} aria-label={`Open ${r.name}`}>
-                      <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
-                      <div style={{ minWidth: 0 }}>
-                        <div className="pnm">{r.name}</div>
-                        {/* The only clock on this row used to be `updatedAt`,
-                            which measures OUR activity — not how much life is
-                            left in the opportunity the package was built for. */}
-                        {r.timing && <span className={`sigchip ${r.timing.tone}`}>{r.timing.label}</span>}
-                        <div className="psub">{r.brief}</div>
-                      </div>
-                    </Link>}
+                    <p className="cmp-brief">{r.brief}</p>
+                    <div className="cmp-meta">
+                      {/* Persona identity comes from `personaAccent()`, per
+                          DESIGN.md — the chip used to wear the gold tint, which
+                          spent the one focal colour on a category that carries no
+                          status meaning. */}
+                      {showAudience && <span className="cmp-dot" style={{ background: r.dot }} />}
+                      <span>{meta}</span>
+                      {/* Neutral, never red: DESIGN.md reserves red for
+                          destructive controls, and how much life is left in a
+                          signal is a fact about the campaign, not a warning. */}
+                      {r.timing && <span className="cmp-window">{r.timing.label}</span>}
                     </div>
-                  </td>
-                  <td>
+                  </div>
+
+                  <div className="cmp-state">
                     <span className={`pill ${r.tone}`}>
                       <span className="pd" />
                       {r.statusLabel}
                     </span>
-                  </td>
-                  {/* An instruction the operator can act on is a control, not a
-                      label. This cell was a <span> styled in the accent colour at
-                      weight 500 — indistinguishable from a link, and doing
-                      nothing when clicked. */}
-                  <td>
                     {r.pendingCount > 0 ? (
                       <button
                         type="button"
-                        className="nxbtn"
+                        className="cmp-act"
                         onClick={() => openQueue({ id: r.id, name: r.name })}
                         disabled={queueLoadingFor !== null}
                       >
                         {queueLoadingFor === r.id ? "Loading…" : r.next}
+                        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                       </button>
                     ) : (
-                      <span className={`nx${r.nextTone ? ` ${r.nextTone}` : ""}`}>{r.next}</span>
+                      <span className="cmp-next">{r.next}</span>
                     )}
-                  </td>
-                  {!sharedAudience && (
-                    <td>
-                      {r.audience ? (
-                        <span className="chip persona">
-                          <span className="pgd" style={{ background: r.dot }} />
-                          {r.audience}
-                        </span>
-                      ) : (
-                        <span className="nx">—</span>
-                      )}
-                    </td>
-                  )}
-                  <td>{r.channels ? <span className="chan">{r.channels}</span> : <span className="nx">—</span>}</td>
-                  <td>
-                    <span className="last">
-                      <b>{r.updatedRel}</b>
-                      {r.updatedAbs && <span>{r.updatedAbs}</span>}
-                    </span>
-                  </td>
-                </tr>,
-                open === r.id ? (
-                  <tr key={`${r.id}-pieces`} className="exprow">
-                    <td colSpan={sharedAudience ? 5 : 6}>
-                      <DeliverableStrip
-                        pieces={r.pieces}
-                        reviewing={queueLoadingFor === r.id}
-                        onReview={() => openQueue({ id: r.id, name: r.name })}
-                      />
-                    </td>
-                  </tr>
-                ) : null,
-              ])
-            )}
-          </tbody>
-        </table>
+                  </div>
+                </div>
+
+                {r.pieces.length > 0 && (
+                  <button
+                    type="button"
+                    className={`cmp-more${isOpen ? " on" : ""}`}
+                    aria-expanded={isOpen}
+                    onClick={() => setOpen((cur) => (cur === r.id ? null : r.id))}
+                  >
+                    <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+                    {isOpen ? "Hide" : `Show ${countOf(r.pieces.length, ASSET_NOUN)}`}
+                  </button>
+                )}
+
+                {isOpen && (
+                  <DeliverableStrip
+                    pieces={r.pieces}
+                    reviewing={queueLoadingFor === r.id}
+                    onReview={() => openQueue({ id: r.id, name: r.name })}
+                  />
+                )}
+              </article>
+            );
+          })
+        )}
       </div>
 
       <div className="gfoot">
