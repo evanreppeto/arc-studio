@@ -290,16 +290,10 @@
 
 /* Performance tab */
 .arc-campaign .est.live { color: var(--ok-text); background: var(--ok-soft); }
-.arc-campaign .perfkpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.arc-campaign .pkpi { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 13px 14px; }
-.arc-campaign .pkl { font-size: 11px; color: var(--muted); }
-.arc-campaign .pkv { font-family: var(--serif); font-weight: 500; font-size: 22px; letter-spacing: -0.02em; margin: 5px 0 4px; color: var(--text); }
-.arc-campaign .pkh { font-size: 10.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; line-height: 1.4; }
-.arc-campaign .pkd { font-family: var(--mono); font-size: 10px; font-weight: 600; border-radius: 5px; padding: 1px 5px; }
-.arc-campaign .pkd.ok { color: var(--ok-text); background: var(--ok-soft); }
-.arc-campaign .pkd.amber { color: var(--warn-text); background: var(--warn-soft); }
-.arc-campaign .pkd.red { color: var(--red-text); background: var(--red-soft); }
-.arc-campaign .pkd.neutral { color: var(--text-2); background: var(--inset); }
+/* Spacing hook only — the cells are `KpiStrip` (BSR-658). The grid, the card
+   chrome and the four delta-tone rules that used to live here are the shared
+   component's now; `.perfkpis` was the eleventh hand-rolled copy of them. */
+.arc-campaign .kpistrip.perfkpis { margin-top: 0; }
 .arc-campaign .perfnote { font-size: 11px; color: var(--muted); line-height: 1.55; margin: 13px 0 0; padding-left: 11px; border-left: 2px solid var(--line-3); }
 
 .arc-campaign .pfunnel { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 6px 15px; }
@@ -363,7 +357,9 @@
   .arc-campaign .cstate { width: 100%; }
   .arc-campaign .cbody { grid-template-columns: 1fr; }
   .arc-campaign .csnap { display: none; }
-  .arc-campaign .perfkpis { grid-template-columns: repeat(2, 1fr); }
+  /* `.perfkpis` dropped to two columns here; the shared strip owns that now and
+     does it at 900px. Below 1040 the sidebar stacks and the panel gets WIDER,
+     so three columns is the right call in the gap between the two breakpoints. */
   .arc-campaign .lockgrid { grid-template-columns: 1fr; }
   /* Let the whole page scroll instead of trapping deliverables in a short inner
      pane below a tall stacked header. The perf tables keep their own horizontal
