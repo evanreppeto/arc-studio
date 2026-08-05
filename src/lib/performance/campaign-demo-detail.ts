@@ -7,6 +7,8 @@
 // dataset (buildDemoPerformanceReadModel) so the analytics table links resolve.
 // ---------------------------------------------------------------------------
 
+import { canonicalIndustryKey } from "@/lib/product-language";
+
 export type CampaignDetailKpi = {
   key: string;
   label: string;
@@ -107,10 +109,22 @@ type DemoCampaignSeed = {
   /** Per-channel lead split — channel label → weight (normalized internally). */
   channelMix: Array<{ channel: string; weight: number; spendShare: number }>;
   assets: Array<Omit<CampaignDetailAssetRow, "impressions" | "clicks" | "leads" | "ctr"> & { weight: number }>;
+  /** Direction arrow for the analytics overview row. */
+  trend: "up" | "flat" | "down";
   seed: number;
 };
 
-const CAMPAIGN_SEEDS: DemoCampaignSeed[] = [
+/**
+ * The restoration demo's six campaigns.
+ *
+ * These are served only when `ARC_DEMO_INDUSTRY=restoration`, matching
+ * `demoCampaigns()` in `@/lib/campaigns/read-model`. That branch is the whole
+ * reason this file's coverage went unnoticed: for a long time these were the
+ * ONLY seeds, so the default preview — which serves the generic campaigns —
+ * had no performance data at all, and every campaign's Performance tab and
+ * every analytics row fell to an empty state or a 404.
+ */
+const RESTORATION_SEEDS: DemoCampaignSeed[] = [
   {
     id: "demo-emergency-water-response-2026",
     name: "Emergency Water Response 2026",
@@ -139,6 +153,7 @@ const CAMPAIGN_SEEDS: DemoCampaignSeed[] = [
       { id: "a4", title: "Emergency response landing one-pager", channel: "Landing", format: "Landing", source: "Real media", status: "Approved", weight: 0.16 },
       { id: "a5", title: "Storm-night intake email", channel: "Email", format: "Email", source: "Composite", status: "Needs review", weight: 0.12 },
     ],
+    trend: "up",
     seed: 1011,
   },
   {
@@ -169,6 +184,7 @@ const CAMPAIGN_SEEDS: DemoCampaignSeed[] = [
       { id: "a4", title: "Priority scheduling landing variant", channel: "Landing", format: "Landing", source: "Composite", status: "Needs review", weight: 0.16 },
       { id: "a5", title: "Storm-watch SMS nudge", channel: "SMS", format: "SMS", source: "AI-generated", status: "Draft", weight: 0.1 },
     ],
+    trend: "up",
     seed: 2022,
   },
   {
@@ -199,6 +215,7 @@ const CAMPAIGN_SEEDS: DemoCampaignSeed[] = [
       { id: "a4", title: "Property-manager referral packet", channel: "Referral", format: "PDF", source: "Composite", status: "Needs review", weight: 0.14 },
       { id: "a5", title: "Facilities LinkedIn static", channel: "Meta Ads", format: "1:1 PNG", source: "AI-generated", status: "Draft", weight: 0.08 },
     ],
+    trend: "flat",
     seed: 3033,
   },
   {
@@ -229,6 +246,7 @@ const CAMPAIGN_SEEDS: DemoCampaignSeed[] = [
       { id: "a4", title: "Qualifying-question form variant", channel: "Landing", format: "Landing", source: "AI-generated", status: "Needs review", weight: 0.16 },
       { id: "a5", title: "Before/after mold static", channel: "Meta Ads", format: "4:5 PNG", source: "Real media", status: "Draft", weight: 0.1 },
     ],
+    trend: "down",
     seed: 4044,
   },
   {
@@ -259,6 +277,7 @@ const CAMPAIGN_SEEDS: DemoCampaignSeed[] = [
       { id: "a4", title: "Shut-off-valve explainer — 9:16", channel: "Meta Ads", format: "9:16 MP4", source: "AI-generated", status: "Needs review", weight: 0.16 },
       { id: "a5", title: "Burst-pipe intake email", channel: "Email", format: "Email", source: "Composite", status: "Draft", weight: 0.1 },
     ],
+    trend: "up",
     seed: 5055,
   },
   {
@@ -289,9 +308,200 @@ const CAMPAIGN_SEEDS: DemoCampaignSeed[] = [
       { id: "a4", title: "Claims handoff one-pager", channel: "Referral", format: "PDF", source: "Composite", status: "Needs review", weight: 0.12 },
       { id: "a5", title: "Adjuster outreach static", channel: "Meta Ads", format: "1:1 PNG", source: "AI-generated", status: "Draft", weight: 0.08 },
     ],
+    trend: "flat",
     seed: 6066,
   },
+  {
+    // Found by `demo-campaign-coverage.test.ts` on its first run: this campaign
+    // has been in the restoration demo the whole time with no performance seed,
+    // so even the industry these seeds were WRITTEN for had a campaign whose
+    // Performance tab showed the empty state. It is archived, hence the modest
+    // numbers and the declining trend.
+    id: "demo-wildfire-smoke-cleanup",
+    name: "Wildfire Smoke Cleanup",
+    persona: "Homeowner Rebuild",
+    lifecycle: "In review",
+    objective:
+      "Offer smoke and soot remediation to homeowners affected by regional wildfire smoke events, leading with air-quality proof rather than urgency.",
+    impressions: 11_200,
+    clicks: 430,
+    leads: 33,
+    booked: 5,
+    revenueCents: 1_240_000,
+    spendCents: 150_000,
+    conversion: 15,
+    channelMix: [
+      { channel: "Email", weight: 0.34, spendShare: 0 },
+      { channel: "Landing", weight: 0.26, spendShare: 0 },
+      { channel: "Meta Ads", weight: 0.2, spendShare: 0.84 },
+      { channel: "SMS", weight: 0.12, spendShare: 0 },
+      { channel: "Referral", weight: 0.08, spendShare: 0.16 },
+    ],
+    assets: [
+      { id: "a1", title: "Smoke & odor remediation email", channel: "Email", format: "Email", source: "Real media", status: "Approved", weight: 0.32 },
+      { id: "a2", title: "Air-quality restoration landing", channel: "Landing", format: "Landing", source: "Real media", status: "Approved", weight: 0.26 },
+      { id: "a3", title: "Soot cleanup before/after — 4:5", channel: "Meta Ads", format: "4:5 PNG", source: "Real media", status: "Needs review", weight: 0.2 },
+      { id: "a4", title: "Advisory-window SMS", channel: "SMS", format: "SMS", source: "Composite", status: "Needs review", weight: 0.14 },
+      { id: "a5", title: "Odor-removal explainer — 9:16", channel: "Meta Ads", format: "9:16 MP4", source: "AI-generated", status: "Draft", weight: 0.08 },
+    ],
+    trend: "down",
+    seed: 8077,
+  },
 ];
+
+/**
+ * The default demo's four campaigns — the ones `genericDemoCampaigns()` serves
+ * when `ARC_DEMO_INDUSTRY` is unset, which is every launch config.
+ *
+ * Ids, names and personas mirror that generator exactly, because a mismatch is
+ * invisible until someone clicks: the analytics table renders a row for whatever
+ * id is here, and a row whose id no campaign carries is a link to a "not found"
+ * page. That is precisely what shipped before — generic display names sitting on
+ * restoration ids.
+ *
+ * Deliberately tenant-agnostic. No industry nouns, and channels are the neutral
+ * set (Email / Social / Landing / SMS / Referral) rather than one ad platform,
+ * so this reads as a plausible demo for any owner-operator service business —
+ * see docs/UNIVERSALITY.md.
+ */
+const GENERIC_SEEDS: DemoCampaignSeed[] = [
+  {
+    id: "demo-high-intent-follow-up",
+    name: "High-intent follow-up",
+    persona: "New lead",
+    lifecycle: "In review",
+    objective:
+      "Turn recent high-intent interest into qualified conversations with a clear, low-friction next step, using the proof and answers prospects are already looking for.",
+    impressions: 24_800,
+    clicks: 1_640,
+    leads: 132,
+    booked: 27,
+    revenueCents: 3_840_000,
+    spendCents: 420_000,
+    conversion: 20,
+    channelMix: [
+      { channel: "Email", weight: 0.36, spendShare: 0 },
+      { channel: "Landing", weight: 0.24, spendShare: 0 },
+      { channel: "Social", weight: 0.2, spendShare: 0.82 },
+      { channel: "SMS", weight: 0.12, spendShare: 0 },
+      { channel: "Referral", weight: 0.08, spendShare: 0.18 },
+    ],
+    assets: [
+      { id: "a1", title: "Follow-up email — first touch", channel: "Email", format: "Email", source: "Real media", status: "Approved", weight: 0.3 },
+      { id: "a2", title: "Common questions one-pager", channel: "Landing", format: "PDF", source: "Real media", status: "Approved", weight: 0.24 },
+      { id: "a3", title: "Consultation booking landing", channel: "Landing", format: "Landing", source: "Composite", status: "Approved", weight: 0.2 },
+      { id: "a4", title: "Proof-point social static — 1:1", channel: "Social", format: "1:1 PNG", source: "Real media", status: "Needs review", weight: 0.16 },
+      { id: "a5", title: "Reminder SMS", channel: "SMS", format: "SMS", source: "Composite", status: "Draft", weight: 0.1 },
+    ],
+    trend: "up",
+    seed: 7011,
+  },
+  {
+    id: "demo-customer-adoption",
+    name: "Customer next-step adoption",
+    persona: "Active customer",
+    lifecycle: "In review",
+    objective:
+      "Help active customers discover the next service or offer most relevant to them, using their own recent activity as the reason to reach out.",
+    impressions: 18_200,
+    clicks: 2_050,
+    leads: 96,
+    booked: 31,
+    revenueCents: 2_760_000,
+    spendCents: 110_000,
+    conversion: 32,
+    channelMix: [
+      { channel: "Email", weight: 0.46, spendShare: 0 },
+      { channel: "Landing", weight: 0.22, spendShare: 0 },
+      { channel: "SMS", weight: 0.16, spendShare: 0 },
+      { channel: "Social", weight: 0.1, spendShare: 1 },
+      { channel: "Referral", weight: 0.06, spendShare: 0 },
+    ],
+    assets: [
+      { id: "a1", title: "Personalized recommendation email", channel: "Email", format: "Email", source: "Real media", status: "Approved", weight: 0.34 },
+      { id: "a2", title: "What's included — explainer", channel: "Landing", format: "Landing", source: "Real media", status: "Approved", weight: 0.24 },
+      { id: "a3", title: "Customer story — 4:5 static", channel: "Social", format: "4:5 PNG", source: "Real media", status: "Approved", weight: 0.2 },
+      { id: "a4", title: "Next-step nudge SMS", channel: "SMS", format: "SMS", source: "Composite", status: "Needs review", weight: 0.14 },
+      { id: "a5", title: "Adoption checklist — 9:16", channel: "Social", format: "9:16 MP4", source: "AI-generated", status: "Draft", weight: 0.08 },
+    ],
+    trend: "up",
+    seed: 7022,
+  },
+  {
+    id: "demo-referral-growth",
+    name: "Champion referral growth",
+    persona: "Champion",
+    lifecycle: "Ready",
+    objective:
+      "Turn positive customer sentiment into thoughtful referrals, with a simple path that is worth something to both people.",
+    impressions: 9_400,
+    clicks: 780,
+    leads: 54,
+    booked: 19,
+    revenueCents: 3_120_000,
+    spendCents: 60_000,
+    conversion: 35,
+    channelMix: [
+      { channel: "Referral", weight: 0.42, spendShare: 0.5 },
+      { channel: "Email", weight: 0.3, spendShare: 0 },
+      { channel: "Landing", weight: 0.16, spendShare: 0 },
+      { channel: "Social", weight: 0.08, spendShare: 0.5 },
+      { channel: "SMS", weight: 0.04, spendShare: 0 },
+    ],
+    assets: [
+      { id: "a1", title: "Referral invitation email", channel: "Email", format: "Email", source: "Real media", status: "Approved", weight: 0.34 },
+      { id: "a2", title: "Refer-a-friend landing", channel: "Landing", format: "Landing", source: "Real media", status: "Approved", weight: 0.26 },
+      { id: "a3", title: "Thank-you note template", channel: "Referral", format: "PDF", source: "Composite", status: "Approved", weight: 0.2 },
+      { id: "a4", title: "Customer quote — 1:1 static", channel: "Social", format: "1:1 PNG", source: "Real media", status: "Approved", weight: 0.12 },
+      { id: "a5", title: "Referral reminder SMS", channel: "SMS", format: "SMS", source: "AI-generated", status: "Needs review", weight: 0.08 },
+    ],
+    trend: "flat",
+    seed: 7033,
+  },
+  {
+    id: "demo-customer-winback",
+    name: "Customer win-back",
+    persona: "At-risk customer",
+    lifecycle: "Live",
+    objective:
+      "Re-engage customers whose activity has declined with one useful reason to return, rather than a discount that trains them to wait.",
+    impressions: 33_600,
+    clicks: 1_420,
+    leads: 88,
+    booked: 12,
+    revenueCents: 1_680_000,
+    spendCents: 380_000,
+    conversion: 14,
+    channelMix: [
+      { channel: "Email", weight: 0.38, spendShare: 0 },
+      { channel: "Social", weight: 0.24, spendShare: 0.86 },
+      { channel: "SMS", weight: 0.18, spendShare: 0 },
+      { channel: "Landing", weight: 0.14, spendShare: 0 },
+      { channel: "Referral", weight: 0.06, spendShare: 0.14 },
+    ],
+    assets: [
+      { id: "a1", title: "We've missed you — email", channel: "Email", format: "Email", source: "Real media", status: "Approved", weight: 0.32 },
+      { id: "a2", title: "What's new since you left — landing", channel: "Landing", format: "Landing", source: "Composite", status: "Approved", weight: 0.22 },
+      { id: "a3", title: "Win-back offer — 4:5 static", channel: "Social", format: "4:5 PNG", source: "Composite", status: "Approved", weight: 0.2 },
+      { id: "a4", title: "Reactivation SMS", channel: "SMS", format: "SMS", source: "Real media", status: "Needs review", weight: 0.16 },
+      { id: "a5", title: "Lapsed-customer story — 9:16", channel: "Social", format: "9:16 MP4", source: "AI-generated", status: "Draft", weight: 0.1 },
+    ],
+    trend: "down",
+    seed: 7044,
+  },
+];
+
+/**
+ * The seed set matching whichever demo campaigns are actually being served.
+ *
+ * Reads the same env var as `demoCampaigns()` rather than importing from
+ * `@/lib/campaigns/read-model`, which would be a cycle — that module already
+ * imports performance types. The guard in `demo-campaign-coverage.test.ts` is
+ * what keeps the two branches agreeing, since nothing in the type system does.
+ */
+export function demoCampaignSeeds(): DemoCampaignSeed[] {
+  return canonicalIndustryKey(process.env.ARC_DEMO_INDUSTRY) === "restoration" ? RESTORATION_SEEDS : GENERIC_SEEDS;
+}
 
 function buildTrend(seed: DemoCampaignSeed): CampaignDetailTrendPoint[] {
   const DAY_MS = 24 * 60 * 60 * 1000;
@@ -364,7 +574,7 @@ function buildAssets(seed: DemoCampaignSeed): CampaignDetailAssetRow[] {
 }
 
 export function getCampaignAnalyticsDemoDetail(campaignId: string): CampaignAnalyticsDemoDetail | null {
-  const seed = CAMPAIGN_SEEDS.find((c) => c.id === campaignId);
+  const seed = demoCampaignSeeds().find((c) => c.id === campaignId);
   if (!seed) return null;
 
   const trend = buildTrend(seed);
@@ -430,7 +640,7 @@ export function getCampaignAnalyticsDemoDetail(campaignId: string): CampaignAnal
 /** True when this id has a demo analytics detail — lets the route try the
  *  fallback before showing the "unavailable" empty state. */
 export function isDemoCampaignAnalyticsId(campaignId: string): boolean {
-  return CAMPAIGN_SEEDS.some((c) => c.id === campaignId);
+  return demoCampaignSeeds().some((c) => c.id === campaignId);
 }
 
 export { USD as demoUsd, NUM as demoNum };

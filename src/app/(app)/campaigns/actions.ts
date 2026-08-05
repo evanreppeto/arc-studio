@@ -63,18 +63,25 @@ export type LoadReviewQueueResult =
   | { ok: false; error: string };
 
 /**
- * Everything on the operator's desk, across every campaign in the workspace.
+ * Everything on the operator's desk, across every campaign in the workspace —
+ * or, given a `campaignId`, just that campaign's share of it.
  *
  * Loaded on demand rather than with the board. The queue needs two tables the
  * list read does not touch — the recommendations and the findings — and the
  * campaigns page is the most-visited screen in the app. Paying for a review
  * nobody asked to see, on every visit, to save one click when they do, is the
  * wrong trade.
+ *
+ * The narrowing happens HERE rather than in the client: the board only ever
+ * renders one campaign's entries when a row is clicked, and shipping the other
+ * campaigns' draft copy to the browser to be filtered out is work and exposure
+ * for nothing.
  */
-export async function loadReviewQueueAction(): Promise<LoadReviewQueueResult> {
+export async function loadReviewQueueAction(campaignId?: string): Promise<LoadReviewQueueResult> {
   await requireOperator();
   const ctx = await getCurrentWorkspaceContext();
   const queue = await getWorkspaceReviewQueue(undefined, "Arc", ctx.orgId, ctx.workspaceId);
   if (queue.status !== "live") return { ok: false, error: queue.message };
-  return { ok: true, entries: queue.entries };
+  const entries = campaignId ? queue.entries.filter((entry) => entry.campaignId === campaignId) : queue.entries;
+  return { ok: true, entries };
 }

@@ -56,18 +56,21 @@ describe("the KPI strip is the only KPI strip", () => {
     // `.ukpis` and `.egrid` join the list: both were equal 3-column rows in
     // per-route sheets and both now route through KpiStrip.
     //
-    // `.perfkpis` is deliberately NOT here. It is the same shape and the same
-    // mistake, but it has never rendered for anyone — no demo campaign carries
-    // results, and prod has 0 campaign_results and 0 dispatches — so it could
-    // not be verified after converting. A wrong mapping there would first
-    // appear the day real results land, which is the worst moment to discover
-    // it. Convert it against a workspace that actually has performance data.
+    // `.perfkpis` is here now, and the reason it was held back was WRONG. This
+    // comment used to say it "has never rendered for anyone". It renders — the
+    // six restoration demo campaigns each carry a full seeded result set, and
+    // the panel was screenshotted with real numbers in it before converting.
+    // What was true is narrower and worth keeping: `demoCampaigns()` serves the
+    // restoration set only under `ARC_DEMO_INDUSTRY=restoration`, and no launch
+    // config sets it, so the DEFAULT preview shows the generic campaigns — none
+    // of which the performance seeds cover. "I could not see it" got recorded as
+    // "it does not render", which is how a reachable surface goes unconverted.
     //
     // `.scards` is not here either, for a different reason: it carries a
     // progress bar and caption the shared strip has no slot for, so it stays
     // its own component. Its equal-column grid was the real defect and that is
     // fixed — one score no longer leaves two dead columns.
-    const dead = ["\\.okpis", "\\.kpis", "\\.asum", "\\.pstats", "\\.bstats", "\\.jr-kpis", "\\.perfgrid", "\\.metrics", "\\.ukpis", "\\.egrid"];
+    const dead = ["\\.okpis", "\\.kpis", "\\.asum", "\\.pstats", "\\.bstats", "\\.jr-kpis", "\\.perfgrid", "\\.metrics", "\\.ukpis", "\\.egrid", "\\.perfkpis"];
     const offenders: string[] = [];
     for (const name of dead) {
       const re = new RegExp(`^[^\\n]*${name}[^\\n]*(?:display:\\s*grid|grid-template-columns)[^\\n]*$`, "gm");
@@ -86,7 +89,7 @@ describe("the KPI strip is the only KPI strip", () => {
       const src = readFileSync(file, "utf8");
       // The old wrapper class names may survive as spacing hooks, but only ever
       // on a <KpiStrip className=…>, never on a hand-built <div>.
-      for (const m of src.matchAll(/<div className="(okpis|kpis|asum|pstats|bstats|jr-kpis|perfgrid|metrics)"/g)) {
+      for (const m of src.matchAll(/<div className="(okpis|kpis|asum|pstats|bstats|jr-kpis|perfgrid|metrics|perfkpis)"/g)) {
         handRolled.push(`${file.replace(APP_DIR, "")}: <div className="${m[1]}">`);
       }
     }
@@ -95,13 +98,35 @@ describe("the KPI strip is the only KPI strip", () => {
 
   it("keeps the layout asymmetric, which is the whole point of the rule", () => {
     // An equal row says every number matters the same, which is never true.
-    for (const count of [2, 3, 4, 5]) {
+    //
+    // Two through five are one row, so columns == cells. Six is the exception
+    // and wraps to 3×2 — six 23px serif values in a row would be the squeeze
+    // this rule exists to prevent, so the cells-per-column count is what is
+    // pinned instead. Every count still has to lead with a wider first column.
+    const COLUMNS: Record<number, number> = { 2: 2, 3: 3, 4: 4, 5: 5, 6: 3 };
+    for (const [count, expected] of Object.entries(COLUMNS)) {
       const rule = new RegExp(`\\.kpistrip\\[data-count="${count}"\\] \\{ grid-template-columns: ([^;]+);`);
       const match = CSS.match(rule);
       expect(match, `no rule for ${count} cells`).toBeTruthy();
       const cols = match![1].trim().split(/\s+/);
-      expect(cols).toHaveLength(count);
+      expect(cols, `${count} cells should lay out over ${expected} columns`).toHaveLength(expected);
       expect(cols[0]).not.toBe(cols[1]); // the lead metric is wider
+      expect(Number(count) % expected, `${count} cells must fill ${expected} columns evenly`).toBe(0);
     }
+  });
+
+  /**
+   * The component and the stylesheet have to agree on the ceiling. `data-count`
+   * is clamped in the TSX, and a clamp higher than the last CSS rule renders a
+   * strip with more children than columns — a ragged final row with the grid
+   * background showing through, which is exactly what six cells did before the
+   * `data-count="6"` rule existed.
+   */
+  it("clamps data-count to the highest count the stylesheet styles", () => {
+    const component = readFileSync(join(APP_DIR, "_components/kpi-strip.tsx"), "utf8");
+    const clamp = component.match(/data-count=\{Math\.min\(items\.length, (\d+)\)\}/);
+    expect(clamp, "KpiStrip should clamp data-count").toBeTruthy();
+    const styled = [...CSS.matchAll(/\.kpistrip\[data-count="(\d+)"\] \{ grid-template-columns:/g)].map((m) => Number(m[1]));
+    expect(Number(clamp![1])).toBe(Math.max(...styled));
   });
 });

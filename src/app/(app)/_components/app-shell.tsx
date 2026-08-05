@@ -148,6 +148,8 @@ function badgeLabel(href: string, count: number): string {
 }
 
 export function AppShell({
+  workspaceId = null,
+  orgSlug = null,
   workspaceName,
   orgName,
   workspaceSubtitle,
@@ -166,6 +168,26 @@ export function AppShell({
   demoData = false,
   children,
 }: {
+  /**
+   * Which tenant this render actually belongs to, stamped onto the shell root as
+   * `data-workspace-id` / `data-org-slug`.
+   *
+   * Display identity cannot answer that question. Prod holds two organizations
+   * whose workspaces are BOTH named "Big Shoulders Restoration" — the rail, the
+   * page chrome and a screenshot are byte-identical between them, so the wrong
+   * tenant looks exactly like the right one. That is not hypothetical: the
+   * deployed guardrail signed into the drained org for days and reported "the
+   * Opportunity inbox is empty" rather than "this is the wrong workspace"
+   * (BSR-708 was the same mix-up in the nightly smoke).
+   *
+   * The ids are the only thing that distinguishes them, so they belong in the
+   * DOM: it lets an e2e check assert the tenant of the very page it is asserting
+   * about, and it gives a human something to read when two screenshots disagree.
+   * Nothing is exposed — the viewer is an authenticated member of this workspace
+   * and these are the ids of their own tenant.
+   */
+  workspaceId?: string | null;
+  orgSlug?: string | null;
   workspaceName: string;
   orgName: string;
   /** Resolved rail identity — see resolveWorkspaceIdentity in @/domain. */
@@ -301,7 +323,12 @@ export function AppShell({
           keyboard user tabs through the whole rail on every page before
           reaching content. */}
       <a className="skip-link" href="#main-content">Skip to content</a>
-      <div className="app" data-nav-open={navOpen}>
+      <div
+        className="app"
+        data-nav-open={navOpen}
+        data-workspace-id={workspaceId ?? undefined}
+        data-org-slug={orgSlug ?? undefined}
+      >
         {/* Backdrop behind the mobile drawer — tap to dismiss. Inert on desktop
             (the rail is docked, so this never covers content there). */}
         <button

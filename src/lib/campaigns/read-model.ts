@@ -134,11 +134,37 @@ export type CampaignWorkspaceListItem = {
   status: string;
   lifecycle: CampaignLaunchState["lifecycle"];
   pendingCount: number;
+  /**
+   * Approved / non-archived deliverable counts, straight off `buildLaunchState`
+   * — the SAME numbers the campaign's own detail page renders in `.cstate`.
+   *
+   * The board must not compute this from `rollup` instead. The two disagree:
+   * `buildLaunchState` counts built assets and drops archived ones, while
+   * `deriveCampaignRollup` also counts standalone approvals (those with no
+   * `campaign_asset_id`). One live campaign has 6 assets and 1 standalone
+   * approval, so the rollup says 7 where the detail page says 6 — two answers
+   * to one question, on two screens, about one campaign.
+   */
+  approvedCount: number;
+  requiredCount: number;
   pendingDeliverables: PendingDeliverable[];
+  /**
+   * Empty string when the campaign has no objective — NOT a placeholder
+   * sentence. This used to be `campaign.objective ?? "No objective captured
+   * yet."`, which is a non-null string, so every `objective || theme || …`
+   * fallback a caller wrote was dead on arrival and three of five live rows
+   * spent their subtitle announcing that a field was blank.
+   */
   objective: string;
+  /** The operator/Arc-supplied theme. Required at creation, so this is the
+   *  reliable thing to say when there is no objective. */
+  campaignTheme: string;
+  /** Timing of the signal this campaign was built from, when it had one. */
+  signal: CampaignSourceSignal | null;
   audienceSummary: string;
   offerSummary: string;
-  whyBuilt: string;
+  /** Null when Arc recorded no reasoning — see `CampaignWorkspaceReasoning`. */
+  whyBuilt: string | null;
   assetCount: number;
   approvalCount: number;
   mediaCount: number;
@@ -157,6 +183,39 @@ export type CampaignWorkspaceListItem = {
   href: string;
   rollup: CampaignRollup;
 };
+
+/**
+ * The timing Arc recorded on the signal that produced a campaign.
+ *
+ * Shape censused against the live workspace: `urgency` sits at the top level of
+ * `campaigns.source_signal` and the timing under `evidence`
+ * (`{origin, urgency, evidence: {eventType, severity, startsAt, endsAt, …}}`).
+ * Both levels are read anyway — this column is agent-written JSON with no
+ * constraint behind it, and a key that moves should degrade to null rather than
+ * throw.
+ */
+export type CampaignSourceSignal = {
+  urgency: string | null;
+  eventType: string | null;
+  startsAtIso: string | null;
+  endsAtIso: string | null;
+};
+
+/** Null when the campaign carries no signal timing at all — most of them. An
+ *  operator-created package has no window to close. */
+export function parseCampaignSourceSignal(raw: unknown): CampaignSourceSignal | null {
+  const root = asObject(raw);
+  const evidence = asObject(root.evidence);
+  const pick = (key: string) => getString(evidence[key]) ?? getString(root[key]);
+
+  const signal: CampaignSourceSignal = {
+    urgency: pick("urgency"),
+    eventType: pick("eventType") ?? pick("event_type"),
+    startsAtIso: pick("startsAt") ?? pick("starts_at"),
+    endsAtIso: pick("endsAt") ?? pick("ends_at"),
+  };
+  return Object.values(signal).some(Boolean) ? signal : null;
+}
 
 export type CampaignListContentPiece = {
   id: string;
@@ -253,8 +312,16 @@ export type CampaignAssetFinding = {
 };
 
 export type CampaignWorkspaceReasoning = {
-  whyBuilt: string;
-  recommendedAction: string;
+  /**
+   * Null when Arc recorded nothing — the view renders these behind `&&` guards
+   * that were written to hide an absent field and could never fire, because the
+   * old fallbacks ("Arc has not recorded reasoning for this campaign yet.", "No
+   * recommended action recorded.") are truthy. `reasoning_payload` is `{}` on
+   * every live campaign, so the reasoning panel — whose whole job is explaining
+   * why Arc built the thing — rendered two sentences saying it cannot.
+   */
+  whyBuilt: string | null;
+  recommendedAction: string | null;
   guardrailFlags: string[];
   toolsUsed: string[];
   promptInputs: Array<{ label: string; value: string }>;
@@ -890,10 +957,15 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
         status: statusLabel(campaign.status),
         lifecycle: launch.lifecycle,
         pendingCount: launch.pendingCount,
+        approvedCount: launch.approvedCount,
+        requiredCount: launch.requiredCount,
         pendingDeliverables: selectPendingDeliverables(campaignAssets),
-        objective: campaign.objective ?? "No objective captured yet.",
-        audienceSummary: campaign.audience_summary ?? "Audience has not been summarized yet.",
-        offerSummary: campaign.offer_summary ?? "Offer has not been summarized yet.",
+        // Empty, not a placeholder sentence — see the field's note on the type.
+        objective: campaign.objective?.trim() ?? "",
+        campaignTheme: campaign.campaign_theme?.trim() || humanize(campaign.restoration_focus ?? ""),
+        signal: parseCampaignSourceSignal(campaign.source_signal),
+        audienceSummary: campaign.audience_summary?.trim() ?? "",
+        offerSummary: campaign.offer_summary?.trim() ?? "",
         whyBuilt: reasoning.whyBuilt,
         assetCount: campaignAssets.length,
         approvalCount: campaignApprovals.length,
@@ -1011,6 +1083,8 @@ type DemoCampaign = {
   guardrailFlags: string[];
   toolsUsed: string[];
   channels: string[];
+  /** Only the signal-driven fixtures carry one, same as the live table. */
+  signal?: CampaignSourceSignal;
   sourceCount: number;
   sources: DemoSource[];
   createdAtIso: string;
@@ -1075,8 +1149,12 @@ function buildDemoListItem(campaign: DemoCampaign): CampaignWorkspaceListItem {
     status: campaign.status,
     lifecycle: campaign.lifecycle,
     pendingCount: pendingPieces.length,
+    approvedCount: approvedPieces.length,
+    requiredCount: campaign.pieces.length,
     pendingDeliverables: pendingPieces.map((piece) => ({ assetId: piece.id, title: piece.title, kind: piece.kind })),
     objective: campaign.objective,
+    campaignTheme: campaign.campaignTheme,
+    signal: campaign.signal ?? null,
     audienceSummary: campaign.audienceSummary,
     offerSummary: campaign.offerSummary,
     whyBuilt: campaign.whyBuilt,
@@ -1379,6 +1457,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
     pieceStatus,
     updatedAt,
     updatedAtIso,
+    signal,
   }: {
     id: string;
     name: string;
@@ -1390,6 +1469,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
     pieceStatus: "pending_approval" | "approved";
     updatedAt: string;
     updatedAtIso: string;
+    signal?: CampaignSourceSignal;
   }): DemoCampaign => {
     const pending = pieceStatus === "pending_approval";
     const status = pending ? "In Review" : lifecycle === "Live" ? "Live" : "Approved";
@@ -1454,6 +1534,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
       guardrailFlags: ["Human approval required", "Outbound locked until approved"],
       toolsUsed: ["Customer signal", "Persona match", "Approved brand context"],
       channels: ["Email", "LinkedIn"],
+      signal,
       sourceCount: 2,
       sources: [
         {
@@ -1578,6 +1659,9 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
       theme: "Lead conversion",
       objective: "Turn recent high-intent interest into qualified conversations with a clear, low-friction next step.",
       offer: "A short consultation tailored to the questions prospects are already researching.",
+      // Urgency with no window — the other half of the timing chip, so the
+      // offline preview shows both tones it can render.
+      signal: { urgency: "high", eventType: null, startsAtIso: null, endsAtIso: null },
       lifecycle: "In review",
       pieceStatus: "pending_approval",
       updatedAt: "Jul 21, 2026",
@@ -1655,6 +1739,15 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       guardrailFlags: ["No payout guarantees", "Response time stated as historical average"],
       toolsUsed: ["Search-trend signal", "CRM service-area match", "Approved media library"],
       channels: ["Gmail", "Meta", "Instagram", "SMS"],
+      // Fixed dates, like every other timestamp in these fixtures — so this one
+      // renders the expired-window state rather than a countdown that changes
+      // meaning depending on the day the preview is opened.
+      signal: {
+        urgency: "high",
+        eventType: "Freeze-thaw advisory",
+        startsAtIso: "2026-07-19T12:00:00.000Z",
+        endsAtIso: "2026-07-21T18:00:00.000Z",
+      },
       sourceCount: 6,
       sources: [
         {
@@ -2295,9 +2388,16 @@ export async function getCampaignWorkspaceDetail(
         persona: humanize(campaign.persona),
         campaignTheme: campaign.campaign_theme?.trim() || humanize(campaign.restoration_focus ?? ""),
         status: statusLabel(campaign.status),
-        objective: campaign.objective ?? "No objective captured yet.",
-        audienceSummary: campaign.audience_summary ?? "Audience has not been summarized yet.",
-        offerSummary: campaign.offer_summary ?? "Offer has not been summarized yet.",
+        // Empty rather than a placeholder sentence, for the same reason as the
+        // list read above — and here it un-breaks THREE guards the view already
+        // had. The brief list filters falsy values (`.filter(([, v]) => v)`),
+        // the header subtitle falls back through `objective || …`, and both were
+        // inert because a placeholder is truthy. Three of the five live
+        // campaigns have a null objective, so three detail pages headlined with
+        // "No objective captured yet." under the campaign's own name.
+        objective: campaign.objective?.trim() ?? "",
+        audienceSummary: campaign.audience_summary?.trim() ?? "",
+        offerSummary: campaign.offer_summary?.trim() ?? "",
         complianceNotes: campaign.compliance_notes ?? "No campaign-level compliance notes captured.",
         // The two package fields that complete the contract: what targeting was
         // weighed and rejected, and the note for whoever continues offline.
@@ -3083,10 +3183,9 @@ export function buildReasoning(campaign: CampaignRow, assets: CampaignAssetRow[]
   return {
     whyBuilt:
       getString(reasoning.why_arc_created_it) ??
-      campaign.objective ??
-      campaign.offer_summary ??
-      `${agentName} has not recorded reasoning for this campaign yet.`,
-    recommendedAction: getString(reasoning.recommended_action) ?? "No recommended action recorded.",
+      getString(campaign.objective) ??
+      getString(campaign.offer_summary),
+    recommendedAction: getString(reasoning.recommended_action),
     guardrailFlags: asStringArray(reasoning.guardrail_flags),
     toolsUsed,
     promptInputs: buildPromptInputs(assets),
@@ -3112,14 +3211,18 @@ export function buildExecutiveOverview(input: {
     ...assets.flatMap((asset) => [asObject(asset.prompt_inputs), asObject(asset.reasoning_payload), asObject(asset.audit_payload)]),
     ...approvals.flatMap((approval) => [asObject(approval.prompt_inputs), asObject(approval.reasoning_payload), asObject(approval.audit_payload)]),
   ];
-  const whySignal = sentenceFragment(findPayloadAnswer(payloads, WHY_KEYS) ?? reasoning.whyBuilt);
+  // Not pre-trimmed to a string: with no payload answer and no recorded
+  // reasoning this is genuinely absent, and interpolating "" into the sentence
+  // below would print a headless ". Goal: reduce decision friction…" as the
+  // brief's "Why now". The brief list drops falsy rows, so "" removes it.
+  const whySignal = findPayloadAnswer(payloads, WHY_KEYS) ?? reasoning.whyBuilt;
 
   return {
     what:
       findPayloadAnswer(payloads, JOURNEY_OVERVIEW_KEYS) ??
       findPayloadAnswer(payloads, WHAT_KEYS) ??
       `Move ${audience} toward a trusted next step with ${offer}. Objective: ${objective}.`,
-    why: `${whySignal}. Goal: reduce decision friction and make the next step clear.`,
+    why: whySignal ? `${sentenceFragment(whySignal)}. Goal: reduce decision friction and make the next step clear.` : "",
     timeframe:
       findPayloadAnswer(payloads, TIMEFRAME_KEYS) ??
       buildJourneyTimeframe(campaign, agentName),

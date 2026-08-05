@@ -27,8 +27,9 @@ import { buildCampaignExport, buildDeliverableExport, exportSlug, isExportable }
 import { diffLines } from "@/lib/campaigns/revision-diff";
 import { type StalledRevision } from "@/lib/campaigns/revision-recovery";
 import { LOCKED_CLAIMS, MEASUREMENT_PLAN } from "@/lib/performance/measurement-copy";
-import { buildPerformanceLearning, type CampaignPerformancePanel, type PerformanceTrendPoint } from "@/lib/performance/campaign-panel";
+import { buildPerformanceLearning, type CampaignPerformancePanel, type PerformanceKpi, type PerformanceTrendPoint } from "@/lib/performance/campaign-panel";
 
+import { KpiStrip, type KpiCell } from "../../../_components/kpi-strip";
 import { Modal } from "../../../_components/modal";
 import { ShareDialog } from "../../../_components/share-dialog";
 import { DeliverableCopy, markId, ReviewBlock, statusMeta, svg, type Tone } from "./deliverable-review";
@@ -536,6 +537,24 @@ function TrendChart({ points }: { points: PerformanceTrendPoint[] }) {
   );
 }
 
+/**
+ * The panel's KPI shape, in the shared strip's terms.
+ *
+ * `deltaTone` is a JUDGEMENT, not an arithmetic direction — "Cost / booked job"
+ * ships `-9%` with tone `ok`, because a falling cost is good news. The strip's
+ * `dir` drives colour, so tone maps to it directly (`ok` → green) rather than
+ * the sign of the number, which would paint the best result on the panel red.
+ */
+function toKpiCell(k: PerformanceKpi): KpiCell {
+  const dir = k.deltaTone === "ok" ? "up" : k.deltaTone === "red" ? "dn" : "flat";
+  return {
+    label: k.label,
+    value: k.value,
+    sublabel: k.hint,
+    ...(k.delta ? { delta: { label: k.delta, dir } } : {}),
+  };
+}
+
 function PerformancePanel({ panel, lifecycle, campaignName }: { panel: CampaignPerformancePanel; lifecycle: string; campaignName?: string }) {
   const learning = buildPerformanceLearning(panel, campaignName);
   if (panel.status === "measuring") {
@@ -588,18 +607,7 @@ function PerformancePanel({ panel, lifecycle, campaignName }: { panel: CampaignP
             {panel.source === "demo" ? "Illustrative" : "Attributed"} · {panel.windowLabel}
           </span>
         </h3>
-        <div className="perfkpis">
-          {panel.kpis.map((k) => (
-            <div className="pkpi" key={k.key}>
-              <div className="pkl">{k.label}</div>
-              <div className="pkv">{k.value}</div>
-              <div className="pkh">
-                {k.delta && <span className={`pkd ${k.deltaTone ?? "neutral"}`}>{k.delta}</span>}
-                {k.hint}
-              </div>
-            </div>
-          ))}
-        </div>
+        <KpiStrip className="perfkpis" items={panel.kpis.map(toKpiCell)} />
         <p className="perfnote">{panel.note}</p>
       </div>
 
@@ -1089,7 +1097,14 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
         <div className="crow">
           <div className="cmain">
             <h2 className="cname">{campaign.name}</h2>
-            <div className="csub">{campaign.objective || campaign.audienceSummary}</div>
+            {/* `campaignTheme` joins the chain because it is the only one of the
+                three required at creation — the other two are null on most live
+                campaigns. The whole chain was previously inert: `objective` was
+                never empty, because the read-model substituted a placeholder
+                sentence for a null one. */}
+            {(campaign.objective || campaign.campaignTheme || campaign.audienceSummary) && (
+              <div className="csub">{campaign.objective || campaign.campaignTheme || campaign.audienceSummary}</div>
+            )}
             <div className="cchips">
               {persona && (
                 <span className="chip persona">
@@ -1522,6 +1537,15 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                     <p className="rbody">
                       <b>Recommended:</b> {reasoning.recommendedAction}
                     </p>
+                  )}
+                  {/* Said once, in the muted voice of an empty state — not twice
+                      in `.rbody`, which is the styling real reasoning uses. The
+                      section stays rather than disappearing: on an Arc-drafted
+                      campaign, "no reasoning was recorded" is itself worth
+                      knowing, and hiding it would make missing provenance
+                      indistinguishable from provenance nobody looked for. */}
+                  {!reasoning.whyBuilt && !reasoning.recommendedAction && (
+                    <p className="empty-note">Arc recorded no reasoning for this campaign.</p>
                   )}
                   {reasoning.guardrailFlags.length > 0 && (
                     <div className="flags">
