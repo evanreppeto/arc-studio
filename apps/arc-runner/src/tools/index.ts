@@ -1,7 +1,7 @@
 import type { ArcClient } from "../arc-client";
 import { crmReadTools } from "./crm";
 import { brainReadTools, brainWriteTools } from "./brain";
-import { campaignReadTools } from "./campaigns";
+import { campaignReadTools, campaignReviseTools } from "./campaigns";
 import { approvalReadTools, approvalWriteTools } from "./approvals";
 import { performanceReadTools } from "./performance";
 import { intelligenceTools } from "./intelligence";
@@ -66,6 +66,7 @@ function writeTools(client: ArcClient, step: StepFn) {
 function draftTools(client: ArcClient, step: StepFn, sink: TurnSink, ctx: ToolContext) {
   return [
     ...draftWorkProductTools(client, step, sink, ctx),
+    ...campaignReviseTools(client, step, sink),
     ...mediaTools(client, step, sink.card, ctx),
     ...variantsTools(client, step, sink.card, ctx),
     ...libraryDraftTools(client, step, sink.card, ctx),

@@ -48,7 +48,7 @@ const READ = [
   "get_workspace_settings",
 ];
 const WRITE = ["record_brain_note", "link_brain_nodes", "propose_audience", "log_interaction", "create_lead", "update_record", "create_folder", "file_asset", "recommend_on_approval"];
-const DRAFT = ["create_campaign_draft", "submit_draft", "record_campaign_summary", "generate_image", "generate_video", "compose_creative", "submit_ad_variants", "analyze_website", "analyze_brand_design", "propose_brand_profile", "attach_media"];
+const DRAFT = ["create_campaign_draft", "revise_campaign_asset", "submit_draft", "record_campaign_summary", "generate_image", "generate_video", "compose_creative", "submit_ad_variants", "analyze_website", "analyze_brand_design", "propose_brand_profile", "attach_media"];
 
 describe("toolsForMode", () => {
   it("ask mode exposes only read tools (no writes)", () => {
@@ -75,6 +75,8 @@ describe("toolsForMode", () => {
   it("ask mode excludes draft work products", () => {
     const names = toolsForMode("ask", stubClient, step, sink).map((t) => t.name);
     expect(names).not.toContain("create_campaign_draft");
+    // Revising a live deliverable is a write, however small the edit.
+    expect(names).not.toContain("revise_campaign_asset");
     expect(names).not.toContain("generate_image");
     expect(names).not.toContain("analyze_website");
     expect(names).not.toContain("analyze_brand_design");

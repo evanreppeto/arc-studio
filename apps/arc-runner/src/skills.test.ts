@@ -57,6 +57,18 @@ describe("Arc skill registry", () => {
     expect(skill?.approvalPolicy).toBe("approval_gated_drafts");
   });
 
+  it("grants approval-gated drafting the copy write path a revision needs", () => {
+    const skill = resolveArcSkill("approval-gated-drafting");
+
+    // The other half of BSR-759. Adding compose_creative fixed image revisions;
+    // a copy revision ("use our real 24/7 number") still had no tool that could
+    // write to an existing asset, so it ran to `completed` having changed
+    // nothing. Without this entry the tool exists and the skill deletes it,
+    // which fails as a polite refusal rather than as an error.
+    expect(skill?.allowedTools).toContain("revise_campaign_asset");
+    expect(skill?.approvalPolicy).toBe("approval_gated_drafts");
+  });
+
   it("registers an approval-gated campaign-package skill that drafts but does not generate media", () => {
     const skill = resolveArcSkill("campaign-package-drafting");
 

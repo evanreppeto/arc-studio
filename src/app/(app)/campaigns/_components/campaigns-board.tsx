@@ -4,12 +4,13 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { CAMPAIGN_NOUN, countOf, WORK_STATE_LABEL, personaAccent,} from "@/domain";
+import { ASSET_NOUN, CAMPAIGN_NOUN, countOf, WORK_STATE_LABEL, personaAccent,} from "@/domain";
 
 import { createCampaign, loadReviewQueueAction, type NewCampaignInput } from "../actions";
 import { applyFindingFixAction, decideCampaignAsset, requestCampaignRevision } from "../[campaignId]/actions";
 import { ReviewQueue } from "../[campaignId]/_components/review-queue";
 import { type ReviewQueueEntry } from "@/lib/campaigns/read-model";
+import { constantAudience, nextActionFor, type SignalTiming } from "./board-derivations";
 import { NewCampaignModal } from "./new-campaign-modal";
 import { needsOperatorAttention, type CampaignDeskState, type CampaignTone } from "./tone";
 
@@ -30,6 +31,9 @@ export type CampaignRow = {
   channels: string;
   updatedRel: string;
   updatedAbs: string;
+  /** How much life is left in the signal this was built from — null for the
+   *  campaigns that were not built from one, which is most of them. */
+  timing: SignalTiming | null;
   href: string;
   /** Cover image for the row — first attached image, else a video poster.
    *  Null when the package has no visual creative. */
@@ -79,24 +83,30 @@ function personaLabelOf(persona: string): string {
   const s = (persona || "").replace(/^persona[\s_-]+/i, "").replace(/[_-]+/g, " ").trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 }
+/** A campaign created seconds ago holds nothing: no assets, so nothing undecided
+ *  and nothing in the roll-up. Arc drafts them after this row appears. */
+const EMPTY_ROLLUP = { state: "empty" as const, label: "", approved: 0, pending: 0, changes: 0, draft: 0, total: 0 };
+
 function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
   const audience = personaLabelOf(v.persona);
+  // Through the shared derivation rather than a hardcoded string, so this row
+  // cannot drift from what the server would have said about the same campaign.
+  const { next, nextTone } = nextActionFor("draft", 0, EMPTY_ROLLUP);
   return {
     id,
     name: v.name,
     brief: v.campaignTheme || "New campaign",
     tone: "draft",
     statusLabel: WORK_STATE_LABEL.draft,
-    // A campaign created seconds ago has no assets yet, so nothing is
-    // undecided — Arc drafts them after this row appears.
     pendingCount: 0,
-    next: "Arc is still building it",
-    nextTone: "",
+    next,
+    nextTone,
     audience,
     dot: personaAccent(v.persona || audience),
     channels: "",
     updatedRel: "now",
     updatedAbs: "",
+    timing: null,
     href: `/campaigns/${id}`,
     // A package created seconds ago carries no creative yet, same reasoning as
     // pendingCount above.
@@ -164,19 +174,26 @@ export function CampaignsBoard({
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  // The cross-campaign queue. Null until asked for — see loadReviewQueueAction
-  // for why it is not loaded with the board.
+  // The review queue. Null until asked for — see loadReviewQueueAction for why
+  // it is not loaded with the board. `queueScope` names the campaign it was
+  // opened for, so the panel can say whose queue this is; null means the whole
+  // workspace.
   const [queue, setQueue] = useState<ReviewQueueEntry[] | null>(null);
-  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueScope, setQueueScope] = useState<string | null>(null);
+  // Which row's button is spinning, so only that one shows "Loading…" — a shared
+  // boolean would put it on the header button too.
+  const [queueLoadingFor, setQueueLoadingFor] = useState<string | null>(null);
+
   const [queueError, setQueueError] = useState<string | null>(null);
   const [queuePending, startQueueTransition] = useTransition();
 
-  async function openQueue() {
-    if (queueLoading) return;
-    setQueueLoading(true);
+  /** Open the review queue, scoped to one campaign when given one. */
+  async function openQueue(campaign?: { id: string; name: string }) {
+    if (queueLoadingFor) return;
+    setQueueLoadingFor(campaign?.id ?? "all");
     setQueueError(null);
     try {
-      const res = await loadReviewQueueAction();
+      const res = await loadReviewQueueAction(campaign?.id);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -187,9 +204,10 @@ export function CampaignsBoard({
         setError("Everything here has been decided since this page loaded.");
         return;
       }
+      setQueueScope(campaign?.name ?? null);
       setQueue(res.entries);
     } finally {
-      setQueueLoading(false);
+      setQueueLoadingFor(null);
     }
   }
 
@@ -220,6 +238,10 @@ export function CampaignsBoard({
       ) as Record<string, number>,
     [allRows],
   );
+
+  // Over ALL rows, not the visible ones: a column that appears and disappears as
+  // you type in the filter box is worse than a redundant one.
+  const sharedAudience = useMemo(() => constantAudience(allRows), [allRows]);
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -261,10 +283,32 @@ export function CampaignsBoard({
           <h2 className="ct">Campaigns</h2>
           <div className="csub">
             {countOf(allRows.length, CAMPAIGN_NOUN)} drafted by Arc · nothing sends until you approve it
+            {/* Said once, here, when it is the same for every row — see the
+                Audience column's absence below. */}
+            {sharedAudience && <> · all <span className="csub-em">{sharedAudience}</span></>}
           </div>
         </div>
+        {/* Deciding is the job on this screen; Arc does the drafting. The gold
+            went to "New campaign" — the rarest action here — while the review
+            control was a ghost button in the footer, below a table that is
+            `flex: 1` and so pushes it off the bottom of a short list. */}
         <div className="sp">
-          <button type="button" className="gbtn gold" onClick={() => setNewOpen(true)}>
+          {undecidedCount > 0 && (
+            <button
+              type="button"
+              className="gbtn gold"
+              onClick={() => openQueue()}
+              disabled={queueLoadingFor !== null}
+            >
+              {svgIcon('<path d="M20 6L9 17l-5-5"/>')}
+              {queueLoadingFor === "all" ? "Loading…" : `Review ${countOf(undecidedCount, ASSET_NOUN)}`}
+            </button>
+          )}
+          <button
+            type="button"
+            className={undecidedCount > 0 ? "gbtn" : "gbtn gold"}
+            onClick={() => setNewOpen(true)}
+          >
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
             New campaign
           </button>
@@ -344,7 +388,7 @@ export function CampaignsBoard({
               <th>Campaign</th>
               <th>Status</th>
               <th>Next action</th>
-              <th>Audience</th>
+              {!sharedAudience && <th>Audience</th>}
               <th>Channels</th>
               <th>Updated</th>
             </tr>
@@ -355,7 +399,7 @@ export function CampaignsBoard({
                 {/* "Couldn't load" and "nothing here yet" are different facts and
                     must read differently. Saying "No campaigns" over a failed
                     query tells an operator the workspace is empty when it isn't. */}
-                <td colSpan={6}>
+                <td colSpan={sharedAudience ? 5 : 6}>
                   {loadError ? (
                     <>
                       <strong>Couldn’t load campaigns.</strong> This is a failure, not an empty workspace — campaigns may exist.
@@ -398,6 +442,10 @@ export function CampaignsBoard({
                       <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
                       <div style={{ minWidth: 0 }}>
                         <div className="pnm">{r.name}</div>
+                        {/* The only clock on this row used to be `updatedAt`,
+                            which measures OUR activity — not how much life is
+                            left in the opportunity the package was built for. */}
+                        {r.timing && <span className={`sigchip ${r.timing.tone}`}>{r.timing.label}</span>}
                         <div className="psub">{r.brief}</div>
                       </div>
                     </Link>}
@@ -408,19 +456,36 @@ export function CampaignsBoard({
                       {r.statusLabel}
                     </span>
                   </td>
+                  {/* An instruction the operator can act on is a control, not a
+                      label. This cell was a <span> styled in the accent colour at
+                      weight 500 — indistinguishable from a link, and doing
+                      nothing when clicked. */}
                   <td>
-                    <span className={`nx${r.nextTone ? ` ${r.nextTone}` : ""}`}>{r.next}</span>
-                  </td>
-                  <td>
-                    {r.audience ? (
-                      <span className="chip persona">
-                        <span className="pgd" style={{ background: r.dot }} />
-                        {r.audience}
-                      </span>
+                    {r.pendingCount > 0 ? (
+                      <button
+                        type="button"
+                        className="nxbtn"
+                        onClick={() => openQueue({ id: r.id, name: r.name })}
+                        disabled={queueLoadingFor !== null}
+                      >
+                        {queueLoadingFor === r.id ? "Loading…" : r.next}
+                      </button>
                     ) : (
-                      <span className="nx">—</span>
+                      <span className={`nx${r.nextTone ? ` ${r.nextTone}` : ""}`}>{r.next}</span>
                     )}
                   </td>
+                  {!sharedAudience && (
+                    <td>
+                      {r.audience ? (
+                        <span className="chip persona">
+                          <span className="pgd" style={{ background: r.dot }} />
+                          {r.audience}
+                        </span>
+                      ) : (
+                        <span className="nx">—</span>
+                      )}
+                    </td>
+                  )}
                   <td>{r.channels ? <span className="chan">{r.channels}</span> : <span className="nx">—</span>}</td>
                   <td>
                     <span className="last">
@@ -440,12 +505,8 @@ export function CampaignsBoard({
           <i />
           {arcNote}
         </span>
-        {undecidedCount > 1 && (
-          <button type="button" className="cbtn ghost gqueue" onClick={openQueue} disabled={queueLoading}>
-            {svgIcon('<path d="M4 6h16M4 12h16M4 18h9"/>')}
-            {queueLoading ? "Loading…" : `Review all ${undecidedCount}`}
-          </button>
-        )}
+        {/* The review control moved to the header — see the note there. Leaving a
+            second copy down here would just be two buttons for one action. */}
         <div className="pager">
           <span className="pgnum">
             {visible.length === 0 ? "0 of 0" : `1–${visible.length} of ${visible.length}`}
@@ -458,7 +519,7 @@ export function CampaignsBoard({
           a decision" panel, and unmounting on empty would swallow it. */}
       {queue && (
         <ReviewQueue
-          title="everything waiting on you"
+          title={queueScope ?? "everything waiting on you"}
           closeLabel="Back to campaigns"
           queue={queue}
           pending={queuePending}
@@ -501,9 +562,13 @@ export function CampaignsBoard({
           onEdit={(asset) => {
             const entry = queue.find((e) => e.asset.id === asset.id);
             setQueue(null);
+            setQueueScope(null);
             if (entry) router.push(`/campaigns/${entry.campaignId}`);
           }}
-          onClose={() => setQueue(null)}
+          onClose={() => {
+            setQueue(null);
+            setQueueScope(null);
+          }}
         />
       )}
 

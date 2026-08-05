@@ -4,6 +4,7 @@ import {
   CAMPAIGN_NOUN,
   countOf,
   WORK_STATE_LABEL, personaAccent,} from "@/domain";
+import { nextActionFor, signalTiming } from "./_components/board-derivations";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 
 // The review queue opens from this screen as well as from a campaign, and every
@@ -55,29 +56,6 @@ const TONE_LABEL: Record<CampaignTone, string> = {
   archived: WORK_STATE_LABEL.archived,
 };
 
-/** The next-action column answers "what happens next", so it never just repeats
- *  the status pill sitting beside it. */
-function nextActionFor(tone: CampaignTone, pendingCount: number): { next: string; nextTone: "" | "go" | "warn" } {
-  if (pendingCount > 0) {
-    return { next: `Approve ${countOf(pendingCount, ASSET_NOUN)}`, nextTone: "go" };
-  }
-  switch (tone) {
-    case "live":
-      return { next: "Going out now", nextTone: "" };
-    case "approved":
-      return { next: "Waiting to send", nextTone: "go" };
-    case "review":
-      return { next: "Waiting on your decision", nextTone: "go" };
-    case "revise":
-      return { next: "Arc is reworking it", nextTone: "warn" };
-    case "archived":
-      return { next: "Put away", nextTone: "" };
-    default:
-      return { next: "Arc is still building it", nextTone: "" };
-  }
-}
-
-
 function formatAbs(iso: string): string {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "";
@@ -88,16 +66,22 @@ function formatAbs(iso: string): string {
     : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function toRow(item: CampaignWorkspaceListItem): CampaignRow {
+function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
   const tone = toneFor(item.status);
-  const { next, nextTone } = nextActionFor(tone, item.pendingCount);
+  const { next, nextTone } = nextActionFor(tone, item.pendingCount, item.rollup);
   // Prefer the short persona label for the Audience chip; the fuller
   // audienceSummary sentence is too long for a chip.
   const audience = humanizePersona(item.persona) || item.audienceSummary?.trim() || "";
   return {
     id: item.id,
     name: item.name,
-    brief: item.objective?.trim() || item.whyBuilt?.trim() || "New campaign",
+    // `campaignTheme` sits ahead of `whyBuilt` because it is the only one of the
+    // three that is REQUIRED at creation, so it is always a real sentence about
+    // this campaign. `whyBuilt` degrades to "Arc has not recorded reasoning yet"
+    // when `reasoning_payload` is empty — which it is on every live row — so
+    // reaching it would just trade one placeholder for another.
+    brief: item.objective?.trim() || item.campaignTheme?.trim() || item.whyBuilt?.trim() || "New campaign",
+    timing: signalTiming(item.signal, nowMs),
     tone,
     statusLabel: TONE_LABEL[tone],
     next,
@@ -115,6 +99,19 @@ function toRow(item: CampaignWorkspaceListItem): CampaignRow {
     thumbnailUrl: item.thumbnailUrl,
     mediaCount: item.mediaCount,
   };
+}
+
+/**
+ * One clock for every row, read once — a per-row `Date.now()` would let two
+ * signal windows in the same render be measured against different instants.
+ *
+ * The read lives in here rather than in the component body because the React
+ * compiler (correctly) refuses an impure call during render; `relativeTime`
+ * above hides the same call the same way.
+ */
+function buildRows(campaigns: CampaignWorkspaceListItem[]): CampaignRow[] {
+  const nowMs = Date.now();
+  return campaigns.map((item) => toRow(item, nowMs));
 }
 
 export default async function CampaignsPage() {
@@ -151,7 +148,7 @@ export default async function CampaignsPage() {
     // staring at an empty board deserves to find something when they go looking.
     console.error(`[campaigns] read failed for org ${ctx.orgId}: ${loadError}`);
   }
-  const rows = list.status === "live" ? list.campaigns.map(toRow) : [];
+  const rows = list.status === "live" ? buildRows(list.campaigns) : [];
 
   // Two different facts, said as two different things — never one claim with two
   // answers. The original bug was a tab reading 4 above a footer reading 9,

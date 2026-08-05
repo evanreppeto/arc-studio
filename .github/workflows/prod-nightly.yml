@@ -20,6 +20,13 @@ name: Prod nightly smoke
 # REAL live tenant and must never be written to by this workflow. Both orgs are
 # NAMED "Big Shoulders Restoration"; only the slug/id tells them apart.
 #
+# That used to be enforced by this comment alone, which is no enforcement at all
+# for a suite that WRITES and takes its tenant from a repo secret. It is now
+# pinned by E2E_EXPECTED_WORKSPACE_ID below and asserted by the spec before every
+# step — including immediately before step 4's revision request. Repoint the
+# credential and the run stops with "wrong workspace" instead of filing revision
+# requests against real customer campaigns.
+#
 # The Arc known-fact check additionally needs ARC_SMOKE_ENABLED=1, which is only
 # true once the runner has a Secret Manager token scoped to the smoke workspace.
 # Until then it reports as SKIPPED — never as passed.
@@ -61,6 +68,12 @@ jobs:
           E2E_EMAIL: ${{ secrets.PROD_E2E_EMAIL || 'owner@bsr.test' }}
           # No literal fallback — this signs in to production. Unset ⇒ skip.
           E2E_PASSWORD: ${{ secrets.PROD_E2E_PASSWORD }}
+          # The SEEDED SMOKE workspace — the only tenant this writing suite may
+          # touch. Asserted before every step; see assertExpectedTenant in
+          # e2e/tenant.ts. In the file rather than in repo variables so that
+          # "which tenant does the nightly write to" is answerable from a diff.
+          E2E_EXPECTED_WORKSPACE_ID: ${{ vars.PROD_SMOKE_WORKSPACE_ID || '0d2ddb28-2582-41b6-9c50-a001bd2ee9a6' }}
+          E2E_EXPECTED_ORG_SLUG: ${{ vars.PROD_SMOKE_ORG_SLUG || 'big-shoulders-restoration' }}
           ARC_SMOKE_ENABLED: ${{ vars.ARC_SMOKE_ENABLED }}
 
       # BSR-708. The UI steps above prove a request was RECORDED. They cannot
