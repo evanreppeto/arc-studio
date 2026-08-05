@@ -68,7 +68,12 @@ function formatAbs(iso: string): string {
 
 function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
   const tone = toneFor(item.status);
-  const { next, nextTone } = nextActionFor(tone, item.pendingCount, item.rollup);
+  // launchState's counts, NOT item.rollup — the two disagree, and this column
+  // has to match the page the row links to. See `DeliverableCounts`.
+  const { next, nextTone } = nextActionFor(tone, item.pendingCount, {
+    approved: item.approvedCount,
+    required: item.requiredCount,
+  });
   // Prefer the short persona label for the Audience chip; the fuller
   // audienceSummary sentence is too long for a chip.
   const audience = humanizePersona(item.persona) || item.audienceSummary?.trim() || "";

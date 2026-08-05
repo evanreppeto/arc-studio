@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createSupabaseQueryMock, type MockResponse } from "@/lib/repos/__tests__/test-helpers";
 
-import { buildReasoning, getCampaignWorkspaceDetail, getCampaignWorkspaceList, listCampaignNames, parseCampaignSourceSignal, selectIn } from "./read-model";
+import { buildExecutiveOverview, buildReasoning, getCampaignWorkspaceDetail, getCampaignWorkspaceList, listCampaignNames, parseCampaignSourceSignal, selectIn } from "./read-model";
 
 // buildReasoning only reads a handful of fields; cast minimal fixtures to the
 // row shapes to keep the test focused on the distillation logic.
@@ -40,12 +40,23 @@ describe("buildReasoning", () => {
     expect(result.promptInputs.map((p) => p.label)).toEqual(["Persona", "Channel"]);
   });
 
-  it("falls back gracefully when nothing is recorded", () => {
+  // Null, not a placeholder sentence. The view guards these with `&&` to hide an
+  // absent field, and a truthy "Arc has not recorded reasoning for this campaign
+  // yet." defeated the guard — so the reasoning panel rendered that sentence, in
+  // the same styling as real reasoning, on every live campaign (`reasoning_payload`
+  // is `{}` on all of them).
+  it("reports nothing recorded as absent, not as prose", () => {
     const result = buildReasoning(campaign({}, {}), [asset(null)]);
-    expect(result.whyBuilt).toMatch(/not recorded reasoning/i);
+    expect(result.whyBuilt).toBeNull();
+    expect(result.recommendedAction).toBeNull();
     expect(result.guardrailFlags).toEqual([]);
     expect(result.toolsUsed).toEqual([]);
     expect(result.promptInputs).toEqual([]);
+  });
+
+  it("still prefers the campaign's own objective over nothing", () => {
+    const result = buildReasoning({ reasoning_payload: {}, audit_payload: {}, objective: "Win back lapsed clients." } as never, []);
+    expect(result.whyBuilt).toBe("Win back lapsed clients.");
   });
 });
 
@@ -965,5 +976,35 @@ describe("parseCampaignSourceSignal", () => {
     expect(parseCampaignSourceSignal(null)).toBeNull();
     expect(parseCampaignSourceSignal("not an object")).toBeNull();
     expect(parseCampaignSourceSignal({ origin: "opportunity", evidence: { area: "Cook, IL" } })).toBeNull();
+  });
+});
+
+describe("buildExecutiveOverview 'Why now'", () => {
+  const bare = {
+    assets: [],
+    approvals: [],
+    sources: [],
+    reasoning: { whyBuilt: null, recommendedAction: null, guardrailFlags: [], toolsUsed: [], promptInputs: [] },
+  };
+
+  // The brief's rows are rendered through `.filter(([, v]) => v)`, so "" removes
+  // the row. Interpolating an absent signal would instead print a headless
+  // ". Goal: reduce decision friction and make the next step clear."
+  it("is empty rather than headless when nothing explains the campaign", () => {
+    const overview = buildExecutiveOverview({
+      ...bare,
+      campaign: { source_signal: {}, reasoning_payload: {}, audit_payload: {}, persona: "emergency_homeowner" } as never,
+    });
+    expect(overview.why).toBe("");
+    expect(overview.why).not.toMatch(/^\./);
+  });
+
+  it("still builds the sentence when a reason exists", () => {
+    const overview = buildExecutiveOverview({
+      ...bare,
+      reasoning: { ...bare.reasoning, whyBuilt: "Flood advisory hit three service-area ZIPs." },
+      campaign: { source_signal: {}, reasoning_payload: {}, audit_payload: {}, persona: "emergency_homeowner" } as never,
+    });
+    expect(overview.why).toBe("Flood advisory hit three service-area ZIPs. Goal: reduce decision friction and make the next step clear.");
   });
 });
