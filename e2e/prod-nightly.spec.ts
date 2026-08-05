@@ -270,6 +270,24 @@ test.describe("nightly prod smoke", () => {
     // an Opus turn plus possible media generation: far past this test's budget,
     // and not something to pay for inside a page assertion.
     //
+    // MEASURED 2026-08-05, and it narrows that claim: in THIS tenant the
+    // out-of-band half currently proves nothing. A run against the reseeded
+    // fixture flipped the asset to `revision_requested` and created NO
+    // `agent_tasks` row at all — `select ... where org_id = <smoke org>` returns
+    // zero rows, ever. The stranded-work guard only fires on a task still
+    // `queued` after 30 minutes, so with no row to find it passes vacuously.
+    // The smoke workspace has no Secret Manager token scoped to it (the same
+    // blocker that skips every golden question), so Arc work cannot be queued
+    // here at all.
+    //
+    // So: the guard remains valuable for the LIVE tenant, which is where it is
+    // deliberately unscoped to look. It just does not prove the revision this
+    // step files will ever run. Do not read a green nightly as end-to-end proof
+    // of the revision path (BSR-759) — that still needs ARC_SMOKE_ENABLED plus
+    // a scoped token, at which point asserting the row's existence here becomes
+    // worth adding. Asserting it BEFORE then would only pin the nightly red,
+    // which is the failure mode BSR-722 was written to end.
+    //
     // Read the expected label from the vocabulary rather than hardcoding it
     // (BSR-723). This assertion used to look for "revision requested" — the raw
     // stored value, which reached the screen unlabelled until BSR-656 routed the
