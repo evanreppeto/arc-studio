@@ -6,6 +6,9 @@ import {
   CREATIVE_DESIGN_WIDTH,
   CREATIVE_LAYOUTS,
   clampLayoutOverride,
+  logoTransform,
+  LOGO_SCALE_RANGE,
+  LOGO_ROTATE_LIMIT,
   withLayoutOverride,
   type BrandColorRef,
   type CreativeLayoutOverride,
@@ -328,12 +331,15 @@ export function StudioCanvas({
   // artboard and the export stay one layout (BSR-679/BSR-680).
   const L = withLayoutOverride(CREATIVE_LAYOUTS[template], override);
   const armed = isCopyLayer(selected);
+  /** Selecting the Logo layer arms it the same way selecting a copy layer arms
+   *  the copy block — one mechanism, two targets. */
+  const logoArmed = selected === "Logo";
 
   /** Drag the copy block. Pixels are converted to design units against the
    *  artboard's own width, which is the same 1080-reference the spec uses, so a
    *  drag means the same thing at any zoom. The domain clamps the result. */
   const startDrag = useCallback(
-    (event: ReactPointerEvent<HTMLElement>, mode: "move" | "scale") => {
+    (event: ReactPointerEvent<HTMLElement>, mode: "move" | "scale" | "logo-move" | "logo-scale" | "logo-rotate") => {
       if (!onOverrideChange) return;
       const artboard = (event.currentTarget as HTMLElement).closest(".canvas") as HTMLElement | null;
       const width = artboard?.clientWidth ?? 0;
@@ -350,13 +356,24 @@ export function StudioCanvas({
       const onMove = (move: PointerEvent) => {
         const dx = (move.clientX - startX) * perPx;
         const dy = (move.clientY - startY) * perPx;
-        onOverrideChange(
-          mode === "move"
-            ? { ...from, copyDx: from.copyDx + dx, copyDy: from.copyDy + dy }
-            : // Scale from horizontal travel: a quarter of the reference width
-              // spans the whole allowed range, so the handle feels proportional.
-              { ...from, headlineScale: from.headlineScale + dx / 540 },
-        );
+        if (mode === "move") {
+          onOverrideChange({ ...from, copyDx: from.copyDx + dx, copyDy: from.copyDy + dy });
+        } else if (mode === "scale") {
+          // Scale from horizontal travel: a quarter of the reference width
+          // spans the whole allowed range, so the handle feels proportional.
+          onOverrideChange({ ...from, headlineScale: from.headlineScale + dx / 540 });
+        } else if (mode === "logo-move") {
+          // The logo travels freely — onto the van panel, the door, anywhere.
+          // Its limit is the artboard, not a nudge radius, because reaching the
+          // middle of the frame is the entire point.
+          onOverrideChange({ ...from, logoDx: from.logoDx + dx, logoDy: from.logoDy + dy });
+        } else if (mode === "logo-scale") {
+          onOverrideChange({ ...from, logoScale: from.logoScale + dx / 540 });
+        } else {
+          // Rotate: horizontal travel across a quarter-width sweeps 180°, so the
+          // mark can be laid along an angled panel without a fiddly wrist.
+          onOverrideChange({ ...from, logoRotate: from.logoRotate + dx / 1.5 });
+        }
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
@@ -393,6 +410,46 @@ export function StudioCanvas({
   const dragProps = armed
     ? { onPointerDown: (e: ReactPointerEvent<HTMLElement>) => startDrag(e, "move"), style: { cursor: "move" as const } }
     : {};
+
+  /** The logo's own placement chrome: drag to move, one handle to scale, one to
+   *  rotate. Rendered only while it is selected, like the copy block's. */
+  const logoChrome = logoArmed ? (
+    <>
+      <span className="cblock-ring" aria-hidden />
+      <span
+        className="cblock-handle"
+        role="slider"
+        tabIndex={0}
+        aria-label="Resize logo"
+        aria-valuenow={Math.round(clampLayoutOverride(override).logoScale * 100)}
+        aria-valuemin={Math.round(LOGO_SCALE_RANGE.min * 100)}
+        aria-valuemax={Math.round(LOGO_SCALE_RANGE.max * 100)}
+        onPointerDown={(e) => startDrag(e, "logo-scale")}
+      />
+      <span
+        className="cblock-handle rot"
+        role="slider"
+        tabIndex={0}
+        aria-label="Rotate logo"
+        aria-valuenow={Math.round(clampLayoutOverride(override).logoRotate)}
+        aria-valuemin={-LOGO_ROTATE_LIMIT}
+        aria-valuemax={LOGO_ROTATE_LIMIT}
+        onPointerDown={(e) => startDrag(e, "logo-rotate")}
+      />
+    </>
+  ) : null;
+
+  /** Applied to every logo mount below, so the preview offsets exactly as the
+   *  exporter does — same function, this renderer's unit. */
+  const logoStyle = logoTransform(override, du);
+  const logoDragProps = {
+    onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+      e.stopPropagation();
+      if (logoArmed) startDrag(e, "logo-move");
+      else onSelect?.("Logo");
+    },
+    style: { position: "relative" as const, cursor: logoArmed ? ("move" as const) : ("pointer" as const), ...(logoStyle ?? {}) },
+  };
 
   return (
     <>
@@ -504,9 +561,10 @@ export function StudioCanvas({
               role="button"
               tabIndex={0}
               aria-label="Logo"
-              onPointerDown={(e) => { e.stopPropagation(); onSelect?.("Logo"); }}
+              {...logoDragProps}
             >
               <Logo brand={brand} L={L} />
+              {logoChrome}
             </div>
           ) : (
             <span />
@@ -525,10 +583,17 @@ export function StudioCanvas({
           role="button"
           tabIndex={0}
           aria-label="Logo"
-          onPointerDown={(e) => { e.stopPropagation(); onSelect?.("Logo"); }}
-          style={{ position: "absolute", top: du(L.logoPosition.top), left: du(L.logoPosition.left), display: "flex" }}
+          {...logoDragProps}
+          style={{
+            ...logoDragProps.style,
+            position: "absolute",
+            top: du(L.logoPosition.top),
+            left: du(L.logoPosition.left),
+            display: "flex",
+          }}
         >
           <Logo brand={brand} L={L} />
+          {logoChrome}
         </div>
       )}
 
@@ -572,9 +637,10 @@ export function StudioCanvas({
               role="button"
               tabIndex={0}
               aria-label="Logo"
-              onPointerDown={(e) => { e.stopPropagation(); onSelect?.("Logo"); }}
+              {...logoDragProps}
             >
               <Logo brand={brand} L={L} />
+              {logoChrome}
             </div>
           ) : (
             <span />

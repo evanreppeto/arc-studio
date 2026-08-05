@@ -6,7 +6,7 @@ import { brandColor } from "./tokens";
 /** Editorial: accent side-rail, kicker + headline up top on a dark band, logo + outline CTA at the foot.
  *
  *  Geometry and type scale come from CREATIVE_LAYOUTS.editorial (BSR-679). */
-export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl }) => {
+export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl, logoStyle }) => {
   const u = creativeScale(dims.width);
   const L = layout;
   const c = (ref: Parameters<typeof brandColor>[1]) => brandColor(brand, ref);
@@ -133,9 +133,9 @@ export const templateEditorial: CreativeTemplate = ({ brand, copy, dims, layout,
         }}
       >
         {logoDataUrl ? (
-          <img src={logoDataUrl} style={{ width: L.logo.width * u, height: L.logo.height * u, objectFit: "contain" }} />
+          <img src={logoDataUrl} style={{ width: L.logo.width * u, height: L.logo.height * u, objectFit: "contain", ...(logoStyle ?? {}) }} />
         ) : (
-          <div style={{ display: "flex", color: c("light"), fontFamily: "Heading", fontSize: L.logo.fallbackSize * u }}>
+          <div style={{ display: "flex", color: c("light"), fontFamily: "Heading", fontSize: L.logo.fallbackSize * u, ...(logoStyle ?? {}) }}>
             {brand.displayName}
           </div>
         )}

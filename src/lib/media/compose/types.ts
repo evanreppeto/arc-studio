@@ -14,6 +14,10 @@ export type CreativeTemplateProps = {
   backgroundDataUrl: string;
   /** Logo as a data: URL, or null when the brand has no logo (use the short mark). */
   logoDataUrl: string | null;
+  /** The operator's logo placement, already resolved to a CSS transform in this
+   *  renderer's unit space (null when untouched). Computed once by the caller so
+   *  every template applies the identical value and none does the arithmetic. */
+  logoStyle: { transform: string; transformOrigin: string } | null;
 };
 
 export type CreativeTemplate = (p: CreativeTemplateProps) => ReactElement;

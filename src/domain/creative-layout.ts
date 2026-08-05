@@ -162,6 +162,31 @@ export type CreativeLayoutOverride = {
   copyDy?: number;
   /** Headline size multiplier. */
   headlineScale?: number;
+  /**
+   * Where the workspace's REAL logo sits, as an offset from wherever its
+   * template puts it — free across the artboard, scalable, rotatable.
+   *
+   * The templates pinned it: bold to a corner (`logoPosition: {top:56,left:56}`),
+   * editorial and minimal inline in a foot row, none of them movable. The app
+   * explained that as a rule — your logo "can't" go on the van panel — and it was
+   * never a rule. What generation enforces is that the MODEL must not draw your
+   * mark, because a model asked to render a logo produces a garbled counterfeit
+   * of it. That is why NO_TEXT_DIRECTIVE exists and why it stays.
+   *
+   * Compositing your own real mark onto a surface in the scene is a different
+   * act, and an ordinary one: your file, on a clearly-tagged composite, behind
+   * the same approval gate as everything else. Rotation is what lets it sit on
+   * an angled panel rather than float over one.
+   *
+   * Applied as a TRANSFORM rather than by moving the layout, so all three
+   * templates honour it without restructuring — bold's absolute corner and the
+   * other two's flowed foot row both just get offset from where they already are.
+   */
+  logoDx?: number;
+  logoDy?: number;
+  logoScale?: number;
+  /** Degrees, clockwise. */
+  logoRotate?: number;
 };
 
 /** How far the copy block may travel, in design units — a quarter of the
@@ -169,6 +194,11 @@ export type CreativeLayoutOverride = {
  *  not enough to push the headline off the artboard. */
 export const COPY_NUDGE_LIMIT = 270;
 export const HEADLINE_SCALE_RANGE = { min: 0.6, max: 1.6 } as const;
+/** The logo roams the whole reference canvas — it has to reach a van panel in
+ *  the middle of the frame, which a copy-block-sized nudge cannot do. */
+export const LOGO_NUDGE_LIMIT = CREATIVE_DESIGN_WIDTH;
+export const LOGO_SCALE_RANGE = { min: 0.25, max: 4 } as const;
+export const LOGO_ROTATE_LIMIT = 180;
 
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -183,6 +213,39 @@ export function clampLayoutOverride(override: CreativeLayoutOverride | undefined
     copyDx: clamp(override?.copyDx ?? 0, -COPY_NUDGE_LIMIT, COPY_NUDGE_LIMIT),
     copyDy: clamp(override?.copyDy ?? 0, -COPY_NUDGE_LIMIT, COPY_NUDGE_LIMIT),
     headlineScale: clamp(override?.headlineScale ?? 1, HEADLINE_SCALE_RANGE.min, HEADLINE_SCALE_RANGE.max),
+    logoDx: clamp(override?.logoDx ?? 0, -LOGO_NUDGE_LIMIT, LOGO_NUDGE_LIMIT),
+    logoDy: clamp(override?.logoDy ?? 0, -LOGO_NUDGE_LIMIT, LOGO_NUDGE_LIMIT),
+    logoScale: clamp(override?.logoScale ?? 1, LOGO_SCALE_RANGE.min, LOGO_SCALE_RANGE.max),
+    logoRotate: clamp(override?.logoRotate ?? 0, -LOGO_ROTATE_LIMIT, LOGO_ROTATE_LIMIT),
+  };
+}
+
+/** Has the operator moved the logo off its template position at all? */
+export function isLogoPlaced(override?: CreativeLayoutOverride): boolean {
+  const { logoDx, logoDy, logoScale, logoRotate } = clampLayoutOverride(override);
+  return logoDx !== 0 || logoDy !== 0 || logoScale !== 1 || logoRotate !== 0;
+}
+
+/**
+ * The logo's placement as a CSS transform, in the caller's own unit space.
+ *
+ * One function for both renderers, because the export and the preview showing
+ * different logo positions is precisely the class of bug BSR-679 closed. The
+ * caller supplies how to express a design-unit length — `px` for the exporter,
+ * `cqw` for the canvas — and the ORDER here is load-bearing: translate first,
+ * then rotate, then scale, so a rotated mark still lands where it was dragged.
+ *
+ * Returns null when untouched, so a template renders exactly as before.
+ */
+export function logoTransform(
+  override: CreativeLayoutOverride | undefined,
+  unit: (designUnits: number) => string,
+): { transform: string; transformOrigin: string } | null {
+  if (!isLogoPlaced(override)) return null;
+  const { logoDx, logoDy, logoScale, logoRotate } = clampLayoutOverride(override);
+  return {
+    transform: `translate(${unit(logoDx)}, ${unit(logoDy)}) rotate(${logoRotate}deg) scale(${logoScale})`,
+    transformOrigin: "center",
   };
 }
 
