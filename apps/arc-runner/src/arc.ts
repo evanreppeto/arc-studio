@@ -839,7 +839,14 @@ export function buildCampaignTaskPrompt(payload: ArcCampaignTaskPayload): string
     ...(payload.taskType === "campaign_asset_revision" && payload.assetId
       ? [
           "",
-          `This is a REVISION of the existing asset "${payload.assetId}". The operator's instruction below describes what to change about that asset specifically — read it first, keep everything they did not ask you to change, and produce the revised version as a new approval-gated draft on the same campaign. Do not start an unrelated concept from scratch.`,
+          `This is a REVISION of the existing asset "${payload.assetId}". The operator's instruction below describes what to change about that asset specifically — read it first, and keep everything they did not ask you to change. Do not start an unrelated concept from scratch.`,
+          // The copy path, and the reason it has to be spelled out: for two
+          // months no tool could edit an existing asset, so every copy revision
+          // ran to `completed` having written nothing (BSR-759). Now one can —
+          // and the wrong-but-plausible answer, create_campaign_draft, is still
+          // sitting right next to it, leaving the asset they asked about
+          // untouched and a second one beside it.
+          `If the change is to the COPY — wording, an offer, a phone number, a subject line, a call to action — read the asset's current text with get_campaign, then call revise_campaign_asset with asset_id "${payload.assetId}" and the COMPLETE revised body. That is the only tool that changes an existing deliverable; create_campaign_draft does NOT revise anything, it adds a second asset and leaves theirs as it was.`,
           // Branding revisions are the single most common ask on an image asset
           // and the one generation can never satisfy: every prompt is hardened to
           // forbid text and logos, so regenerating returns an image without them

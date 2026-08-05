@@ -105,6 +105,10 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
       "get_app_map",
       "get_workspace_settings",
       "create_campaign_draft",
+      // The revision write path. Campaign task wakes run under this skill, so a
+      // revision arriving without this tool is a revision that cannot be done —
+      // which is exactly what happened to the copy revisions on prod (BSR-759).
+      "revise_campaign_asset",
       "generate_image",
       "generate_video",
       // Required, not optional, alongside generate_image: the prompt tells Arc
