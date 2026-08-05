@@ -19,6 +19,7 @@ import { OVERLAY_ROOT_ID } from "./overlay-portal";
 import { RailRecents } from "./rail-recents";
 import { RoutePrewarm } from "./route-prewarm";
 import { WorkspaceSwitcher, type WorkspaceOption } from "./workspace-switcher";
+import { AppImage } from "./app-image";
 
 function initials(name: string): string {
   return (
@@ -529,8 +530,7 @@ export function AppShell({
               onClick={openAccountMenu}
             >
               {avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- user-uploaded avatar; next/image would need per-host remotePatterns
-                <img src={avatarUrl} alt={displayName} />
+                <AppImage src={avatarUrl} alt={displayName} />
               ) : (
                 initials(displayName)
               )}

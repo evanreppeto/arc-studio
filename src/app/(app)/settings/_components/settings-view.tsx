@@ -51,6 +51,8 @@ import { IMAGE_MODELS, VIDEO_MODELS, type AppSettings } from "@/lib/settings/sto
 
 import { createBillingPortalAction, createCheckoutSessionAction, updateOrgPlanAction } from "../billing-actions";
 
+import { AppImage } from "../../_components/app-image";
+
 import {
   cancelInvite,
   changeMemberRole,
@@ -1831,8 +1833,7 @@ function WorkspacesSection({ view }: { view: SettingsWorkspacesView }) {
             >
               <span className={`ma${w.logoUrl ? " has-image" : ""}`} style={!w.logoUrl && w.accentColor ? { color: w.accentColor, background: `color-mix(in srgb, ${w.accentColor} 16%, transparent)`, borderColor: `color-mix(in srgb, ${w.accentColor} 32%, transparent)` } : undefined}>
                 {w.logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo; next/image would need per-host remotePatterns
-                  <img src={w.logoUrl} alt="" />
+                  <AppImage src={w.logoUrl} alt="" />
                 ) : (
                   // The shared monogram rule, so this row matches the rail.
                   workspaceInitials(w.name)
