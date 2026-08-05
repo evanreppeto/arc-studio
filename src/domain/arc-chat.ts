@@ -4,6 +4,10 @@
  * not generated).
  */
 
+// Runtime import, and the cycle is safe: arc-draft-checks imports only a TYPE
+// from this file, which erases, so it has no runtime dependency back on us.
+import { arcDraftCheckState, type ArcDraftFinding } from "./arc-draft-checks";
+
 export const MENTION_TYPES = [
   "campaign",
   "lead",
@@ -337,19 +341,44 @@ export function parseActions(value: unknown): ArcActionCard[] {
   return dedupeByAsset(out);
 }
 
-/** The approval ids of draft cards safe to bulk-approve: a draft, with an
- *  approval block, not yet decided, and carrying no warn/risk flags. Pure. */
-export function cleanApprovableDrafts(cards: ArcActionCard[]): { campaignId: string; assetId: string }[] {
+/**
+ * The approval ids of draft cards genuinely safe to bulk-approve.
+ *
+ * This used to take only the cards and treat "carries no warn/risk flag" as
+ * clean. On prod that is catastrophic: 13 of 16 approval-bearing cards carry NO
+ * flags at all, because a card's `flags` are frozen at draft time and the real
+ * results live in `guardrail_findings`. The old predicate would therefore have
+ * swept 13 of 16 drafts — including two with unresolved BLOCKERS — through a
+ * human's approval in one click, which is the single thing the approval gate
+ * exists to prevent.
+ *
+ * So it now REQUIRES the live status map and the live findings. That is
+ * deliberate: the unsafe call is not merely discouraged, it no longer compiles.
+ * A draft qualifies only when a human has not already ruled on it AND
+ * `arcDraftCheckState` says `clean` — which means a check was actually recorded
+ * and nothing in it is unresolved. `unchecked` and `unknown` are both excluded,
+ * because "nobody looked" and "we have not loaded what they found" are not
+ * grounds for approving anything.
+ */
+export function cleanApprovableDrafts(
+  cards: ArcActionCard[],
+  context: {
+    /** Live decision state by asset id; falls back to the card's own snapshot. */
+    statuses?: Record<string, ArcAssetStatus>;
+    /** Live findings by asset id. A MISSING key means not loaded — never clean. */
+    checks?: Record<string, ArcDraftFinding[]>;
+  } = {},
+): { campaignId: string; assetId: string }[] {
+  const { statuses = {}, checks = {} } = context;
   return cards
-    .filter(
-      (c) =>
-        c.kind === "draft" &&
-        c.approval &&
-        c.status !== "approved" &&
-        c.status !== "rejected" &&
-        c.status !== "revision" &&
-        !c.flags.some((f) => f.tone === "warn" || f.tone === "risk"),
-    )
+    .filter((c) => {
+      if (c.kind !== "draft" || !c.approval) return false;
+      const assetId = c.approval.assetId;
+      const status = statuses[assetId] ?? c.status;
+      if (status === "approved" || status === "rejected" || status === "revision") return false;
+      // `checks[assetId]` absent => findings undefined => state `unknown` => excluded.
+      return arcDraftCheckState({ flags: c.flags, findings: checks[assetId] }) === "clean";
+    })
     .map((c) => ({ campaignId: c.approval!.campaignId, assetId: c.approval!.assetId }));
 }
 
