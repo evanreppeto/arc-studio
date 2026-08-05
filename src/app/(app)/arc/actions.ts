@@ -52,6 +52,7 @@ import { createNode } from "@/lib/knowledge-graph/persistence";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { assertConversationAccess } from "@/lib/arc-chat/sharing";
 import { logArcChatStatus } from "@/lib/arc-chat/status-log";
+import { toArcThreadMedia, type ArcThreadMedia } from "@/lib/arc-chat/thread-media";
 import { ALL_ARC_SKILLS, ARC_SKILL_LIBRARY, skillIdForArcCommand } from "@/lib/arc-skills/catalog";
 import { instructionForWorkspaceSkill, parseWorkspaceArcSkills, type WorkspaceArcSkill } from "@/lib/arc-skills/custom";
 import { ARC_CUSTOM_SKILLS_SETTING, getWorkspaceArcSkills, previewGithubArcSkill } from "@/lib/arc-skills/github";
@@ -78,15 +79,24 @@ const MAX_MESSAGE_LENGTH = 8000;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const CONTEXT_SCOPES = new Set(["workspace", "brand", "crm", "campaigns"]);
 
-/** One message as an inline surface needs it — body and role, nothing else.
- *  Deliberately narrower than ArcMessage: Studio's panel is not the chat view
- *  and should not start carrying action cards, recall and feedback state. */
+/** One message as an inline surface needs it.
+ *
+ *  Deliberately narrower than ArcMessage: Studio's panel is not the chat view and
+ *  should not start carrying recall, feedback and step traces. It DOES carry
+ *  `media` and `suggestions`, because without them a creative tool's copilot can
+ *  generate a picture and show the operator a paragraph about it — Studio's own
+ *  empty state promised the render would appear, and it never did. */
 export type ArcThreadMessage = {
   id: string;
   role: "operator" | "arc" | string;
   body: string;
   status: string;
   createdAt: string;
+  /** Creative attached to this reply. Empty on operator messages and on replies
+   *  that made nothing. */
+  media: ArcThreadMedia[];
+  /** Follow-ups Arc offered after this reply (agent-provided; usually empty). */
+  suggestions: string[];
 };
 
 export type SendArcMessageResult =
@@ -653,6 +663,8 @@ export async function getArcConversationTailAction(input: {
         body: message.body,
         status: message.status,
         createdAt: message.createdAt,
+        media: toArcThreadMedia(message),
+        suggestions: message.suggestions ?? [],
       })),
     };
   } catch (error) {

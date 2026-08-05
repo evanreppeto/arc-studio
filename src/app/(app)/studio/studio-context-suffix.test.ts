@@ -11,18 +11,27 @@ import { splitStudioContext } from "./_components/studio-view";
 describe("splitStudioContext", () => {
   it("splits the appended Studio context off the message", () => {
     const { body, context } = splitStudioContext(
-      'add our logo to the side of the truck\n\n(From Studio · Draft · image · 1:1)',
+      'add our logo to the side of the truck\n\n(From Studio · image · 1:1)',
     );
     expect(body).toBe("add our logo to the side of the truck");
-    expect(context).toBe("From Studio · Draft · image · 1:1");
+    expect(context).toBe("From Studio · image · 1:1");
   });
 
-  it("keeps the headline variant intact", () => {
+  it("keeps the headline and photo variant intact", () => {
     const { body, context } = splitStudioContext(
-      'make it warmer\n\n(From Studio · Act · video · 16:9 · headline: "Ready before the storm")',
+      'make it warmer\n\n(From Studio · video · 16:9 · headline: "Ready before the storm" · photo: "Roof — exterior")',
     );
     expect(body).toBe("make it warmer");
-    expect(context).toBe('From Studio · Act · video · 16:9 · headline: "Ready before the storm"');
+    expect(context).toBe('From Studio · video · 16:9 · headline: "Ready before the storm" · photo: "Roof — exterior"');
+  });
+
+  /* The Ask/Act/Draft control is gone — the capability is inferred from the
+     request now — but a conversation started before that still has the word in
+     its preamble, and those bubbles must not start showing machine context. */
+  it("still strips the legacy preamble that named a mode", () => {
+    const { body, context } = splitStudioContext("make it warmer\n\n(From Studio · Draft · image · 1:1)");
+    expect(body).toBe("make it warmer");
+    expect(context).toBe("From Studio · Draft · image · 1:1");
   });
 
   it("leaves a message with no context untouched", () => {
@@ -38,7 +47,7 @@ describe("splitStudioContext", () => {
   });
 
   it("only strips the suffix, never a mention mid-message", () => {
-    const input = "(From Studio · Draft · image · 1:1) is what you said last time";
+    const input = "(From Studio · image · 1:1) is what you said last time";
     expect(splitStudioContext(input).context).toBeNull();
   });
 });
