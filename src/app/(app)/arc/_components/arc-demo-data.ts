@@ -6,6 +6,7 @@
 // This is illustrative sample content for a demo tenant, not a hardcoded customer.
 
 import type { ArcActionCard, ArcMention, ArcRecall } from "@/domain";
+import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 import type { ArcAttachment, ArcMessage, ArcStep, ArcToolCall } from "@/lib/arc-chat/persistence";
 import type { ArcRecentConversationVM, ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
 
@@ -171,6 +172,67 @@ export const DEMO_WORKSPACE_CARDS: ArcActionCard[] = [
     href: "/crm/companies",
   },
 ];
+
+/**
+ * The full copy behind the demo cards, standing in for `getArcAssetBodies`.
+ *
+ * The offline preview is where this design gets reviewed, and without these the
+ * preview only ever exercises the FALLBACK path — every card on its stored
+ * ~280-character `preview`, no lead-in fields parsed, no clamp, no disclosure.
+ * The review would then pass on a card that never rendered a full draft.
+ *
+ * Written in the shape prod actually stores (`SUBJECT:` / `PREHEADER:` lead-in
+ * lines above the copy for email, bare prose for SMS, `Headline:` /
+ * `Primary text:` for a social ad) so the preview exercises the real parse
+ * rather than a tidied-up one. The `preview` on each card stays a genuine prefix
+ * of the body here, exactly as the live pair behaves.
+ *
+ * `demo-asset-landing` is deliberately ABSENT. A conversation can hold a card
+ * whose asset row is gone, out of scope, or simply not fetched yet, and that
+ * card has to still render — so the preview shows one deliverable on the
+ * fallback path next to three on the full path, rather than only ever showing
+ * the happy one.
+ */
+export const DEMO_ASSET_BODIES: Record<string, ArcAssetBody> = {
+  "demo-asset-email": {
+    id: "demo-asset-email",
+    edited: false,
+    body: [
+      "SUBJECT: You looked at pricing — here's a walkthrough",
+      "PREHEADER: Fifteen minutes, no pitch. We'll map Meridian to how your team already works.",
+      "",
+      "Hi {first_name},",
+      "",
+      "Your team spent time on our pricing page this week. We're offering a free, no-pressure walkthrough this week — and if it's a fit, we can help you map Meridian to how your team already works.",
+      "",
+      "Most teams your size use the first fifteen minutes to answer three questions:",
+      "",
+      "- Which of our existing tools does this replace, and which does it sit beside?",
+      "- What does the first month actually look like for the people doing the work?",
+      "- Where does this stop being worth it as we grow?",
+      "",
+      "If those are your questions too, book a time that suits you and we'll work through them with your own data on screen. If they aren't, tell me what is and I'll come prepared for that instead.",
+      "",
+      "— The Meridian team",
+    ].join("\n"),
+  },
+  "demo-asset-sms": {
+    id: "demo-asset-sms",
+    edited: false,
+    body: "Hi {first_name} — it's the {brand} team. Saw your team exploring Meridian, no charge and no pressure. Want a quick walkthrough? Reply STOP to opt out.",
+  },
+  "demo-asset-social": {
+    id: "demo-asset-social",
+    edited: false,
+    body: [
+      "Headline: See Meridian tailored to your team",
+      "Primary text: Comparing options? The right workflow can save your team hours every week — book a personalized demo while it's top of mind.",
+      "CTA: Book now",
+      "",
+      "Fifteen minutes, your own data on screen, no pitch. We'll show the parts that matter to how your team already works and skip the rest.",
+    ].join("\n"),
+  },
+};
 
 export const DEMO_ATTACHMENTS: ArcAttachment[] = [
   { url: "/brand/login-background-v2.png", name: "product-tour-reference.png", contentType: "image/png", objectPath: "demo-ref-1" },

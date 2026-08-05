@@ -56,3 +56,15 @@ export type ThreadItem = {
   running?: boolean;
   campaignId?: string | null;
 };
+
+/**
+ * A content pane's rect in viewport coordinates.
+ *
+ * The overlays (thread drawer, deliverable review, workspace panel) portal out
+ * to the shell so their scrims can cover the whole window, which leaves them
+ * with no pane to be positioned inside — and `position: fixed` is not the way
+ * back, because `.page-enter`'s transform makes "fixed" mean "fixed to the
+ * content pane". So the container measures the pane and each overlay positions
+ * from the box. See `usePaneBox` in arc-view.tsx.
+ */
+export type PaneBox = { top: number; left: number; width: number; height: number };
