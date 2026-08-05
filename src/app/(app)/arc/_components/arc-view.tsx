@@ -67,6 +67,7 @@ import { AnimatePresence, motion } from "motion/react";
 
 import {
   ARC_RUN_STALE_MS,
+  isSearchableArcQuery,
   type ArcActionCard,
   type ArcAssetStatus,
   type ArcDraftFinding,
@@ -77,6 +78,7 @@ import {
   type ShareVisibility,
 } from "@/domain";
 import { contextUsage } from "@/lib/arc-chat/context-usage";
+import type { ArcMessageSearchHit } from "@/lib/arc-chat/message-search";
 import { applyArcStreamFrame, type ArcStreamOverlay } from "@/lib/arc-chat/live-stream";
 import {
   ARC_SKILL_BUILDER,
@@ -120,6 +122,7 @@ import {
   getArcConversationHeader,
   getArcConversationScrollTarget,
   hasArcReplyInFlight,
+  shouldEditLastOnArrowUp,
   shouldShowDemoLauncher,
   shouldUseDemoSeedWorkspace,
 } from "@/lib/arc-chat/view-state";
@@ -144,6 +147,7 @@ import {
   previewArcGithubSkillAction,
   removeArcGithubSkillAction,
   removeSavedArcItemAction,
+  searchArcMessagesAction,
   sendArcMessageAction,
   setArcSkillInstalledAction,
   unarchiveArcConversationAction,
@@ -708,6 +712,41 @@ function ThreadDrawer({
     });
   };
 
+  /**
+   * Message-body search, alongside the client-side title filter above.
+   *
+   * Debounced rather than per-keystroke: this is a server round-trip over every
+   * conversation the viewer can open, and typing "pricing" would otherwise fire
+   * seven of them. `seq` drops a slow response that lands after a newer query —
+   * without it, backspacing to a shorter query can leave the previous, longer
+   * query's results on screen.
+   */
+  // Results are stored WITH the query that produced them, so "are these hits
+  // current?" is derived at render rather than kept in sync by an effect that
+  // clears state. That removes the stale-render case (results from a longer
+  // query left on screen after backspacing) and the cascading-render warning
+  // that resetting state synchronously would earn.
+  const [messageSearch, setMessageSearch] = useState<{ query: string; hits: ArcMessageSearchHit[] } | null>(null);
+  const searchSeq = useRef(0);
+  const searchQuery = query.trim();
+  const messageSearchActive = live && isSearchableArcQuery(query);
+  const messageHits = messageSearchActive && messageSearch?.query === searchQuery ? messageSearch.hits : null;
+  const searchingMessages = messageSearchActive && messageHits === null;
+
+  useEffect(() => {
+    // Bumping the ref is not state: an in-flight response for an older query is
+    // dropped without this effect having to clear anything.
+    const seq = ++searchSeq.current;
+    if (!live || !isSearchableArcQuery(query)) return;
+    const timer = window.setTimeout(() => {
+      searchArcMessagesAction(query).then((result) => {
+        if (seq !== searchSeq.current) return; // a newer query has superseded this one
+        setMessageSearch({ query: query.trim(), hits: result.ok ? result.hits : [] });
+      });
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [query, live]);
+
   const sourceGroups = live ? groups : demoGroups;
   const availableCampaigns: ArcMention[] = campaignItems.length > 0 ? campaignItems : [
     { type: "campaign", id: "demo-camp", label: "Pricing-Intent Fast Track", href: "/campaigns" },
@@ -1183,7 +1222,40 @@ function ThreadDrawer({
               ))}
             </div>
           ) : null}
-          {campaignFolders.length === 0 && recentGroups.length === 0 ? <DrawerEmpty icon={<Search size={18} />} title="No conversations found" hint="Try a different title or date." /> : null}
+          {/* Message hits, below the threads whose titles matched. Separate
+              section rather than merged in: "this chat is called X" and "this
+              chat says X" are different answers, and collapsing them loses the
+              quote that explains why a result is here. */}
+          {messageSearchActive ? (
+            <div className="arc-history-section arc-history-messages">
+              <h3 className="arc-history-section-head">
+                <MessageSquareText size={11} /><span>In messages</span>
+                {searchingMessages ? <LoaderCircle size={11} className="is-spinning" /> : messageHits && messageHits.length > 0 ? <small>{messageHits.length}</small> : null}
+              </h3>
+              {(messageHits ?? []).map((hit) => (
+                <Link
+                  href={`/arc?c=${hit.conversationId}`}
+                  className="arc-message-hit"
+                  key={hit.messageId}
+                  onClick={onClose}
+                >
+                  <span className="arc-message-hit-head">
+                    <b>{hit.conversationTitle}</b>
+                    <small>{hit.role === "operator" ? "You" : "Arc"}</small>
+                  </span>
+                  <span className="arc-message-hit-snippet">
+                    {hit.snippet.truncatedStart ? "…" : ""}{hit.snippet.before}
+                    <mark>{hit.snippet.match}</mark>
+                    {hit.snippet.after}{hit.snippet.truncatedEnd ? "…" : ""}
+                  </span>
+                </Link>
+              ))}
+              {!searchingMessages && messageHits && messageHits.length === 0 ? (
+                <p className="arc-history-messages-empty">No messages contain “{query.trim()}”.</p>
+              ) : null}
+            </div>
+          ) : null}
+          {campaignFolders.length === 0 && recentGroups.length === 0 && !messageSearchActive ? <DrawerEmpty icon={<Search size={18} />} title="No conversations found" hint="Try a different title or date." /> : null}
         </div>
         <div className="arc-archived">
           <button type="button" className={`arc-archived-toggle${archivedOpen ? " is-open" : ""}`} onClick={toggleArchived} aria-expanded={archivedOpen}>
@@ -1705,6 +1777,14 @@ export function ArcView({
   const [demoTurns, setDemoTurns] = useState<DemoTurn[]>([]);
   const [demoPending, setDemoPending] = useState(false);
   const [stoppingTaskId, setStoppingTaskId] = useState<string | null>(null);
+  // ↑ in an empty composer opens your last message for editing (the convention
+  // in every chat app). A {id, n} token rather than a bare id so pressing ↑,
+  // cancelling, and pressing ↑ again re-opens the same message.
+  const [editSignal, setEditSignal] = useState<{ id: string; n: number } | null>(null);
+  // A failure that belongs to one message — a regenerate or edit-and-resend that
+  // didn't take — reported at that message instead of in the composer chip row,
+  // which is where every error used to land regardless of where it happened.
+  const [messageNotice, setMessageNotice] = useState<{ id: string; text: string } | null>(null);
   const demoTimer = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -2384,20 +2464,26 @@ export function ArcView({
     router.refresh();
   };
 
+  // Both of these used to report into `composerNotice` — so a regenerate that
+  // failed on the third message announced itself at the bottom of the screen,
+  // next to the send button, and overwrote whatever the last error was. They
+  // report at the message they belong to now.
   const handleEditResend = (messageId: string, newBody: string) => {
     setComposerNotice(null);
+    setMessageNotice(null);
     startSend(async () => {
       const result = await editAndResendArcMessageAction({ messageId, body: newBody });
-      if (!result.ok) return setComposerNotice(result.error);
+      if (!result.ok) return setMessageNotice({ id: messageId, text: result.error });
       router.refresh();
     });
   };
 
   const handleRegenerate = (replyMessageId: string) => {
     setComposerNotice(null);
+    setMessageNotice(null);
     startSend(async () => {
       const result = await regenerateArcReplyAction(replyMessageId);
-      if (!result.ok) return setComposerNotice(result.error);
+      if (!result.ok) return setMessageNotice({ id: replyMessageId, text: result.error });
       router.refresh();
     });
   };
@@ -2611,7 +2697,7 @@ export function ArcView({
       <div className="arc-conversation-scroll" ref={scrollRef}>
         <div className="arc-conversation-column">
           {live && historyLoadError ? <div className="arc-history-load-error" role="status"><CircleAlert size={15} /><span><b>History is temporarily unavailable.</b>{historyLoadError}</span></div> : null}
-          {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} assetBodies={assetBodies} assetChecks={assetChecks} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} assetBodies={assetBodies} assetChecks={assetChecks} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
+          {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} assetBodies={assetBodies} assetChecks={assetChecks} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} editSignal={editSignal} messageNotice={messageNotice} onDismissMessageNotice={() => setMessageNotice(null)} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} assetBodies={assetBodies} assetChecks={assetChecks} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
           {/* Room for the reply to arrive into, so the question can sit at the
               top of the view while the answer grows downward beneath it.
               Always mounted, and sized to exactly the shortfall — it shrinks as
@@ -2715,6 +2801,23 @@ export function ArcView({
                 const items = Array.from(composerMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]') ?? []).filter((item) => !item.disabled);
                 items[event.key === "ArrowDown" ? 0 : items.length - 1]?.focus();
                 return;
+              }
+              // ↑ on an empty composer edits your last message — see
+              // shouldEditLastOnArrowUp for why the empty gate is load-bearing.
+              if (event.key === "ArrowUp") {
+                const last = [...visibleMessages].reverse().find((message) => message.role === "operator");
+                if (shouldEditLastOnArrowUp({
+                  draft,
+                  live,
+                  busy: isSending || demoPending || awaitingReply,
+                  menuOpen: Boolean(composerMenu),
+                  hasOperatorMessage: Boolean(last),
+                })) {
+                  event.preventDefault();
+                  setMessageNotice(null);
+                  setEditSignal((current) => ({ id: last!.id, n: (current?.n ?? 0) + 1 }));
+                  return;
+                }
               }
               if (event.key === "Enter" && !event.shiftKey) {
                 if (composerMenu === "commands" && unresolvedSkillToken && visibleSkills.length > 0) {

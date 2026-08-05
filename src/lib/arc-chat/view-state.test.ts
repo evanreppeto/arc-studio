@@ -6,9 +6,38 @@ import {
   getArcConversationScrollTarget,
   hasArcReplyInFlight,
   isArcReplyInFlight,
+  shouldEditLastOnArrowUp,
   shouldShowDemoLauncher,
   shouldUseDemoSeedWorkspace,
 } from "./view-state";
+
+describe("shouldEditLastOnArrowUp", () => {
+  const ready = { draft: "", live: true, busy: false, menuOpen: false, hasOperatorMessage: true };
+
+  it("edits the last message from an empty composer", () => {
+    expect(shouldEditLastOnArrowUp(ready)).toBe(true);
+  });
+
+  it("leaves ↑ as a cursor key the moment anything is typed", () => {
+    // The one that matters: stealing ↑ from a draft in progress would break
+    // ordinary text navigation for the sake of a shortcut.
+    expect(shouldEditLastOnArrowUp({ ...ready, draft: "d" })).toBe(false);
+    expect(shouldEditLastOnArrowUp({ ...ready, draft: "a longer half-written message" })).toBe(false);
+  });
+
+  it("yields to an open composer menu, which already owns ↑", () => {
+    expect(shouldEditLastOnArrowUp({ ...ready, menuOpen: true })).toBe(false);
+  });
+
+  it("refuses while a turn is in flight", () => {
+    expect(shouldEditLastOnArrowUp({ ...ready, busy: true })).toBe(false);
+  });
+
+  it("does nothing in the backend-less preview or an empty thread", () => {
+    expect(shouldEditLastOnArrowUp({ ...ready, live: false })).toBe(false);
+    expect(shouldEditLastOnArrowUp({ ...ready, hasOperatorMessage: false })).toBe(false);
+  });
+});
 
 function reply(overrides: Partial<ArcMessage> = {}): ArcMessage {
   return {

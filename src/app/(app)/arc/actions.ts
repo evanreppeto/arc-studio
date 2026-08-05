@@ -12,6 +12,7 @@ import {
   type ArcMention,
   type ArcMode,
   type ArcRoute,
+  isSearchableArcQuery,
   type CampaignAssetType,
   type ArcAssetStatus,
   type ArcDraftFinding,
@@ -38,6 +39,7 @@ import {
   getPrecedingOperatorMessage,
   insertOperatorMessage,
   listArchivedConversations,
+  listConversationsForViewer,
   parseArcAttachmentsJson,
   renameConversation,
   unarchiveConversation,
@@ -51,7 +53,8 @@ import {
 import { listSavedItems, removeSavedItem, saveItem, type SavedItem, type SavedKind } from "@/lib/arc-chat/saved";
 import { createNode } from "@/lib/knowledge-graph/persistence";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
-import { assertConversationAccess } from "@/lib/arc-chat/sharing";
+import { assertConversationAccess, getShareViewer } from "@/lib/arc-chat/sharing";
+import { searchArcMessages, type ArcMessageSearchHit } from "@/lib/arc-chat/message-search";
 import { logArcChatStatus } from "@/lib/arc-chat/status-log";
 import { toArcThreadMedia, type ArcThreadMedia } from "@/lib/arc-chat/thread-media";
 import { ALL_ARC_SKILLS, ARC_SKILL_LIBRARY, skillIdForArcCommand } from "@/lib/arc-skills/catalog";
@@ -1087,5 +1090,44 @@ export async function removeGeneratedSkillAction(input: { skillKey: string }): P
     return { ok: true, skills: await listGeneratedSkills(context.orgId, client) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not remove that voice skill." };
+  }
+}
+
+export type ArcMessageSearchResult =
+  | { ok: true; hits: ArcMessageSearchHit[] }
+  | { ok: false; error: string };
+
+/**
+ * Search message bodies across the conversations the viewer can already open.
+ *
+ * Thread search matched only titles, previews and date labels, so anything an
+ * operator actually wanted to find again — a number Arc quoted, a segment it
+ * described — was unreachable once a workspace had more than a screenful of
+ * chats.
+ *
+ * Scoping is deliberately derivative: the candidate ids come from
+ * `listConversationsForViewer`, the same call the screen uses to decide what
+ * the viewer may see. This action therefore cannot widen access, and never
+ * needs its own tenancy rules to keep in step with that one.
+ */
+export async function searchArcMessagesAction(query: string): Promise<ArcMessageSearchResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Search needs a connected backend." };
+  if (!isSearchableArcQuery(query)) return { ok: true, hits: [] };
+
+  try {
+    const [viewer, operator] = await Promise.all([getShareViewer(), getOperatorActor()]);
+    const conversations = await listConversationsForViewer(viewer, operator);
+    const titles = new Map(conversations.map((conversation) => [conversation.id, conversation.title]));
+    const hits = await searchArcMessages(conversations.map((conversation) => conversation.id), query);
+    return {
+      ok: true,
+      hits: hits.map((hit) => ({
+        ...hit,
+        conversationTitle: titles.get(hit.conversationId)?.trim() || "Untitled chat",
+      })),
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Couldn't search your conversations." };
   }
 }

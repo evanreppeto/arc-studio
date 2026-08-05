@@ -146,6 +146,10 @@ export * from "./inline-fix";
 // is happening. Read-side only — nothing here rewrites persisted state.
 export * from "./arc-stalled-run";
 
+// Searching message bodies, and the one definition of "flatten markdown for a
+// narrow rail" shared with the thread preview.
+export * from "./arc-message-search";
+
 // One colour per persona, everywhere (BSR-661). Import personaAccent rather
 // than re-deriving a hue from a regex ladder.
 export * from "./persona-accent";
