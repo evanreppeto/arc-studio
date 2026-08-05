@@ -4,15 +4,15 @@ import { useMemo, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { ASSET_NOUN, CAMPAIGN_NOUN, countOf, WORK_STATE_LABEL, personaAccent,} from "@/domain";
+import { ASSET_NOUN, countOf, WORK_STATE_LABEL, personaAccent,} from "@/domain";
 
 import { createCampaign, loadReviewQueueAction, type NewCampaignInput } from "../actions";
 import { applyFindingFixAction, decideCampaignAsset, requestCampaignRevision } from "../[campaignId]/actions";
 import { ReviewQueue } from "../[campaignId]/_components/review-queue";
 import { type ReviewQueueEntry } from "@/lib/campaigns/read-model";
-import { constantAudience, nextActionFor, type SignalTiming } from "./board-derivations";
+import { nextActionFor, type SignalTiming } from "./board-derivations";
 import { NewCampaignModal } from "./new-campaign-modal";
-import { needsOperatorAttention, type CampaignDeskState, type CampaignTone } from "./tone";
+import { needsOperatorAttention, type CampaignTone } from "./tone";
 
 export type { CampaignTone } from "./tone";
 
@@ -74,30 +74,9 @@ const CampIcon = (
 
 // Tab labels and the status pills in the rows below them are the same words now
 // (BSR-656) — the "Needs approval" tab used to sit above rows reading "In review".
-const TABS: { key: string; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "needs", label: WORK_STATE_LABEL.needs_you },
-  { key: "live", label: WORK_STATE_LABEL.sending },
-  { key: "approved", label: WORK_STATE_LABEL.approved },
-  { key: "draft", label: WORK_STATE_LABEL.draft },
-  { key: "archived", label: WORK_STATE_LABEL.archived },
-];
-
 // The "Needs you" tab takes the whole row, not just its tone: a campaign earns
 // that tab either by its own status or by holding an undecided asset. Every
 // other tab is a plain tone match.
-function inTab(row: CampaignDeskState, tab: string): boolean {
-  if (tab === "all") return true;
-  if (tab === "needs") return needsOperatorAttention(row);
-  return row.tone === tab;
-}
-
-type SortKey = "recent" | "name" | "status";
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "recent", label: "Recently updated" },
-  { key: "name", label: "Name (A–Z)" },
-  { key: "status", label: "Status" },
-];
 // Status order surfaces what needs you first, then live work, then the rest.
 const TONE_RANK: Record<CampaignTone, number> = { review: 0, revise: 1, live: 2, approved: 3, draft: 4, archived: 5 };
 
@@ -258,15 +237,13 @@ function DeliverableStrip({
 
 export function CampaignsBoard({
   rows,
-  arcNote,
   undecidedCount = 0,
   personaOptions,
   loadError = null,
 }: {
   rows: CampaignRow[];
-  arcNote: string;
   /** Deliverables with no decision recorded, across every campaign — the size of
-   *  the queue the button below opens. A number, not a substring of arcNote. */
+   *  the queue the header button opens. */
   undecidedCount?: number;
   /** The org's own personas for the New-campaign picker. */
   personaOptions?: { key: string; label: string }[];
@@ -278,11 +255,7 @@ export function CampaignsBoard({
    */
   loadError?: string | null;
 }) {
-  const [tab, setTab] = useState("all");
   const [open, setOpen] = useState<string | null>(null);
-  const [q, setQ] = useState("");
-  const [sort, setSort] = useState<SortKey>("recent");
-  const [sortOpen, setSortOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   // Draft rows created this session, shown until a real write revalidates.
   const [localRows, setLocalRows] = useState<CampaignRow[]>([]);
@@ -352,35 +325,17 @@ export function CampaignsBoard({
 
   const allRows = useMemo(() => [...localRows, ...rows], [localRows, rows]);
 
-  // Each tab's badge is literally how many rows that tab shows — counted through
-  // `inTab`, the same function that filters the table. A count derived any other
-  // way is a second implementation of the rule, which is how "Needs you 0" came
-  // to sit above three rows reading "Approve N assets".
-  const counts = useMemo(
-    () =>
-      Object.fromEntries(
-        TABS.map((t) => [t.key, allRows.filter((r) => inTab(r, t.key)).length]),
-      ) as Record<string, number>,
+
+
+  // Ordered by what the operator has to do, then by recency. Sorting was a
+  // dropdown nobody needed: "what needs me, newest first" is the only order this
+  // page is ever read in.
+  const visible = useMemo(
+    () => [...allRows].sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]),
     [allRows],
   );
-
-  // Over ALL rows, not the visible ones: a column that appears and disappears as
-  // you type in the filter box is worse than a redundant one.
-  const sharedAudience = useMemo(() => constantAudience(allRows), [allRows]);
-
-  const visible = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const filtered = allRows.filter((r) => {
-      if (!inTab(r, tab)) return false;
-      if (needle && !`${r.name} ${r.brief} ${r.audience}`.toLowerCase().includes(needle)) return false;
-      return true;
-    });
-    // "recent" keeps the server's updated-desc order (fresh local drafts already
-    // lead); the others sort a copy so the source order stays intact.
-    if (sort === "name") return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
-    if (sort === "status") return [...filtered].sort((a, b) => (TONE_RANK[a.tone] ?? 9) - (TONE_RANK[b.tone] ?? 9));
-    return filtered;
-  }, [allRows, tab, q, sort]);
+  const waitingRows = useMemo(() => visible.filter(needsOperatorAttention), [visible]);
+  const restRows = useMemo(() => visible.filter((r) => !needsOperatorAttention(r)), [visible]);
 
   // Create a campaign: when it persists, jump into the new draft's detail page;
   // offline it drops in an optimistic draft row and stays on the board. Failures
@@ -401,159 +356,10 @@ export function CampaignsBoard({
     return { ok: true };
   };
 
-  return (
-    <div className="arc-grid arc-campaigns">
-      <div className="chrow">
-        <div>
-          <h2 className="ct">Campaigns</h2>
-          <div className="csub">
-            {countOf(allRows.length, CAMPAIGN_NOUN)} drafted by Arc · nothing sends until you approve it
-            {/* Said once, here, when it is the same for every row — see the
-                Audience column's absence below. */}
-            {sharedAudience && <> · all <span className="csub-em">{sharedAudience}</span></>}
-          </div>
-        </div>
-        {/* Deciding is the job on this screen; Arc does the drafting. The gold
-            went to "New campaign" — the rarest action here — while the review
-            control was a ghost button in the footer, below a table that is
-            `flex: 1` and so pushes it off the bottom of a short list. */}
-        <div className="sp">
-          {undecidedCount > 0 && (
-            <button
-              type="button"
-              className="gbtn gold"
-              onClick={() => openQueue()}
-              disabled={queueLoadingFor !== null}
-            >
-              {svgIcon('<path d="M20 6L9 17l-5-5"/>')}
-              {queueLoadingFor === "all" ? "Loading…" : `Review ${countOf(undecidedCount, ASSET_NOUN)}`}
-            </button>
-          )}
-          <button
-            type="button"
-            className={undecidedCount > 0 ? "gbtn" : "gbtn gold"}
-            onClick={() => setNewOpen(true)}
-          >
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-            New campaign
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="crm-error" role="alert">
-          <span>{error}</span>
-          <button type="button" aria-label="Dismiss" onClick={() => setError(null)}>
-            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
-        </div>
-      )}
-
-      {/* Empty filters are hidden. Six tabs over four campaigns — four of them
-          reading 0 — is six decisions before the first useful one, and a tab
-          that can only ever show nothing is not a choice. The one you are on
-          always stays, so the row never shifts under a click. */}
-      <div className="subtabs">
-        {TABS.filter((t) => t.key === "all" || t.key === tab || (counts[t.key] ?? 0) > 0).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className={`subtab${tab === t.key ? " on" : ""}`}
-            onClick={() => setTab(t.key)}
-          >
-            {t.label} <span className="cnt">{counts[t.key] ?? 0}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="gtoolbar">
-        <span className="tsearch">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Filter campaigns…"
-            aria-label="Filter campaigns"
-          />
-        </span>
-        <span className="gspacer" />
-        <div className="sortwrap">
-          <button
-            type="button"
-            className="fbtn"
-            aria-haspopup="listbox"
-            aria-expanded={sortOpen}
-            onClick={() => setSortOpen((o) => !o)}
-          >
-            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
-            {SORT_OPTIONS.find((o) => o.key === sort)?.label} <span className="cv">▾</span>
-          </button>
-          {sortOpen && (
-            <>
-              <div className="sortscrim" onClick={() => setSortOpen(false)} />
-              <div className="sortmenu" role="listbox" aria-label="Sort campaigns">
-                {SORT_OPTIONS.map((o) => (
-                  <button
-                    key={o.key}
-                    type="button"
-                    role="option"
-                    aria-selected={sort === o.key}
-                    className={`sortopt${sort === o.key ? " on" : ""}`}
-                    onClick={() => { setSort(o.key); setSortOpen(false); }}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="cmp-list">
-        {visible.length === 0 ? (
-          <div className="cmp-empty">
-            {/* "Couldn't load" and "nothing here yet" are different facts and must
-                read differently. Saying "No campaigns" over a failed query tells
-                an operator the workspace is empty when it isn't. */}
-            {loadError ? (
-              <>
-                <strong>Couldn’t load campaigns.</strong> This is a failure, not an empty workspace — campaigns may exist.
-                <div className="cmp-empty-detail">{loadError}</div>
-              </>
-            ) : allRows.length === 0 ? (
-              // A workspace with zero campaigns is a different fact from a filter
-              // hiding them. "No campaigns match this view" sends a brand-new
-              // owner hunting for a filter that isn't set, when what they need is
-              // to know where campaigns come from.
-              <>
-                <strong>No campaigns yet.</strong> Arc drafts these from opportunities it finds in your records
-                — nothing is sent until you approve it.
-                <div style={{ marginTop: 12 }}>
-                  {/* `.gbtn`, not `.cbtn`: campaign.css scopes `.cbtn` under
-                      `.arc-campaign` (the detail route), which does not match this
-                      board — so the one call to action a brand-new workspace ever
-                      sees rendered as bare unstyled text. */}
-                  <Link className="gbtn gold" href="/opportunities">
-                    See what Arc has found&nbsp;→
-                  </Link>
-                </div>
-              </>
-            ) : (
-              "No campaigns match this view."
-            )}
-          </div>
-        ) : (
-          visible.map((r) => {
+  function renderCards(rows: CampaignRow[]) {
+    return rows.map((r) => {
             const isOpen = open === r.id;
             const local = r.id.startsWith("local-");
-            // The audience drops out of every card when every card has the same
-            // one — it is said once in the subhead instead. Repeating a constant
-            // on every row is what the Audience column was doing.
-            const showAudience = !sharedAudience && Boolean(r.audience);
-            const meta = [showAudience ? r.audience : "", r.channels, r.updatedRel]
-              .filter(Boolean)
-              .join("  ·  ");
             return (
               <article
                 key={r.id}
@@ -578,23 +384,11 @@ export function CampaignsBoard({
                         {r.name}
                       </Link>
                     )}
-                    {/* What Arc actually made, before why it made it. The card
-                        used to lead with the objective — consultant prose about
-                        a goal that never says what the thing IS. */}
+                    {/* The collapsed card carries what Arc made and nothing
+                        else. Objective, audience, channels and the signal window
+                        are real, and they are detail — they moved behind the
+                        disclosure, where someone who wants them can ask. */}
                     {r.contents && <p className="cmp-what">{r.contents}</p>}
-                    <p className="cmp-brief">{r.brief}</p>
-                    <div className="cmp-meta">
-                      {/* Persona identity comes from `personaAccent()`, per
-                          DESIGN.md — the chip used to wear the gold tint, which
-                          spent the one focal colour on a category that carries no
-                          status meaning. */}
-                      {showAudience && <span className="cmp-dot" style={{ background: r.dot }} />}
-                      <span>{meta}</span>
-                      {/* Neutral, never red: DESIGN.md reserves red for
-                          destructive controls, and how much life is left in a
-                          signal is a fact about the campaign, not a warning. */}
-                      {r.timing && <span className="cmp-window">{r.timing.label}</span>}
-                    </div>
                   </div>
 
                   <div className="cmp-state">
@@ -639,6 +433,20 @@ export function CampaignsBoard({
                 {r.pieces.length > 0 && (
                   <div className="cmp-drawer" aria-hidden={!isOpen}>
                     <div className="cmp-drawer-in">
+                      <div className="cmp-detail">
+                        <p className="cmp-brief">{r.brief}</p>
+                        <div className="cmp-meta">
+                          {/* Persona identity comes from `personaAccent()`, per
+                              DESIGN.md — the chip used to wear the gold tint,
+                              which spent the one focal colour on a category that
+                              carries no status meaning. */}
+                          {r.audience && <span className="cmp-dot" style={{ background: r.dot }} />}
+                          <span>{[r.audience, r.channels, r.updatedRel].filter(Boolean).join("  ·  ")}</span>
+                          {/* Neutral, never red: red is for destructive controls,
+                              and how much life is left in a signal is a fact. */}
+                          {r.timing && <span className="cmp-window">{r.timing.label}</span>}
+                        </div>
+                      </div>
                       <DeliverableStrip
                         pieces={r.pieces}
                         reviewing={queueLoadingFor === r.id}
@@ -649,25 +457,99 @@ export function CampaignsBoard({
                 )}
               </article>
             );
-          })
+    });
+  }
+
+  return (
+    <div className="arc-grid arc-campaigns">
+      <div className="chrow">
+        <div>
+          <h2 className="ct">Campaigns</h2>
+          {/* The job, in one sentence. The old subhead counted our inventory
+              ("4 campaigns drafted by Arc") — true, and not what the owner came
+              to find out. */}
+          <div className="csub">
+            {undecidedCount > 0
+              ? `Arc wrote ${countOf(undecidedCount, ASSET_NOUN)} for you to check. Nothing goes to customers until you approve it.`
+              : "Nothing is waiting on you. Arc drafts new work here as it finds opportunities."}
+          </div>
+        </div>
+        <div className="sp">
+          <button
+            type="button"
+            className={undecidedCount > 0 ? "gbtn" : "gbtn gold"}
+            onClick={() => setNewOpen(true)}
+          >
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+            New campaign
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="crm-error" role="alert">
+          <span>{error}</span>
+          <button type="button" aria-label="Dismiss" onClick={() => setError(null)}>
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+      )}
+
+      <div className="cmp-list">
+        {visible.length === 0 ? (
+          <div className="cmp-empty">
+            {/* "Couldn't load" and "nothing here yet" are different facts and must
+                read differently. Saying "No campaigns" over a failed query tells
+                an operator the workspace is empty when it isn't. */}
+            {loadError ? (
+              <>
+                <strong>Couldn’t load campaigns.</strong> This is a failure, not an empty workspace — campaigns may exist.
+                <div className="cmp-empty-detail">{loadError}</div>
+              </>
+            ) : allRows.length === 0 ? (
+              // A workspace with zero campaigns is a different fact from a filter
+              // hiding them. "No campaigns match this view" sends a brand-new
+              // owner hunting for a filter that isn't set, when what they need is
+              // to know where campaigns come from.
+              <>
+                <strong>No campaigns yet.</strong> Arc drafts these from opportunities it finds in your records
+                — nothing is sent until you approve it.
+                <div style={{ marginTop: 12 }}>
+                  {/* `.gbtn`, not `.cbtn`: campaign.css scopes `.cbtn` under
+                      `.arc-campaign` (the detail route), which does not match this
+                      board — so the one call to action a brand-new workspace ever
+                      sees rendered as bare unstyled text. */}
+                  <Link className="gbtn gold" href="/opportunities">
+                    See what Arc has found&nbsp;→
+                  </Link>
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <>
+        {/* Two sections, not six tabs. "Needs you" and "Everything else" say
+            what they hold; a tab row is a set of choices you have to understand
+            before it tells you anything. */}
+        {waitingRows.length > 0 && (
+          <>
+            <h3 className="cmp-sec">Needs you <span className="cmp-secn">{waitingRows.length}</span></h3>
+            {renderCards(waitingRows)}
+          </>
+        )}
+        {restRows.length > 0 && (
+          <>
+            <h3 className="cmp-sec">{waitingRows.length > 0 ? "Everything else" : "All campaigns"} <span className="cmp-secn">{restRows.length}</span></h3>
+            {renderCards(restRows)}
+          </>
+        )}
+          </>
         )}
       </div>
 
-      <div className="gfoot">
-        <span className="arcnote">
-          <i />
-          {arcNote}
-        </span>
-        {/* The review control moved to the header — see the note there. Leaving a
-            second copy down here would just be two buttons for one action. */}
-        {/* "1–4 of 4" is a pager with nothing to page. It appears once there is
-            enough on screen for "where am I in this list" to be a real question. */}
-        {visible.length > 12 && (
-          <div className="pager">
-            <span className="pgnum">{`1–${visible.length} of ${visible.length}`}</span>
-          </div>
-        )}
-      </div>
+      {/* The footer's tally said "2 campaigns need you · 6 assets undecided" —
+          the same fact as the header sentence and the section counts, printed a
+          third time. */}
 
       {/* Mounted while `queue` is non-null, NOT while it has entries: draining the
           last one is the moment the reviewer has earned the "everything here has

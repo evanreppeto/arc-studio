@@ -1,8 +1,5 @@
 import {
   humanizePersonaLabel as humanizePersona,
-  ASSET_NOUN,
-  CAMPAIGN_NOUN,
-  countOf,
   WORK_STATE_LABEL, personaAccent,} from "@/domain";
 import { describeContents, nextActionFor, pieceLabel, signalTiming } from "./_components/board-derivations";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
@@ -19,7 +16,6 @@ import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { canonicalIndustryKey } from "@/lib/product-language";
 
 import { CampaignsBoard, type CampaignRow, type CampaignTone } from "./_components/campaigns-board";
-import { needsOperatorAttention } from "./_components/tone";
 
 export const metadata = { title: "Campaigns — Arc Studio" };
 
@@ -179,31 +175,10 @@ export default async function CampaignsPage() {
   }
   const rows = list.status === "live" ? buildRows(list.campaigns) : [];
 
-  // Two different facts, said as two different things — never one claim with two
-  // answers. The original bug was a tab reading 4 above a footer reading 9,
-  // because the footer regexed the rendered next-action label; the second was a
-  // tab reading 0 above a footer reading "7 assets across 3 campaigns", because
-  // the tab counted status and the footer counted assets.
-  //
-  // - needsYou: campaigns on your desk, by the SAME predicate the tab uses. This
-  //   number and the "Needs you" badge are the same claim, so they are the same
-  //   call.
-  // - assets: individual deliverables with no decision recorded — the finer
-  //   count, and the one the row-level "Approve N assets" labels add up to.
-  //
-  // "Undecided" rather than "needs you" on the asset half, on purpose: an asset
-  // sent back for changes has no decision but is waiting on ARC to re-draft.
-  const needsYou = rows.filter(needsOperatorAttention).length;
+  // The board groups by `needsOperatorAttention` itself; this page only needs
+  // the finer count, which the header sentence and the review button share.
   const pendingAssets = rows.reduce((sum, r) => sum + r.pendingCount, 0);
 
-  const parts = [
-    needsYou > 0 ? `${countOf(needsYou, CAMPAIGN_NOUN)} need you` : null,
-    pendingAssets > 0 ? `${countOf(pendingAssets, ASSET_NOUN)} undecided` : null,
-  ].filter(Boolean);
-  const arcNote =
-    parts.length > 0
-      ? parts.join(" · ")
-      : "Arc drafts campaigns here as opportunities come in — nothing sends until you approve it";
 
   // Passed as a NUMBER, not read back out of arcNote. Deriving a count from a
   // rendered label is the exact bug BSR-726 was: the footer regexed its own
@@ -211,7 +186,6 @@ export default async function CampaignsPage() {
   return (
     <CampaignsBoard
       rows={rows}
-      arcNote={arcNote}
       undecidedCount={pendingAssets}
       personaOptions={personaOptions}
       loadError={loadError}
