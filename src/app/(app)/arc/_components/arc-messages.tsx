@@ -519,10 +519,27 @@ export function MessageAttachments({ attachments }: { attachments: ArcAttachment
   );
 }
 
-export function OperatorMessage({ body, time, timeIso, attachments, onEdit, onContextMenu }: { body: string; time?: string; timeIso?: string; attachments?: ArcAttachment[]; onEdit?: (newBody: string) => void; onContextMenu?: (event: React.MouseEvent, helpers: { startEdit: (() => void) | null }) => void }) {
+export function OperatorMessage({ body, time, timeIso, attachments, onEdit, onContextMenu, startEditSignal = 0 }: { body: string; time?: string; timeIso?: string; attachments?: ArcAttachment[]; onEdit?: (newBody: string) => void; onContextMenu?: (event: React.MouseEvent, helpers: { startEdit: (() => void) | null }) => void;
+  /**
+   * Bumped by the parent to open this message's editor from outside — the ↑ key
+   * in the composer. A monotonic token rather than a boolean so pressing ↑,
+   * cancelling, and pressing ↑ again re-opens it; a boolean would already be
+   * `true` and the second press would do nothing.
+   */
+  startEditSignal?: number }) {
   const reduceMotion = useReducedMotion();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(body);
+
+  useEffect(() => {
+    if (!startEditSignal || !onEdit) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- opening the editor IS this signal's only job
+    setText(body);
+    setEditing(true);
+    // Intentionally keyed on the signal alone: re-running when `body` changes
+    // would reopen the editor after a successful resend.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startEditSignal]);
 
   const cancel = () => { setText(body); setEditing(false); };
   const submit = () => {

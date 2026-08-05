@@ -4,13 +4,16 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
+  ASSET_NOUN,
   assetSourceLabel,
+  countOf,
   humanizePersonaLabel as humanizePersona,
   reviewAgentLabel,
   reviewVerdictLabel,
   riskFlagLabel,
   toWorkState,
   WORK_STATE_LABEL,
+  type AssetDecision,
   WORK_STATE_TONE,
   type AudienceResolution,
   type WorkStateTone,
@@ -20,6 +23,7 @@ import {
   type CampaignAssetFinding,
   type CampaignMediaAsset,
   type CampaignWorkspaceAsset,
+  mediaReviewStateFromStatus,
   type CampaignWorkspaceAssetCategory,
   type LiveCampaignWorkspace,
 } from "@/lib/campaigns/read-model";
@@ -41,7 +45,7 @@ import {
   summarizeReview,
   type ReviewSummary,
 } from "./review-summary";
-import { applyFindingFixAction, attachCampaignMediaAction, decideCampaignAsset, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision, retryCampaignRevision } from "../actions";
+import { applyFindingFixAction, attachCampaignMediaAction, decideCampaignAsset, decideCampaignMediaAction, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision, retryCampaignRevision } from "../actions";
 import {
   getCampaignSharingStateAction,
   setCampaignSharingAction,
@@ -171,14 +175,6 @@ function mediaReviewTone(state: CampaignMediaAsset["review"]["state"]): Tone {
   return "gray";
 }
 
-function describeMediaReview(review: CampaignMediaAsset["review"]): string {
-  const label = MEDIA_REVIEW_LABEL[review.state];
-  if (review.state === "unreviewed") return `${label} — no decision has been recorded against this asset`;
-  const who = review.reviewer ? ` by ${review.reviewer}` : "";
-  const when = review.reviewedAt ? ` on ${fmtDate(review.reviewedAt)}` : "";
-  return `${label}${who}${when}`;
-}
-
 /**
  * The declared ratio as a CSS `aspect-ratio`. The read-model has already
  * rejected anything that isn't `w:h` within sane bounds; this is the render
@@ -284,6 +280,85 @@ function LightboxStage({ media }: { media: CampaignMediaAsset }) {
 }
 
 /**
+ * Decide one image, from the campaign that carries it.
+ *
+ * Its own component so it can be keyed on the asset: the parent steps through a
+ * list with the arrows, and mounting a fresh panel per picture is what
+ * guarantees a half-typed acknowledgement — or a refusal from the last one —
+ * never follows the reviewer to the next. Resetting that in an effect would fire
+ * a second render pass on every step, for state that only ever needs to start
+ * empty.
+ */
+function MediaDecision({
+  media,
+  onDecide,
+}: {
+  media: CampaignMediaAsset;
+  onDecide: (media: CampaignMediaAsset, decision: AssetDecision, acknowledgement: string) => Promise<string | null>;
+}) {
+  /** The reviewer's written acknowledgement of the risk flags. */
+  const [ack, setAck] = useState("");
+  /** Which decision is in flight, so only that button says "Recording…". */
+  const [deciding, setDeciding] = useState<AssetDecision | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const flagged = media.riskFlags.length > 0;
+
+  async function decide(decision: AssetDecision) {
+    setError(null);
+    setDeciding(decision);
+    setError(await onDecide(media, decision, ack));
+    setDeciding(null);
+  }
+
+  return (
+    <div className="lbdecide">
+      {/* Only approval is gated. Declining or asking for another pass is how a
+          reviewer ACTS on a flag, so making them justify that first would push
+          them toward approving as the easier path — see checkAssetApproval. */}
+      {flagged && (
+        <label className="lback">
+          <span>How was the flag addressed?</span>
+          <textarea
+            value={ack}
+            onChange={(event) => setAck(event.target.value)}
+            rows={2}
+            placeholder="Required to approve a flagged image…"
+            disabled={deciding !== null}
+          />
+        </label>
+      )}
+      {error && (
+        <p className="lbdecerr" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="lbdecrow">
+        <button type="button" className="cbtn gold" disabled={deciding !== null} onClick={() => decide("approved")}>
+          {svg('<path d="M5 12l4 4L19 6"/>')}
+          {deciding === "approved" ? "Recording…" : "Approve image"}
+        </button>
+        <button
+          type="button"
+          className="cbtn ghost"
+          disabled={deciding !== null}
+          onClick={() => decide("needs_revision")}
+        >
+          {deciding === "needs_revision" ? "Recording…" : "Needs another pass"}
+        </button>
+        <button type="button" className="cbtn danger" disabled={deciding !== null} onClick={() => decide("declined")}>
+          {deciding === "declined" ? "Recording…" : "Decline"}
+        </button>
+      </div>
+      {/* The same promise the rest of the screen makes, restated where the
+          decision is actually taken. */}
+      <p className="lbdecnote">
+        A decision here is recorded against this image alone. It sends nothing and unlocks nothing.
+      </p>
+    </div>
+  );
+}
+
+/**
  * The creative, at a size you can actually judge.
  *
  * The tile is a 96px thumbnail, and Approve is one button below it — reviewing
@@ -298,11 +373,14 @@ function MediaLightbox({
   index,
   onClose,
   onStep,
+  onDecide,
 }: {
   items: CampaignMediaAsset[];
   index: number;
   onClose: () => void;
   onStep: (delta: number) => void;
+  /** Records a decision against THIS image. Resolves to an error string, or null on success. */
+  onDecide: (media: CampaignMediaAsset, decision: AssetDecision, acknowledgement: string) => Promise<string | null>;
 }) {
   const media = items[index];
   const many = items.length > 1;
@@ -326,13 +404,16 @@ function MediaLightbox({
 
   // Lineage tuples are [icon key, text] — the key drives the dot, exactly as
   // the Library card renders it. It is not a label; don't print it as one.
+  //
+  // Origin and review state are NOT in this list: they are the two facts a
+  // reviewer needs before anything else, so they sit in the dialog's subtitle
+  // and in the status block above. A row repeating them would only push the
+  // ones that are genuinely reference material further down.
   const rows: Array<[string, string]> = [
-    ["Source", MEDIA_ORIGIN_LABEL[media.origin]],
-    ["Type", media.mimeType || media.type],
     // "Declared" is doing real work: nothing measures the stored file, so this
     // is the producer's claim about the creative, not a verified dimension.
     ["Format", media.format ? `${media.format} (declared)` : "Not declared"],
-    ["Review", describeMediaReview(media.review)],
+    ["File type", media.mimeType || media.type],
     ["Found in", media.source],
   ];
   if (media.review.notes) rows.push(["Decision notes", media.review.notes]);
@@ -361,10 +442,19 @@ function MediaLightbox({
       open
       onClose={onClose}
       title={media.title}
-      description={`${MEDIA_ORIGIN_LABEL[media.origin]} · ${MEDIA_REVIEW_LABEL[media.review.state]}`}
-      width={920}
+      description={[
+        MEDIA_ORIGIN_LABEL[media.origin],
+        media.format ? `${media.format} declared` : null,
+        media.mimeType || media.type,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
+      width={1120}
       footer={
-        <>
+        // Same `display: contents` scope wrapper as the body — the footer's
+        // `.cbtn`s and stepper are campaign.css rules too, and the footer is a
+        // sibling of the body inside the portal, not a descendant of it.
+        <div className="arc-campaign lb-scope">
           {many && (
             <div className="lbstepper">
               <button type="button" className="cbtn ghost" onClick={() => onStep(-1)} aria-label="Previous media">
@@ -379,82 +469,119 @@ function MediaLightbox({
             </div>
           )}
           <a className="cbtn ghost" href={media.url} target="_blank" rel="noreferrer noopener">
+            {svg('<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>')}
             Open original
           </a>
           <button type="button" className="cbtn gold" onClick={onClose}>
             Done
           </button>
-        </>
+        </div>
       }
     >
-      {/* The asset's own review state, at the top of the dialog. Rendered even
-          when nothing has reviewed it — especially then. */}
-      <div className="lbstatus">
-        <span className={`pill ${mediaReviewTone(media.review.state)}`}>
-          <span className="pd" />
-          {MEDIA_REVIEW_LABEL[media.review.state]}
-        </span>
-        {media.review.reviewer && (
-          <span className="lbwho">
-            {media.review.reviewer}
-            {media.review.reviewedAt ? ` · ${fmtDate(media.review.reviewedAt)}` : ""}
-          </span>
-        )}
-        {media.review.state === "unreviewed" && (
-          <span className="lbwho">Approving the deliverable does not record a decision on this asset.</span>
-        )}
-      </div>
-
-      {/* Above the image, not in the metadata list below it. A flag recorded
-          against this asset is the reason a reviewer might decline it, and it
-          has to be in front of them before they scroll. */}
-      {media.riskFlags.length > 0 && (
-        <div className="lbrisk">
-          <b>
-            {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
-            {media.riskFlags.length === 1 ? "Risk flag on this asset" : `${media.riskFlags.length} risk flags on this asset`}
-          </b>
-          <ul>
-            {media.riskFlags.map((flag) => (
-              <li key={flag}>{riskFlagLabel(flag)}</li>
-            ))}
-          </ul>
-          <p>Recorded when the asset was produced. Nothing has cleared it — that is your call.</p>
-        </div>
-      )}
-
-      {/* Keyed on the asset so stepping to the next one re-arms the load —
-          a broken file must not leave its error over the working one. */}
-      <div className="lbstage">
-        <LightboxStage key={media.id} media={media} />
-      </div>
-      <dl className="lbmeta">
-        {rows.map(([label, value], i) => (
-          <div className="lbrow" key={`${label}-${i}`}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
+      {/*
+        The dialog is portaled into the shell (overlay-portal.tsx), which takes
+        it out from under `.arc-campaign` — and every rule below is scoped to
+        that ancestor. So the scope travels as a class on a `display: contents`
+        wrapper, exactly as the review queue does it. Without this the whole
+        dialog rendered as raw markup: a full-bleed uncapped image, a
+        stacked-block metadata list, and the risk-flag warning icon at its
+        intrinsic size, taller than the picture it was warning about.
+      */}
+      <div className="arc-campaign lb-scope">
+        <div className="lbgrid">
+          {/* Keyed on the asset so stepping to the next one re-arms the load —
+              a broken file must not leave its error over the working one. */}
+          <div className="lbstage">
+            <LightboxStage key={media.id} media={media} />
           </div>
-        ))}
-      </dl>
-      {media.lineage.length > 0 && (
-        <div className="lbsec">
-          <b>Provenance lineage</b>
-          <div className="lblineage">
-            {media.lineage.map(([kind, text], i) => (
-              <div className="lbstep" key={`${text}-${i}`}>
-                <span className={`lbdot pv-${kind}`} />
-                <span>{text}</span>
+
+          {/* The creative is the point of this dialog, so it keeps the width and
+              everything written *about* it reads down one rail beside it, in the
+              order a reviewer needs it: what has been decided, what was flagged,
+              then the reference facts. It used to run underneath the image, so
+              judging a picture and reading its provenance were two scroll
+              positions. */}
+          <div className="lbside">
+            <div className="lbstatus">
+              <span className={`pill ${mediaReviewTone(media.review.state)}`}>
+                <span className="pd" />
+                {MEDIA_REVIEW_LABEL[media.review.state]}
+              </span>
+              {media.review.reviewer && (
+                <span className="lbwho">
+                  {media.review.reviewer}
+                  {media.review.reviewedAt ? ` · ${fmtDate(media.review.reviewedAt)}` : ""}
+                </span>
+              )}
+            </div>
+            {/* Rendered even when nothing has reviewed it — especially then.
+                Asset-level approval is its own record, and the deliverable's
+                approve button does not write one. The controls below are what
+                make that sentence actionable instead of just true: until they
+                existed, the only place to decide a picture was /library, so a
+                reviewer looking straight at the creative had to leave to act
+                on it. */}
+            {media.review.state === "unreviewed" && (
+              <p className="lbnote">Approving the deliverable does not record a decision on this image.</p>
+            )}
+
+            {/* Ahead of the controls, not after them: a flag recorded against
+                this image is the reason a reviewer might decline it, and the box
+                below asks them to say how it was addressed. Asking that question
+                above the answer to "addressed what?" reads backwards. */}
+            {media.riskFlags.length > 0 && (
+              <div className="lbrisk">
+                <b>
+                  {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
+                  {media.riskFlags.length === 1
+                    ? "Risk flag on this image"
+                    : `${media.riskFlags.length} risk flags on this image`}
+                </b>
+                <ul>
+                  {media.riskFlags.map((flag) => (
+                    <li key={flag}>{riskFlagLabel(flag)}</li>
+                  ))}
+                </ul>
+                <p>Recorded when the asset was produced. Nothing has cleared it — that is your call.</p>
               </div>
-            ))}
+            )}
+
+            {/* Keyed on the asset: stepping to the next image unmounts this and
+                mounts a fresh one, so a half-typed acknowledgement or a refusal
+                from the last picture can never be carried onto the next. */}
+            <MediaDecision key={media.id} media={media} onDecide={onDecide} />
+
+
+            <dl className="lbmeta">
+              {rows.map(([label, value], i) => (
+                <div className="lbrow" key={`${label}-${i}`}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {media.lineage.length > 0 && (
+              <div className="lbsec">
+                <b>Provenance lineage</b>
+                <div className="lblineage">
+                  {media.lineage.map(([kind, text], i) => (
+                    <div className="lbstep" key={`${text}-${i}`}>
+                      <span className={`lbdot pv-${kind}`} />
+                      <span>{text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {media.prompt && (
+              <div className="lbsec lbprompt">
+                <b>Generation prompt</b>
+                <p>{media.prompt}</p>
+              </div>
+            )}
           </div>
         </div>
-      )}
-      {media.prompt && (
-        <div className="lbsec lbprompt">
-          <b>Generation prompt</b>
-          <p>{media.prompt}</p>
-        </div>
-      )}
+      </div>
     </Modal>
   );
 }
@@ -770,6 +897,45 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     );
   }, []);
   const closeLightbox = useCallback(() => setLightbox(null), []);
+
+  /**
+   * Record a decision on one image and reflect it in place.
+   *
+   * The new state is applied ONLY after the server confirms it, and from what
+   * the server returned rather than from what was asked for — an optimistic pill
+   * here would tell an operator their picture was approved while the gate was
+   * refusing it for an un-acknowledged risk flag. `revalidatePath` in the action
+   * refreshes the page's own copy; this keeps the open dialog honest in the
+   * meantime, since the reviewer is still looking at it.
+   */
+  const decideMedia = useCallback(
+    async (target: CampaignMediaAsset, decision: AssetDecision, acknowledgement: string): Promise<string | null> => {
+      const res = await decideCampaignMediaAction({
+        campaignId: campaign.id,
+        libraryAssetId: target.libraryAssetId,
+        storagePath: target.storagePath,
+        decision,
+        acknowledgement,
+      });
+      if (!res.ok) return res.error;
+
+      const review: CampaignMediaAsset["review"] = {
+        state: mediaReviewStateFromStatus(res.status),
+        reviewer: res.reviewer,
+        reviewedAt: res.reviewedAt,
+        notes: null,
+      };
+      const apply = (list: CampaignMediaAsset[]) => list.map((m) => (m.id === target.id ? { ...m, review } : m));
+      // Both copies: the dialog reads `lightbox.items`, while the tiles under the
+      // deliverable and in the Creative rail read `assets`. Updating one would
+      // leave a picture reading "Approved" in the dialog and "Not reviewed"
+      // behind it.
+      setLightbox((current) => (current ? { ...current, items: apply(current.items) } : current));
+      setAssets((current) => current.map((asset) => ({ ...asset, media: apply(asset.media) })));
+      return null;
+    },
+    [campaign.id],
+  );
 
   const persona = humanizePersona(campaign.persona);
   const renderableMediaList = media.filter((m) => m.origin !== "referenced");
@@ -1257,7 +1423,12 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                               {asset.channel && <span>{asset.channel}</span>}
                               {assetSourceLabel(asset.toolSource) && <span>· {assetSourceLabel(asset.toolSource)}</span>}
                               {assetMedia.length > 0 && <span>· {assetMedia.length} attached</span>}
-                              <span>· updated {fmtDate(asset.updatedAt)}</span>
+                              {/* Only when there is a date to print. `updatedAt`
+                                  is empty on every demo asset and nullable on
+                                  the live read, and this rendered the bare word
+                                  "updated" with nothing after it — a label for a
+                                  fact the row didn't have. */}
+                              {fmtDate(asset.updatedAt) && <span>· updated {fmtDate(asset.updatedAt)}</span>}
                             </span>
                           </span>
                           {summary.chip && (
@@ -1624,25 +1795,16 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
             <h3 className="snh">Launch readiness</h3>
             <div className="lstate">
               <div className={`lpill ${lifecycleTone(launchState.lifecycle)}`}>{lifecycleLabel(launchState.lifecycle)}</div>
-              <div className="lrow">
-                <span>Approved</span>
-                <b>{launchState.approvedCount}</b>
-              </div>
-              <div className="lrow">
-                {/* Sits directly under a pill that now reads "Needs you"; a row
-                    labelled "Pending" made that a second name for the same
-                    two assets. */}
-                <span>{WORK_STATE_LABEL.needs_you}</span>
-                <b>{launchState.pendingCount}</b>
-              </div>
-              <div className="lrow">
-                <span>Required</span>
-                <b>{launchState.requiredCount}</b>
-              </div>
+              {/* Approved / needs-you / required used to be three rows here, and
+                  the header card two inches away already says all three
+                  ("0 of 3 approved · 3 need you · 0 sending") with a progress bar
+                  behind them. This panel is about the one thing the header
+                  can't do — launching — so it states where that stands in a
+                  sentence and gets out of the way. */}
               <div className="lnote">
                 {launchState.ready
                   ? "Every gating piece is approved. Launch is a separate, explicit step."
-                  : "Approve the remaining deliverables to make this campaign launch-ready."}
+                  : `${countOf(launchState.requiredCount - launchState.approvedCount, ASSET_NOUN)} still need approving before this can launch.`}
               </div>
             </div>
 
@@ -1762,7 +1924,13 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       ) : null}
 
       {lightbox ? (
-        <MediaLightbox items={lightbox.items} index={lightbox.index} onClose={closeLightbox} onStep={stepLightbox} />
+        <MediaLightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          onClose={closeLightbox}
+          onStep={stepLightbox}
+          onDecide={decideMedia}
+        />
       ) : null}
 
       {externalSendFor ? (

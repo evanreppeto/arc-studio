@@ -143,6 +143,21 @@ export const DEMO_PACKAGE_CARDS: ArcActionCard[] = [
   },
   {
     kind: "draft",
+    // Creative with NO copy — the shape prod holds 4 of (asset_type
+    // `image_prompt`, channel `media`). The draft critic grounds claims in text,
+    // so it correctly never runs on these; without one here the preview could
+    // not show the "Creative — not automatically checked" state at all.
+    title: "Service van — driveway, bright morning",
+    channel: "Media",
+    format: "1:1 · generated",
+    status: "draft",
+    rows: [{ name: "Source", meta: "AI generated" }],
+    flags: [],
+    media: { kind: "image", url: "/brand/login-background-v2.png", alt: "Service van in a driveway", source: "ai_generated", format: "1:1" },
+    approval: { kind: "campaign", campaignId: "demo-campaign", assetId: "demo-asset-creative" },
+  },
+  {
+    kind: "draft",
     title: "Demo landing page",
     channel: "Landing page",
     format: "Mobile-ready",
