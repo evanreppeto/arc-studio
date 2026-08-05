@@ -88,32 +88,10 @@ export async function loadWorkspaceEmailIdentity(
 }
 
 /**
- * Whether this contact has opted out.
+ * Consent lives in `src/lib/email-suppression/persistence.ts` now.
  *
- * `contacts.email_unsubscribed_at` has existed since 2026-07-10 but nothing read
- * it, so an unsubscribed contact would still receive mail. Failing CLOSED here
- * is deliberate: if the lookup errors we report suppressed rather than sending,
- * because emailing someone who opted out is the worse outcome.
+ * `isContactSuppressed` used to sit here and checked one column by contact id.
+ * That could not survive a contact re-import, could not be keyed by a provider
+ * bounce, and could not say why — so it became `checkEmailSuppression`, which
+ * checks the address-keyed register as well (BSR-482).
  */
-export async function isContactSuppressed(
-  contactId: string | null,
-  client: SupabaseClient,
-): Promise<{ suppressed: boolean; reason?: string }> {
-  if (!contactId) return { suppressed: false };
-  try {
-    const { data, error } = await client
-      .from("contacts")
-      .select("email_unsubscribed_at")
-      .eq("id", contactId)
-      .maybeSingle<{ email_unsubscribed_at: string | null }>();
-    if (error) {
-      return { suppressed: true, reason: "Could not verify the recipient's email consent, so the send was held." };
-    }
-    if (data?.email_unsubscribed_at) {
-      return { suppressed: true, reason: "This contact unsubscribed from email, so nothing was sent." };
-    }
-    return { suppressed: false };
-  } catch {
-    return { suppressed: true, reason: "Could not verify the recipient's email consent, so the send was held." };
-  }
-}

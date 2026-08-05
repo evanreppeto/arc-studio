@@ -116,7 +116,11 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
       {groups.map((group) => (
         <details key={group.campaignId} className="rail-recent-group" open>
           <summary>
-            <span className="rail-recent-campaign">{group.campaignName}</span>
+            {/* Its own class, not the row subtitle's. Sharing `rail-recent-campaign`
+                made a folder name and a loose row's campaign caption render as the
+                same thing at the same size, which is most of why the two kinds of
+                row read as one list. */}
+            <span className="rail-recent-group-name">{group.campaignName}</span>
             <span className="rail-recent-count">{group.items.length}</span>
           </summary>
           {group.items.map((conversation) => (

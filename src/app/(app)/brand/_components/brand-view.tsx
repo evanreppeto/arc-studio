@@ -186,7 +186,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             : <svg viewBox="0 0 24 24"><path d="M5 8l5 4-5 4M11 16h8" /></svg>}
         </div>
         <div className="bid">
-          <div className="bname"><span>{identity.name}</span> <span className="bstatus">{identity.published ? "Published" : "Draft"}</span></div>
+          <h1 className="bname"><span>{identity.name}</span> <span className="bstatus">{identity.published ? "Published" : "Draft"}</span></h1>
           {tagline && <div className="btag">{tagline}</div>}
           <div className="bmeta">
             {identity.segments.map((s, i) => (
@@ -397,13 +397,13 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             <div className="bsb">
               <div className="twocol">
                 <div>
-                  <div className="pl" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 6px" }}>Proof points</div>
+                  <div className="pl" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 6px" }}>Proof points</div>
                   <div className="flist">{proofPoints.map((t, i) => <div key={i} className="fitem"><span className="fi ok">{CHECK}</span><span>{t}</span></div>)}</div>
-                  <div className="pl" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--muted)", margin: "16px 0 6px" }}>Offering</div>
+                  <div className="pl" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--muted)", margin: "16px 0 6px" }}>Offering</div>
                   <div className="flist">{services.map((t, i) => <div key={i} className="fitem"><span className="fi sv"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /></svg></span><span>{t}</span></div>)}</div>
                 </div>
                 <div>
-                  <div className="pl" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--red-text)", margin: "0 0 6px" }}>Guardrails — Arc will not</div>
+                  <div className="pl" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--red-text)", margin: "0 0 6px" }}>Guardrails — Arc will not</div>
                   <div className="flist">{guardrails.map((t, i) => <div key={i} className="fitem"><span className="fi gd">{BAN}</span><span>{t}</span></div>)}</div>
                 </div>
               </div>

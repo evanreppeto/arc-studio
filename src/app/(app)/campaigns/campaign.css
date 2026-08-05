@@ -39,16 +39,40 @@
 .arc-campaign .cstrack i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .arc-campaign .csmeta { font-family: var(--mono); font-size: 10px; color: var(--muted); }
 
-.arc-campaign .ctabs { display: flex; gap: 2px; padding: 0 clamp(22px, 3vw, 38px); border-bottom: 1px solid var(--line-2); margin-top: 18px; flex-shrink: 0; }
+/* Sticky, because the page scrolls as one now (see `.cbody`) and the tab row is
+   how you get to Overview / Performance / Sources / History. It has to keep an
+   opaque background: transparent, it would let the deliverables scroll through
+   the words. */
+.arc-campaign .ctabs { position: sticky; top: 0; z-index: 6; display: flex; gap: 2px; padding: 0 clamp(22px, 3vw, 38px); border-bottom: 1px solid var(--line-2); margin-top: 18px; flex-shrink: 0; background: var(--canvas); }
 .arc-campaign .ctab { position: relative; display: flex; align-items: center; gap: 8px; padding: 11px 14px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: color 0.15s var(--ease); }
 .arc-campaign .ctab:hover { color: var(--text); }
 .arc-campaign .ctab.on { color: var(--text); }
 .arc-campaign .ctab.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px; }
 .arc-campaign .ctab .cnt { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: 5px; padding: 1px 6px; }
 
-.arc-campaign .cbody { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: clamp(20px, 2.5vw, 34px); padding: 22px clamp(22px, 3vw, 38px) 30px; overflow: hidden; }
-.arc-campaign .cscroll { overflow-y: auto; min-width: 0; }
-.arc-campaign .csnap { overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
+/* One scroll for the page, not two panes side by side.
+   This used to be an `overflow: hidden` grid of two independent scrollers under
+   a fixed header, which meant the deliverables — the thing the screen is for —
+   were read through a window of whatever height the header left over: 354px on
+   a 720px-tall display, out of a 747px list. Two scrollbars a gap apart also
+   made the wheel do different things depending on which half the pointer was
+   over. Now the header scrolls away and the deliverables get the viewport; the
+   tab row and the readiness rail stay put by being sticky, which is what those
+   two actually needed. The narrow branch below has done exactly this since it
+   was written — for the same reason, one breakpoint early. */
+.arc-campaign { overflow-y: auto; }
+/* `flex: none`, NOT the `flex: 1; min-height: 0` this had while it was its own
+   scroll container. In a column flex box, a growing/shrinking item is sized by
+   the free space and lets its content spill out of its own box — the page still
+   scrolled correctly, because the spill grew `.arc-campaign`'s scroll height,
+   but `.cbody` itself measured 405px against a 2200px page. That box is the
+   sticky rail's containing block, so the rail unstuck 400px in and scrolled
+   away with the deliverables. */
+.arc-campaign .cbody { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: clamp(20px, 2.5vw, 34px); padding: 22px clamp(22px, 3vw, 38px) 30px; align-items: start; }
+.arc-campaign .cscroll { min-width: 0; }
+/* `align-self: start` is load-bearing: a stretched grid item is as tall as the
+   row, and a sticky element cannot move inside its own box. */
+.arc-campaign .csnap { position: sticky; top: 56px; align-self: start; max-height: calc(100dvh - 150px); overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
 
 .arc-campaign .cerr { font-size: 12px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: 9px; padding: 9px 12px; margin-bottom: 14px; }
 
@@ -94,17 +118,21 @@
 
 .arc-campaign .dtitle { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .arc-campaign .dmeta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
-.arc-campaign .dcopy { position: relative; }
+.arc-campaign .dcopy { position: relative; margin-top: 14px; padding: 15px 17px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--canvas-deep, #101013); }
+/* The draft is the thing being decided, and it was rendering as loose paragraphs
+   on the page background — no edge, no label, nothing to say "this is the email".
+   It gets a document surface and a caption. */
+.arc-campaign .dcopy::before { content: "The draft"; display: block; margin-bottom: 9px; font-size: 10.5px; font-weight: 600; color: var(--muted); }
 .arc-campaign .dbody { font-size: 12.5px; color: var(--text-2); line-height: 1.6; margin-top: 11px; white-space: pre-wrap; }
 /* Long copy is folded so the review above it stays on screen. The mask makes the
    fold legible as a fold — a hard cut reads as copy that simply ended. */
 .arc-campaign .dbody.clamped { max-height: 15em; overflow: hidden; mask-image: linear-gradient(180deg, #000 72%, transparent); }
-.arc-campaign .dmore { margin-top: 6px; padding: 0; border: 0; background: none; font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; color: var(--muted); cursor: pointer; }
+.arc-campaign .dmore { margin-top: 10px; padding: 0; border: 0; background: none; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; }
 .arc-campaign .dmore:hover { color: var(--accent-contrast); }
 /* The words a finding quotes, marked where they live. Underline rather than fill:
    a highlighter block over body copy fights the card for attention. */
 .arc-campaign .dmark { background: none; color: var(--text); box-shadow: inset 0 -1px 0 0 var(--warn-border); border-radius: 2px; padding: 0 1px; scroll-margin: 90px; }
-.arc-campaign .dmark.blk { box-shadow: inset 0 -1px 0 0 var(--red-border); }
+.arc-campaign .dmark.blk { box-shadow: inset 0 -1px 0 0 var(--accent-border); }
 .arc-campaign .revnote { font-size: 11px; color: var(--accent-contrast); background: var(--accent-soft); border-radius: 7px; padding: 6px 9px; margin-top: 11px; }
 .arc-campaign .revnote b { color: var(--text); }
 
@@ -118,7 +146,7 @@
    send, and everything else folded away. It sits at the top of the card because
    the reviewer's question is "can I approve this?", not "what does this say?" */
 .arc-campaign .review { margin-top: 11px; padding: 10px 12px; border: 1px solid var(--line-2); border-left-width: 2px; border-radius: 8px; background: var(--inset); }
-.arc-campaign .review.tone-red { border-left-color: var(--red); }
+.arc-campaign .review.tone-red { border-left-color: var(--accent); }
 .arc-campaign .review.tone-amber { border-left-color: var(--warn); }
 .arc-campaign .review.tone-ok { border-left-color: var(--ok); }
 /* Unchecked. Deliberately colourless — the one thing this must never look like
@@ -126,18 +154,18 @@
 .arc-campaign .review.tone-gray { border-left-color: var(--line-3); }
 .arc-campaign .rvhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .arc-campaign .rvdot { width: 6px; height: 6px; border-radius: 99px; flex: none; background: var(--muted); }
-.arc-campaign .review.tone-red .rvdot { background: var(--red); }
+.arc-campaign .review.tone-red .rvdot { background: var(--accent); }
 .arc-campaign .review.tone-amber .rvdot { background: var(--warn); }
 .arc-campaign .review.tone-ok .rvdot { background: var(--ok); }
 .arc-campaign .rvline { font-size: 12.5px; font-weight: 600; color: var(--text); }
-.arc-campaign .rvverdict { margin-left: auto; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.03em; color: var(--muted); background: var(--raised); border: 1px solid var(--line-2); border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
+.arc-campaign .rvverdict { font-size: 11.5px; color: var(--muted); margin: 7px 0 0; }
 .arc-campaign .rvbanned { font-size: 11.5px; color: var(--red-text); line-height: 1.5; margin-top: 8px; }
 
 /* Findings. One line each by default — the quoted words plus the first clause of
    why — expanding to the full reasoning on click. */
 .arc-campaign .rvlist { list-style: none; margin: 9px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .arc-campaign .rvrow { border-left: 2px solid var(--warn); }
-.arc-campaign .rvrow.blk { border-left-color: var(--red); }
+.arc-campaign .rvrow.blk { border-left-color: var(--accent); }
 .arc-campaign .rvbtn { display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 4px 8px 5px 9px; border-radius: 0 5px 5px 0; transition: background 0.15s var(--ease); }
 .arc-campaign .rvbtn:hover { background: var(--raised); }
 .arc-campaign .rvq { display: block; font-size: 11.5px; font-style: italic; color: var(--text); line-height: 1.45; }
@@ -149,7 +177,7 @@
 
 /* Folds. Everything below here is available, not in the way. */
 .arc-campaign .rvfold { margin-top: 8px; border-top: 1px solid var(--line-3); padding-top: 7px; }
-.arc-campaign .rvfold > summary { font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; color: var(--muted); cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+.arc-campaign .rvfold > summary { font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; list-style: none; display: flex; align-items: center; gap: 7px; }
 .arc-campaign .rvfold > summary::-webkit-details-marker { display: none; }
 .arc-campaign .rvfold > summary::before { content: "▸"; font-size: 8px; transition: transform 0.15s var(--ease); }
 .arc-campaign .rvfold[open] > summary::before { transform: rotate(90deg); }
@@ -208,7 +236,7 @@
 .arc-campaign .mediatile:hover .mtzoom, .arc-campaign .mediatile:focus-visible .mtzoom { opacity: 1; }
 .arc-campaign .mediatile .mtzoom svg { width: 12px; height: 12px; stroke: #ecebe6; fill: none; stroke-width: 1.9; }
 .arc-campaign .mediatile .mtscrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 10, 12, 0.05), rgba(10, 10, 12, 0.62)); }
-.arc-campaign .mediatile .mtbadge { position: absolute; top: 6px; left: 6px; font-family: var(--mono); font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 4px; padding: 2px 5px; }
+.arc-campaign .mediatile .mtbadge { position: absolute; top: 6px; left: 6px; font-family: var(--mono); font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 4px; padding: 2px 5px; }
 .arc-campaign .mediatile .mtbadge.ai { color: #201808; background: var(--accent); }
 .arc-campaign .mediatile .mtbadge.real { color: var(--text-2); background: rgba(20, 20, 24, 0.72); }
 .arc-campaign .mediatile .mttitle { position: absolute; left: 7px; right: 7px; bottom: 6px; font-size: 9.5px; font-weight: 600; color: #ecebe6; line-height: 1.3; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
@@ -361,12 +389,11 @@
      does it at 900px. Below 1040 the sidebar stacks and the panel gets WIDER,
      so three columns is the right call in the gap between the two breakpoints. */
   .arc-campaign .lockgrid { grid-template-columns: 1fr; }
-  /* Let the whole page scroll instead of trapping deliverables in a short inner
-     pane below a tall stacked header. The perf tables keep their own horizontal
-     scroll so a narrow screen can't break the page width. */
-  .arc-campaign { overflow-y: auto; }
-  .arc-campaign .cbody { display: block; overflow: visible; }
-  .arc-campaign .cscroll { overflow: visible; padding-bottom: 40px; }
+  /* The page already scrolls as one at every width; here the two columns also
+     stop being columns. The perf tables keep their own horizontal scroll so a
+     narrow screen can't break the page width. */
+  .arc-campaign .cbody { display: block; }
+  .arc-campaign .cscroll { padding-bottom: 40px; }
   .arc-campaign .pchan, .arc-campaign .passets { overflow-x: auto; }
   .arc-campaign .pchead, .arc-campaign .pcrow { min-width: 420px; }
   .arc-campaign .pahead, .arc-campaign .parow { min-width: 520px; }
@@ -409,7 +436,7 @@
 .arc-campaign-modal .extsend, .extsend { display: flex; flex-direction: column; gap: 14px; }
 .extsend .exsec { border-top: 1px solid var(--line); padding-top: 12px; }
 .extsend .exsec:first-child { border-top: 0; padding-top: 0; }
-.extsend .exlabel { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.extsend .exlabel { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
 .extsend .exlabel span { min-width: 0; }
 .extsend .exactions { display: inline-flex; gap: 6px; text-transform: none; letter-spacing: 0; }
 .extsend .exvalue { font-size: 12.5px; color: var(--text); }
@@ -421,31 +448,66 @@
 .extsend .exinput { flex: 1; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text); font-size: 12px; padding: 8px 10px; }
 
 /* Full-size media preview (the tile lightbox). Rides the shared .modal-* card,
-   so only the stage and the provenance list are defined here. */
-.arc-campaign .lbstatus { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-bottom: 12px; }
-.arc-campaign .lbwho { font-size: 11.5px; color: var(--muted); }
+   so only the stage and the provenance rail are defined here.
 
-/* Risk flags sit above the image — the reviewer must meet them before they
-   scroll, not after. */
-.arc-campaign .lbrisk { border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px 13px; margin-bottom: 12px; }
+   The dialog is portaled into the shell by overlay-portal.tsx, which takes it
+   out from under `.arc-campaign` — so the scope travels with it on a
+   `display: contents` wrapper, the same way `.rq-scope` does below. Every rule
+   in this block missed until that wrapper existed, and the dialog rendered as
+   raw markup: an uncapped full-bleed image and a warning icon at its intrinsic
+   size, taller than the creative it was flagging. */
+.arc-app .lb-scope { display: contents; }
+
+/* Stage left, everything written about the creative down a rail on the right.
+   The picture is what the reviewer came to judge, so it keeps the width; the
+   provenance used to run underneath it, which put the image and its own
+   metadata at two different scroll positions. */
+.arc-campaign .lbgrid { display: grid; grid-template-columns: minmax(0, 1fr) 322px; gap: 18px; align-items: start; }
+
+/* The frame hugs the picture vertically — a fixed-height stage letterboxed a
+   4:3 image inside 460px of empty black, which reads as a loading state. The
+   cap is on the image itself so a 9:16 vertical is judged at the same scale a
+   16:9 is, and neither pushes the dialog past the fold. */
+.arc-campaign .lbstage { display: flex; align-items: center; justify-content: center; min-height: 180px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--canvas-deep, #101013); padding: 10px; overflow: hidden; }
+/* contain, never cover — the tile crops, the full-size view must not. */
+.arc-campaign .lbimg { display: block; max-width: 100%; max-height: min(56vh, 600px); object-fit: contain; border-radius: 6px; }
+.arc-campaign .lbnoprev { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.arc-campaign .lbfail { margin: 0; padding: 24px 12px; font-size: 12px; line-height: 1.55; color: var(--muted); text-align: center; max-width: 46ch; }
+
+/* The rail scrolls on its own so a long prompt can never push the picture off
+   screen; it is capped to the stage so the two columns end together. */
+.arc-campaign .lbside { display: flex; flex-direction: column; gap: 12px; max-height: min(58vh, 620px); overflow-y: auto; padding-right: 3px; }
+.arc-campaign .lbstatus { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.arc-campaign .lbwho { font-size: 11.5px; color: var(--muted); }
+.arc-campaign .lbnote { margin: -4px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+
+.arc-campaign .lbrisk { border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px 13px; }
 .arc-campaign .lbrisk b { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--red-text); }
-.arc-campaign .lbrisk b svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+.arc-campaign .lbrisk b svg { width: 14px; height: 14px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-campaign .lbrisk ul { margin: 7px 0 0; padding-left: 21px; }
 .arc-campaign .lbrisk li { font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
 .arc-campaign .lbrisk p { margin: 7px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
 
-.arc-campaign .lbstage { display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--line-2); background: var(--canvas-deep, #101013); padding: 10px; margin-bottom: 14px; }
-/* contain, never cover — the 4:3 tile crops, the full-size view must not. */
-.arc-campaign .lbimg { display: block; max-width: 100%; max-height: min(58vh, 620px); object-fit: contain; border-radius: 6px; }
-.arc-campaign .lbnoprev { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.arc-campaign .lbfail { margin: 0; padding: 24px 12px; font-size: 12px; line-height: 1.55; color: var(--muted); text-align: center; max-width: 46ch; }
+/* Deciding the picture, from where the picture is. Sits directly under the
+   state it changes and above the reference facts, because it is the reason the
+   dialog is open — the provenance below is what you consult, this is what you
+   came to do. */
+.arc-campaign .lbdecide { border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); padding: 11px 12px; display: flex; flex-direction: column; gap: 9px; }
+.arc-campaign .lbdecrow { display: flex; flex-wrap: wrap; gap: 7px; }
+.arc-campaign .lbdecrow .cbtn { height: 30px; padding: 0 11px; }
+.arc-campaign .lback { display: flex; flex-direction: column; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); }
+.arc-campaign .lback textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 12px; line-height: 1.5; padding: 7px 9px; }
+.arc-campaign .lback textarea:focus-visible { outline: 2px solid var(--accent-border-strong); outline-offset: 1px; }
+.arc-campaign .lbdecerr { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--red-text); }
+.arc-campaign .lbdecnote { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--muted); }
+
 .arc-campaign .lbmeta { margin: 0; display: flex; flex-direction: column; }
 .arc-campaign .lbrow { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line-2); }
-.arc-campaign .lbrow:first-child { border-top: 0; }
-.arc-campaign .lbrow dt { flex-shrink: 0; width: 108px; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+.arc-campaign .lbrow:first-child { border-top: 0; padding-top: 0; }
+.arc-campaign .lbrow dt { flex-shrink: 0; width: 84px; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
 .arc-campaign .lbrow dd { margin: 0; min-width: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); overflow-wrap: anywhere; }
-.arc-campaign .lbsec { margin-top: 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px 12px; }
-.arc-campaign .lbsec b { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.arc-campaign .lbsec { border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px 12px; }
+.arc-campaign .lbsec b { display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
 .arc-campaign .lbprompt p { margin: 0; font-family: var(--mono); font-size: 11px; line-height: 1.55; color: var(--text-2); overflow-wrap: anywhere; }
 /* Same lineage read as the Library card: the tuple's first value is a dot
    colour, not a label. */
@@ -458,6 +520,15 @@
 .arc-campaign .lbdot.pv-upload { background: var(--blue); }
 .arc-campaign .lbstepper { display: flex; align-items: center; gap: 8px; margin-right: auto; }
 .arc-campaign .lbcount { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* Below the two-column width the rail stacks under the stage and stops being
+   its own scroll region — nesting a short scroller inside the modal's own
+   scroll is worse than one long read. */
+@media (max-width: 880px) {
+  .arc-campaign .lbgrid { grid-template-columns: 1fr; }
+  .arc-campaign .lbside { max-height: none; overflow: visible; }
+  .arc-campaign .lbimg { max-height: min(44vh, 420px); }
+}
 
 /* This sheet was the one route stylesheet with motion and no reduced-motion
    escape. Everything here is a short colour transition except `.perflearn-cta`,
@@ -488,7 +559,7 @@
 .arc-campaign .rqbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line-2); flex: none; }
 .arc-campaign .rqcount { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .arc-campaign .rqcount b { color: var(--text); font-size: 13px; }
-.arc-campaign .rqname { margin-left: 12px; color: var(--text-2); }
+.arc-campaign .rqname { margin-left: 12px; font-family: var(--ff-body, inherit); font-size: 12.5px; color: var(--text-2); }
 .arc-campaign .rqtrack { flex: 1; height: 2px; background: var(--line-3); border-radius: 99px; overflow: hidden; }
 .arc-campaign .rqtrack i { display: block; height: 100%; background: var(--accent); transition: width 0.25s var(--ease); }
 .arc-campaign .rqclose { display: flex; padding: 6px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 7px; }
@@ -500,7 +571,7 @@
 .arc-campaign .rqcard { max-width: 720px; margin: 0 auto; }
 .arc-campaign .rqhead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 .arc-campaign .rqhead h2 { font-family: var(--serif); font-weight: 500; font-size: 20px; letter-spacing: -0.01em; color: var(--text); margin: 0; }
-.arc-campaign .rqchannel { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.arc-campaign .rqchannel { font-size: 11.5px; color: var(--muted); }
 .arc-campaign .rqhead .pill { margin-left: auto; }
 .arc-campaign .rqerr { max-width: 720px; margin: 0 auto; padding: 0 24px 8px; font-size: 12px; color: var(--red-text); }
 
@@ -534,7 +605,7 @@
    (BSR-743). Sits inside the finding's own row so the question and the answer
    are never in two places. */
 .arc-campaign .rvfix { margin: 2px 0 8px; padding: 8px 9px 8px 11px; border-left: 2px solid transparent; }
-.arc-campaign .rvrow.blk .rvfix { border-left-color: var(--red); }
+.arc-campaign .rvrow.blk .rvfix { border-left-color: var(--accent); }
 .arc-campaign .rvrow:not(.blk) .rvfix { border-left-color: var(--warn); }
 .arc-campaign .rvfixlabel { display: block; font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
 .arc-campaign .rvfixrow { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
@@ -544,3 +615,90 @@
 .arc-campaign .rvfixgo { height: 30px; flex: none; font-size: 11.5px; }
 .arc-campaign .rvfixnote { font-size: 10.5px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
 .arc-campaign .rvfixnote code { font-family: var(--mono); font-size: 10px; color: var(--text-2); background: var(--raised); border-radius: 4px; padding: 1px 4px; }
+
+/* The two halves of the review, now split around the draft. The verdict is the
+   answer and keeps the accent edge; the detail below is the argument, and needs
+   no second edge competing with it. */
+.arc-campaign .review.rv-verdict { margin-bottom: 0; }
+.arc-campaign .review.rv-detail { margin-top: 14px; border-left-color: var(--line-2); background: transparent; }
+.arc-campaign .review.rv-detail::before { content: "What Arc flagged"; display: block; margin-bottom: 10px; font-size: 10.5px; font-weight: 600; color: var(--muted); }
+
+/* ===========================================================================
+   The review overlay, flattened.
+   ---------------------------------------------------------------------------
+   It was boxes inside boxes: the card held a bordered verdict panel, which sat
+   above a bordered draft panel, above a bordered findings panel, whose rows had
+   their own rules and whose fix input had its own border again. Three levels
+   deep, against DESIGN.md's "don't nest cards" — and with every level carrying
+   a border, a radius and a background, structure was being done entirely by
+   containers instead of by type and space. That is the thing that reads cheap.
+   One surface earns a background here: the draft, because it is the artifact.
+   Everything else is spacing and one hairline.
+   =========================================================================== */
+.arc-campaign .rqcard { max-width: 680px; }
+
+/* Verdict — a line, not a panel. */
+.arc-campaign .rqcard .review.rv-verdict {
+  margin: 18px 0 0; padding: 0 0 18px; border: 0; border-bottom: 1px solid var(--line-2);
+  border-radius: 0; background: transparent;
+}
+.arc-campaign .rqcard .rv-verdict .rvline { font-size: 14px; }
+.arc-campaign .rqcard .rv-verdict .rvdot { width: 7px; height: 7px; }
+
+/* The draft — the one surface, because it is the thing being decided. */
+.arc-campaign .rqcard .dcopy {
+  margin-top: 22px; padding: 22px 24px; border: 0; border-radius: 12px;
+  background: var(--surface-soft, #1a1a1e);
+}
+.arc-campaign .rqcard .dcopy::before { margin-bottom: 14px; letter-spacing: .02em; }
+.arc-campaign .rqcard .dbody { font-size: 13.5px; line-height: 1.72; color: var(--text); }
+
+/* The argument — a caption and a list. No panel, no second edge. */
+.arc-campaign .rqcard .review.rv-detail {
+  margin-top: 26px; padding: 0; border: 0; border-radius: 0; background: transparent;
+}
+.arc-campaign .rqcard .rv-detail::before { margin-bottom: 12px; letter-spacing: .02em; }
+/* A blocker keeps a rule; a note does not need one. Every row having an edge
+   made the list read as a stack of cards rather than as a list. */
+.arc-campaign .rqcard .rv-detail .rvlist { gap: 0; }
+.arc-campaign .rqcard .rv-detail .rvrow { border-left: 0; border-top: 1px solid var(--line-3); }
+.arc-campaign .rqcard .rv-detail .rvrow:first-child { border-top: 0; }
+.arc-campaign .rqcard .rv-detail .rvbtn { padding: 12px 0; border-radius: 0; }
+.arc-campaign .rqcard .rv-detail .rvbtn:hover { background: transparent; }
+.arc-campaign .rqcard .rv-detail .rvbtn:hover .rvq { color: var(--accent-contrast); }
+.arc-campaign .rqcard .rv-detail .rvq { font-size: 12.5px; }
+.arc-campaign .rqcard .rv-detail .rvwhy { font-size: 11.5px; margin-top: 4px; }
+.arc-campaign .rqcard .rv-detail .rvfold { margin-top: 0; border-top: 1px solid var(--line-3); padding: 12px 0 0; }
+.arc-campaign .rqcard .rv-detail .rvfold + .rvfold { margin-top: 12px; }
+
+/* Click-to-edit the draft.
+   ---------------------------------------------------------------------------
+   A transparent textarea sits exactly on top of the highlighted copy. The
+   textarea owns the caret, the selection and the typing; the layer behind owns
+   the <mark>s for the spans Arc quoted. EVERY metric that affects line breaking
+   has to match between the two or the caret drifts from the glyphs — font,
+   size, line-height, letter-spacing, padding, white-space and word-break are
+   therefore set on the shared `.dbody` and never overridden on one layer. */
+.arc-campaign .rqcard .dcopy.live { padding: 18px 20px; }
+.arc-campaign .dlive { position: relative; }
+.arc-campaign .dlive > .dbody {
+  margin: 0; padding: 0; border: 0; background: transparent;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+  font-family: inherit; font-size: 13.5px; line-height: 1.72; letter-spacing: normal;
+}
+.arc-campaign .dlive-hl { color: var(--text); pointer-events: none; }
+.arc-campaign .dlive-ta {
+  position: absolute; inset: 0; width: 100%; height: 100%; resize: none; overflow: hidden;
+  color: transparent; caret-color: var(--accent); -webkit-text-fill-color: transparent;
+}
+.arc-campaign .dlive-ta::selection { background: var(--accent-soft); }
+.arc-campaign .dlive-ta:focus { outline: none; }
+/* The only hint that it is editable — the copy is the affordance, so the hint
+   stays out of the way until the pointer is on it. */
+.arc-campaign .dcopy.live:hover .dlive-hl,
+.arc-campaign .dcopy.live:focus-within .dlive-hl { box-shadow: none; }
+.arc-campaign .dcopy.live:focus-within { background: var(--surface-raised, #23232a); }
+.arc-campaign .dlive-ta:disabled { cursor: default; }
+
+.arc-campaign .deditbar { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line-2); flex-wrap: wrap; }
+.arc-campaign .deditnote { font-size: 11px; color: var(--muted); }

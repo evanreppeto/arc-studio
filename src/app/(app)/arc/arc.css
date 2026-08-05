@@ -17,8 +17,19 @@
   color: var(--text);
   /* The chat area is a size container: whether the workspace panel docks or
      overlays is decided by the chat area's own width, not the viewport, so the
-     nav rail (or an embedded preview) can't skew the breakpoint. */
+     nav rail (or an embedded preview) can't skew the breakpoint. The same now
+     goes for the pane's own layout breakpoints below — the rail eats ~240px, so
+     a `@media (max-width: 760px)` rule only fired once the pane was already
+     ~520px. `inline-size` only: the block axis still flows from content, which
+     the grid row sizing above depends on.
+
+     Named so the queries say which container they mean. Only rules targeting
+     elements INSIDE .arc-chat may use it: the drawer and the deliverable review
+     overlay render through OverlayPortal into #arc-overlay-root, outside this
+     subtree, where a container query would silently never match — see the note
+     on the 720px block. */
   container-type: inline-size;
+  container-name: arcpane;
 }
 
 .arc-chat button,
@@ -35,7 +46,6 @@
 .arc-conversation-header,
 .arc-conversation-scroll,
 .arc-composer-dock { transition: margin-right var(--arc-base) var(--arc-curve); }
-
 
 /* ── Conversation header ────────────────────────────────────────────────── */
 .arc-conversation-header {
@@ -399,6 +409,90 @@
 .arc-status-update svg { flex: none; color: var(--ok-text); }
 .arc-status-update span { min-width: 0; display: flex; gap: 5px; }
 .arc-status-update b { color: var(--ok-text); font-weight: 650; }
+
+/* Wrapper so a per-message notice can sit with its operator message rather than
+   being a sibling of the whole feed. Layout passthrough — the message keeps
+   owning its own alignment and margins. */
+.arc-message-slot { display: contents; }
+
+/* A failure reported where it happened, instead of in the composer chip row at
+   the far bottom of the screen. Aligned right with the operator message it
+   follows; full-width under an Arc reply. */
+.arc-message-notice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  /* Matches the operator bubble it sits under, so it reads as belonging to that
+     message rather than to the thread. Widened under an Arc reply below. */
+  max-width: min(52%, 420px);
+  margin: -13px 0 24px auto;
+  border: 1px solid var(--red-border);
+  border-radius: 9px;
+  background: var(--red-soft);
+  padding: 7px 9px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.arc-message-notice > svg { flex: none; color: var(--red-text); }
+.arc-message-notice > span { min-width: 0; }
+.arc-message-notice button {
+  flex: none;
+  min-width: 22px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  cursor: pointer;
+}
+.arc-message-notice button:hover { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--text); }
+.arc-message-notice button:focus-visible { outline: 2px solid var(--red-text); outline-offset: 1px; }
+.arc-assistant-message .arc-message-notice { max-width: 82ch; margin: 12px 0 0; }
+
+/* A turn whose run died. Stated once, calmly, with the way out attached — it
+   replaces a spinner that used to run forever, so it has to read as a finished
+   state rather than another kind of waiting. Red is the destructive/failure
+   token per DESIGN.md; this is the one place in the thread that earns it. */
+.arc-stalled-reply {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  max-width: 82ch;
+  margin-top: 12px;
+  border: 1px solid var(--red-border);
+  border-radius: 11px;
+  background: var(--red-soft);
+  padding: 11px 13px;
+}
+.arc-stalled-reply > svg { flex: none; color: var(--red-text); }
+.arc-stalled-reply p { min-width: 0; flex: 1; margin: 0; color: var(--text-2); font-size: 12.5px; line-height: 1.55; }
+.arc-stalled-reply button {
+  flex: none;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--red-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 560;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease;
+}
+.arc-stalled-reply button:hover { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--text); }
+.arc-stalled-reply button:focus-visible { outline: 2px solid var(--red-text); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .arc-stalled-reply button { transition: none; } }
 .arc-response-evidence {
   max-width: none;
   display: flex;
@@ -443,8 +537,8 @@
 .arc-response-output-label span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 9.5px; font-weight: 620; letter-spacing: .055em; text-transform: uppercase; }
 .arc-response-output-label span svg { color: var(--accent); }
 .arc-response-output-label b { color: var(--accent-contrast); font-size: 10px; font-weight: 600; }
-.arc-response-output .arc-package,
-.arc-response-output .arc-created-receipt { margin-top: 0; }
+.arc-response-output .arc-dlv,
+.arc-response-output .arc-dlv-package { margin-top: 0; }
 .arc-answer h2,
 .arc-markdown h1,
 .arc-markdown h2 {
@@ -861,66 +955,6 @@
 .arc-reasoning-summary > svg { margin: 2px auto 0; color: var(--accent); }
 .arc-reasoning-summary b { color: var(--text); font-size: 11px; font-weight: 650; }
 .arc-reasoning-summary .arc-reasoning-body { margin: 3px 0 0; max-height: 320px; overflow-y: auto; }
-
-/* ── Inline package and structured actions ──────────────────────────────── */
-.arc-package { max-width: 100%; margin: 14px 0 0; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
-.arc-package-kicker { padding: 10px 0 5px; color: var(--muted); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
-.arc-package-row {
-  min-height: 70px;
-  display: grid;
-  grid-template-columns: 38px minmax(150px, 1.15fr) minmax(300px, 2fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 0 12px;
-}
-.arc-package-icon {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--accent-border);
-  border-radius: 9px;
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-.arc-package-title { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.arc-package-title b { color: var(--text); font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-package-title small { color: var(--muted); font-size: 10.5px; }
-.arc-package-channels { min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.arc-package-channels > span { position: relative; display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; column-gap: 6px; color: var(--text-2); font-size: 10.5px; min-width: 0; }
-.arc-package-channels i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
-.arc-package-channels small { grid-column: 2; color: var(--ok-text); font-size: 9.5px; }
-.arc-package[data-status="approved"] .arc-package-channels i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 12%, transparent); }
-.arc-package[data-status="revising"] .arc-package-channels i { background: var(--accent); animation: arc-status-pulse 1.4s ease-in-out infinite; }
-.arc-package[data-status="revising"] .arc-package-channels small { color: var(--accent-contrast); }
-.arc-created-receipt {
-  width: 100%;
-  min-height: 58px;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto 16px;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-  padding: 9px 11px;
-  border: 1px solid var(--line-2);
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--panel) 58%, transparent);
-  color: var(--text-2);
-  text-align: left;
-  cursor: pointer;
-  transition: border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast);
-}
-.arc-created-receipt:hover { transform: translateY(-1px); border-color: var(--accent-border); background: color-mix(in srgb, var(--panel) 78%, transparent); }
-.arc-created-receipt-icon { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--accent-border); border-radius: 9px; background: var(--accent-soft); color: var(--accent); }
-.arc-created-receipt > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.arc-created-receipt b { color: var(--text); font-size: 12px; font-weight: 620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-created-receipt small { color: var(--muted); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-created-receipt em { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 9.5px; font-style: normal; white-space: nowrap; }
-.arc-created-receipt em i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-.arc-created-receipt em.is-ok { color: var(--ok-text); }
-.arc-created-receipt em.is-accent { color: var(--accent-contrast); }
-.arc-created-receipt em.is-red { color: var(--red-text); }
-.arc-created-receipt > svg { color: var(--muted); }
 .arc-review-button,
 .arc-primary-button,
 .arc-secondary-button {
@@ -944,20 +978,6 @@
 .arc-secondary-button { border: 1px solid var(--line-2); background: transparent; color: var(--text-2); }
 .arc-secondary-button:hover { border-color: var(--line-3); color: var(--text); }
 .arc-primary-button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
-.arc-package-detail {
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  align-items: center;
-  gap: 18px;
-  border-top: 1px solid var(--line);
-  padding: 14px 0;
-}
-.arc-package-detail > div:not(.arc-package-actions) { display: flex; flex-direction: column; gap: 3px; }
-.arc-package-detail span { color: var(--muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; }
-.arc-package-detail b { color: var(--text-2); font-size: 11.5px; font-weight: 550; }
-.arc-package-actions { display: flex; gap: 8px; }
-.arc-package-sources { border-top: 1px solid var(--line); padding: 9px 0; color: var(--muted); font-size: 9.5px; }
 .arc-action-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .arc-action-card {
   display: flex;
@@ -1014,6 +1034,468 @@
 .arc-draft-revise button { min-height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); padding: 0 11px; font-size: 11px; cursor: pointer; }
 .arc-draft-revise button.is-primary { border-color: var(--accent-border-strong); background: var(--accent); color: var(--on-accent); font-weight: 620; }
 .arc-draft-revise button:disabled { opacity: .5; cursor: default; }
+
+/* ── The deliverable, in the conversation ───────────────────────────────── */
+/* Arc drafts an email; the chat shows an email. Each medium renders as itself
+   (see arc-deliverable.tsx) — the card's own chrome stays thin because the
+   content carries its own headline, and two headlines compete. */
+
+.arc-dlv {
+  margin: 14px 0 0;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+  transition: border-color var(--arc-base);
+}
+.arc-dlv[data-status="approved"] { border-color: var(--ok-border); }
+.arc-dlv[data-status="rejected"] { border-color: var(--red-border); }
+.arc-dlv[data-status="revision"] { border-color: var(--accent-border); }
+
+/* Chrome: what this is, where it stands, and a way to open it big. */
+.arc-dlv-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px 9px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.arc-dlv-kind {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--muted); font-size: 10px; font-weight: 650;
+  letter-spacing: .07em; text-transform: uppercase;
+}
+.arc-dlv-kind svg { color: var(--accent); }
+.arc-dlv-kind small { color: var(--line-3); font-size: 10px; letter-spacing: .04em; text-transform: none; }
+.arc-dlv-kind small::before { content: "·"; margin-right: 6px; }
+.arc-dlv-status {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--line-2); border-radius: 999px;
+  color: var(--muted); font-size: 10px; font-weight: 600; font-style: normal;
+  white-space: nowrap;
+}
+.arc-dlv-status i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.arc-dlv-status.is-ok { color: var(--ok-text); border-color: var(--ok-border); }
+.arc-dlv-status.is-red { color: var(--red-text); border-color: var(--red-border); }
+.arc-dlv-status.is-accent { color: var(--accent-contrast); border-color: var(--accent-border); }
+.arc-dlv-expand {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast);
+}
+.arc-dlv-expand:hover { color: var(--text); border-color: var(--line-2); background: rgba(255, 255, 255, .04); }
+
+.arc-dlv-body { padding: 16px 16px 4px; }
+.arc-dlv-body[data-clamped="true"] {
+  max-height: 300px;
+  overflow: hidden;
+  /* Fades into the disclosure instead of guillotining a sentence. */
+  mask-image: linear-gradient(to bottom, #000 76%, transparent 100%);
+}
+.arc-dlv-more {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin: 2px 0 0 14px; padding: 4px 0;
+  border: 0; background: transparent;
+  color: var(--accent-contrast); font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.arc-dlv-more:hover { color: var(--accent-hover); }
+.arc-dlv-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+.arc-dlv-more svg { transition: transform var(--arc-fast); }
+
+.arc-dlv-flags { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 0; }
+/* "No checks recorded" gets a colourless tone of its own. It must never borrow
+   the green of a recorded pass — that would render an absence of evidence as
+   evidence of absence, on the screen where copy gets approved. */
+.arc-dlv-unchecked {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  border: 1px dashed var(--line-3); border-radius: 999px;
+  color: var(--muted); font-size: 10px; font-weight: 600;
+}
+.arc-dlv-detail-side .arc-dlv-flags { padding: 0; }
+/* A finding is a sentence, not a tag — it has to wrap and stay readable. */
+.arc-dlv-flags[data-check="flagged"] .arc-action-flag {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
+}
+.arc-dlv-more-findings { align-self: center; color: var(--muted); font-size: 10px; }
+/* An unresolved blocker outranks the card's border colour: a draft can be
+   "Needs you" on approval state and blocked on content at the same time. */
+.arc-dlv:has(.arc-dlv-flags[data-check="flagged"]) { border-color: color-mix(in srgb, var(--priority) 45%, var(--line-2)); }
+
+.arc-dlv-foot { margin-top: 12px; padding: 10px 12px 11px; border-top: 1px solid var(--line); }
+
+/* Decided work collapses. Four settled deliverables at full height is how the
+   thread became 2000px of scroll; the row reopens on click. */
+.arc-dlv-collapsed {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0 8px 0 0;
+  border: 1px solid var(--line-2); border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 40%, transparent);
+  transition: border-color var(--arc-fast), background var(--arc-fast);
+}
+.arc-dlv-collapsed-open {
+  flex: 1; min-width: 0;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px 7px 12px;
+  border: 0; background: transparent;
+  text-align: left; cursor: pointer;
+}
+/* Undo is quiet until you want it — a decided row should read as settled, not
+   as a row still asking to be acted on. */
+.arc-dlv-undo {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 26px; padding: 0 9px;
+  border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--muted);
+  font-size: 10.5px; font-weight: 600; cursor: pointer;
+  opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast);
+}
+.arc-dlv-collapsed:hover .arc-dlv-undo,
+.arc-dlv-undo:focus-visible { opacity: 1; }
+.arc-dlv-undo:hover:not(:disabled) { color: var(--text); border-color: var(--line-2); }
+.arc-dlv-undo:disabled { opacity: 1; cursor: default; }
+.arc-dlv-undo-error { flex: none; color: var(--red-text); font-size: 10px; }
+/* Keyboard users never hover, so the control cannot be hover-only. */
+@media (hover: none) { .arc-dlv-undo { opacity: 1; } }
+.arc-dlv-collapsed:hover { border-color: var(--line-3); background: color-mix(in srgb, var(--panel) 62%, transparent); }
+.arc-dlv-collapsed[data-status="approved"] { border-color: color-mix(in srgb, var(--ok-border) 60%, transparent); }
+.arc-dlv-collapsed[data-status="rejected"] { border-color: color-mix(in srgb, var(--red-border) 60%, transparent); }
+.arc-dlv-collapsed-icon { display: grid; place-items: center; color: var(--muted); }
+.arc-dlv-collapsed-title { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.arc-dlv-collapsed-title b { color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-dlv-collapsed-title small { color: var(--muted); font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; }
+.arc-dlv-collapsed .arc-dlv-status { margin-left: 0; }
+.arc-dlv-collapsed > svg { color: var(--muted); }
+
+/* ── Medium canvases ────────────────────────────────────────────────────── */
+/* Shared prose. `pre-wrap` because the runner writes real paragraph breaks and
+   they are part of the draft. */
+.arc-dlv-prose {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.72;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 66ch;
+}
+.arc-dlv-prose.is-tight { font-size: 12.5px; line-height: 1.6; }
+.arc-dlv-prose.is-doc { font-size: 12.5px; line-height: 1.75; max-width: 74ch; }
+
+.arc-dlv-media { margin: 0; width: fit-content; max-width: 100%; display: grid; gap: 6px; }
+.arc-dlv-media img,
+.arc-dlv-media video {
+  display: block; max-width: 100%; max-height: 300px;
+  border: 1px solid var(--line-2); border-radius: 10px;
+  background: var(--inset);
+}
+.arc-dlv-media figcaption { color: var(--muted); font-size: 10.5px; }
+
+/* Email — the subject IS the headline. */
+.arc-dlv-email { display: grid; gap: 14px; }
+.arc-dlv-email-head { display: grid; gap: 5px; padding-bottom: 13px; border-bottom: 1px solid var(--line); }
+.arc-dlv-email-head h4 {
+  margin: 0; color: var(--text);
+  font-family: var(--serif); font-size: 17px; font-weight: 550; line-height: 1.28;
+}
+.arc-dlv-email-head p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+/* Text message — a bubble, and the character count that decides segmentation. */
+.arc-dlv-sms { display: grid; justify-items: start; gap: 7px; }
+.arc-dlv-sms-bubble {
+  max-width: min(100%, 46ch);
+  padding: 12px 15px;
+  border-radius: 17px 17px 17px 5px;
+  background: color-mix(in srgb, var(--accent) 13%, var(--inset));
+  border: 1px solid var(--accent-border);
+  color: var(--text);
+  font-size: 13px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.arc-dlv-sms-meta { color: var(--muted); font-size: 10px; letter-spacing: .04em; }
+
+/* Social ad — an ad unit: creative, headline, body, CTA. */
+.arc-dlv-ad {
+  width: fit-content; max-width: min(100%, 460px);
+  overflow: hidden;
+  border: 1px solid var(--line-2); border-radius: 12px;
+  background: var(--inset);
+}
+.arc-dlv-ad .arc-dlv-media { width: 100%; }
+.arc-dlv-ad .arc-dlv-media img,
+.arc-dlv-ad .arc-dlv-media video { width: 100%; max-height: 300px; object-fit: cover; border: 0; border-radius: 0; }
+.arc-dlv-ad-copy { display: grid; gap: 8px; padding: 13px 14px 14px; }
+.arc-dlv-ad-copy h4 { margin: 0; color: var(--text); font-size: 14px; font-weight: 650; line-height: 1.3; }
+.arc-dlv-ad-copy p { margin: 0; color: var(--text-2); font-size: 12.5px; line-height: 1.55; }
+.arc-dlv-ad-foot { display: flex; align-items: center; gap: 10px; padding-top: 4px; }
+.arc-dlv-cta {
+  display: inline-flex; align-items: center;
+  padding: 6px 14px;
+  border: 1px solid var(--accent-border-strong); border-radius: 7px;
+  background: var(--accent); color: var(--on-accent);
+  font-size: 11.5px; font-weight: 650;
+}
+.arc-dlv-ad-foot small { color: var(--muted); font-size: 10.5px; }
+
+/* Landing page — a hero stack. */
+.arc-dlv-page { display: grid; gap: 14px; }
+.arc-dlv-page-hero { display: grid; gap: 7px; }
+.arc-dlv-page-hero h4 {
+  margin: 0; color: var(--text);
+  font-family: var(--serif); font-size: 24px; font-weight: 550; line-height: 1.15;
+  max-width: 20ch;
+}
+.arc-dlv-page-hero p { margin: 0; max-width: 52ch; color: var(--text-2); font-size: 13px; line-height: 1.55; }
+
+/* Document — a sheet. */
+.arc-dlv-doc { display: grid; gap: 12px; }
+.arc-dlv-doc h4 { margin: 0; color: var(--text); font-family: var(--serif); font-size: 16px; font-weight: 550; }
+.arc-dlv-doc .arc-dlv-prose {
+  padding: 15px 17px;
+  border-left: 2px solid var(--line-3);
+  background: color-mix(in srgb, var(--inset) 62%, transparent);
+  border-radius: 0 8px 8px 0;
+}
+
+/* Generic — an unrecognised channel stays a labelled list plus prose. */
+.arc-dlv-generic { display: grid; gap: 12px; }
+.arc-dlv-fields { margin: 0; display: grid; gap: 6px; }
+.arc-dlv-fields > div { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: baseline; gap: 10px; }
+.arc-dlv-fields dt { color: var(--muted); font-size: 9.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
+.arc-dlv-fields dd { margin: 0; min-width: 0; color: var(--text); font-size: 12.5px; line-height: 1.5; }
+
+/* ── Decisions ──────────────────────────────────────────────────────────── */
+.arc-dlv-decide { display: flex; align-items: center; gap: 7px; }
+.arc-dlv-notice { min-width: 0; flex: 1; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-dlv-decide button {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 32px; padding: 0 12px;
+  border: 1px solid var(--line-2); border-radius: 8px;
+  background: transparent; color: var(--text-2);
+  font-size: 11.5px; font-weight: 600; cursor: pointer;
+  transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast);
+}
+/* Decline and Revise are quiet: one primary action per card. */
+.arc-dlv-decide button.is-quiet { border-color: transparent; color: var(--muted); padding: 0 9px; }
+.arc-dlv-decide button.is-quiet:hover:not(:disabled) { color: var(--text); border-color: var(--line-2); }
+.arc-dlv-decide button.is-primary { border-color: var(--accent-border-strong); background: var(--accent); color: var(--on-accent); font-weight: 650; }
+.arc-dlv-decide button.is-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.arc-dlv-decide button:disabled { opacity: .5; cursor: default; }
+
+.arc-dlv-revise { display: grid; gap: 8px; }
+.arc-dlv-revise label { color: var(--muted); font-size: 10.5px; }
+.arc-dlv-revise textarea {
+  width: 100%; min-height: 64px; resize: vertical;
+  border: 1px solid var(--line-2); border-radius: 8px; outline: 0;
+  background: var(--inset); color: var(--text);
+  padding: 9px 10px; font-size: 12px; line-height: 1.5;
+}
+.arc-dlv-revise textarea:focus { border-color: var(--accent-border); }
+.arc-dlv-revise > div { display: flex; justify-content: flex-end; gap: 7px; }
+.arc-dlv-revise button { min-height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); font-size: 11.5px; cursor: pointer; }
+.arc-dlv-revise button.is-primary { border-color: var(--accent-border-strong); background: var(--accent); color: var(--on-accent); font-weight: 650; }
+.arc-dlv-revise button:disabled { opacity: .5; cursor: default; }
+
+/* Package header — a count and the way into the deep read. */
+.arc-dlv-package {
+  display: flex; align-items: center; gap: 12px;
+  margin: 14px 0 0; padding: 9px 2px 10px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+.arc-dlv-package > span { display: flex; flex-direction: column; gap: 2px; }
+.arc-dlv-package b { color: var(--text); font-size: 12.5px; font-weight: 650; }
+.arc-dlv-package small { color: var(--muted); font-size: 10.5px; }
+.arc-dlv-package button {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 30px; padding: 0 12px;
+  border: 1px solid var(--line-2); border-radius: 8px;
+  background: transparent; color: var(--text-2);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.arc-dlv-package button:hover { color: var(--text); border-color: var(--accent-border); }
+
+/* ── The deep read: index → detail, with a way back ─────────────────────── */
+/* Positioned from a measured PaneBox (arc-view.types.ts) — it portals to the
+   shell, so it cannot be absolute in a pane it has left, and `fixed` would
+   anchor to .page-enter's transform. */
+.arc-dlv-scrim { position: fixed; inset: 0; z-index: 58; display: block; border: 0; background: rgba(7, 7, 9, .62); }
+/* The frame: pinned to the content pane, transparent, centres its child and
+   takes no pointer events so the scrim behind stays clickable. */
+.arc-dlv-review {
+  position: fixed;
+  z-index: 59;
+  display: grid;
+  place-items: center;
+  padding: 26px;
+  pointer-events: none;
+}
+/* The card: as big as the draft needs and no bigger. Height comes from the
+   content, capped by the pane — a short SMS gets a short card, where the
+   previous full-pane overlay gave one email the whole screen. */
+.arc-dlv-card {
+  pointer-events: auto;
+  width: min(660px, 100%);
+  max-height: 100%;
+  /* Flex, not grid rows. The tab strip only renders for a multi-asset set, so a
+     positional `grid-template-rows: auto auto 1fr auto` put the FOOTER in the
+     flexible row whenever it was absent — the decision bar overflowed the card
+     by 18px and Approve stopped being hit-testable. A flex column does not care
+     how many children there are. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-3);
+  border-radius: 16px;
+  background: var(--canvas-deep);
+  box-shadow: 0 34px 90px -44px rgba(0, 0, 0, .98);
+}
+/* The index needs more room than a single deliverable does. */
+.arc-dlv-card:has(.arc-dlv-index) { width: min(860px, 100%); }
+
+.arc-dlv-review-head {
+  flex: none;
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line-2);
+}
+/* Back names where it goes. The first version of this overlay had one exit — a
+   close button — so opening one of four deliverables stranded you in it. */
+.arc-dlv-back {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: 32px; padding: 0 12px 0 9px;
+  border: 1px solid var(--line-2); border-radius: 8px;
+  background: transparent; color: var(--text-2);
+  font-size: 11.5px; font-weight: 600; cursor: pointer;
+  transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast);
+}
+.arc-dlv-back:hover { color: var(--text); border-color: var(--line-3); background: rgba(255, 255, 255, .04); }
+.arc-dlv-review-title { flex: 1; min-width: 0; }
+.arc-dlv-review-title h2 {
+  margin: 0; color: var(--text);
+  font-family: var(--serif); font-size: 17px; font-weight: 550; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.arc-dlv-review-title p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+.arc-dlv-step { flex: none; display: flex; align-items: center; gap: 4px; }
+.arc-dlv-step span { min-width: 44px; text-align: center; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.arc-dlv-step button,
+.arc-dlv-close {
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line-2); border-radius: 8px;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.arc-dlv-step button:hover,
+.arc-dlv-close:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
+
+.arc-dlv-review-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+
+/* Index — a tile per deliverable, showing its real content rather than a
+   filename. Scaled down so a tile reads as a thumbnail of the thing. */
+/* Fixed row height: grid rows stretch to the tallest cell, and the tallest cell
+   is a full email — which made every tile ~600px and turned an index into four
+   more things to scroll past. A tile is a glance, so it gets a glance's worth. */
+.arc-dlv-index {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-auto-rows: 300px;
+  gap: 12px;
+  padding: 18px;
+}
+.arc-dlv-tile {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-2); border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 48%, transparent);
+  text-align: left; cursor: pointer;
+  transition: border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast);
+}
+.arc-dlv-tile:hover { transform: translateY(-2px); border-color: var(--accent-border); background: color-mix(in srgb, var(--panel) 70%, transparent); }
+.arc-dlv-tile[data-status="approved"] { border-color: color-mix(in srgb, var(--ok-border) 70%, transparent); }
+.arc-dlv-tile[data-status="rejected"] { border-color: color-mix(in srgb, var(--red-border) 70%, transparent); }
+.arc-dlv-tile-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.arc-dlv-tile-preview {
+  position: relative;
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px;
+  /* The tile shows the deliverable itself, shrunk. `zoom` (not transform) so it
+     reflows into the tile's width instead of overflowing a scaled box. */
+  zoom: .74;
+  mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+}
+.arc-dlv-tile-foot {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--text); font-size: 12px; font-weight: 600; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* Detail — the deliverable at its own measure, review context beside it rather
+   than stacked below, because the pane's width was otherwise going to margins. */
+/* Single column, always. The card is 660px wide — the two-column split this
+   used to have belonged to a full-pane overlay and cannot fit here, so the
+   review context stacks under the deliverable instead. */
+.arc-dlv-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 22px 26px;
+}
+.arc-dlv-detail-main { min-width: 0; }
+.arc-dlv-detail-side { display: grid; gap: 18px; align-content: start; }
+.arc-dlv-detail-side section { display: grid; gap: 8px; }
+.arc-dlv-detail-side h4 {
+  margin: 0; color: var(--muted);
+  font-size: 9.5px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase;
+}
+.arc-dlv-detail-side .arc-dlv-status { margin-left: 0; justify-self: start; }
+.arc-dlv-detail-row { display: flex; align-items: baseline; gap: 10px; }
+.arc-dlv-detail-row b { flex: none; min-width: 82px; color: var(--muted); font-size: 10.5px; font-weight: 600; }
+.arc-dlv-detail-row span { min-width: 0; color: var(--text-2); font-size: 12px; }
+
+.arc-dlv-review-foot {
+  flex: none;
+  padding: 11px 14px;
+  border-top: 1px solid var(--line-2);
+  background: color-mix(in srgb, var(--canvas-deep) 88%, var(--canvas));
+}
+.arc-dlv-review-foot .arc-dlv-decide button { min-height: 36px; padding: 0 15px; font-size: 12px; }
+
+/* Deliberately still @media, not @container. `.arc-dlv-*` renders twice: inline
+   in the thread (inside the pane) and in the review overlay, which OverlayPortal
+   moves to #arc-overlay-root — outside `.arc-chat`. A container query would
+   apply to the first and silently never match the second, which is worse than
+   the window-based approximation both share today. */
+@media (max-width: 720px) {
+  .arc-dlv-index { grid-template-columns: 1fr; padding: 14px; }
+  .arc-dlv-review-head { flex-wrap: wrap; gap: 10px; padding: 11px 12px; }
+  .arc-dlv-review-title { order: 3; flex-basis: 100%; }
+  .arc-dlv-detail { padding: 16px 14px 24px; gap: 18px; }
+  .arc-dlv-page-hero h4 { font-size: 19px; }
+  .arc-dlv-body { padding: 13px 13px 4px; }
+  .arc-dlv-foot { padding: 10px; }
+  .arc-dlv-decide { flex-wrap: wrap; }
+  .arc-dlv-notice { flex-basis: 100%; }
+}
 
 /* ── Supporting message affordances ─────────────────────────────────────── */
 /* Sources Arc used — clickable citations to the referenced records. */
@@ -1251,7 +1733,7 @@
 }
 .arc-launcher-grid b { color: var(--text-2); font-size: 11px; font-weight: 580; white-space: nowrap; }
 .arc-launcher-grid small { display: none; }
-@media (max-width: 640px) {
+@container arcpane (max-width: 640px) {
   .arc-launcher-grid { grid-template-columns: 1fr; }
   .arc-launcher-grid button { min-height: 44px; flex-direction: row; justify-content: flex-start; text-align: left; }
   .arc-launcher-status-item { min-height: 34px; }
@@ -1688,16 +2170,24 @@
 .arc-composer-menu-empty { padding: 9px 10px; color: var(--muted); font-size: 9.5px; }
 
 /* ── Campaign artifact workspace ───────────────────────────────────────── */
+/* A right-hand sidebar that OVERLAYS rather than docks.
+   The original rail docked, so it paid for itself out of the conversation's
+   width and squeezed the reading column every time it opened. Anchored to the
+   pane's right edge and floated over it (position + width come from the
+   measured PaneBox in the component), the list costs the chat nothing — and
+   selecting something here opens the full-pane preview instead of trying to
+   render a deliverable in 400px. */
 .arc-artifact-workspace {
-  position: absolute;
-  inset: 0 0 0 auto;
-  z-index: 24;
-  width: min(390px, calc(100% - 42px));
+  position: fixed;
+  z-index: 59;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  border-left: 1px solid var(--line-3);
+  overflow: hidden;
+  border: 1px solid var(--line-3);
+  border-radius: 14px 0 0 14px;
+  border-right: 0;
   background: var(--canvas-deep);
-  box-shadow: -24px 0 60px -42px rgba(0, 0, 0, .98);
+  box-shadow: -30px 0 70px -38px rgba(0, 0, 0, .96);
 }
 .arc-artifact-header {
   min-height: 76px;
@@ -1724,42 +2214,9 @@
   cursor: pointer;
 }
 .arc-artifact-header button:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
-.arc-artifact-shell { min-height: 0; display: grid; grid-template-columns: 58px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-.arc-artifact-tabs {
-  grid-row: 1 / -1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 7px;
-  border-right: 1px solid var(--line-2);
-  background: color-mix(in srgb, var(--canvas-deep) 74%, var(--canvas));
-}
-.arc-artifact-tabs button {
-  width: 44px;
-  min-height: 48px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-.arc-artifact-tabs button span { max-width: 42px; font-size: 10px; line-height: 1.15; text-align: center; }
-.arc-artifact-tabs button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
-.arc-artifact-tabs button.is-active { color: var(--text); border-color: var(--line-2); background: var(--panel); }
 .arc-artifact-content { min-width: 0; min-height: 0; grid-column: 2; grid-row: 2; overflow: auto; padding: 14px 16px 22px; }
-.arc-artifact-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-.arc-artifact-status span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10.5px; }
-.arc-artifact-status span:first-child { color: var(--ok-text); }
 .arc-artifact-status span.is-approved { color: var(--ok); }
 .arc-artifact-status span.is-revising { color: var(--accent-contrast); }
-.arc-artifact-view { padding-top: 17px; }
 
 /* Persistent conversation workspace (BSR-562, BSR-567).
    Deliverables and the decisions they need first, then the evidence behind
@@ -1895,30 +2352,15 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-created-list em.is-red { color: var(--red-text); }
 .arc-work-review { width: 100%; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line-3); border-radius: 9px; background: var(--text); color: var(--canvas-deep); font-size: 11px; font-weight: 630; cursor: pointer; }
 .arc-work-review:hover { transform: translateY(-1px); }
-
-/* Card-driven asset review panel (asset tabs + draft content). */
-.arc-artifact-tabs button { position: relative; }
-.arc-artifact-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
 .arc-artifact-dot.is-ok { background: var(--ok); }
 .arc-artifact-dot.is-red { background: var(--priority); }
 .arc-artifact-dot.is-accent { background: var(--accent); }
 .arc-artifact-status span.is-ok { color: var(--ok-text); }
 .arc-artifact-status span.is-red { color: var(--red-text); }
 .arc-artifact-status span.is-accent { color: var(--accent-contrast); }
-.arc-asset-preview { margin-top: 15px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); color: var(--text-2); padding: 13px 14px; font-size: 12px; line-height: 1.65; white-space: pre-wrap; }
-.arc-asset-row { display: flex; align-items: baseline; gap: 10px; min-height: 34px; padding: 7px 0; border-bottom: 1px solid var(--line); }
-.arc-asset-row:last-child { border-bottom: 0; }
-.arc-asset-row b { flex: none; min-width: 88px; color: var(--muted); font-size: 9.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
-.arc-asset-row span { min-width: 0; color: var(--text-2); font-size: 11.5px; line-height: 1.5; }
 .arc-check-grid span.is-warn svg { color: var(--warn); }
 .arc-check-grid span.is-risk svg { color: var(--priority); }
 .arc-artifact-footer button:not(.is-primary):disabled { opacity: .5; cursor: default; }
-.arc-package-channels span[data-tone="ok"] i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 12%, transparent); }
-.arc-package-channels span[data-tone="ok"] small { color: var(--ok-text); }
-.arc-package-channels span[data-tone="red"] i { background: var(--priority); }
-.arc-package-channels span[data-tone="red"] small { color: var(--red-text); }
-.arc-package-channels span[data-tone="accent"] i { background: var(--accent); }
-.arc-package-channels span[data-tone="accent"] small { color: var(--accent-contrast); }
 .arc-artifact-title h3 { margin: 5px 0 0; color: var(--text); font-family: var(--serif); font-size: 21px; font-weight: 540; letter-spacing: -.015em; }
 .arc-artifact-title p { margin: 7px 0 0; color: var(--muted); font-size: 10.5px; line-height: 1.55; }
 .arc-artifact-section { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
@@ -1948,20 +2390,7 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-landing-preview h4 { margin: 9px auto 0; max-width: 270px; color: var(--text); font-family: var(--serif); font-size: 22px; font-weight: 550; line-height: 1.12; }
 .arc-landing-preview p { margin: 10px auto 0; max-width: 270px; color: var(--muted); font-size: 10.5px; line-height: 1.55; }
 .arc-landing-preview button { margin-top: 15px; min-height: 34px; border: 0; border-radius: 8px; background: var(--text); color: var(--canvas-deep); padding: 0 12px; font-size: 11px; font-weight: 620; }
-.arc-check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.arc-check-grid span { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 7px; color: var(--text-2); padding: 8px; font-size: 10.5px; }
-.arc-check-grid svg { color: var(--ok); }
-.arc-artifact-footer { min-height: 58px; display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-top: 1px solid var(--line-2); background: var(--canvas-deep); }
-.arc-artifact-footer > div { min-width: 0; flex: 1; color: var(--muted); font-size: 10.5px; line-height: 1.4; }
-.arc-artifact-footer button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); padding: 0 11px; font-size: 11px; cursor: pointer; }
-.arc-artifact-footer button:hover:not(:disabled) { color: var(--text); background: rgba(255, 255, 255, .04); }
 .arc-artifact-footer button.is-primary { border-color: transparent; background: var(--text); color: var(--canvas-deep); font-weight: 620; }
-.arc-artifact-footer button:disabled { opacity: .55; cursor: default; }
-.arc-revision-form { width: 100%; display: grid; gap: 8px; }
-.arc-revision-form label { color: var(--text-2); font-size: 11px; font-weight: 600; }
-.arc-revision-form textarea { width: 100%; min-height: 62px; resize: vertical; border: 1px solid var(--line-2); border-radius: 8px; outline: 0; background: var(--inset); color: var(--text); padding: 9px 10px; font-size: 12px; line-height: 1.45; }
-.arc-revision-form textarea:focus { border-color: var(--accent-border); }
-.arc-revision-form > div { display: flex; justify-content: flex-end; gap: 7px; }
 
 /* ── History drawer ─────────────────────────────────────────────────────── */
 /* The drawer is modal for real: it traps Tab across the whole document and
@@ -1981,7 +2410,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   background: rgba(7, 7, 9, .66);
   cursor: default;
 }
-.arc-workspace-scrim { position: absolute; inset: 0; z-index: 18; display: block; border: 0; background: rgba(7, 7, 9, .58); }
 .arc-history {
   /* One type scale for the whole drawer. Before this there were 20 distinct
      font sizes in here, 21 of them at 8px or below — sizes picked per-element
@@ -2028,7 +2456,7 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
    strings and still gave Skills the narrowest box of the four. `flex: 1 1 auto`
    sizes each tab to its own label first, so "Conversations" and "Connectors"
    fit without clipping and nothing has to be re-tuned when a label changes. */
-.arc-drawer-nav { flex: none; display: flex; gap: 4px; margin: 8px 0 18px; padding: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--inset); }
+.arc-drawer-nav { flex: none; display: flex; gap: 4px; margin: 8px 0 12px; padding: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--inset); }
 .arc-drawer-nav button { flex: 1 1 auto; min-width: 0; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 6px; font-size: var(--dz-xs); cursor: pointer; transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast); }
 .arc-drawer-nav button > svg { flex: none; }
 .arc-drawer-nav button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2039,37 +2467,55 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-drawer-nav button.is-active { border-color: var(--accent-border); background: var(--panel); color: var(--text); box-shadow: 0 5px 14px rgba(0, 0, 0, .18); }
 .arc-drawer-nav button.is-active > svg { color: var(--accent); }
 .arc-drawer-view { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.arc-drawer-view-head { flex: none; margin-bottom: 14px; }
-.arc-drawer-view-head h2 { margin: 0; font-family: var(--serif); color: var(--text); font-size: var(--dz-h); font-weight: 550; letter-spacing: -.015em; }
-.arc-drawer-view-head p { margin: 5px 0 0; color: var(--muted); font-size: var(--dz-sm); line-height: 1.5; }
+/* The one section head in the drawer: an uppercase label, a mono count on the
+   right. Skills and Connectors each had their own; Saved and the empty states
+   had none, which is why a filtered list could not say how much it was hiding. */
+.arc-drawer-section-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 13px 2px 6px; }
+.arc-drawer-section-head > span { min-width: 0; overflow: hidden; color: var(--muted); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.arc-drawer-section-head > small { flex: none; color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-drawer-section-head a { flex: none; min-height: 24px; display: inline-flex; align-items: center; gap: 4px; margin-right: -6px; border-radius: 6px; padding: 0 6px; color: var(--accent-contrast); font-size: var(--dz-xs); font-weight: 600; text-decoration: none; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-drawer-section-head a:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
+/* The count/total line under a list rather than above it. */
+.arc-drawer-section-head.is-footer { flex: none; margin: 8px 2px 0; border-top: 1px solid var(--line); padding-top: 9px; }
+/* Every empty state in the drawer, one shape — see DrawerEmpty in arc-view.tsx. */
+.arc-drawer-empty { flex: 1; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-align: center; padding: 20px 24px; }
+.arc-drawer-empty-mark { width: 38px; height: 38px; display: grid; place-items: center; margin-bottom: 8px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--inset); color: var(--muted); }
+.arc-drawer-empty b { color: var(--text-2); font-size: var(--dz-md); font-weight: 620; }
+.arc-drawer-empty > span { max-width: 27ch; font-size: var(--dz-sm); line-height: 1.5; }
 
 /* Saved items drawer view */
 .arc-drawer-saved .arc-saved-error { margin: 0 0 10px; font-size: var(--dz-sm); color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: 8px; padding: 7px 10px; }
-.arc-saved-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
-.arc-saved-item { display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); padding: 10px 11px; transition: border-color var(--arc-fast); }
-.arc-saved-item:hover { border-color: var(--accent-border); }
+.arc-saved-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 0 -4px; padding: 0 4px 4px; }
+/* `flex: none` — a flex child would otherwise shrink below its own content once
+   an item has no preview line, which put the actions row over the title. */
+.arc-saved-item { flex: none; display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 9px 10px; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-saved-item:hover { border-color: var(--accent-border); background: color-mix(in srgb, var(--panel) 90%, var(--accent-soft)); }
 .arc-saved-main { min-width: 0; flex: 1; }
-.arc-saved-kind { display: inline-block; font-size: var(--dz-xs); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; margin-bottom: 6px; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); }
+/* Title first, kind second. The badge used to sit on its own line above the
+   title, which spent a whole row saying "Angle" and pushed the thing you
+   actually scan for down — three items filled the panel. */
+.arc-saved-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.arc-saved-kind { flex: none; font-size: var(--dz-xs); font-weight: 620; letter-spacing: .04em; text-transform: uppercase; border-radius: 999px; padding: 2px 7px; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
 .arc-saved-kind.is-draft { color: var(--accent-contrast); background: var(--accent-soft); border-color: var(--accent-border); }
-.arc-saved-title { display: block; font-size: var(--dz-md); font-weight: 600; color: var(--text); line-height: 1.35; }
-.arc-saved-preview { margin: 4px 0 0; font-size: var(--dz-sm); color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.arc-saved-title { min-width: 0; display: block; font-size: var(--dz-md); font-weight: 620; color: var(--text); line-height: 1.35; }
+.arc-saved-preview { margin: 3px 0 0; font-size: var(--dz-sm); color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* Reuse actions. "Use in chat" is the primary one — it is the whole reason the
    Saved tab exists — so it carries the accent; copy and the source link sit
    beside it as quieter alternatives. */
-.arc-saved-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.arc-saved-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; }
 .arc-history .arc-saved-use,
 .arc-history .arc-saved-copy { min-height: 26px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 8px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast), color var(--arc-fast); }
 .arc-history .arc-saved-use { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
 .arc-history .arc-saved-use:hover { border-color: var(--accent-border-strong); background: color-mix(in srgb, var(--accent-soft) 55%, var(--canvas-deep)); }
 .arc-history .arc-saved-copy:hover { border-color: var(--line-3); background: rgba(255, 255, 255, .04); color: var(--text); }
-.arc-saved-open { display: inline-flex; align-items: center; gap: 4px; font-size: var(--dz-xs); font-weight: 600; color: var(--muted); text-decoration: none; }
-.arc-saved-open:hover { color: var(--text-2); }
+/* Sits in a row with two 26px buttons and was a 15px text link — the same
+   action group, half the target. */
+.arc-saved-open { min-height: 26px; display: inline-flex; align-items: center; gap: 4px; border-radius: 7px; padding: 0 7px; font-size: var(--dz-xs); font-weight: 620; color: var(--muted); text-decoration: none; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-saved-open:hover { color: var(--text-2); background: rgba(255, 255, 255, .04); }
 .arc-saved-remove { flex: none; width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast); }
 .arc-saved-item:hover .arc-saved-remove, .arc-saved-remove:focus-visible { opacity: 1; }
 .arc-saved-remove:hover { color: var(--red-text); border-color: var(--red-border); background: var(--red-soft); }
-.arc-saved-empty { display: flex; align-items: center; gap: 11px; color: var(--muted); font-size: var(--dz-sm); padding: 18px 4px; }
-.arc-saved-empty b { display: block; color: var(--text-2); font-size: var(--dz-md); }
-.arc-saved-empty span { display: block; margin-top: 2px; }
+.arc-drawer-saved .arc-drawer-footnote { flex: none; margin-top: auto; }
 
 /* Archived-conversations disclosure at the bottom of the Conversations view */
 .arc-archived { flex: none; border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
@@ -2088,9 +2534,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-history .arc-archived-restore { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-family: inherit; font-size: var(--dz-xs); font-weight: 600; cursor: pointer; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast); }
 .arc-archived-item:hover .arc-archived-restore, .arc-archived-restore:focus-visible { opacity: 1; }
 .arc-archived-restore:hover { color: var(--accent-contrast); border-color: var(--accent-border); }
-.arc-drawer-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.arc-drawer-title-row > span { flex: none; border: 1px solid var(--accent-border); border-radius: 999px; background: var(--accent-soft); color: var(--accent-contrast); padding: 3px 8px; font-family: var(--mono); font-size: var(--dz-xs); }
-.arc-drawer-title-row > span.is-connector-count { border-color: var(--ok-border); background: var(--ok-soft); color: var(--ok-text); }
 .arc-history-head,
 .arc-share-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 15px; }
 .arc-history-head > div,
@@ -2099,71 +2542,124 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-share-head h2 { margin: 0; font-family: var(--serif); color: var(--text); font-size: 18px; font-weight: 550; }
 .arc-history-head p,
 .arc-share-head p { margin: 4px 0 0; color: var(--muted); font-size: var(--dz-sm); }
-.arc-history-eyebrow { display: block; margin-bottom: 7px; color: var(--accent-contrast); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+.arc-history-eyebrow { min-width: 0; display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; color: var(--muted); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+/* The workspace's own name is the fact here; "Arc workspace" is the label on
+   it, so the name carries the accent and the label steps back to muted. */
+.arc-history-eyebrow b { min-width: 0; overflow: hidden; color: var(--accent-contrast); font-weight: 650; letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
+/* The conversations view is a list, so everything above the list is overhead.
+   It carries one quiet action row, one search field and one control row — the
+   panel used to spend ~260px on a serif title, a subtitle, a bordered button, a
+   filled search box and two stacked control rows before the first chat. */
 .arc-new-chat {
-  min-height: 38px;
+  min-height: 32px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   width: 100%;
-  padding: 0 11px;
-  border: 1px solid var(--line-2);
-  border-radius: 9px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-2);
   text-decoration: none;
   cursor: pointer;
   font-size: var(--dz-md);
   font-weight: 600;
-  transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast);
+  transition: color var(--arc-fast), background var(--arc-fast);
 }
-.arc-new-chat:hover { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
-.arc-new-chat:active { transform: translateY(1px); }
-.arc-history-search {
-  height: 36px;
+.arc-new-chat > svg { flex: none; color: var(--muted); transition: color var(--arc-fast); }
+.arc-new-chat:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
+.arc-new-chat:hover > svg { color: var(--accent); }
+/* ── One grammar for all four tabs ───────────────────────────────────────────
+   Every tab is the same shape: a line saying what it is for, a search field, a
+   row of narrowing chips, a section head with a count, then the list. Before
+   this each tab invented its own: Conversations had a 30px search and
+   Skills/Connectors a 38px one at a different radius and font size; three tabs
+   opened with a 19px serif <h2> repeating the word the operator had just
+   clicked in the tab bar directly above, plus a subtitle — ~66px of chrome
+   before any content, and the reason no two tabs' first row sat at the same
+   height. Saved had none of it and could not be searched at all. */
+.arc-drawer-purpose { flex: none; margin: 0 2px 9px; color: var(--muted); font-size: var(--dz-sm); line-height: 1.45; }
+.arc-drawer-purpose code { border-radius: 4px; background: var(--accent-soft); color: var(--accent-contrast); padding: 1px 4px; font-family: var(--mono); font-size: 1em; }
+.arc-drawer-back { flex: none; margin-bottom: 8px; }
+.arc-drawer-back > button { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px; background: transparent; color: var(--accent-contrast); padding: 3px 6px 3px 2px; font-family: inherit; font-size: var(--dz-sm); font-weight: 600; cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-drawer-back > button:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
+.arc-drawer-search {
+  height: 32px;
+  flex: none;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  margin-top: 9px;
-  padding: 0 10px;
-  border: 1px solid var(--line-2);
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
   border-radius: 9px;
-  background: var(--inset);
+  background: transparent;
   color: var(--muted);
+  transition: border-color var(--arc-fast), background var(--arc-fast);
 }
-.arc-history-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-sm); }
-.arc-history-search:focus-within { border-color: var(--accent-border); }
-.arc-history-search input:focus-visible { outline: 0; }
-.arc-history-search input::placeholder { color: var(--muted); }
-.arc-history-filters { display: flex; align-items: center; gap: 5px; margin-top: 9px; }
-.arc-history-filters button { min-height: 29px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 9px; font-size: var(--dz-xs); cursor: pointer; }
-.arc-history-filters button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
-.arc-history-filters button.is-active { border-color: var(--line-2); background: var(--inset); color: var(--text); }
-.arc-history-filters small { min-width: 15px; height: 15px; display: grid; place-items: center; border-radius: 999px; background: rgba(255, 255, 255, .055); color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
-.arc-thread-grouping { display: flex; align-items: center; gap: 4px; margin: 7px 0 0; padding-top: 7px; border-top: 1px solid var(--line); }
-.arc-thread-grouping button { min-height: 27px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); padding: 0 8px; font-size: var(--dz-xs); cursor: pointer; }
-.arc-thread-grouping button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
-.arc-thread-grouping button.is-active { background: rgba(255, 255, 255, .055); color: var(--text); }
-.arc-history-attention { display: flex; align-items: center; gap: 7px; margin-top: 9px; }
-.arc-history-attention > button { min-height: 34px; flex: 1; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--accent-border); border-radius: 9px; background: var(--accent-soft); color: var(--accent-contrast); padding: 0 10px; cursor: pointer; }
-.arc-history-attention > button > span { display: inline-flex; align-items: center; gap: 7px; }
+.arc-drawer-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-sm); }
+.arc-drawer-search:focus-within { border-color: var(--accent-border); background: var(--inset); }
+.arc-drawer-search input:focus-visible { outline: 0; }
+.arc-drawer-search input::placeholder { color: var(--muted); }
+.arc-drawer-filters { flex: none; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 6px; }
+.arc-history .arc-drawer-filters button { min-height: 24px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); padding: 0 7px; font-family: inherit; font-size: var(--dz-xs); cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-drawer-filters button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
+.arc-drawer-filters button.is-active { background: rgba(255, 255, 255, .06); color: var(--text); }
+.arc-drawer-filters small { color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-drawer-filters button.is-active small { color: var(--accent-contrast); }
+.arc-drawer-loading { flex: none; display: flex; align-items: center; gap: 7px; padding: 14px 4px; color: var(--muted); font-size: var(--dz-sm); }
+.arc-history-attention { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.arc-history-attention > button { min-height: 28px; flex: 1; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); color: var(--accent-contrast); padding: 0 9px; cursor: pointer; }
+.arc-history-attention > button > span { display: inline-flex; align-items: center; gap: 6px; }
 .arc-history-attention b { font-size: var(--dz-xs); font-weight: 620; }
-.arc-history-attention > span { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); padding: 0 9px; font-size: var(--dz-xs); }
-.arc-history-list { min-height: 0; flex: 1; overflow: auto; margin: 10px -4px 0; padding: 0 4px; }
-.arc-history-group h3 { display: flex; align-items: center; gap: 6px; margin: 14px 8px 5px; color: var(--muted); font-size: var(--dz-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
-.arc-campaign-group-icon { width: 12px; height: 12px; display: grid; flex: none; place-items: center; color: currentColor; }
-.arc-history-item { position: relative; display: flex; align-items: center; border-radius: 9px; }
+.arc-history-attention > span { flex: none; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); padding: 0 4px; font-size: var(--dz-xs); }
+/* A flex column, like the skills and connectors lists, so the shared empty
+   state can take the leftover height and sit in the middle of it. As a block
+   container its `flex: 1` was inert and "No conversations found" pinned itself
+   to the top of an otherwise empty panel — the one tab where it didn't centre. */
+.arc-history-list { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: auto; margin: 6px -4px 0; padding: 0 4px; }
+.arc-history-list > .arc-history-section { flex: none; }
+/* Two standing sections — Campaigns, then whatever isn't in one. Campaigns are
+   folders rather than a grouping mode you switch to, because a campaign is
+   what an operator looks a chat up by; the date headings live inside the
+   second section, where they still carry the whole meaning. */
+.arc-history-section + .arc-history-section { margin-top: 14px; }
+.arc-history .arc-history-section-head { display: flex; align-items: center; gap: 6px; margin: 6px 8px 4px; color: var(--muted); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .09em; text-transform: uppercase; }
+.arc-history-section-head > svg { flex: none; color: var(--accent); }
+.arc-history-section-head > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-history-section-head > small { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); font-weight: 500; letter-spacing: 0; }
+.arc-history .arc-campaign-folder-head { width: 100%; min-height: 28px; display: flex; align-items: center; gap: 7px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 8px; font-family: inherit; font-size: var(--dz-md); font-weight: 580; text-align: left; cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-history .arc-campaign-folder-head:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
+.arc-campaign-folder-head > svg { flex: none; }
+.arc-campaign-folder-caret { color: var(--muted); transition: transform var(--arc-fast); }
+.arc-campaign-folder[data-open="true"] .arc-campaign-folder-caret { transform: rotate(90deg); }
+.arc-campaign-folder-head > svg:nth-of-type(2) { color: var(--accent); }
+.arc-campaign-folder-head > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-campaign-folder-head > small { flex: none; color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-campaign-folder-dot { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: arc-dot 1.4s ease-in-out infinite; }
+/* The nesting guide, not a divider: it tells you at a glance which rows belong
+   to the campaign above them. */
+.arc-campaign-folder-body { margin: 1px 0 5px 14px; padding-left: 5px; border-left: 1px solid var(--line-2); }
+.arc-history .arc-history-more { min-height: 24px; display: inline-flex; align-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); margin-left: 8px; padding: 0 6px; font-family: inherit; font-size: var(--dz-xs); font-weight: 600; cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-history .arc-history-more:hover { color: var(--accent-contrast); background: rgba(255, 255, 255, .04); }
+/* Sentence case, not caps: a date is subordinate to the section above it, and
+   two stacked uppercase labels read as two competing headings. */
+.arc-history-group h4 { display: flex; align-items: center; gap: 6px; margin: 10px 8px 2px; color: var(--muted); font-size: var(--dz-sm); font-weight: 550; letter-spacing: 0; text-transform: none; }
+.arc-history-group:first-of-type h4 { margin-top: 4px; }
+.arc-history-item { position: relative; display: flex; align-items: center; border-radius: 7px; }
 .arc-history-item:hover { background: rgba(255, 255, 255, .04); }
 .arc-history-item.is-active { background: var(--inset); }
-.arc-history-item.is-active::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 2px; background: var(--accent); }
+.arc-history-item.is-active::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; border-radius: 2px; background: var(--accent); }
+/* A row is one line: title left, its time (or working state) right. The 52px
+   two-line row showed four chats where the list now shows seven. */
 .arc-history-open {
   min-width: 0;
   flex: 1;
-  min-height: 52px;
+  min-height: 30px;
   display: flex;
   align-items: center;
-  padding: 8px 10px;
+  padding: 5px 8px;
   border: 0;
   background: transparent;
   color: var(--text-2);
@@ -2173,22 +2669,20 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 }
 .arc-history-item:hover .arc-history-open,
 .arc-history-item.is-active .arc-history-open { color: var(--text); }
-.arc-history-open > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
-.arc-history-open b { font-size: var(--dz-sm); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-history-open > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.arc-thread-line { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.arc-history-open b { min-width: 0; flex: 1; font-size: var(--dz-md); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-history-open small { color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-thread-line em { flex: none; color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); font-style: normal; }
+.arc-thread-line em.arc-thread-working { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-contrast); font-family: var(--sans); }
 .arc-history-open small.arc-thread-preview { min-width: 0; display: flex; align-items: center; gap: 5px; font-family: var(--sans); font-size: var(--dz-xs); }
-.arc-history-open small.arc-thread-preview[data-campaign="true"] { color: var(--accent-contrast); }
-.arc-history-open small.arc-thread-preview svg { flex: none; color: var(--accent); }
 .arc-history-open small.arc-thread-preview span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.arc-history-open small.arc-thread-preview em { flex: none; color: var(--muted); font-size: var(--dz-xs); font-style: normal; }
-.arc-history-open small.arc-thread-working { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-contrast); font-family: var(--sans); font-size: var(--dz-xs); }
-.arc-history-open small.arc-thread-working em { min-width: 0; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; border-left: 1px solid var(--line-2); color: var(--accent-contrast); padding-left: 6px; font-size: var(--dz-xs); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .arc-thread-dots { display: inline-flex; align-items: center; gap: 2.5px; }
 .arc-thread-dots i { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--accent); animation: arc-dot 1.05s ease-in-out infinite; }
 .arc-thread-dots i:nth-child(2) { animation-delay: .14s; }
 .arc-thread-dots i:nth-child(3) { animation-delay: .28s; }
 .arc-history-pin { flex: none; margin-right: 3px; color: var(--accent); }
-.arc-history-menu-btn { flex: none; width: 28px; height: 28px; margin-right: 5px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), background var(--arc-fast); }
+.arc-history-menu-btn { flex: none; width: 24px; height: 24px; margin-right: 4px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), background var(--arc-fast); }
 .arc-history-item:hover .arc-history-menu-btn,
 .arc-history-menu-btn[aria-expanded="true"] { opacity: 1; }
 .arc-history-menu-btn:hover,
@@ -2235,11 +2729,56 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-history-menu-confirm > div { display: flex; justify-content: flex-end; gap: 6px; }
 .arc-history-menu-confirm button { min-height: 28px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 10px; font-size: var(--dz-sm); cursor: pointer; }
 .arc-history-menu-confirm button.is-danger { border-color: transparent; background: var(--red); color: #fff; font-weight: 600; }
-.arc-history-item.is-renaming { padding: 6px 8px; }
-.arc-history-item.is-renaming input { width: 100%; min-height: 38px; border: 1px solid var(--accent-border); border-radius: 8px; outline: 0; background: var(--inset); color: var(--text); padding: 0 10px; font-size: var(--dz-md); }
-.arc-history-empty { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); text-align: center; padding: 24px; }
-.arc-history-empty b { color: var(--text-2); font-size: var(--dz-md); font-weight: 600; }
-.arc-history-empty span { font-size: var(--dz-sm); }
+.arc-history-item.is-renaming { padding: 3px 6px; }
+.arc-history-item.is-renaming input { width: 100%; min-height: 32px; border: 1px solid var(--accent-border); border-radius: 8px; outline: 0; background: var(--inset); color: var(--text); padding: 0 10px; font-size: var(--dz-md); }
+
+/* Message-body search results. A separate section from the title matches above:
+   "this chat is called X" and "this chat says X" are different answers, and the
+   quote is the whole reason a hit is worth showing. */
+.arc-history-messages { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); }
+.arc-history-messages .arc-history-section-head .is-spinning { margin-left: auto; color: var(--muted); }
+.arc-message-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 8px 9px;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.arc-message-hit:hover { border-color: var(--line-2); background: var(--inset); }
+.arc-message-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.arc-message-hit-head { display: flex; align-items: baseline; gap: 7px; }
+.arc-message-hit-head b {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--dz-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arc-message-hit-head small { flex: none; margin-left: auto; color: var(--muted); font-size: var(--dz-xs); }
+.arc-message-hit-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--dz-sm);
+  line-height: 1.5;
+}
+/* The match itself. `mark` defaults to a black-on-yellow that belongs to no
+   theme here; this is the workspace accent at reading weight. */
+.arc-message-hit mark {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--text);
+  padding: 0 1px;
+}
+.arc-history-messages-empty { margin: 2px 0 0; color: var(--muted); font-size: var(--dz-sm); padding: 4px 9px 8px; }
 
 /* ── Skills and connectors ──────────────────────────────────────────────── */
 /* This block used to declare `--skill-blue: #5bb7e8` and friends — a hardcoded
@@ -2248,7 +2787,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
    accent tokens, so a gold, red, steel or emerald workspace gets its own accent
    here like everywhere else. */
 .arc-drawer-skills { overflow: hidden; }
-.arc-drawer-skills .arc-drawer-view-head code { border-radius: 4px; background: var(--accent-soft); color: var(--accent-contrast); padding: 1px 4px; font-family: var(--mono); font-size: 1em; }
 
 /* Skill authoring and installation are the rare case — they live in a collapsed
    disclosure pinned below the list, not in four cards above it. */
@@ -2280,13 +2818,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-skill-browse small { color: var(--muted); font-size: var(--dz-xs); line-height: 1.35; }
 .arc-skill-create > svg,
 .arc-skill-browse > svg { color: var(--muted); }
-.arc-skills-section-head,
-.arc-connectors-section-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 2px 7px; }
-.arc-skills-section-head:first-child { margin-top: 4px; }
-.arc-skills-section-head > span,
-.arc-connectors-section-head > span { color: var(--muted); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
-.arc-connectors-section-head a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-contrast); font-size: var(--dz-xs); text-decoration: none; }
-.arc-skills-section-head small { color: var(--muted); font-size: var(--dz-xs); }
 .arc-skills-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; margin: 0 -4px; padding: 0 4px 4px; }
 .arc-drawer-skills .arc-drawer-footnote { flex: none; margin-top: 0; }
 
@@ -2296,18 +2827,25 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-skill-item { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; border: 1px solid transparent; border-radius: 9px; transition: border-color var(--arc-fast), background var(--arc-fast); }
 .arc-skill-item:hover,
 .arc-skill-item:focus-within { border-color: var(--accent-border); background: var(--accent-soft); }
-.arc-skill-row { min-width: 0; width: 100%; min-height: 62px; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2); padding: 8px; text-align: left; cursor: pointer; }
+.arc-skill-row { min-width: 0; width: 100%; min-height: 58px; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2); padding: 8px; text-align: left; cursor: pointer; }
 .arc-skill-row:focus-visible { outline: 0; }
-.arc-skill-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); color: var(--text-2); }
+.arc-skill-icon { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--text-2); }
 .arc-skill-item:hover .arc-skill-icon,
 .arc-skill-item:focus-within .arc-skill-icon { border-color: var(--accent-border); color: var(--accent); }
 .arc-skill-row > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .arc-skill-row-title { min-width: 0; display: flex; align-items: center; gap: 6px; }
 .arc-skill-row b { min-width: 0; overflow: hidden; color: var(--text); font-size: var(--dz-md); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .arc-skill-row small { color: var(--muted); font-size: var(--dz-sm); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-/* Every command the skill answers to, not just the first. */
+/* Every command the skill answers to, not just the first. Neutral, not gold:
+   three accent-filled pills per row were the loudest thing in the list and beat
+   the skill's own name for attention, on eight rows at once. They take the
+   accent when the row is hovered or focused — the moment they become the thing
+   you are about to type. */
 .arc-skill-commands { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.arc-skill-commands em { border-radius: 5px; background: var(--accent-soft); color: var(--accent-contrast); padding: 2px 5px; font-family: var(--mono); font-size: var(--dz-xs); font-style: normal; }
+.arc-skill-commands em { border-radius: 5px; background: var(--inset); color: var(--muted); padding: 2px 5px; font-family: var(--mono); font-size: var(--dz-xs); font-style: normal; transition: background var(--arc-fast), color var(--arc-fast); }
+.arc-skill-item:hover .arc-skill-commands em,
+.arc-skill-item:focus-within .arc-skill-commands em,
+.arc-library-skill:hover .arc-skill-commands em { background: var(--accent-soft); color: var(--accent-contrast); }
 /* Source is a labelled badge. It used to be a 4.5% background tint, which made
    a built-in and an untrusted GitHub import look identical. */
 .arc-skill-source { flex: none; border: 1px solid var(--line-2); border-radius: 999px; background: var(--inset); color: var(--muted); padding: 1px 6px; font-size: var(--dz-xs); font-weight: 620; letter-spacing: .03em; text-transform: uppercase; }
@@ -2324,21 +2862,12 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-skill-requirement { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; margin: 0; border-top: 1px solid var(--line); padding: 7px 8px 8px; color: var(--warn-text); font-size: var(--dz-xs); line-height: 1.45; }
 .arc-skill-requirement > svg { flex: none; }
 .arc-skill-requirement > span { min-width: 0; flex: 1; }
-.arc-skill-requirement > button { flex: none; border: 1px solid var(--warn-border); border-radius: 6px; background: var(--warn-soft); color: var(--warn-text); padding: 3px 7px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; cursor: pointer; }
+.arc-skill-requirement > button { flex: none; min-height: 24px; display: inline-flex; align-items: center; border: 1px solid var(--warn-border); border-radius: 6px; background: var(--warn-soft); color: var(--warn-text); padding: 0 8px; font-family: inherit; font-size: var(--dz-xs); font-weight: 620; cursor: pointer; }
 .arc-skill-requirement > button:hover { background: color-mix(in srgb, var(--warn-soft) 55%, var(--canvas-deep)); }
 .arc-skill-item[data-unmet="true"] { grid-template-columns: minmax(0, 1fr) 28px; }
 /* Beside the composer chip: same message, no border, no jump-to — the operator
    is already where the decision gets made. */
 .arc-skill-requirement[data-compact="true"] { border-top: 0; margin: 0 2px 6px; padding: 0; }
-.arc-skill-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 140px; color: var(--muted); text-align: center; padding: 20px; }
-.arc-skill-empty b { color: var(--text-2); font-size: var(--dz-md); }
-.arc-skill-empty span { font-size: var(--dz-sm); }
-.arc-skill-library-head > button { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 11px; border: 0; background: transparent; color: var(--accent-contrast); padding: 0; font-size: var(--dz-sm); cursor: pointer; }
-.arc-skill-library-head > button:hover { color: var(--text); }
-.arc-skill-search { height: 38px; flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--muted); padding: 0 10px; }
-.arc-skill-search:focus-within { border-color: var(--accent-border); }
-.arc-skill-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-md); }
-.arc-skill-search input::placeholder { color: var(--muted); }
 .arc-github-toggle { flex: none; width: 100%; min-height: 46px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 14px; align-items: center; gap: 9px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--muted); padding: 7px 10px; text-align: left; cursor: pointer; }
 .arc-github-toggle:hover { border-color: var(--accent-border); color: var(--accent); }
 .arc-github-toggle > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -2389,36 +2918,49 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-connector-notice b { color: var(--text-2); font-size: var(--dz-sm); font-weight: 620; }
 .arc-connector-notice small { font-size: var(--dz-xs); }
 .arc-connector-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; margin: 0 -4px; padding: 0 4px 4px; }
-.arc-connector-list .arc-connectors-section-head { margin: 12px 2px 2px; }
-.arc-connector-list .arc-connectors-section-head:first-child { margin-top: 2px; }
-.arc-connector-list .arc-connectors-section-head small { color: var(--muted); font-size: var(--dz-xs); }
+.arc-connector-list .arc-drawer-section-head { margin: 12px 2px 2px; }
+.arc-connector-list .arc-drawer-section-head:first-child { margin-top: 2px; }
 /* `flex: none` — these are flex children and would otherwise shrink below their
    own content once a group head or toggle changes the row height. */
-.arc-connector-row { flex: none; min-height: 72px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 30px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--text-2); padding: 9px 10px; text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-connector-row { flex: none; min-height: 58px; display: grid; grid-template-columns: 34px minmax(0, 1fr) 30px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--text-2); padding: 9px 10px; text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast); }
 .arc-connector-row:hover { border-color: var(--line-3); background: color-mix(in srgb, var(--panel) 90%, var(--accent-soft)); }
 /* Arrived at from an unmet skill requirement — mark which row was meant. */
 .arc-connector-row[data-focused="true"] { border-color: var(--warn-border); background: color-mix(in srgb, var(--panel) 88%, var(--warn-soft)); }
-.arc-connector-logo { --connector-color: #9aa0ac; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--connector-color) 42%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--connector-color) 14%, transparent); color: var(--connector-color); font-family: var(--mono); font-size: var(--dz-xs); font-weight: 650; }
-.arc-connector-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.arc-connector-copy > span { min-width: 0; display: flex; align-items: center; gap: 7px; }
-.arc-connector-copy b { min-width: 0; flex: 1; overflow: hidden; color: var(--text); font-size: var(--dz-md); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.arc-connector-logo { --connector-color: #9aa0ac; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--connector-color) 42%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--connector-color) 14%, transparent); color: var(--connector-color); font-family: var(--mono); font-size: var(--dz-xs); font-weight: 650; }
+.arc-connector-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.arc-connector-copy > span { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.arc-connector-copy b { min-width: 0; flex: none; max-width: 100%; overflow: hidden; color: var(--text); font-size: var(--dz-md); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 /* Status is the reason to look at the row. It was 6.8px — the smallest text in
    the app — and is now the same size as every other piece of meta here. */
-.arc-connector-copy em { flex: none; border: 1px solid var(--line); border-radius: 999px; background: var(--inset); color: var(--muted); padding: 2px 6px; font-size: var(--dz-xs); font-style: normal; font-weight: 620; }
+.arc-connector-copy em { flex: none; margin-left: auto; border: 1px solid var(--line); border-radius: 999px; background: var(--inset); color: var(--muted); padding: 2px 6px; font-size: var(--dz-xs); font-style: normal; font-weight: 620; white-space: nowrap; }
+/* What Arc is allowed to do with this source, beside its name. It used to be
+   half of a "Signal source · read-only" line whose first half was already the
+   group heading the row sits under. */
+.arc-connector-copy > span > small { flex: none; color: var(--muted); font-size: var(--dz-xs); letter-spacing: .03em; white-space: nowrap; }
 .arc-connector-row[data-status="connected"] .arc-connector-copy em { border-color: var(--ok-border); background: var(--ok-soft); color: var(--ok-text); }
 .arc-connector-row[data-status="disabled"] .arc-connector-copy em { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
 .arc-connector-row[data-status="error"] .arc-connector-copy em { border-color: var(--red-border); background: var(--red-soft); color: var(--red-text); }
-.arc-connector-copy small { color: var(--muted); font-size: var(--dz-xs); }
 /* No line clamp. The old one cut settings-page prose mid-word ("…deduped on
    email/phone (a…"), which is worse than a slightly taller row: the operator
    could never read the rest. Rows now size to their one-line capability
-   summary, and the list is grouped and searchable to keep it navigable. */
+   summary, and the list is grouped, searchable and filterable by status to keep
+   it navigable. */
 .arc-connector-copy p { margin: 0; color: var(--muted); font-size: var(--dz-sm); line-height: 1.4; }
-.arc-connector-setup { display: grid; place-items: center; color: var(--muted); text-decoration: none; }
-.arc-connector-setup:hover { color: var(--text-2); }
+/* The way into Settings for a connector that isn't set up yet — which is most
+   of the catalog on a new workspace, so it is the most-used control on this
+   tab. It was a bare 14px chevron with no box: a hit target under half the
+   28px everything else in the drawer offers, on the one row whose whole point
+   is "this needs you". */
+.arc-connector-setup { width: 28px; height: 28px; justify-self: center; display: grid; place-items: center; border: 1px solid transparent; border-radius: 8px; color: var(--muted); text-decoration: none; transition: border-color var(--arc-fast), background var(--arc-fast), color var(--arc-fast); }
+.arc-connector-setup:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
+.arc-connector-row[data-status="error"] .arc-connector-setup:hover { border-color: var(--red-border); background: var(--red-soft); color: var(--red-text); }
 /* Switch a connector on or off without leaving the conversation. Reads as a
    switch, not a nav chevron — the row is no longer a link. */
-.arc-connector-toggle { width: 30px; height: 18px; justify-self: center; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 999px; background: var(--inset); padding: 0; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast); }
+.arc-connector-toggle { position: relative; width: 30px; height: 18px; justify-self: center; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 999px; background: var(--inset); padding: 0; cursor: pointer; transition: border-color var(--arc-fast), background var(--arc-fast); }
+/* A switch reads right at 18px tall and is miserable to hit at 18px tall. The
+   pressable area is grown past the track rather than the track being drawn
+   bigger, so the control still looks like a switch. */
+.arc-connector-toggle::before { content: ""; position: absolute; inset: -6px -5px; border-radius: 999px; }
 .arc-connector-toggle i { width: 12px; height: 12px; display: block; border-radius: 50%; background: var(--muted); transform: translateX(-5px); transition: transform var(--arc-fast), background var(--arc-fast); }
 .arc-connector-toggle[aria-checked="true"] { border-color: var(--ok-border); background: var(--ok-soft); }
 .arc-connector-toggle[aria-checked="true"] i { background: var(--ok-text); transform: translateX(5px); }
@@ -2437,9 +2979,6 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-planned-item b { color: var(--text-2); font-size: var(--dz-sm); font-weight: 600; }
 .arc-planned-item small { font-size: var(--dz-xs); }
 .arc-connector-row > svg { color: var(--muted); }
-.arc-connector-empty { min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--muted); text-align: center; }
-.arc-connector-empty b { color: var(--text-2); font-size: var(--dz-md); }
-.arc-connector-empty span { font-size: var(--dz-sm); }
 .arc-drawer-connectors .arc-drawer-footnote { flex: none; margin-top: 0; }
 
 /* ── Share dialog ───────────────────────────────────────────────────────── */
@@ -2483,33 +3022,18 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-share-notice { color: var(--ok-text); font-size: 11px; margin: 11px 0 0; }
 
 /* ── Responsive behavior ────────────────────────────────────────────────── */
-/* Docked workspace: when the chat area itself has room (≥1000px), the panel
-   docks beside a still-interactive conversation — no scrim, the composer stays
-   live. Below that, the panel overlays and the scrim gates the chat. This block
-   must stay after the base overlay rules: @container adds no specificity, so
-   source order is what lets the docked state win. */
-@container (min-width: 1000px) {
-  .arc-chat[data-workspace-open="true"] > .arc-conversation-header,
-  .arc-chat[data-workspace-open="true"] > .arc-conversation-scroll,
-  .arc-chat[data-workspace-open="true"] > .arc-composer-dock { margin-right: clamp(340px, 30cqi, 420px); }
-  .arc-artifact-workspace { width: clamp(340px, 30cqi, 420px); box-shadow: none; }
-  .arc-workspace-scrim { display: none; }
-  /* The narrowed conversation column reflows the package card so its channel
-     grid wraps under the title instead of crushing it. */
-  .arc-chat[data-workspace-open="true"] .arc-package-row { grid-template-columns: 36px minmax(140px, 1fr) auto; }
-  .arc-chat[data-workspace-open="true"] .arc-package-channels { grid-column: 2 / -1; grid-row: 2; padding-bottom: 4px; }
-  .arc-chat[data-workspace-open="true"] .arc-review-button { grid-column: 3; grid-row: 1; }
-}
+/* The docked-workspace block that used to live here is GONE, deliberately.
+   It shrank the conversation by `margin-right: clamp(340px, 30cqi, 420px)` at
+   ≥1000px so a rail could sit beside it, and then reflowed the package card to
+   survive the column it had just narrowed. Both panels now cover the pane
+   instead of docking into it, so nothing takes width from the chat and there is
+   no narrowed state left to compensate for. */
 
-@media (max-width: 1040px) {
+@container arcpane (max-width: 1040px) {
   .arc-conversation-column { width: min(820px, calc(100% - 36px)); }
-  .arc-package-row { grid-template-columns: 38px minmax(160px, 1fr) auto; }
-  .arc-package-channels { grid-column: 2 / -1; grid-row: 2; padding: 0 0 4px; }
-  .arc-package-detail { grid-template-columns: 1fr 1fr; }
-  .arc-package-actions { grid-column: 1 / -1; }
 }
 
-@media (max-width: 760px) {
+@container arcpane (max-width: 760px) {
   .arc-chat { grid-template-rows: auto minmax(0, 1fr) auto; }
   .arc-conversation-header { min-height: 52px; padding: 4px 10px; gap: 9px; }
   .arc-history-button span,
@@ -2531,16 +3055,15 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   .arc-answer,
   .arc-markdown { font-size: 14px; }
   .arc-status-update span { flex-direction: column; gap: 1px; }
+  /* Side-by-side squeezes the sentence to four lines and leaves the button
+     under the 44px target the rest of this block keeps. Stack instead. */
+  .arc-stalled-reply { align-items: flex-start; gap: 9px; padding: 12px; }
+  .arc-stalled-reply p { flex-basis: 100%; }
+  .arc-stalled-reply button { width: 100%; min-height: 44px; justify-content: center; font-size: 12.5px; }
   .arc-suggestions button { min-height: 40px; padding-inline: 13px; }
   .arc-answer h2,
   .arc-markdown h1,
   .arc-markdown h2 { font-size: 21px; }
-  .arc-package-row { grid-template-columns: 36px minmax(0, 1fr); gap: 10px; }
-  .arc-package-channels { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
-  .arc-review-button { grid-column: 1 / -1; width: 100%; }
-  .arc-package-detail { grid-template-columns: 1fr; }
-  .arc-package-actions { grid-column: 1; flex-direction: column; }
-  .arc-package-actions button { width: 100%; }
   .arc-draft-head { grid-template-columns: 34px minmax(0, 1fr); }
   .arc-draft-status { grid-column: 2; justify-self: start; }
   .arc-draft-foot { display: grid; grid-template-columns: 1fr; gap: 9px; padding: 10px 12px 12px; }
@@ -2571,10 +3094,13 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   .arc-history-topline .arc-icon-button { width: 44px; height: 44px; }
   .arc-drawer-nav button,
   .arc-new-chat,
-  .arc-history-search,
-  .arc-history-filters button,
-  .arc-thread-grouping button,
+  .arc-drawer-search,
+  .arc-drawer-filters button,
+  .arc-drawer-back > button,
+  .arc-campaign-folder-head,
+  .arc-history-more,
   .arc-archived-toggle,
+  .arc-history-open,
   .arc-history-menu > button { min-height: 44px; }
   /* One step up from `--dz-xs` for touch, still on the drawer's scale. */
   .arc-drawer-nav button { font-size: var(--dz-sm); }
@@ -2591,19 +3117,9 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   .arc-run-contract-grid > div:nth-child(odd) { border-right: 0; }
   .arc-run-contract-grid > div:nth-last-child(2) { border-bottom: 1px solid var(--line); }
   .arc-artifact-workspace { width: 100%; }
-  .arc-created-receipt { grid-template-columns: 34px minmax(0, 1fr) 16px; }
-  .arc-created-receipt em { grid-column: 2; }
-  .arc-created-receipt > svg { grid-column: 3; grid-row: 1 / span 2; }
-  .arc-artifact-shell { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr); }
-  .arc-artifact-tabs { grid-column: 1; grid-row: 1; flex-direction: row; align-items: stretch; gap: 3px; overflow-x: auto; padding: 7px 8px; border-right: 0; border-bottom: 1px solid var(--line-2); }
-  .arc-artifact-tabs button { min-width: 58px; width: auto; min-height: 42px; flex: 1 0 58px; }
-  .arc-artifact-tabs button span { max-width: none; }
   .arc-work-scope { grid-column: 1; grid-row: 2; padding: 7px 9px 0; }
   .arc-work-scope button { min-height: 38px; }
   .arc-artifact-content { grid-column: 1; grid-row: 3; padding: 13px 14px 20px; }
-  .arc-artifact-footer { padding-bottom: max(9px, env(safe-area-inset-bottom)); }
-  .arc-artifact-footer > div:not(.arc-revision-form) { display: none; }
-  .arc-artifact-footer button { flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

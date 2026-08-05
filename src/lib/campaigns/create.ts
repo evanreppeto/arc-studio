@@ -504,6 +504,25 @@ export type PromoteAssetInput = {
   mediaPath?: string | null;
   /** Generation provenance (AI source, model, jobId, risk flags) for the asset. */
   media?: AssetMediaProvenance;
+  /**
+   * The text that produced this asset, for creative that has no body.
+   *
+   * A generated image has no copy, so all three review layers were inert on it:
+   * the draft critic grounds claims in text and never ran, and `screenDraftCopy`
+   * was handed `null` and returned UNSCREENED. Verified on prod — all 6
+   * `image_prompt` assets have an empty `prompt_inputs` and no guardrail entry.
+   *
+   * The prompt IS text, it IS author-supplied, and it is exactly where a banned
+   * phrase would appear if one were going to ("we guarantee", "insurance will
+   * cover" — the brand kit's list is legal-risk language that a prompt asking
+   * for a text overlay can carry as easily as an email can). It was in scope at
+   * every call site and thrown away.
+   *
+   * Persisted to `prompt_input` and screened. NOT written to `draft_body`: the
+   * prompt is provenance, not the deliverable, and rendering it as the copy
+   * would make the chat show an operator the instructions instead of the work.
+   */
+  promptInput?: string | null;
   /** Configured agent display name, threaded from the caller for the audit-log detail. */
   agentName?: string;
   client?: SupabaseClient;
@@ -524,6 +543,35 @@ export type CopyScreen = {
 };
 
 /** What an asset gets when no screen ran: unchanged from the pre-screen behavior. */
+/**
+ * Which text the copy screen should run on.
+ *
+ * A generated image has no body, so the screen was handed `null` and returned
+ * UNSCREENED — creative reached the approval gate with no automated check at
+ * all. Its PROMPT is text, is author-supplied, and is exactly where a banned
+ * phrase would appear ("we guarantee", "insurance will cover"), so it is what
+ * gets screened when there is no body.
+ */
+export function screenableAssetText(body: string | null, promptInput?: string | null): string | null {
+  const bodyText = body?.trim();
+  if (bodyText) return body;
+  const promptText = promptInput?.trim();
+  return promptText ? promptText : null;
+}
+
+/**
+ * Which text is persisted as the asset's BODY — never the prompt.
+ *
+ * The prompt is provenance, not the deliverable. Writing it to `draft_body`
+ * would make every surface that renders a draft show the operator the
+ * instructions instead of the work, and would flip creative out of the
+ * "no copy to check" state into pretending it has copy.
+ */
+export function persistableAssetBody(body: string | null, resolvedBody: string | null): string | null {
+  if (body === null) return null;
+  return resolvedBody ?? body;
+}
+
 const UNSCREENED: CopyScreen = {
   riskLevel: "medium",
   status: "pending_approval",
@@ -599,10 +647,10 @@ export async function screenDraftCopy(
  *  screen lives here too — no caller can forget it. */
 export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<{ assetId: string }> {
   const client = input.client ?? getSupabaseAdminClient();
-  const screen = await screenDraftCopy(input.body, input.assetType, client, input.tenant);
+  const screen = await screenDraftCopy(screenableAssetText(input.body, input.promptInput), input.assetType, client, input.tenant);
   // Persist the CTA-resolved copy, not the placeholder — the operator approves the
   // body that will actually send, and dispatch has a link to stamp.
-  const bodyToPersist = screen.resolvedBody ?? input.body;
+  const bodyToPersist = persistableAssetBody(input.body, screen.resolvedBody ?? null);
   const agentName = input.agentName?.trim() || "Agent";
   const provenance = input.media ?? {};
   const mediaAsset = input.mediaUrl
@@ -629,6 +677,7 @@ export async function promoteAssetToCampaign(input: PromoteAssetInput): Promise<
     title: input.title,
     status: screen.status,
     draft_body: bodyToPersist,
+    ...(input.promptInput?.trim() ? { prompt_input: input.promptInput.trim() } : {}),
     dispatch_locked: true,
     tool_source: "arc_saved",
     ...(screen.complianceNotes ? { compliance_notes: screen.complianceNotes } : {}),

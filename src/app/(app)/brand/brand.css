@@ -69,7 +69,7 @@
    `.arc-app .chip` (Home task chip: inline-flex + padding) which otherwise
    collapses this full-width color bar to ~18px and clips the role label. */
 .arc-brand .sw .chip { display: block; width: 100%; padding: 0; height: 62px; position: relative; }
-.arc-brand .sw .chip .role { position: absolute; left: 8px; bottom: 7px; font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255, 255, 255, 0.92); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
+.arc-brand .sw .chip .role { position: absolute; left: 8px; bottom: 7px; font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255, 255, 255, 0.92); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
 .arc-brand .sw .meta { padding: 7px 9px; }
 .arc-brand .sw .nm { font-size: 11.5px; font-weight: 600; line-height: 1.2; }
 .arc-brand .sw .hx { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; }
@@ -79,7 +79,7 @@
 .arc-brand .tspec { display: flex; align-items: center; gap: 14px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 11px; background: var(--inset); }
 .arc-brand .tspec .glyph { font-size: 34px; line-height: 1; width: 54px; text-align: center; flex-shrink: 0; color: var(--text); }
 .arc-brand .tspec .ti { min-width: 0; }
-.arc-brand .tspec .role { font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.arc-brand .tspec .role { font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .arc-brand .tspec .fam { font-size: 14.5px; font-weight: 600; margin-top: 2px; }
 .arc-brand .tspec .sample { font-size: 12px; color: var(--text-2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-brand .tspec.serif .glyph, .arc-brand .tspec.serif .fam { font-family: var(--serif); }
@@ -89,10 +89,12 @@
 /* voice */
 .arc-brand .tone { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 13px; }
 .arc-brand .tchip { font-size: 11.5px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--bbrand) 16%, transparent); border: 1px solid color-mix(in srgb, var(--bbrand) 40%, transparent); border-radius: 99px; padding: 4px 11px; }
-.arc-brand .guide { font-size: 13px; color: var(--text-2); line-height: 1.6; border-left: 2px solid var(--bbrand); padding: 2px 0 2px 13px; margin: 0 0 14px; }
+/* 1px, not 2px — §8 bans side-stripe borders wider than a hairline. The stripe
+   is the tenant's own brand colour, which is theirs to use; the width was ours. */
+.arc-brand .guide { font-size: 13px; color: var(--text-2); line-height: 1.6; border-left: 1px solid var(--bbrand); padding: 2px 0 2px 13px; margin: 0 0 14px; }
 .arc-brand .phr { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 520px) { .arc-brand .phr { grid-template-columns: 1fr; } }
-.arc-brand .phr .pl { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.arc-brand .phr .pl { font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
 .arc-brand .phr .pl.ban { color: var(--red-text); }
 .arc-brand .phr .pl svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.4; flex-shrink: 0; }
 .arc-brand .words { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -156,7 +158,7 @@
 .arc-brand .src .sm b { color: var(--ok-text); font-weight: 600; }
 .arc-brand .src .sgo { color: var(--muted); font-size: 12px; flex-shrink: 0; opacity: 0; transition: 0.14s; }
 .arc-brand .src:hover .sgo { opacity: 1; color: var(--accent-contrast); }
-.arc-brand .stale { margin-left: 7px; font-size: 8.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 4px; padding: 1px 5px; vertical-align: 1px; }
+.arc-brand .stale { margin-left: 7px; font-size: 8.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 4px; padding: 1px 5px; vertical-align: 1px; }
 .arc-brand .resyncall { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; cursor: pointer; transition: 0.14s; }
 .arc-brand .resyncall:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-brand .resyncall svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.9; }

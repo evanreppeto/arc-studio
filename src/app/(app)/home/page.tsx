@@ -151,10 +151,10 @@ export default async function HomePage() {
     <div className="scroll">
       <section className="content">
         <div className="date">{dateLabel}</div>
-        <h2 className="greet">
+        <h1 className="greet">
           {greeting}
           {firstName ? `, ${firstName}` : ""}
-        </h2>
+        </h1>
         <div className="subline">
           {needsYouPhrase(approvalCount)}
           <span className="dot">·</span>
@@ -166,10 +166,17 @@ export default async function HomePage() {
         <SetupChecklist checklist={activation.checklist} />
 
         {focal && (
-          <div className="focal">
-            <div className="lab">Top opportunity</div>
+          <>
+            {/* Was a gold uppercase kicker inside the card, which §3 bans above a
+                title. The words still earn their place — this card needs to say
+                what it is — so they become a section heading in the same rhythm
+                as "Open opportunities" and "Active campaigns" below. */}
+            <div className="sech">
+              <h3>Top opportunity</h3>
+            </div>
+            <div className="focal">
             <div className="row1">
-              <h2>{focal.title}</h2>
+              <h4>{focal.title}</h4>
               {evidenceFacts(focal.evidence).length > 0 && (
                 <span className="cites">
                   <span className="cites-label">Evidence</span>
@@ -198,7 +205,8 @@ export default async function HomePage() {
                 Draft with Arc
               </Link>
             </div>
-          </div>
+            </div>
+          </>
         )}
 
         <div className="sech">

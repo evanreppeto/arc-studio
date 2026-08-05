@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
+import { arcAssetStatusFromDb, arcFindingSeverity, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
   parseConsideredAudiences,
   humanizeArcProse,
   isFixKind,
@@ -9,7 +9,9 @@ import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExt
   toWorkState,
   WORK_STATE_LABEL,
   type ConsideredAudience,
+  type ArcDraftFinding,
 } from "@/domain";
+import { mediaReviewKey } from "@/lib/campaigns/media-identity";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { reportDegraded } from "@/lib/observability/report-degraded";
@@ -134,11 +136,37 @@ export type CampaignWorkspaceListItem = {
   status: string;
   lifecycle: CampaignLaunchState["lifecycle"];
   pendingCount: number;
+  /**
+   * Approved / non-archived deliverable counts, straight off `buildLaunchState`
+   * — the SAME numbers the campaign's own detail page renders in `.cstate`.
+   *
+   * The board must not compute this from `rollup` instead. The two disagree:
+   * `buildLaunchState` counts built assets and drops archived ones, while
+   * `deriveCampaignRollup` also counts standalone approvals (those with no
+   * `campaign_asset_id`). One live campaign has 6 assets and 1 standalone
+   * approval, so the rollup says 7 where the detail page says 6 — two answers
+   * to one question, on two screens, about one campaign.
+   */
+  approvedCount: number;
+  requiredCount: number;
   pendingDeliverables: PendingDeliverable[];
+  /**
+   * Empty string when the campaign has no objective — NOT a placeholder
+   * sentence. This used to be `campaign.objective ?? "No objective captured
+   * yet."`, which is a non-null string, so every `objective || theme || …`
+   * fallback a caller wrote was dead on arrival and three of five live rows
+   * spent their subtitle announcing that a field was blank.
+   */
   objective: string;
+  /** The operator/Arc-supplied theme. Required at creation, so this is the
+   *  reliable thing to say when there is no objective. */
+  campaignTheme: string;
+  /** Timing of the signal this campaign was built from, when it had one. */
+  signal: CampaignSourceSignal | null;
   audienceSummary: string;
   offerSummary: string;
-  whyBuilt: string;
+  /** Null when Arc recorded no reasoning — see `CampaignWorkspaceReasoning`. */
+  whyBuilt: string | null;
   assetCount: number;
   approvalCount: number;
   mediaCount: number;
@@ -157,6 +185,39 @@ export type CampaignWorkspaceListItem = {
   href: string;
   rollup: CampaignRollup;
 };
+
+/**
+ * The timing Arc recorded on the signal that produced a campaign.
+ *
+ * Shape censused against the live workspace: `urgency` sits at the top level of
+ * `campaigns.source_signal` and the timing under `evidence`
+ * (`{origin, urgency, evidence: {eventType, severity, startsAt, endsAt, …}}`).
+ * Both levels are read anyway — this column is agent-written JSON with no
+ * constraint behind it, and a key that moves should degrade to null rather than
+ * throw.
+ */
+export type CampaignSourceSignal = {
+  urgency: string | null;
+  eventType: string | null;
+  startsAtIso: string | null;
+  endsAtIso: string | null;
+};
+
+/** Null when the campaign carries no signal timing at all — most of them. An
+ *  operator-created package has no window to close. */
+export function parseCampaignSourceSignal(raw: unknown): CampaignSourceSignal | null {
+  const root = asObject(raw);
+  const evidence = asObject(root.evidence);
+  const pick = (key: string) => getString(evidence[key]) ?? getString(root[key]);
+
+  const signal: CampaignSourceSignal = {
+    urgency: pick("urgency"),
+    eventType: pick("eventType") ?? pick("event_type"),
+    startsAtIso: pick("startsAt") ?? pick("starts_at"),
+    endsAtIso: pick("endsAt") ?? pick("ends_at"),
+  };
+  return Object.values(signal).some(Boolean) ? signal : null;
+}
 
 export type CampaignListContentPiece = {
   id: string;
@@ -253,8 +314,16 @@ export type CampaignAssetFinding = {
 };
 
 export type CampaignWorkspaceReasoning = {
-  whyBuilt: string;
-  recommendedAction: string;
+  /**
+   * Null when Arc recorded nothing — the view renders these behind `&&` guards
+   * that were written to hide an absent field and could never fire, because the
+   * old fallbacks ("Arc has not recorded reasoning for this campaign yet.", "No
+   * recommended action recorded.") are truthy. `reasoning_payload` is `{}` on
+   * every live campaign, so the reasoning panel — whose whole job is explaining
+   * why Arc built the thing — rendered two sentences saying it cannot.
+   */
+  whyBuilt: string | null;
+  recommendedAction: string | null;
   guardrailFlags: string[];
   toolsUsed: string[];
   promptInputs: Array<{ label: string; value: string }>;
@@ -657,6 +726,129 @@ export async function getArcAssetStatuses(
   }
 }
 
+/** One deliverable's readable copy, for a surface that renders it rather than links to it. */
+export type ArcAssetBody = {
+  id: string;
+  /** The copy an operator should be reading: the newest authored version. */
+  body: string;
+  /** True when `body` came from `edited_body` / `approved_body` rather than Arc's original draft. */
+  edited: boolean;
+  /**
+   * The asset's CURRENT name.
+   *
+   * The card carries a title frozen at draft time, and on prod 4 of 17 have
+   * drifted — two of them badly: cards still read "Landing page — needs revision
+   * (placeholder)" and "Paid social — needs revision (fake-urgency risk)" for
+   * assets Arc has since revised into "Landing page — Chicago water-damage
+   * response" and "Paid social — We slow the situation down". The chat was
+   * describing work as an unrevised placeholder after the revision landed.
+   */
+  title: string | null;
+};
+
+/**
+ * The full copy behind a conversation's action cards, keyed by asset id.
+ *
+ * An action card carries `preview`, and `preview` is a ~280-character prefix of
+ * the body — verified against prod, where the longest one on record is 280 and
+ * the median cuts mid-word ("one of the "). It was sized for a receipt, and a
+ * receipt is what the chat could render from it. The copy itself only ever
+ * existed in `campaign_assets`, which is why reading a draft meant leaving the
+ * conversation.
+ *
+ * Read at render time rather than widened into the card at write time on
+ * purpose: cards are frozen JSON in `arc_messages.metadata`, so a card-shape
+ * change reaches nothing already written, and every draft an operator has open
+ * today predates it. Reading through the asset also means the chat shows the
+ * copy as it stands now — an edit made on the campaign page is visible in the
+ * conversation instead of the conversation quoting a superseded draft.
+ *
+ * Org-scoped, and returns {} rather than throwing, for the same reason
+ * `getArcAssetStatuses` does: a card that falls back to its stored preview still
+ * renders, and a chat that fails to render helps nobody.
+ */
+export async function getArcAssetBodies(
+  assetIds: readonly string[],
+  orgId?: string,
+  client?: SupabaseClient,
+): Promise<Record<string, ArcAssetBody>> {
+  const ids = [...new Set(assetIds.filter((id) => typeof id === "string" && id.trim()))];
+  if (ids.length === 0) return {};
+  if (!client && !isSupabaseAdminConfigured()) return {};
+  try {
+    const supabase = client ?? getSupabaseAdminClient();
+    const { data, error } = await applyOrgScope(
+      supabase.from("campaign_assets").select("id,title,draft_body,edited_body,approved_body"),
+      orgId,
+    ).in("id", ids);
+    assertSupabaseResult("campaign_assets", error);
+    const out: Record<string, ArcAssetBody> = {};
+    for (const row of (data ?? []) as Array<{ id: string; title: string | null; draft_body: string | null; edited_body: string | null; approved_body: string | null }>) {
+      // Newest authored version wins — approving an edit must not make the chat
+      // fall back to showing the copy that edit replaced.
+      const authored = row.approved_body?.trim() || row.edited_body?.trim() || null;
+      const body = authored ?? row.draft_body?.trim() ?? "";
+      if (!body) continue;
+      out[row.id] = { id: row.id, body, edited: Boolean(authored), title: row.title?.trim() || null };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The guardrail findings recorded against a set of assets, keyed by asset id.
+ *
+ * The Arc chat rendered a card's frozen `flags` and nothing else. A census of
+ * prod found 13 of 16 approval-bearing cards carrying zero flags while those
+ * same assets held 15 OPEN findings — 13 warnings and 2 blockers. The checks had
+ * run and been recorded; the chat had simply never read the table they land in.
+ *
+ * Read live for the same reason bodies are (see `getArcAssetBodies`): the card
+ * is frozen JSON in `arc_messages.metadata`, so it cannot learn about a finding
+ * raised after Arc drafted — and a finding resolved since is no longer a
+ * warning. Org-scoped; returns {} rather than throwing, and the caller
+ * distinguishes "no findings" from "not loaded" (see `arcDraftCheckState`).
+ */
+export async function getArcAssetChecks(
+  assetIds: readonly string[],
+  orgId?: string,
+  client?: SupabaseClient,
+): Promise<Record<string, ArcDraftFinding[]>> {
+  const ids = [...new Set(assetIds.filter((id) => typeof id === "string" && id.trim()))];
+  if (ids.length === 0) return {};
+  if (!client && !isSupabaseAdminConfigured()) return {};
+  try {
+    const supabase = client ?? getSupabaseAdminClient();
+    const { data, error } = await applyOrgScope(
+      supabase.from("guardrail_findings").select("id,campaign_asset_id,severity,status,matched_text,finding_message"),
+      orgId,
+    ).in("campaign_asset_id", ids);
+    assertSupabaseResult("guardrail_findings", error);
+
+    const out: Record<string, ArcDraftFinding[]> = {};
+    // Every requested id gets an entry, including an EMPTY one. That empty array
+    // is the difference between "we looked and found none" and "we haven't
+    // looked" — the caller renders very different things for those two.
+    for (const id of ids) out[id] = [];
+    for (const row of (data ?? []) as GuardrailFindingRow[]) {
+      const assetId = row.campaign_asset_id;
+      if (!assetId || !out[assetId]) continue;
+      out[assetId].push({
+        id: row.id,
+        severity: arcFindingSeverity(row.severity),
+        message: row.finding_message,
+        matchedText: row.matched_text ?? undefined,
+        open: (row.status ?? "").toLowerCase() === "open",
+      });
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Every deliverable in the workspace still waiting on a decision, wherever it
  * lives (BSR-702 follow-on).
@@ -830,10 +1022,15 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
         status: statusLabel(campaign.status),
         lifecycle: launch.lifecycle,
         pendingCount: launch.pendingCount,
+        approvedCount: launch.approvedCount,
+        requiredCount: launch.requiredCount,
         pendingDeliverables: selectPendingDeliverables(campaignAssets),
-        objective: campaign.objective ?? "No objective captured yet.",
-        audienceSummary: campaign.audience_summary ?? "Audience has not been summarized yet.",
-        offerSummary: campaign.offer_summary ?? "Offer has not been summarized yet.",
+        // Empty, not a placeholder sentence — see the field's note on the type.
+        objective: campaign.objective?.trim() ?? "",
+        campaignTheme: campaign.campaign_theme?.trim() || humanize(campaign.restoration_focus ?? ""),
+        signal: parseCampaignSourceSignal(campaign.source_signal),
+        audienceSummary: campaign.audience_summary?.trim() ?? "",
+        offerSummary: campaign.offer_summary?.trim() ?? "",
         whyBuilt: reasoning.whyBuilt,
         assetCount: campaignAssets.length,
         approvalCount: campaignApprovals.length,
@@ -951,6 +1148,8 @@ type DemoCampaign = {
   guardrailFlags: string[];
   toolsUsed: string[];
   channels: string[];
+  /** Only the signal-driven fixtures carry one, same as the live table. */
+  signal?: CampaignSourceSignal;
   sourceCount: number;
   sources: DemoSource[];
   createdAtIso: string;
@@ -1015,8 +1214,12 @@ function buildDemoListItem(campaign: DemoCampaign): CampaignWorkspaceListItem {
     status: campaign.status,
     lifecycle: campaign.lifecycle,
     pendingCount: pendingPieces.length,
+    approvedCount: approvedPieces.length,
+    requiredCount: campaign.pieces.length,
     pendingDeliverables: pendingPieces.map((piece) => ({ assetId: piece.id, title: piece.title, kind: piece.kind })),
     objective: campaign.objective,
+    campaignTheme: campaign.campaignTheme,
+    signal: campaign.signal ?? null,
     audienceSummary: campaign.audienceSummary,
     offerSummary: campaign.offerSummary,
     whyBuilt: campaign.whyBuilt,
@@ -1319,6 +1522,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
     pieceStatus,
     updatedAt,
     updatedAtIso,
+    signal,
   }: {
     id: string;
     name: string;
@@ -1330,6 +1534,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
     pieceStatus: "pending_approval" | "approved";
     updatedAt: string;
     updatedAtIso: string;
+    signal?: CampaignSourceSignal;
   }): DemoCampaign => {
     const pending = pieceStatus === "pending_approval";
     const status = pending ? "In Review" : lifecycle === "Live" ? "Live" : "Approved";
@@ -1394,6 +1599,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
       guardrailFlags: ["Human approval required", "Outbound locked until approved"],
       toolsUsed: ["Customer signal", "Persona match", "Approved brand context"],
       channels: ["Email", "LinkedIn"],
+      signal,
       sourceCount: 2,
       sources: [
         {
@@ -1518,6 +1724,9 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
       theme: "Lead conversion",
       objective: "Turn recent high-intent interest into qualified conversations with a clear, low-friction next step.",
       offer: "A short consultation tailored to the questions prospects are already researching.",
+      // Urgency with no window — the other half of the timing chip, so the
+      // offline preview shows both tones it can render.
+      signal: { urgency: "high", eventType: null, startsAtIso: null, endsAtIso: null },
       lifecycle: "In review",
       pieceStatus: "pending_approval",
       updatedAt: "Jul 21, 2026",
@@ -1595,6 +1804,15 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       guardrailFlags: ["No payout guarantees", "Response time stated as historical average"],
       toolsUsed: ["Search-trend signal", "CRM service-area match", "Approved media library"],
       channels: ["Gmail", "Meta", "Instagram", "SMS"],
+      // Fixed dates, like every other timestamp in these fixtures — so this one
+      // renders the expired-window state rather than a countdown that changes
+      // meaning depending on the day the preview is opened.
+      signal: {
+        urgency: "high",
+        eventType: "Freeze-thaw advisory",
+        startsAtIso: "2026-07-19T12:00:00.000Z",
+        endsAtIso: "2026-07-21T18:00:00.000Z",
+      },
       sourceCount: 6,
       sources: [
         {
@@ -2235,9 +2453,16 @@ export async function getCampaignWorkspaceDetail(
         persona: humanize(campaign.persona),
         campaignTheme: campaign.campaign_theme?.trim() || humanize(campaign.restoration_focus ?? ""),
         status: statusLabel(campaign.status),
-        objective: campaign.objective ?? "No objective captured yet.",
-        audienceSummary: campaign.audience_summary ?? "Audience has not been summarized yet.",
-        offerSummary: campaign.offer_summary ?? "Offer has not been summarized yet.",
+        // Empty rather than a placeholder sentence, for the same reason as the
+        // list read above — and here it un-breaks THREE guards the view already
+        // had. The brief list filters falsy values (`.filter(([, v]) => v)`),
+        // the header subtitle falls back through `objective || …`, and both were
+        // inert because a placeholder is truthy. Three of the five live
+        // campaigns have a null objective, so three detail pages headlined with
+        // "No objective captured yet." under the campaign's own name.
+        objective: campaign.objective?.trim() ?? "",
+        audienceSummary: campaign.audience_summary?.trim() ?? "",
+        offerSummary: campaign.offer_summary?.trim() ?? "",
         complianceNotes: campaign.compliance_notes ?? "No campaign-level compliance notes captured.",
         // The two package fields that complete the contract: what targeting was
         // weighed and rejected, and the note for whoever continues offline.
@@ -3023,10 +3248,9 @@ export function buildReasoning(campaign: CampaignRow, assets: CampaignAssetRow[]
   return {
     whyBuilt:
       getString(reasoning.why_arc_created_it) ??
-      campaign.objective ??
-      campaign.offer_summary ??
-      `${agentName} has not recorded reasoning for this campaign yet.`,
-    recommendedAction: getString(reasoning.recommended_action) ?? "No recommended action recorded.",
+      getString(campaign.objective) ??
+      getString(campaign.offer_summary),
+    recommendedAction: getString(reasoning.recommended_action),
     guardrailFlags: asStringArray(reasoning.guardrail_flags),
     toolsUsed,
     promptInputs: buildPromptInputs(assets),
@@ -3052,14 +3276,18 @@ export function buildExecutiveOverview(input: {
     ...assets.flatMap((asset) => [asObject(asset.prompt_inputs), asObject(asset.reasoning_payload), asObject(asset.audit_payload)]),
     ...approvals.flatMap((approval) => [asObject(approval.prompt_inputs), asObject(approval.reasoning_payload), asObject(approval.audit_payload)]),
   ];
-  const whySignal = sentenceFragment(findPayloadAnswer(payloads, WHY_KEYS) ?? reasoning.whyBuilt);
+  // Not pre-trimmed to a string: with no payload answer and no recorded
+  // reasoning this is genuinely absent, and interpolating "" into the sentence
+  // below would print a headless ". Goal: reduce decision friction…" as the
+  // brief's "Why now". The brief list drops falsy rows, so "" removes it.
+  const whySignal = findPayloadAnswer(payloads, WHY_KEYS) ?? reasoning.whyBuilt;
 
   return {
     what:
       findPayloadAnswer(payloads, JOURNEY_OVERVIEW_KEYS) ??
       findPayloadAnswer(payloads, WHAT_KEYS) ??
       `Move ${audience} toward a trusted next step with ${offer}. Objective: ${objective}.`,
-    why: `${whySignal}. Goal: reduce decision friction and make the next step clear.`,
+    why: whySignal ? `${sentenceFragment(whySignal)}. Goal: reduce decision friction and make the next step clear.` : "",
     timeframe:
       findPayloadAnswer(payloads, TIMEFRAME_KEYS) ??
       buildJourneyTimeframe(campaign, agentName),
@@ -3315,14 +3543,11 @@ type MediaApprovalRow = {
   created_at: string | null;
 };
 
-/** Key a media asset for review lookup. The id is exact; the storage path is
- *  the fallback that works on entries written before the id was threaded
- *  through — which today is all of them in prod. */
-function mediaReviewKey(media: Pick<CampaignMediaAsset, "libraryAssetId" | "storagePath">): string | null {
-  if (media.libraryAssetId) return `id:${media.libraryAssetId}`;
-  if (media.storagePath) return `path:${media.storagePath}`;
-  return null;
-}
+// Key a media asset for review lookup. Imported rather than defined here: the
+// operator's decide action resolves the same blob to the same row through
+// `resolveMediaAssetId`, and if the two ever disagreed about which picture an
+// entry IS, a reviewer would approve one image and watch a different one change
+// state. One rule, one file — see media-identity.ts.
 
 /**
  * Resolve each asset's own review decision from `approval_items`.
@@ -3930,7 +4155,10 @@ export function uniqueMedia(items: CampaignMediaAsset[]) {
 // Map an asset_type / channel enum value to the marketing-channel label the
 // Campaigns table shows (matches the mockup: Email · SMS · Paid · Landing · One-pager).
 // Creative-prompt asset types (image/video) collapse to their delivery channel (Paid).
-function humanizeChannel(raw: string): string {
+/** Channel/asset-type casing, e.g. `sms` → "SMS". Exported so the board's
+ *  deliverable labels use the same map as its Channels column — otherwise a
+ *  generic title-caser renders "Sms". */
+export function humanizeChannel(raw: string): string {
   const map: Record<string, string> = {
     email: "Email",
     sms: "SMS",

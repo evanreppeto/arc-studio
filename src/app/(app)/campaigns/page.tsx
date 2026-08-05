@@ -1,9 +1,7 @@
 import {
   humanizePersonaLabel as humanizePersona,
-  ASSET_NOUN,
-  CAMPAIGN_NOUN,
-  countOf,
   WORK_STATE_LABEL, personaAccent,} from "@/domain";
+import { describeContents, nextActionFor, pieceLabel, signalTiming } from "./_components/board-derivations";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 
 // The review queue opens from this screen as well as from a campaign, and every
@@ -11,14 +9,13 @@ import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 // A route-scoped stylesheet stopped being right when the component stopped
 // belonging to one route: without this the queue renders as an unstyled block.
 import "./campaign.css";
-import { getCampaignWorkspaceList, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
+import { getCampaignWorkspaceList, humanizeChannel, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { canonicalIndustryKey } from "@/lib/product-language";
 
 import { CampaignsBoard, type CampaignRow, type CampaignTone } from "./_components/campaigns-board";
-import { needsOperatorAttention } from "./_components/tone";
 
 export const metadata = { title: "Campaigns — Arc Studio" };
 
@@ -55,29 +52,6 @@ const TONE_LABEL: Record<CampaignTone, string> = {
   archived: WORK_STATE_LABEL.archived,
 };
 
-/** The next-action column answers "what happens next", so it never just repeats
- *  the status pill sitting beside it. */
-function nextActionFor(tone: CampaignTone, pendingCount: number): { next: string; nextTone: "" | "go" | "warn" } {
-  if (pendingCount > 0) {
-    return { next: `Approve ${countOf(pendingCount, ASSET_NOUN)}`, nextTone: "go" };
-  }
-  switch (tone) {
-    case "live":
-      return { next: "Going out now", nextTone: "" };
-    case "approved":
-      return { next: "Waiting to send", nextTone: "go" };
-    case "review":
-      return { next: "Waiting on your decision", nextTone: "go" };
-    case "revise":
-      return { next: "Arc is reworking it", nextTone: "warn" };
-    case "archived":
-      return { next: "Put away", nextTone: "" };
-    default:
-      return { next: "Arc is still building it", nextTone: "" };
-  }
-}
-
-
 function formatAbs(iso: string): string {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "";
@@ -88,16 +62,27 @@ function formatAbs(iso: string): string {
     : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function toRow(item: CampaignWorkspaceListItem): CampaignRow {
+function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
   const tone = toneFor(item.status);
-  const { next, nextTone } = nextActionFor(tone, item.pendingCount);
+  // launchState's counts, NOT item.rollup — the two disagree, and this column
+  // has to match the page the row links to. See `DeliverableCounts`.
+  const { next, nextTone } = nextActionFor(tone, item.pendingCount, {
+    approved: item.approvedCount,
+    required: item.requiredCount,
+  });
   // Prefer the short persona label for the Audience chip; the fuller
   // audienceSummary sentence is too long for a chip.
   const audience = humanizePersona(item.persona) || item.audienceSummary?.trim() || "";
   return {
     id: item.id,
     name: item.name,
-    brief: item.objective?.trim() || item.whyBuilt?.trim() || "New campaign",
+    // `campaignTheme` sits ahead of `whyBuilt` because it is the only one of the
+    // three that is REQUIRED at creation, so it is always a real sentence about
+    // this campaign. `whyBuilt` degrades to "Arc has not recorded reasoning yet"
+    // when `reasoning_payload` is empty — which it is on every live row — so
+    // reaching it would just trade one placeholder for another.
+    brief: item.objective?.trim() || item.campaignTheme?.trim() || item.whyBuilt?.trim() || "New campaign",
+    timing: signalTiming(item.signal, nowMs),
     tone,
     statusLabel: TONE_LABEL[tone],
     next,
@@ -114,7 +99,44 @@ function toRow(item: CampaignWorkspaceListItem): CampaignRow {
     // identically to an empty one.
     thumbnailUrl: item.thumbnailUrl,
     mediaCount: item.mediaCount,
+    // Composed from the same kinds the opened card lists, so "An email and a
+    // text message" can never disagree with the assets shown underneath it.
+    contents: describeContents(
+      item.contentPieces.map((piece) => humanizeChannel(piece.kind || piece.channel) || ""),
+    ),
+    // Through the same `toneFor`/`TONE_LABEL` pair the row's own status pill
+    // uses, so a piece and its campaign never label the same state differently.
+    pieces: item.contentPieces.map((piece) => {
+      const pieceTone = toneFor(piece.status);
+      const { label, sub } = pieceLabel(
+        piece.title,
+        item.name,
+        humanizeChannel(piece.kind || piece.channel) || "Deliverable",
+      );
+      return {
+        id: piece.id,
+        title: label,
+        kind: sub,
+        statusLabel: TONE_LABEL[pieceTone],
+        tone: pieceTone,
+        thumbnailUrl: piece.media[0]?.thumbnailUrl ?? piece.media[0]?.url ?? null,
+        needsReview: piece.needsReview,
+      };
+    }),
   };
+}
+
+/**
+ * One clock for every row, read once — a per-row `Date.now()` would let two
+ * signal windows in the same render be measured against different instants.
+ *
+ * The read lives in here rather than in the component body because the React
+ * compiler (correctly) refuses an impure call during render; `relativeTime`
+ * above hides the same call the same way.
+ */
+function buildRows(campaigns: CampaignWorkspaceListItem[]): CampaignRow[] {
+  const nowMs = Date.now();
+  return campaigns.map((item) => toRow(item, nowMs));
 }
 
 export default async function CampaignsPage() {
@@ -151,33 +173,12 @@ export default async function CampaignsPage() {
     // staring at an empty board deserves to find something when they go looking.
     console.error(`[campaigns] read failed for org ${ctx.orgId}: ${loadError}`);
   }
-  const rows = list.status === "live" ? list.campaigns.map(toRow) : [];
+  const rows = list.status === "live" ? buildRows(list.campaigns) : [];
 
-  // Two different facts, said as two different things — never one claim with two
-  // answers. The original bug was a tab reading 4 above a footer reading 9,
-  // because the footer regexed the rendered next-action label; the second was a
-  // tab reading 0 above a footer reading "7 assets across 3 campaigns", because
-  // the tab counted status and the footer counted assets.
-  //
-  // - needsYou: campaigns on your desk, by the SAME predicate the tab uses. This
-  //   number and the "Needs you" badge are the same claim, so they are the same
-  //   call.
-  // - assets: individual deliverables with no decision recorded — the finer
-  //   count, and the one the row-level "Approve N assets" labels add up to.
-  //
-  // "Undecided" rather than "needs you" on the asset half, on purpose: an asset
-  // sent back for changes has no decision but is waiting on ARC to re-draft.
-  const needsYou = rows.filter(needsOperatorAttention).length;
+  // The board groups by `needsOperatorAttention` itself; this page only needs
+  // the finer count, which the header sentence and the review button share.
   const pendingAssets = rows.reduce((sum, r) => sum + r.pendingCount, 0);
 
-  const parts = [
-    needsYou > 0 ? `${countOf(needsYou, CAMPAIGN_NOUN)} need you` : null,
-    pendingAssets > 0 ? `${countOf(pendingAssets, ASSET_NOUN)} undecided` : null,
-  ].filter(Boolean);
-  const arcNote =
-    parts.length > 0
-      ? parts.join(" · ")
-      : "Arc drafts campaigns here as opportunities come in — nothing sends until you approve it";
 
   // Passed as a NUMBER, not read back out of arcNote. Deriving a count from a
   // rendered label is the exact bug BSR-726 was: the footer regexed its own
@@ -185,7 +186,6 @@ export default async function CampaignsPage() {
   return (
     <CampaignsBoard
       rows={rows}
-      arcNote={arcNote}
       undecidedCount={pendingAssets}
       personaOptions={personaOptions}
       loadError={loadError}

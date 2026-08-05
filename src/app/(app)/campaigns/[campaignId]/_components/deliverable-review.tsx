@@ -62,6 +62,7 @@ export function ReviewBlock({
   canEdit,
   onApplyFix,
   pending = false,
+  placement,
 }: {
   asset: CampaignWorkspaceAsset;
   summary: ReviewSummary;
@@ -75,6 +76,16 @@ export function ReviewBlock({
    *  a quiet way around the approval gate. */
   onApplyFix?: (finding: CampaignAssetFinding, value: string) => void;
   pending?: boolean;
+  /**
+   * Which half to render.
+   *
+   * "verdict" is the three-second answer — is anything blocking, can I approve —
+   * and belongs above the draft. "detail" is the finding-by-finding argument,
+   * and belongs BELOW it: the screen used to open with a critique of a document
+   * the reader had not seen yet, which is disorienting no matter how good the
+   * critique is. Omitted renders both, which the campaign page still does.
+   */
+  placement?: "verdict" | "detail";
 }) {
   const rec = asset.recommendation;
   const edits = splitSuggestedEdits(rec?.suggestedEdits ?? "");
@@ -88,29 +99,29 @@ export function ReviewBlock({
     .map((finding, index) => ({ finding, index }))
     .sort((a, a2) => Number(isBlocker(a2.finding)) - Number(isBlocker(a.finding)));
 
+  const showVerdict = placement !== "detail";
+  const showDetail = placement !== "verdict";
+  if (showVerdict && !showDetail && !summary.headline && !rec && asset.blockedPhrases.length === 0) return null;
+  if (showDetail && !showVerdict && ordered.length === 0 && edits.length === 0 && !rec?.rationale && !asset.complianceNotes && !awaitingReview) return null;
+
   return (
-    <div className={`review tone-${summary.tone}`}>
+    <div className={`review tone-${summary.tone}${placement ? ` rv-${placement}` : ""}`}>
       {/* Nothing to head the block with on a decided piece that carries only a
           guardrail note — better silent than captioned "Reviewed" when nothing was. */}
-      {summary.headline && (
+      {showVerdict && summary.headline && (
         <div className="rvhead">
           <span className="rvdot" aria-hidden="true" />
           <b className="rvline">{summary.headline}</b>
-          {rec && (
-            <span className="rvverdict">
-              {reviewAgentLabel(rec.agent)} recommends {reviewVerdictLabel(rec.verdict)}
-            </span>
-          )}
         </div>
       )}
 
-      {asset.blockedPhrases.length > 0 && (
+      {showVerdict && asset.blockedPhrases.length > 0 && (
         <div className="rvbanned">
           Your Brand Kit bans {asset.blockedPhrases.map((p) => `“${p}”`).join(", ")} — rewrite before approving.
         </div>
       )}
 
-      {ordered.length > 0 && (
+      {showDetail && ordered.length > 0 && (
         <ul className="rvlist">
           {ordered.map(({ finding, index }) => {
             const open = openFindings.has(`${asset.id}:${index}`);
@@ -134,27 +145,17 @@ export function ReviewBlock({
         </ul>
       )}
 
-      {awaitingReview && (
+      {showDetail && awaitingReview && (
         <p className="rvpending">
           Nothing has checked these claims against your evidence yet. On a fresh draft that usually lands
           within a minute — until then, an empty review is not a clean one.
         </p>
       )}
 
-      {rec?.riskFlags && rec.riskFlags.length > 0 && (
-        <div className="flags rvflags">
-          {rec.riskFlags.map((f) => (
-            <span className="flag" key={f}>
-              {riskFlagLabel(f)}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {edits.length > 0 && (
+      {showDetail && edits.length > 0 && (
         <details className="rvfold">
           <summary>
-            What to change <span className="rvcount">{edits.length}</span>
+            Arc&rsquo;s suggested rewrites <span className="rvcount">{edits.length}</span>
           </summary>
           <ol className="rvedits">
             {edits.map((edit, i) => (
@@ -170,21 +171,41 @@ export function ReviewBlock({
         </details>
       )}
 
-      {rec?.rationale && (
+      {showDetail && (rec?.rationale || rec) && (
         <details className="rvfold">
-          <summary>Why Arc says this</summary>
-          <p className="rvbody">{rec.rationale}</p>
+          <summary>Why Arc flagged it</summary>
+          {/* Who reviewed, said once and here. Beside the headline it was a
+              third phrasing of the state already given by the status pill and
+              the headline itself — but WHICH reviewer is a real distinction
+              (Arc's own note vs an independent check), so it keeps a home. */}
+          {rec && (
+            <p className="rvverdict">
+              {reviewAgentLabel(rec.agent)} recommends {reviewVerdictLabel(rec.verdict)}.
+            </p>
+          )}
+          {rec?.rationale && <p className="rvbody">{rec.rationale}</p>}
+          {/* These sat loose between the last finding and the folds, reading as
+              a chip belonging to nothing. They are the reviewer's summary of
+              why, so they live with the reasoning. */}
+          {rec?.riskFlags && rec.riskFlags.length > 0 && (
+            <div className="flags rvflags">
+              {rec.riskFlags.map((f) => (
+                <span className="flag" key={f}>
+                  {riskFlagLabel(f)}
+                </span>
+              ))}
+            </div>
+          )}
         </details>
       )}
 
-      {asset.complianceNotes && (
+      {showDetail && asset.complianceNotes && (
         <details className="rvfold">
-          <summary>Guardrail for this deliverable</summary>
+          <summary>Rules this has to follow</summary>
           <p className="rvbody">{asset.complianceNotes}</p>
         </details>
       )}
 
-      {rec && <p className="rvfoot">Advisory only — you decide.</p>}
     </div>
   );
 }
@@ -271,14 +292,107 @@ export function DeliverableCopy({
   asset,
   expanded,
   onToggle,
+  onSave,
+  saving = false,
 }: {
   asset: CampaignWorkspaceAsset;
   expanded: boolean;
   onToggle: () => void;
+  /**
+   * Save an edit to this draft's copy, in place.
+   *
+   * Absent on a decided deliverable, and for the same reason `onApplyFix` is:
+   * editing approved copy would be a quiet way around the approval gate. Absent
+   * also means the draft is not clickable, so there is no affordance offering
+   * something that will not work.
+   */
+  onSave?: (body: string) => void;
+  saving?: boolean;
 }) {
+  // `null` means "showing what is saved". Any keystroke makes it a string, and
+  // the draft is live from that moment — there is no edit MODE to enter.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<string | null>(null);
+
   if (!asset.preview) return null;
-  const segments = highlightClaims(asset.preview, asset.findings.map((f) => f.claim));
-  const long = isLongCopy(asset.preview);
+
+  const saved = asset.preview;
+  // Cleared by the saved copy coming back on the asset — derived, not an effect.
+  // The parent patches `preview` when the write lands, so matching it IS the
+  // success signal, and a failed save correctly leaves the edit in the box.
+  const pendingSave = submitted !== null && saved.trim() !== submitted;
+  const text = draft !== null && !(submitted !== null && saved.trim() === submitted) ? draft : saved;
+  const dirty = text.trim() !== saved.trim();
+
+  const segments = highlightClaims(text, asset.findings.map((f) => f.claim));
+
+  if (onSave) {
+    /**
+     * Click the copy and the caret lands where you clicked.
+     *
+     * A transparent textarea sits exactly on top of the highlighted text: the
+     * textarea owns the caret, selection and typing, the layer behind owns the
+     * marks for the spans Arc quoted. Both are laid out with identical metrics,
+     * so the two stay registered character for character. The alternative —
+     * `contentEditable` — would put Arc's `<mark>` elements inside user-editable
+     * markup, where a backspace can delete a highlight and a paste can bring in
+     * arbitrary HTML.
+     */
+    return (
+      <div className="dcopy live">
+        <div className="dlive">
+          <div className="dlive-hl dbody" aria-hidden="true">
+            {segments.map((seg, i) =>
+              seg.findingIndex === null ? (
+                <span key={i}>{seg.text}</span>
+              ) : (
+                <mark
+                  key={i}
+                  id={markId(asset.id, seg.findingIndex)}
+                  className={isBlocker(asset.findings[seg.findingIndex]) ? "dmark blk" : "dmark"}
+                >
+                  {seg.text}
+                </mark>
+              ),
+            )}
+            {/* A trailing newline has no height of its own; without this the box
+                stops one line short of the caret the textarea is showing. */}
+            {"\n"}
+          </div>
+          <textarea
+            className="dlive-ta dbody"
+            value={text}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={saving}
+            spellCheck
+            aria-label="The draft — edit it here"
+          />
+        </div>
+        {dirty && (
+          <div className="deditbar">
+            <button
+              type="button"
+              className="cbtn gold"
+              disabled={saving || !text.trim()}
+              onClick={() => {
+                const body = text.trim();
+                setSubmitted(body);
+                onSave(body);
+              }}
+            >
+              {saving || pendingSave ? "Saving…" : "Save copy"}
+            </button>
+            <button type="button" className="cbtn ghost" onClick={() => setDraft(null)} disabled={saving}>
+              Discard
+            </button>
+            <span className="deditnote">Saving does not approve it — nothing goes out because of this.</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const long = isLongCopy(saved);
   return (
     <div className="dcopy">
       <div className={long && !expanded ? "dbody clamped" : "dbody"}>

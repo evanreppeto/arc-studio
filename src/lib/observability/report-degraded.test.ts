@@ -45,7 +45,31 @@ describe("reportDegraded", () => {
   it("always leaves a server-log trace — Sentry is often unconfigured exactly when someone is staring at an empty screen", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     reportDegraded(new Error("boom"), { scope: "crm.list", detail: { orgId: "org-1" } });
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[degraded] crm.list: boom"), expect.any(String));
+    const line = warn.mock.calls[0]![0] as string;
+    expect(line).toContain("[degraded] crm.list:");
+    expect(line).toContain("boom");
+  });
+
+  /**
+   * The stack is the actionable half. Without it the line names a scope and a
+   * message, which for a generic message is not enough to act on: Studio's dead
+   * compose path logged `[degraded] studio.generateStudioAsset: Invalid URL`,
+   * which is true and does not say which of the render's several URLs was
+   * invalid or which frame threw. Sentry had the stack; whoever was reading the
+   * platform log had the useless half.
+   */
+  it("includes the stack, not just the message", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    reportDegraded(new Error("boom"), { scope: "crm.list" });
+    expect(warn.mock.calls[0]![0] as string).toMatch(/\n\s+at /);
+  });
+
+  it("falls back to the message when the throw carries no stack", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stackless = new Error("no stack here");
+    stackless.stack = undefined;
+    reportDegraded(stackless, { scope: "x.y" });
+    expect(warn.mock.calls[0]![0] as string).toContain("[degraded] x.y: no stack here");
   });
 
   // Reporting a failure must never become the outage the caller was avoiding.

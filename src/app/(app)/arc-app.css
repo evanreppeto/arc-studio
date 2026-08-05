@@ -220,7 +220,7 @@
      every navigation row into a dense dashboard. */
   & .rail-recents { margin: 20px 5px 12px; padding-top: 14px; border-top: 1px solid var(--line); }
   & .rail-recents-head { display: flex; align-items: center; justify-content: space-between; padding: 0 5px 6px; }
-  & .rail-recents-head h2 { margin: 0; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); font: 600 10.5px/1.4 var(--sans); letter-spacing: 0.11em; text-transform: uppercase; }
+  & .rail-recents-head .rail-recents-title { margin: 0; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); font: 600 10.5px/1.4 var(--sans); letter-spacing: 0.11em; text-transform: uppercase; }
   & .rail-recents-head a { color: var(--muted); font-size: 10.5px; font-weight: 600; text-decoration: none; transition: color 0.15s var(--ease); }
   & .rail-recents-head a:hover { color: var(--accent); }
   /* "New" reads as an action, not a caption: a bordered chip with a plus, sized
@@ -228,7 +228,12 @@
   & .rail-recents-new { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border: 1px solid var(--line-2); border-radius: 6px; transition: color 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease); }
   & .rail-recents-new svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.1; stroke-linecap: round; }
   & .rail-recents-head a.rail-recents-new:hover { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
-  & .rail-recents-list { display: grid; gap: 1px; }
+  /* Blocks, not one undifferentiated column. At a 1px rhythm a campaign folder's
+     last child and the next ungrouped chat sat the same distance apart as two
+     siblings, so the only thing separating a group from a loose row was 10px of
+     indent — and the eye read five equal rows. Rows inside a block stay tight;
+     the space goes BETWEEN blocks (see .rail-recent-group's margin). */
+  & .rail-recents-list { display: grid; gap: 2px; }
   & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: 7px; color: var(--text-2); text-decoration: none; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
   & .rail-recent:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
   /* The chat you're reading, marked the same way the rail marks the page you're
@@ -268,11 +273,21 @@
   & .rail-recent-group { display: grid; gap: 1px; }
   & .rail-recent-group > summary { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 5px; border-radius: 6px; color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; list-style: none; }
   & .rail-recent-group > summary::-webkit-details-marker { display: none; }
-  & .rail-recent-group > summary::before { content: "\25B8"; font-size: 8px; transition: transform 0.15s var(--ease); }
+  /* A folder is a control, so the triangle reads as one: full-strength accent-ish
+     text against the label's muted grey, rather than one more grey glyph. */
+  & .rail-recent-group > summary::before { content: "\25B8"; font-size: 8px; color: color-mix(in srgb, var(--accent) 55%, var(--muted)); transition: transform 0.15s var(--ease), color 0.15s var(--ease); }
   & .rail-recent-group[open] > summary::before { transform: rotate(90deg); }
   & .rail-recent-group > summary:hover { color: var(--text-2); background: rgba(255, 255, 255, 0.03); }
+  & .rail-recent-group > summary:hover::before { color: var(--accent); }
+  /* The folder's own name, held a step brighter than a row's campaign caption so
+     "this is a heading" and "this row belongs to that campaign" are not the same
+     grey at the same size. */
+  & .rail-recent-group-name { min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--muted) 55%, var(--text-2)); text-overflow: ellipsis; white-space: nowrap; }
   & .rail-recent-group .rail-recent-count { margin-left: auto; font: 500 9px/1 var(--mono); }
-  & .rail-recent-group .rail-recent-wrap { padding-left: 10px; }
+  /* The membership rule. A hairline down the left of the children says which
+     rows the folder owns without boxing them in — the indent alone was doing
+     that job and losing. */
+  & .rail-recent-group-items { display: grid; gap: 1px; margin-left: 9px; padding-left: 8px; border-left: 1px solid var(--line-2); }
   & .rail-recents-empty { margin: 0; padding: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; }
   & .nav-more { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding: 7px 10px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; transition: color 0.15s var(--ease); }
   & .nav-more:hover { color: var(--text-2); }
@@ -415,7 +430,7 @@
   & .col-r { border-left: 1px solid var(--line); padding: 26px 24px 48px; background: color-mix(in srgb, var(--canvas-deep) 22%, transparent); }
 
   & .date { font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: 0.02em; }
-  & h2.greet { font-family: var(--serif); font-weight: 500; font-size: 33px; line-height: 1.02; letter-spacing: -0.02em; margin: 10px 0 9px; }
+  & h1.greet { font-family: var(--serif); font-weight: 500; font-size: 33px; line-height: 1.02; letter-spacing: -0.02em; margin: 10px 0 9px; }
   & .subline { font-size: 13px; color: var(--text-2); }
   & .subline .dot { color: var(--line-3); margin: 0 8px; }
 
@@ -442,9 +457,11 @@
 
   /* focal */
   & .focal { margin-top: 22px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 50%, var(--panel)), var(--panel)); padding: 18px 20px; box-shadow: 0 18px 50px -34px rgba(0, 0, 0, 0.9); }
-  & .focal .lab { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; color: var(--accent); text-transform: uppercase; }
   & .focal .row1 { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-  & .focal h2 { font-family: var(--serif); font-weight: 500; font-size: 19px; letter-spacing: -0.01em; margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  /* h4, not h2: the card now sits under an h3 "Top opportunity" section
+     heading, and an h2 inside an h3's section outranks the heading that
+     introduces it. Same type, correct descent. */
+  & .focal h4 { font-family: var(--serif); font-weight: 500; font-size: 19px; letter-spacing: -0.01em; margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   & .focal .cites { display: inline-flex; align-items: center; gap: 5px; }
   & .focal .cites-label { font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; color: var(--muted); text-transform: uppercase; }
   & .focal .cite { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line-2); background: var(--inset); font-family: var(--mono); font-size: 10px; color: var(--accent); cursor: pointer; transition: border-color 0.15s, color 0.15s; }
@@ -580,7 +597,7 @@
     & .opps { grid-template-columns: 1fr; }
 
     /* Home hero + section headers scale down so nothing overflows. */
-    & h2.greet { font-size: 27px; }
+    & h1.greet { font-size: 27px; }
     & .focal { padding: 16px 15px; }
     /* Focal top row: let the title own its own line; citations + confidence
        wrap beneath it instead of colliding with the wrapping headline. */
@@ -752,8 +769,10 @@
   min-width: 0;
 }
 .arc-app .arc-grid .chrow { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
-.arc-app .arc-grid h2.ct { font-family: var(--serif); font-weight: 500; font-size: 29px; letter-spacing: -.02em; margin: 0; color: var(--text); }
+.arc-app .arc-grid h1.ct { font-family: var(--serif); font-weight: 500; font-size: 29px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-grid .csub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+/* The one fact a whole column was spending ~210px repeating on every row. */
+.arc-app .arc-grid .csub .csub-em { color: var(--text-2); font-weight: 500; }
 .arc-app .arc-grid .chrow .sp { margin-left: auto; display: flex; gap: 9px; align-items: center; }
 .arc-app .arc-grid .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; text-decoration: none; }
 .arc-app .arc-grid .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
@@ -791,7 +810,13 @@
 .arc-app .arc-grid .sortopt:hover { background: var(--inset); color: var(--text); }
 .arc-app .arc-grid .sortopt.on { color: var(--accent-contrast); background: var(--accent-soft); }
 
-.arc-app .arc-grid .tablewrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); }
+/* `flex: 0 1 auto`, not `flex: 1`. Filling the column meant a four-row table
+   drew ~600px of empty bordered panel beneath it, so a workspace with four
+   campaigns read as an empty one — the frame promised content that wasn't
+   there. Basing the size on content and keeping `shrink` + `min-height: 0`
+   preserves the behaviour that mattered: a long table still shrinks to the
+   space available and scrolls inside itself rather than growing the page. */
+.arc-app .arc-grid .tablewrap { flex: 0 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); }
 .arc-app .arc-grid .dt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .arc-app .arc-grid .dt thead th { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--panel) 96%, #000); text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 11px 14px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 .arc-app .arc-grid .dt tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--text-2); }
@@ -809,15 +834,14 @@
 .arc-app .arc-grid .pcell { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .arc-app .arc-grid .campaign-link { color: inherit; text-decoration: none; border-radius: 7px; }
 .arc-app .arc-grid .campaign-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.arc-app .arc-campaigns .dt tbody tr { cursor: default; }
 .arc-app .arc-grid .pav { width: 32px; height: 32px; border-radius: 8px; background: var(--inset); border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; font-family: var(--serif); font-weight: 600; font-size: 12.5px; }
 .arc-app .arc-grid .pav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-app .arc-grid .pav.co { font-size: 11px; color: var(--text-2); }
 /* Campaign rows carry the package's own creative in the avatar slot. Scoped to
    this board on purpose — the other .arc-grid tables have no media to show. */
-.arc-app .arc-campaigns .pav { position: relative; width: 40px; height: 40px; border-radius: 9px; overflow: visible; }
+.arc-app .arc-campaigns .pav { position: relative; width: 56px; height: 56px; border-radius: 10px; overflow: visible; }
 .arc-app .arc-campaigns .pav.hasthumb { background: var(--canvas-deep, #101013); }
-.arc-app .arc-campaigns .pavimg { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.arc-app .arc-campaigns .pavimg { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; }
 /* Not a notification count — it says "this package has more creative than the
    one frame you can see". */
 .arc-app .arc-campaigns .pavn {
@@ -826,6 +850,159 @@
   background: var(--panel); color: var(--text-2); font-family: var(--mono); font-size: 9.5px; font-weight: 600;
 }
 .arc-app .arc-grid .pnm { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; max-width: 210px; }
+/* --- Campaign cards -------------------------------------------------------
+   Was a six-column table: uniform 12px greys, three tinted chips a row, and the
+   campaign's own creative at 40px. Every campaign looked the same weight as
+   every other and the accent appeared so often it stopped meaning anything.
+   DESIGN.md §4.4 is the fix — gold is the ONE focal cue, and it now appears on
+   exactly one thing per card: the work that is waiting on you. */
+.arc-app .arc-campaigns .cmp-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 9px; padding: 2px; }
+
+.arc-app .arc-campaigns .cmp-card {
+  position: relative; border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel);
+  padding: 15px 17px; transition: border-color .16s var(--ease), background .16s var(--ease);
+}
+.arc-app .arc-campaigns .cmp-card:hover { border-color: color-mix(in srgb, var(--accent) 26%, var(--line-2)); }
+/* The focal cue. A card asking for a decision lifts and takes a gold edge; every
+   other card stays quiet, so the eye lands only on work. */
+.arc-app .arc-campaigns .cmp-card.needsyou { background: var(--surface-soft, #1a1a1e); border-color: color-mix(in srgb, var(--accent) 30%, var(--line-2)); }
+.arc-app .arc-campaigns .cmp-card.needsyou::before {
+  content: ""; position: absolute; left: -1px; top: 14px; bottom: 14px; width: 2px; border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 35%, transparent));
+}
+.arc-app .arc-campaigns .cmp-card.open { border-color: color-mix(in srgb, var(--accent) 30%, var(--line-2)); }
+
+.arc-app .arc-campaigns .cmp-head { display: flex; align-items: flex-start; gap: 14px; }
+.arc-app .arc-campaigns .cmp-body { flex: 1; min-width: 0; }
+/* Real scale contrast: the name leads at 15.5px/600 over an 11.5px meta line.
+   The old table set everything within 2px of everything else. */
+.arc-app .arc-campaigns .cmp-name {
+  display: inline-block; font-size: 15.5px; font-weight: 600; line-height: 1.25; color: var(--text);
+  text-decoration: none; border-radius: 5px; letter-spacing: -.006em;
+}
+a.cmp-name:hover { color: var(--accent-contrast); }
+a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* What it IS, above why it exists. Reads at --text-2 while the objective drops
+   to --muted, so the concrete line wins the glance. */
+.arc-app .arc-campaigns .cmp-what { margin: 5px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text-2); font-weight: 500; }
+.arc-app .arc-campaigns .cmp-brief {
+  margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); max-width: 68ch;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.arc-app .arc-campaigns .cmp-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+.arc-app .arc-campaigns .cmp-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.arc-app .arc-campaigns .cmp-window { padding-left: 8px; border-left: 1px solid var(--line-2); font-family: var(--mono); font-size: 10.5px; white-space: nowrap; flex: none; }
+.arc-app .arc-campaigns .cmp-meta > span:not(.cmp-window):not(.cmp-dot) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.arc-app .arc-campaigns .cmp-state { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+.arc-app .arc-campaigns .cmp-next { font-size: 12px; color: var(--muted); }
+/* The one instruction on the card, as a real button — `.gbtn.gold` carries the
+   fill, so this only sets the arrow's nudge. Accent-coloured text asked to be
+   recognised as a control; a button just is one. */
+.arc-app .arc-campaigns .cmp-act { height: 32px; padding: 0 13px; white-space: nowrap; transition: gap .16s var(--ease), filter .15s, transform .15s; }
+.arc-app .arc-campaigns .cmp-act:hover:not(:disabled) { gap: 9px; }
+.arc-app .arc-campaigns .cmp-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.arc-app .arc-campaigns .cmp-act:disabled { cursor: default; opacity: .6; }
+
+.arc-app .arc-campaigns .cmp-more {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 11px; padding: 0; border: none; background: none;
+  font-family: inherit; font-size: 11.5px; font-weight: 500; color: var(--muted); cursor: pointer; border-radius: 5px;
+}
+.arc-app .arc-campaigns .cmp-more svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; transition: transform .18s var(--ease); }
+.arc-app .arc-campaigns .cmp-more:hover { color: var(--text-2); }
+.arc-app .arc-campaigns .cmp-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.arc-app .arc-campaigns .cmp-more.on svg { transform: rotate(180deg); }
+
+@media (max-width: 560px) {
+  /* The card needs no positional reflow — it is flex, and the head simply wraps.
+     All the Campaigns table's phone rules (BSR-662) went with the table. */
+  .arc-app .arc-campaigns .cmp-head { flex-wrap: wrap; }
+  .arc-app .arc-campaigns .cmp-state { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
+}
+
+.arc-app .arc-campaigns .cmp-empty { padding: 46px 20px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.6; border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); }
+.arc-app .arc-campaigns .cmp-empty strong { color: var(--text); }
+.arc-app .arc-campaigns .cmp-empty-detail { margin-top: 8px; opacity: .75; font-family: var(--mono); font-size: 11px; }
+
+/* --- Motion ---------------------------------------------------------------
+   `grid-template-rows: 0fr → 1fr` animates to content height without measuring
+   it in JS, so the drawer closes as smoothly as it opens. Conditional rendering
+   gave an entrance and no exit — the drawer simply vanished. */
+.arc-app .arc-campaigns .cmp-drawer {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows .34s var(--ease);
+}
+.arc-app .arc-campaigns .cmp-card.open .cmp-drawer { grid-template-rows: 1fr; }
+.arc-app .arc-campaigns .cmp-drawer-in { overflow: hidden; min-height: 0; }
+/* Nothing inside a closed drawer is focusable — otherwise Tab walks into a
+   collapsed panel and the focus ring lands on something nobody can see. */
+.arc-app .arc-campaigns .cmp-drawer[aria-hidden="true"] .cmp-drawer-in { visibility: hidden; }
+
+.arc-app .arc-campaigns .cmp-card.openable { cursor: pointer; }
+/* A border and background step, NOT a lift. `.btn` is the one element that
+   levitates; ordinary cards do not (DESIGN.md §6, guarded by
+   no-levitation.test.ts). Lift-plus-shadow on every card is the generic SaaS
+   reflex the obsidian system exists to avoid, and "it looked flat without it" is
+   precisely the reason the guard says to refuse. */
+.arc-app .arc-campaigns .cmp-card { transition: border-color .16s var(--ease), background .16s var(--ease); }
+.arc-app .arc-campaigns .cmp-card.openable:hover { background: color-mix(in srgb, var(--accent) 3%, var(--panel)); }
+.arc-app .arc-campaigns .cmp-card.needsyou.openable:hover { background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft, #1a1a1e)); }
+
+.arc-app .arc-campaigns .cmp-card .dstrip { margin-top: 12px; padding-top: 13px; border-top: 1px solid var(--line); }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Assets arrive just behind one another, ~40ms apart. `--i` comes from the
+     element so the ladder holds for any number of assets — an nth-child list
+     silently stops staggering past whatever depth it was written to. */
+  .arc-app .arc-campaigns .cmp-card.open .dcard {
+    animation: cmpAsset .34s var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 40ms + 60ms);
+  }
+}
+@keyframes cmpAsset {
+  from { opacity: 0; transform: translateY(6px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+/* The stagger sits inside a no-preference query already; these do not, because
+   the layout values (0fr/1fr, the hover lift) have to apply either way — it is
+   only their TRANSITION that must not run. */
+@media (prefers-reduced-motion: reduce) {
+  .arc-app .arc-campaigns .cmp-drawer,
+  .arc-app .arc-campaigns .cmp-card,
+  .arc-app .arc-campaigns .dcard,
+  .arc-app .arc-campaigns .cmp-more svg { transition: none; }
+}
+.arc-app .arc-campaigns .dstrip { display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
+.arc-app .arc-campaigns .dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 7px; width: 100%; }
+.arc-app .arc-campaigns .dcard {
+  display: flex; align-items: center; gap: 9px; min-width: 0; width: 100%; padding: 7px 9px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--panel);
+  font-family: inherit; text-align: left; color: inherit;
+  transition: border-color .14s var(--ease), background .14s var(--ease), transform .14s var(--ease);
+}
+/* Undecided pieces are the work; settled ones are context for it. Only the
+   undecided ones are buttons — the rest have nothing to decide. */
+.arc-app .arc-campaigns .dcard.waiting { border-color: var(--accent-border); background: var(--inset); cursor: pointer; }
+.arc-app .arc-campaigns .dcard.waiting:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-raised, #23232a); }
+.arc-app .arc-campaigns .dcard.waiting:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arc-app .arc-campaigns .dcard.waiting:disabled { cursor: default; opacity: .6; }
+.arc-app .arc-campaigns .dcard:not(.waiting) { opacity: .72; }
+.arc-app .arc-campaigns .dthumb {
+  flex: none; width: 34px; height: 34px; border-radius: 7px; overflow: hidden; display: grid; place-items: center;
+  background: var(--canvas-deep, #101013); border: 1px solid var(--line-2); color: var(--muted);
+}
+.arc-app .arc-campaigns .dthumb img { width: 100%; height: 100%; object-fit: cover; }
+.arc-app .arc-campaigns .dthumb svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.arc-app .arc-campaigns .dmeta { min-width: 0; flex: 1; }
+.arc-app .arc-campaigns .dtitle { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-app .arc-campaigns .dkind { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+.arc-app .arc-campaigns .dcard .pill { flex: none; height: 20px; padding: 0 7px; font-size: 9.5px; }
+.arc-app .arc-campaigns .dreview { align-self: flex-start; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .arc-app .arc-campaigns .exprow .dstrip { animation: arcRise .32s var(--ease) both; }
+}
+
 /* Was one nowrap line capped at 210px, which cut most real descriptions mid-word
    ("Turn recent high-intent interest int…"). The phone breakpoint below already
    clamps to two lines; desktop had no reason to be stricter. Two lines are
@@ -908,8 +1085,6 @@
 
 @media (max-width: 900px) {
   .arc-app .arc-grid { padding: 18px 16px 0; }
-  .arc-app .arc-campaigns .dt td:nth-child(5),
-  .arc-app .arc-campaigns .dt th:nth-child(5) { display: none; }
 }
 
 /* ---- Phone: the data tables become stacked cards (BSR-662) ----------------
@@ -975,21 +1150,6 @@
   .arc-app .arc-grid .pnm,
   .arc-app .arc-grid .psub { max-width: none; white-space: normal; }
   .arc-app .arc-grid .psub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-
-  /* Campaigns, three lines:
-       [avatar  name                        ]
-       [Approve 2 assets        · Needs you ]
-       [New lead                    13d ago ]
-     The title owns its own line rather than splitting ~100px with the status
-     pill, and the second line pairs what to do with what state — the two things
-     a phone-sized glance is actually for. */
-  .arc-app .arc-campaigns .dt tbody td:nth-child(1) { order: 1; flex: 1 1 100%; min-width: 0; }
-  .arc-app .arc-campaigns .dt tbody td:nth-child(3) { order: 2; flex: 1 1 0; min-width: 0; }
-  .arc-app .arc-campaigns .dt tbody td:nth-child(2) { order: 3; margin-left: auto; }
-  .arc-app .arc-campaigns .dt tbody td:nth-child(4) { order: 5; }
-  .arc-app .arc-campaigns .dt tbody td:nth-child(6) { order: 6; margin-left: auto; }
-  .arc-app .arc-campaigns .dt tbody .nx { font-weight: 600; color: var(--text); }
-  .arc-app .arc-campaigns .dt td:nth-child(5) { display: none; }
 
   /* CRM: [✓ name ........ ›] / [persona · status · last activity · …] */
   .arc-app .arc-crm .dt tbody td.cselect { order: 1; width: auto; padding-left: 0; }
@@ -1078,7 +1238,7 @@
 .arc-app .arc-outbox .card .ccamp { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
 .arc-app .arc-outbox .card .cmeta { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 10.5px; color: var(--text-2); flex-wrap: wrap; }
 .arc-app .arc-outbox .card .caudience { margin-top: 7px; font-size: 10.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.arc-app .arc-outbox .card .caudience span { margin-right: 6px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.arc-app .arc-outbox .card .caudience span { margin-right: 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .arc-app .arc-outbox .card .cmeta .mi { display: inline-flex; align-items: center; gap: 4px; }
 .arc-app .arc-outbox .card .cnote { font-size: 10.5px; margin-top: 8px; padding: 6px 8px; border-radius: 7px; background: var(--inset); color: var(--text-2); line-height: 1.4; }
 .arc-app .arc-outbox .card .cnote.warn { background: var(--warn-soft); color: var(--warn-text); }
@@ -1094,7 +1254,7 @@
 .arc-app .arc-outbox .card .send-preview { border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px; }
 .arc-app .arc-outbox .card .send-preview dl { display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .arc-app .arc-outbox .card .send-preview dl div { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; font-size: 10.5px; line-height: 1.35; }
-.arc-app .arc-outbox .card .send-preview dt { color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.arc-app .arc-outbox .card .send-preview dt { color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .arc-app .arc-outbox .card .send-preview dd { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
 .arc-app .arc-outbox .card .send-preview .missing { color: var(--warn-text); }
 .arc-app .arc-outbox .card .send-preview p { margin: 9px 0 0; padding-top: 9px; border-top: 1px solid var(--line); color: var(--text-2); font-size: 10.5px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
@@ -1104,7 +1264,7 @@
 .arc-app .arc-outbox .card .caconfirm .ccbtns .caction { margin-top: 0; flex: 1; }
 .arc-app .arc-outbox .card button.cccancel { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line, #d8d4cb); background: transparent; color: var(--muted, #6b6b74); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; }
 .arc-app .arc-outbox .card button.cccancel:disabled { opacity: .55; cursor: default; }
-.arc-app .arc-outbox .ownb { font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; margin-left: auto; flex-shrink: 0; }
+.arc-app .arc-outbox .ownb { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; margin-left: auto; flex-shrink: 0; }
 .arc-app .arc-outbox .ownb.agent { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-app .arc-outbox .ownb.human { color: var(--blue-text); background: var(--blue-soft); border: 1px solid rgba(136, 182, 216, .4); }
 .arc-app .arc-outbox .ownb.system { color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
@@ -1227,16 +1387,23 @@
 .arc-app .arc-analytics .seg button:hover { color: var(--text-2); }
 .arc-app .arc-analytics .seg button.on { background: var(--panel); color: var(--text); }
 .arc-app .arc-analytics .legend { display: flex; gap: 13px; font-size: 11px; color: var(--text-2); }
+/* Analytics data is drawn NEUTRAL, not in the accent (BSR design audit, finding I).
+   The trend area, the funnel, the source bars and the per-campaign bars were all
+   gold, so §4.4's "gold = needs you" had nothing left to signal with — the one
+   thing on this screen that actually wants a decision (Arc's read, and its CTA)
+   was the same colour as five ordinary magnitudes. Data now uses --text-2 with
+   lightness variation; gold is reserved for the recommendation. Revenue-by-persona
+   keeps personaAccent(), which §4.4 requires and which means something. */
 .arc-app .arc-analytics .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .arc-app .arc-analytics .legend i { width: 14px; height: 3px; border-radius: 2px; }
-.arc-app .arc-analytics .legend i.cur { background: var(--accent); }
+.arc-app .arc-analytics .legend i.cur { background: var(--text-2); }
 .arc-app .arc-analytics .legend i.prev { height: 0; border-top: 2px dashed var(--muted); }
 .arc-app .arc-analytics .chart { padding: 14px 18px 10px; }
 .arc-app .arc-analytics .chart svg { display: block; width: 100%; height: auto; }
 .arc-app .arc-analytics .chart .grid { stroke: var(--line); stroke-width: 1; }
 .arc-app .arc-analytics .chart .axis { fill: var(--muted); font-family: var(--mono); font-size: 9px; }
 .arc-app .arc-analytics .chart .area { fill: url(#trendfill); }
-.arc-app .arc-analytics .chart .cur { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.arc-app .arc-analytics .chart .cur { fill: none; stroke: var(--text-2); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .arc-app .arc-analytics .chart .prev { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; opacity: .65; }
 @media (prefers-reduced-motion: no-preference) {
   .arc-app .arc-analytics .chart .cur { stroke-dasharray: 1600; stroke-dashoffset: 1600; animation: analyticsDraw 1.05s cubic-bezier(.16, 1, .3, 1) .1s forwards; }
@@ -1246,8 +1413,12 @@
 @keyframes analyticsFade { to { opacity: 1; } }
 
 /* Arc-read recommendation box + action buttons */
-.arc-app .arc-analytics .recbox { border: 1px dashed var(--warn-border); border-radius: 9px; background: var(--warn-soft); padding: 11px 12px; margin-bottom: 12px; }
-.arc-app .arc-analytics .recbox .rl { font-size: 9px; font-weight: 700; letter-spacing: .1em; color: var(--warn-text); text-transform: uppercase; margin-bottom: 5px; }
+/* No border: this sits inside .airead, which is already a bordered card, and
+   §4/§5 ban nesting one card in another. Dropping the border leaves a tinted
+   band rather than a card-in-a-card — the warn tint still carries the "needs
+   you" meaning §4.4 assigns it, which a plain hairline would have thrown away. */
+.arc-app .arc-analytics .recbox { border-radius: 9px; background: var(--warn-soft); padding: 11px 12px; margin-bottom: 12px; }
+.arc-app .arc-analytics .recbox .rl { font-size: 9px; font-weight: 600; letter-spacing: .1em; color: var(--warn-text); text-transform: uppercase; margin-bottom: 5px; }
 .arc-app .arc-analytics .recbox .rt { font-size: 12px; color: var(--text); line-height: 1.5; }
 .arc-app .arc-analytics .abtns { display: flex; gap: 8px; flex-wrap: wrap; }
 .arc-app .arc-analytics .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 33px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; transition: .15s; }
@@ -1265,7 +1436,11 @@
 .arc-app .arc-analytics .fstage { display: grid; grid-template-columns: 116px 1fr auto; gap: 12px; align-items: center; }
 .arc-app .arc-analytics .fstage .fl { font-size: 12px; color: var(--text-2); }
 .arc-app .arc-analytics .ftrack { height: 30px; border-radius: 8px; background: var(--inset); overflow: hidden; position: relative; }
-.arc-app .arc-analytics .ftrack i { display: block; height: 100%; border-radius: 8px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); min-width: 3px; }
+/* Solid, not a gradient. §4.4's "vary lightness, not hue" is about varying it
+   ACROSS stages; a fade inside a single bar adds a visual variable that encodes
+   nothing, and it made the long Leads bar look like it was trailing off. Width
+   already carries the magnitude, and this now matches the Leads-by-source bars. */
+.arc-app .arc-analytics .ftrack i { display: block; height: 100%; border-radius: 8px; background: var(--text-2); min-width: 3px; }
 .arc-app .arc-analytics .fstage .fv { font-family: var(--mono); font-size: 13px; color: var(--text); min-width: 92px; text-align: right; }
 .arc-app .arc-analytics .fstage .fv span { color: var(--muted); font-size: 10px; }
 
@@ -1306,7 +1481,7 @@
 .arc-app .arc-analytics .chhead span:not(:first-child) { text-align: right; }
 .arc-app .arc-analytics .chrow:last-child { border-bottom: 0; }
 .arc-app .arc-analytics .chname { position: relative; font-size: 12.5px; font-weight: 600; color: var(--text); padding-bottom: 7px; }
-.arc-app .arc-analytics .chbar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); border-radius: 2px; opacity: .55; }
+.arc-app .arc-analytics .chbar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--text-2); border-radius: 2px; opacity: .55; }
 .arc-app .arc-analytics .chnum { font-family: var(--mono); font-size: 12px; color: var(--text-2); text-align: right; }
 .arc-app .arc-analytics .chspend { color: var(--muted); }
 .arc-app .arc-analytics .chroas { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ok-text); text-align: right; }
@@ -1332,7 +1507,7 @@
 .arc-app .arc-analytics .airead { border: 1px solid var(--accent-border); border-radius: 13px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 42%, var(--panel)), var(--panel)); padding: 17px 19px; position: sticky; top: 0; }
 .arc-app .arc-analytics .airead .al { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
 .arc-app .arc-analytics .airead .am { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
-.arc-app .arc-analytics .airead .at { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--accent); text-transform: uppercase; }
+.arc-app .arc-analytics .airead .at { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--accent); text-transform: uppercase; }
 .arc-app .arc-analytics .airead p { font-size: 12.5px; color: var(--text-2); line-height: 1.6; margin: 0 0 11px; }
 .arc-app .arc-analytics .airead p b { color: var(--text); font-weight: 600; }
 .arc-app .arc-analytics .cited { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1340,7 +1515,7 @@
 .arc-app .arc-analytics .cit b { color: var(--accent-contrast); }
 
 /* activity feed */
-.arc-app .arc-analytics .aday { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 16px 2px 8px; }
+.arc-app .arc-analytics .aday { font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 16px 2px 8px; }
 .arc-app .arc-analytics .arow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 14px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); margin-bottom: 8px; }
 .arc-app .arc-analytics .arow .adot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .arc-app .arc-analytics .arow .atitle { font-size: 12.5px; font-weight: 600; color: var(--text); line-height: 1.3; }
@@ -1363,7 +1538,7 @@
 /* persona command header — title, stat cards, Arc-drafts banner (ported from build-personas.html) */
 .arc-app .arc-personas .phead { padding: 20px clamp(22px, 3vw, 38px) 0; flex-shrink: 0; }
 .arc-app .arc-personas .ph1row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-.arc-app .arc-personas h2.pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
+.arc-app .arc-personas h1.pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-personas .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; max-width: 60ch; white-space: normal; }
 .arc-app .arc-personas .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; }
 .arc-app .arc-personas .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
@@ -1407,7 +1582,7 @@
 .arc-app .arc-personas .pbody { flex: 1; min-height: 0; display: grid; grid-template-columns: 336px minmax(0, 1fr); overflow: hidden; }
 .arc-app .arc-personas .pbody.cmp { grid-template-columns: 1fr; }
 .arc-app .arc-personas .roster { border-right: 1px solid var(--line); min-width: 0; overflow: auto; padding: 6px 14px 30px; }
-.arc-app .arc-personas .seglabel { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 14px 6px 8px; }
+.arc-app .arc-personas .seglabel { font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 14px 6px 8px; }
 .arc-app .arc-personas .prow { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); margin-bottom: 9px; cursor: pointer; transition: border-color .15s, transform .15s var(--ease); width: 100%; text-align: left; font-family: inherit; }
 .arc-app .arc-personas .prow:hover { border-color: var(--accent-border); }
 .arc-app .arc-personas .prow.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft), 0 16px 40px -30px rgba(0, 0, 0, .9); }
@@ -1439,7 +1614,7 @@
 .arc-app .arc-personas .dconf .ct { display: flex; align-items: center; gap: 7px; justify-content: flex-end; margin-top: 8px; }
 .arc-app .arc-personas .dconf .ctl { font-size: 9.5px; color: var(--muted); }
 .arc-app .arc-personas .sparkwrap svg { display: block; }
-.arc-app .arc-personas .sh { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 0 0 12px; }
+.arc-app .arc-personas .sh { font-size: 10px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 0 0 12px; }
 .arc-app .arc-personas .sec { margin-top: 24px; }
 /* Signals radar + Performance duo (ported from build-personas.html) */
 .arc-app .arc-personas .dduo { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 14px; align-items: stretch; }
@@ -1506,6 +1681,9 @@
 .arc-app .arc-brain.graph { display: flex; flex-direction: column; overflow: hidden; }
 .arc-app .arc-brain .bhead { padding: 18px clamp(22px, 3vw, 38px) 0; flex-shrink: 0; }
 .arc-app .arc-brain .bh1row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+/* Library's page title had no size rule at all — it rendered at body size while
+   every other route's .pt is 27px. Pre-existing, found while promoting these to h1. */
+.arc-app .arc-library .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-brain .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-brain .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 .arc-app .arc-brain .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; }
@@ -1530,7 +1708,7 @@
 .arc-app .arc-brain .scroll { padding: 22px clamp(22px, 3vw, 38px) 44px; }
 .arc-app .arc-brain.graph .scroll { height: 100%; overflow: auto; }
 .arc-app .arc-brain .inner { max-width: 1080px; }
-.arc-app .arc-brain .sh { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
+.arc-app .arc-brain .sh { font-size: 10px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
 .arc-app .arc-brain .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); text-transform: none; letter-spacing: 0; }
 .arc-app .arc-brain .lead { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; line-height: 1.6; }
 .arc-app .arc-brain .lead b { color: var(--text-2); }
@@ -1664,14 +1842,14 @@
 .arc-app .arc-brain .inempty { color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 .arc-app .arc-brain .inh { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 11px; border-radius: 7px; background: var(--inset); border: 1px solid var(--line-2); }
 .arc-app .arc-brain .inh .ik { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.arc-app .arc-brain .inh .ikl { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.arc-app .arc-brain .inh .ikl { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
 .arc-app .arc-brain .innm { font-family: var(--serif); font-weight: 500; font-size: 18px; letter-spacing: -.01em; margin: 10px 0 6px; line-height: 1.2; color: var(--text); }
 .arc-app .arc-brain .insum { font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
 .arc-app .arc-brain .inrow { display: flex; align-items: center; gap: 9px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .arc-app .arc-brain .inrow:first-of-type { border-top: 1px solid var(--line); margin-top: 14px; }
 .arc-app .arc-brain .inrow .il { color: var(--muted); width: 96px; flex-shrink: 0; }
 .arc-app .arc-brain .inrow .iv { color: var(--text); font-weight: 500; display: flex; align-items: center; gap: 7px; }
-.arc-app .arc-brain .insec { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 20px 0 10px; }
+.arc-app .arc-brain .insec { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 20px 0 10px; }
 .arc-app .arc-brain .conn { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); margin-bottom: 7px; cursor: pointer; transition: border-color .14s; width: 100%; text-align: left; font: inherit; }
 .arc-app .arc-brain .conn:hover { border-color: var(--accent-border); }
 .arc-app .arc-brain .conn .cd { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -1906,7 +2084,7 @@
    viewport query never fired because 1280 > 1080. A container query asks the
    question the layout actually depends on. */
 @container oppdetail (max-width: 760px) { .arc-app .arc-opps .dgrid { grid-template-columns: minmax(0, 1fr); gap: 22px; } }
-.arc-app .arc-opps .lab { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--muted); text-transform: uppercase; margin-bottom: 11px; }
+.arc-app .arc-opps .lab { font-size: 10px; font-weight: 600; letter-spacing: .13em; color: var(--muted); text-transform: uppercase; margin-bottom: 11px; }
 .arc-app .arc-opps .summary { font-size: 13.5px; color: var(--text-2); line-height: 1.6; margin: 0 0 4px; max-width: 68ch; }
 .arc-app .arc-opps .blk { margin-top: 26px; }
 /* Evidence reads as a fact table: hairline rows, label left, value right. It was
@@ -1921,7 +2099,7 @@
 .arc-app .arc-opps .evitem dd { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
 @media (max-width: 620px) { .arc-app .arc-opps .evitem { grid-template-columns: minmax(0, 1fr); gap: 3px; } }
 .arc-app .arc-opps .recpanel { border: 1px solid var(--line-2); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent); padding: 18px 20px; }
-.arc-app .arc-opps .recpanel .rl { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--accent); text-transform: uppercase; }
+.arc-app .arc-opps .recpanel .rl { font-size: 10px; font-weight: 600; letter-spacing: .13em; color: var(--accent); text-transform: uppercase; }
 .arc-app .arc-opps .recpanel .rtxt { font-size: 13.5px; color: var(--text); line-height: 1.6; margin-top: 9px; }
 .arc-app .arc-opps .recpanel .sub { font-size: 11px; color: var(--muted); margin: 16px 0 8px; }
 .arc-app .arc-opps .types { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1939,13 +2117,18 @@
    — same specificity, so source order is what decides it. */
 @container oppdetail (max-width: 760px) { .arc-app .arc-opps .side { position: static; } }
 .arc-app .arc-opps .card { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 16px; }
-.arc-app .arc-opps .card .cl { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+.arc-app .arc-opps .card .cl { font-size: 10px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
 .arc-app .arc-opps .bignum { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -.02em; color: var(--accent-contrast); line-height: 1; }
 .arc-app .arc-opps .ctrack { height: 6px; border-radius: 99px; background: var(--inset); overflow: hidden; margin: 12px 0 6px; }
 .arc-app .arc-opps .cfill { height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); transition: width .8s var(--ease); }
 .arc-app .arc-opps .cnote { font-size: 11px; color: var(--muted); }
 .arc-app .arc-opps .audrow { display: flex; align-items: baseline; gap: 8px; }
-.arc-app .arc-opps .audrow .ac { font-family: var(--serif); font-weight: 500; font-size: 24px; color: var(--text); letter-spacing: -.02em; }
+/* 15px, not 24px. §3 sanctions serif for a persona name, but at page-title
+   scale it made one field outweigh the recommendation this screen exists to
+   deliver — and it retroactively turned the card's ordinary "Who it targets"
+   label into an eyebrow above a title, which §3 bans. The label is fine; the
+   value was the problem. */
+.arc-app .arc-opps .audrow .ac { font-family: var(--serif); font-weight: 500; font-size: 15px; color: var(--text); letter-spacing: -.01em; }
 .arc-app .arc-opps .audrow a.ac { text-decoration: none; cursor: pointer; transition: color 0.14s var(--ease); }
 .arc-app .arc-opps .audrow a.ac:hover { color: var(--accent-contrast); }
 .arc-app .arc-opps .audrow .ap { font-size: 12px; color: var(--text-2); }
@@ -1959,6 +2142,19 @@
 .arc-app .arc-opps .tlstep.done::before { background: var(--accent); }
 .arc-app .arc-opps .tlstep .ts { font-size: 12px; font-weight: 500; }
 .arc-app .arc-opps .tlstep .tr { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+/* The folded "Who signs off" card. The summary carries the label and the one
+   line that matters; the chain itself opens on demand. Marker removed and
+   replaced with a rotating chevron so the affordance matches the rest of the
+   app rather than inheriting the browser triangle. */
+.arc-app .arc-opps .signoff { padding: 0; }
+.arc-app .arc-opps .signoff > summary { list-style: none; cursor: pointer; padding: 16px; display: flex; flex-direction: column; gap: 10px; border-radius: 12px; }
+.arc-app .arc-opps .signoff > summary::-webkit-details-marker { display: none; }
+.arc-app .arc-opps .signoff > summary .cl { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0; }
+.arc-app .arc-opps .signoff > summary .cl::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg) translate(-2px, -2px); transition: transform 0.16s var(--ease); }
+.arc-app .arc-opps .signoff[open] > summary .cl::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.arc-app .arc-opps .signoff > summary:focus-visible { outline: 2px solid var(--accent-border); outline-offset: -2px; }
+.arc-app .arc-opps .signoff > summary .locknote { margin-top: 0; }
+.arc-app .arc-opps .signoff .tl { padding: 0 16px 16px; }
 .arc-app .arc-opps .locknote { margin-top: 12px; font-size: 10.5px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
 .arc-app .arc-opps .locknote i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 .arc-app .arc-opps .opp-notice { margin-top: 14px; font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 8px; border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 9px; padding: 9px 12px; }
@@ -2162,7 +2358,7 @@
    scope defines local fallbacks; --ok/--warn/--accent are inherited.
    ============================================================================ */
 .arc-app .journeys { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px clamp(16px, 3vw, 30px) 48px; --jr-blue: #88b6d8; --jr-blue-soft: rgba(136, 182, 216, 0.14); }
-.arc-app .journeys .jr-head h2 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 10px; }
+.arc-app .journeys .jr-head h1 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 10px; }
 .arc-app .journeys h2 { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 /* Sits INSIDE an <h2>, and h1/h2/h3 are globally Fraunces — so omitting the
    family here did not mean "default", it meant the display serif at 11.5px.
@@ -2225,7 +2421,7 @@
 .arc-app .journeys .jr-who { display: flex; align-items: center; gap: 9px; min-width: 0; overflow: hidden; }
 .arc-app .journeys .jr-who b { flex-shrink: 0; max-width: 190px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-app .journeys .jr-persona { flex: 0 1 auto; min-width: 0; font-size: 10px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--panel); border-radius: 5px; padding: 1px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-app .journeys .jr-res { flex: 0 0 auto; font-size: 8.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+.arc-app .journeys .jr-res { flex: 0 0 auto; font-size: 8.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
 .arc-app .journeys .jr-res.anonymous { color: var(--jr-blue); background: var(--jr-blue-soft); }
 .arc-app .journeys .jr-res.stitched { color: var(--accent); background: var(--accent-soft); }
 .arc-app .journeys .jr-track { display: inline-flex; gap: 3px; }

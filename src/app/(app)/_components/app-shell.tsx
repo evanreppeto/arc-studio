@@ -148,6 +148,8 @@ function badgeLabel(href: string, count: number): string {
 }
 
 export function AppShell({
+  workspaceId = null,
+  orgSlug = null,
   workspaceName,
   orgName,
   workspaceSubtitle,
@@ -166,6 +168,26 @@ export function AppShell({
   demoData = false,
   children,
 }: {
+  /**
+   * Which tenant this render actually belongs to, stamped onto the shell root as
+   * `data-workspace-id` / `data-org-slug`.
+   *
+   * Display identity cannot answer that question. Prod holds two organizations
+   * whose workspaces are BOTH named "Big Shoulders Restoration" — the rail, the
+   * page chrome and a screenshot are byte-identical between them, so the wrong
+   * tenant looks exactly like the right one. That is not hypothetical: the
+   * deployed guardrail signed into the drained org for days and reported "the
+   * Opportunity inbox is empty" rather than "this is the wrong workspace"
+   * (BSR-708 was the same mix-up in the nightly smoke).
+   *
+   * The ids are the only thing that distinguishes them, so they belong in the
+   * DOM: it lets an e2e check assert the tenant of the very page it is asserting
+   * about, and it gives a human something to read when two screenshots disagree.
+   * Nothing is exposed — the viewer is an authenticated member of this workspace
+   * and these are the ids of their own tenant.
+   */
+  workspaceId?: string | null;
+  orgSlug?: string | null;
   workspaceName: string;
   orgName: string;
   /** Resolved rail identity — see resolveWorkspaceIdentity in @/domain. */
@@ -301,7 +323,12 @@ export function AppShell({
           keyboard user tabs through the whole rail on every page before
           reaching content. */}
       <a className="skip-link" href="#main-content">Skip to content</a>
-      <div className="app" data-nav-open={navOpen}>
+      <div
+        className="app"
+        data-nav-open={navOpen}
+        data-workspace-id={workspaceId ?? undefined}
+        data-org-slug={orgSlug ?? undefined}
+      >
         {/* Backdrop behind the mobile drawer — tap to dismiss. Inert on desktop
             (the rail is docked, so this never covers content there). */}
         <button
@@ -409,7 +436,12 @@ export function AppShell({
             ))}
             <section className="rail-recents" aria-labelledby="rail-recents-title">
               <div className="rail-recents-head">
-                <h2 id="rail-recents-title">Recent chats</h2>
+                {/* A div, not an h2. As a heading this opened the document
+                    outline on EVERY route — a sidebar label announced before the
+                    page's own h1 — so "jump to the first heading" landed in the
+                    chat list. `aria-labelledby` on the section still names the
+                    region, so nothing is lost to a screen reader. */}
+                <div id="rail-recents-title" className="rail-recents-title">Recent chats</div>
                 <Link
                   href="/arc?new=1"
                   className="rail-recents-new"
@@ -473,7 +505,13 @@ export function AppShell({
             >
               <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
             </button>
-            <h1 className="crumb">{crumb}</h1>
+            {/* A div, not an h1. This small top-bar label was the document's only h1 on
+                every route, while the page's real title sat below it as an h2 —
+                so /campaigns announced "Campaigns" twice and the visible
+                hierarchy disagreed with the semantic one. Each route now owns
+                its own h1. Tailwind preflight already zeroes heading margins,
+                so nothing moves. */}
+            <div className="crumb">{crumb}</div>
             <button
               type="button"
               className="search"

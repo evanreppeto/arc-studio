@@ -80,6 +80,95 @@ describe("stage toolbar", () => {
     // it stopped wrapping; the strip has to own its overflow.
     expect(rule(".strip")).toMatch(/overflow-x:\s*auto/);
   });
+
+  /**
+   * The row fits now, and has to keep fitting. Not wrapping was the right call;
+   * thirteen labelled controls was the wrong number. Even compacted they needed
+   * 1455px of row inside the 636px stage a 1440×900 window leaves — Edit and
+   * half of Generate lived off the right edge, and `scrollbar-width: none` meant
+   * nothing on screen admitted it. The eight AI tools moved to the Arc pane,
+   * where they belong: every one of them only ever typed into its composer.
+   *
+   * Counting source entries is the only measurement available here (no jsdom, so
+   * no layout), but it is the number that actually regressed.
+   */
+  it("keeps the stage toolbar down to controls that fit without scrolling", () => {
+    const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+    const toolsBlock = view.match(/const TOOLS = \{[\s\S]*?\n\} as const;/)?.[0] ?? "";
+    expect(toolsBlock).not.toBe("");
+    // Each entry is one pill on the row.
+    expect(toolsBlock.match(/\{ t: "/g) ?? []).toHaveLength(5);
+    // The AI tools live in the Arc pane, and seed the composer rather than
+    // claiming to act on the canvas.
+    expect(toolsBlock).not.toMatch(/ask:/);
+    expect(toolsBlock).not.toMatch(/target: "arc"/);
+    expect(view).toMatch(/const ARC_ACTIONS = \[/);
+  });
+});
+
+/**
+ * The composer asks for the request, not for a stance on it.
+ *
+ * Ask / Act / Draft was three buttons that set one word in the message preamble.
+ * `sendArcMessageAction` was never passed a mode from Studio at all, so every
+ * message ran as `act` whichever button was lit — the control was decoration on
+ * a decision the backend had already made. The capability is inferred from what
+ * the operator wrote (resolveArcComposerMode, shared with the main chat
+ * composer) and actually sent.
+ */
+describe("Arc composer", () => {
+  const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+
+  it("has no Ask/Act/Draft picker", () => {
+    expect(view).not.toMatch(/setCmode|MODE_HINT|className="modes"/);
+    expect(CSS).not.toMatch(/\.arc-studio \.modehint\s*\{/);
+  });
+
+  it("infers the mode from the request and sends it", () => {
+    expect(view).toMatch(/mode: resolveArcComposerMode\(\{ request: text \}\)/);
+  });
+
+  it("renders what Arc made, not just what Arc said", () => {
+    // The pane's empty state promised the render would appear. ArcThreadMessage
+    // carried body + role only, so it never did.
+    expect(view).toMatch(/m\.media\.map/);
+    expect(CSS).toMatch(/\.arc-studio \.arcshot\s*\{/);
+  });
+
+  /**
+   * Arc could make a new asset but not touch the creative in front of you: the
+   * answer to "rewrite this punchier" was words to retype by hand, and a
+   * generated photo could only be looked at, never composed on.
+   */
+  it("can put Arc's words into the canvas fields", () => {
+    expect(view).toMatch(/extractCanvasCopy\(body\)/);
+    expect(view).toMatch(/onClick=\{\(\) => applyCopy\(s\)\}/);
+  });
+
+  /**
+   * The double-bake guard, and the reason `source` is carried through at all. A
+   * `composite` already has the logo and headline in its pixels; making it the
+   * background would composite the operator's copy on top of Arc's. Only a
+   * generated scene may be adopted — generation strips text by design.
+   */
+  it("only offers a generated scene as the background, never a composite", () => {
+    expect(view).toMatch(/md\.source === "ai_generated"/);
+    const fn = view.match(/const applyArcMediaAsBackground[\s\S]*?\n  \};/)?.[0] ?? "";
+    expect(fn).toMatch(/media\.source !== "ai_generated"/);
+    expect(fn).toMatch(/return;/);
+  });
+
+  /**
+   * The pane's own copy asks have to produce output the parse can read. The
+   * extractor is label-driven and fails closed, so an unlabelled reply yields
+   * nothing — which would make the most common copy request the one case the
+   * Apply control never fires on.
+   */
+  it("asks for labelled copy in the quick asks that request copy", () => {
+    const actions = view.match(/const ARC_ACTIONS = \[[\s\S]*?\n\] as const;/)?.[0] ?? "";
+    expect(actions).toMatch(/id: "headlines"[^\n]*Headline:/);
+    expect(actions).toMatch(/id: "shorter"[^\n]*Headline:/);
+  });
 });
 
 /**
@@ -141,5 +230,46 @@ describe("arStyle", () => {
     for (const bad of ["", "auto", "16 / 0", "16/x"]) {
       expect((arStyle(bad) as Record<string, unknown>)["--ar-num"]).toBe(1);
     }
+  });
+});
+
+/**
+ * The Design pane's controls are real buttons.
+ *
+ * A live audit of prod (2026-08-05) hit-tested every element in the pane and
+ * found the opposite: the accent swatches, the three template tiles, and every
+ * `.exrow` — including **Generate creative**, the primary action on the
+ * screen — were `<div>`/`<span>` with an `onClick`. `tabIndex: -1`, no role, and
+ * in the swatches' case no accessible name at all: a colour with nothing to read.
+ * Keyboard and screen-reader users could not change the accent, the template, or
+ * generate anything.
+ *
+ * Source assertions because the repo has no jsdom. They catch the regression that
+ * actually happened — someone reaching for a `<div>` because it is one line
+ * shorter — which is how these got that way.
+ */
+describe("Design pane controls are focusable and named", () => {
+  const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+
+  it("uses buttons for the action rows, not clickable divs", () => {
+    expect(view).not.toMatch(/<div className="exrow/);
+    expect(view).toMatch(/<button[\s\S]{0,80}className="exrow gold"/);
+  });
+
+  it("gives every accent swatch a name — a colour has no text to announce", () => {
+    const swatches = view.match(/className=\{`sw\$\{[\s\S]*?\/>/)?.[0] ?? "";
+    expect(swatches).toMatch(/aria-label=/);
+    expect(swatches).toMatch(/aria-pressed=/);
+  });
+
+  it("makes the template tiles buttons that report which is chosen", () => {
+    const tmpl = view.match(/className=\{`tmplc\$\{[^}]*\}`\}[^>]*/)?.[0] ?? "";
+    expect(view).toMatch(/<button type="button" key=\{tm\.id\}/);
+    expect(tmpl).toMatch(/aria-pressed=/);
+  });
+
+  /** The gate reason was a hover-only toast; a disabled button has to say why. */
+  it("puts the generate gate reason on the button, not only in a toast", () => {
+    expect(view).toMatch(/title=\{genGate \?\? undefined\}/);
   });
 });

@@ -111,10 +111,22 @@ export function ExternalSendModal({
             </div>
 
             <div className="exsec">
+              <p className="exhint">
+                The body carries your postal address and an unsubscribe link, as the law requires.
+                Map <code>{pkg.unsubscribeMergeToken}</code> to the CSV&apos;s <code>unsubscribe_url</code>{" "}
+                column in your tool so each recipient gets their own working link.
+              </p>
+            </div>
+
+            <div className="exsec">
               <div className="exlabel">
                 <span>
                   Audience — {pkg.recipients.length} recipient(s)
-                  {pkg.suppressedCount > 0 ? ` · ${pkg.suppressedCount} suppressed (do-not-contact, missing or duplicate address)` : ""}
+                  {pkg.suppressedCount > 0
+                    ? ` · ${pkg.suppressedCount} left out${
+                        pkg.unsubscribedCount > 0 ? `, ${pkg.unsubscribedCount} of them unsubscribed or bounced` : ""
+                      }`
+                    : ""}
                 </span>
                 <span className="exactions">
                   <button type="button" className="cbtn ghost" onClick={() => copy("csv", pkg.audienceCsv)}>

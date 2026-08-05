@@ -340,7 +340,7 @@ export function BrainView({
       <div className="bhead">
         <div className="bh1row">
           <div>
-            <h2 className="pt">Brain</h2>
+            <h1 className="pt">Brain</h1>
             <div className="psub">Arc&rsquo;s memory — everything it knows about your business, and how it&rsquo;s connected.</div>
           </div>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>

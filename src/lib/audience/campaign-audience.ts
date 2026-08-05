@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type AudienceResolution, type Contact, ContactSchema, resolveCampaignAudience } from "@/domain";
 
+import { loadSuppressedAddresses } from "@/lib/email-suppression/persistence";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
 
 const CANDIDATE_CAP = 10_000;
@@ -119,10 +120,17 @@ export async function getCampaignAudiencePreview(
       if (parsed.success) contacts.push(parsed.data);
     }
 
+    // The preview must agree with what a send would actually do. Before BSR-482
+    // it did not: unsubscribed contacts appeared here as reachable recipients,
+    // and an operator sizing an audience was reading a number the send gate
+    // would then quietly reduce.
+    const suppressedAddresses = await loadSuppressedAddresses(orgId, client);
+
     return resolveCampaignAudience(
       { persona: campaign.persona, contactId: campaign.contact_id, companyId: campaign.company_id, manualContactIds },
       contacts,
       "email",
+      { suppressedAddresses },
     );
   } catch {
     return null;

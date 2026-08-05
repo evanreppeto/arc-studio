@@ -72,8 +72,11 @@ function TrendChart({ metric, series, labels }: { metric: TrendKey; series: Tren
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${metric} trend, last ${n} days vs previous period`}>
       <defs>
         <linearGradient id="trendfill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+          {/* Neutral, matching the .cur stroke. This fill was the single largest
+              gold region on the screen, which is what drained the accent of its
+              "needs you" meaning (§4.4). */}
+          <stop offset="0%" stopColor="var(--text-2)" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="var(--text-2)" stopOpacity="0" />
         </linearGradient>
       </defs>
       {gridLines.map((g) => {
@@ -385,7 +388,7 @@ export function AnalyticsView({
             <>
               <div className="vhead">
                 <div>
-                  <h2 className="pt">Performance overview</h2>
+                  <h1 className="pt">Performance overview</h1>
                   <div className="psub">
                     {overview.dataError
                       ? `Last ${range} days`
@@ -503,14 +506,14 @@ export function AnalyticsView({
 
           {view === "personas" && (
             <>
-              <div className="vhead"><div><h2 className="pt">By persona</h2><div className="psub">Revenue per persona this period</div></div></div>
+              <div className="vhead"><div><h1 className="pt">By persona</h1><div className="psub">Revenue per persona this period</div></div></div>
               <div className="blk"><h2>Revenue by persona</h2><Breakdown rows={overview.revenueByPersona} /></div>
             </>
           )}
 
           {view === "channels" && (
             <>
-              <div className="vhead"><div><h2 className="pt">By channel</h2><div className="psub">Leads, booked work, revenue, spend, and ROAS per channel · attributed from CRM outcomes</div></div></div>
+              <div className="vhead"><div><h1 className="pt">By channel</h1><div className="psub">Leads, booked work, revenue, spend, and ROAS per channel · attributed from CRM outcomes</div></div></div>
               <div className="blk"><h2>Channel performance</h2><ChannelTable rows={channels} /></div>
               <div className="blk" style={{ marginTop: 18 }}><h2>Leads by source</h2><Breakdown rows={overview.leadsBySource} /></div>
             </>
@@ -518,7 +521,7 @@ export function AnalyticsView({
 
           {view === "activity" && (
             <>
-              <div className="vhead"><div><h2 className="pt">Activity</h2><div className="psub">The full audit trail — every Arc action, approval, and signal, merged from your workspace.</div></div></div>
+              <div className="vhead"><div><h1 className="pt">Activity</h1><div className="psub">The full audit trail — every Arc action, approval, and signal, merged from your workspace.</div></div></div>
               <KpiStrip items={activitySummary.map((s) => ({ label: s.label, value: String(s.value) }))} />
               {activityDays.length === 0 ? (
                 <div className="blk"><div className="psub">No activity recorded yet. Arc logs its actions here as it works.</div></div>

@@ -123,6 +123,8 @@ export * from "./signup-attribution";
 // Pre-flight for arming ARC_BILLING_ENFORCEMENT (BSR-621).
 export * from "./billing-enforcement-preflight";
 export * from "./email-compliance";
+// The address-keyed half of compliance: who must NOT be mailed, and why (BSR-482).
+export * from "./email-suppression";
 export * from "./lead-fit";
 export * from "./arc-eval";
 export * from "./brain-dedup";
@@ -139,6 +141,14 @@ export * from "./vocabulary";
 export * from "./identifier-leak";
 export * from "./arc-prose";
 export * from "./inline-fix";
+
+// When an in-flight reply has actually died, so the bubble stops claiming work
+// is happening. Read-side only — nothing here rewrites persisted state.
+export * from "./arc-stalled-run";
+
+// Searching message bodies, and the one definition of "flatten markdown for a
+// narrow rail" shared with the thread preview.
+export * from "./arc-message-search";
 
 // One colour per persona, everywhere (BSR-661). Import personaAccent rather
 // than re-deriving a hue from a regex ladder.
@@ -159,3 +169,15 @@ export * from "./tool-payload";
 
 // How long a message keeps its payload (BSR-741).
 export * from "./metadata-retention";
+
+// Splitting a stored draft body into its lead-in fields and its copy, so the
+// chat can render the deliverable instead of linking to it.
+export * from "./arc-draft-content";
+
+// What kind of thing a deliverable is, so a surface renders it as that medium
+// rather than as a uniform box.
+export * from "./arc-deliverable-medium";
+
+// Whether a draft was actually checked. "No checks recorded" is not "checks
+// passed", and the chat used to render both as nothing.
+export * from "./arc-draft-checks";
