@@ -11,9 +11,10 @@ import { type ReactNode, useEffect, useState } from "react";
 import { ArrowRight, ArrowUpRight, Bookmark, Brain, Check, CircleAlert, ClipboardCheck, Copy, CornerUpLeft, Database, Link2, MessageSquareText, PanelRightOpen, PencilLine, RefreshCcw, RotateCcw, ShieldCheck, Target, X, Zap } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
-import { WORK_STATE_LABEL } from "@/domain";
-import type { ArcActionCard, ArcAssetStatus, ArcDraftFinding, ArcMention, ArcMode, ArcRecall, ArcRoute } from "@/domain";
+import { arcStalledMessage, WORK_STATE_LABEL } from "@/domain";
+import type { ArcActionCard, ArcAssetStatus, ArcDraftFinding, ArcMention, ArcMode, ArcRecall, ArcRoute, ArcStalledReason } from "@/domain";
 import type { ArcMessage, ArcStep } from "@/lib/arc-chat/persistence";
+import { hasArcReplyInFlight, isArcReplyInFlight } from "@/lib/arc-chat/view-state";
 import { buildArcLauncherRecommendation } from "@/lib/arc-chat/launcher-state";
 import { buildArcOutcomeView, type ArcOutcomeBadge } from "@/lib/arc-chat/outcome-view";
 import { buildArcRunContract, type ArcRunContract } from "@/lib/arc-chat/run-contract";
@@ -233,6 +234,31 @@ function packageMenuItems({
   ];
 }
 
+/**
+ * What a turn shows once its run has died.
+ *
+ * The failure this replaces was a spinner that never stopped — and because the
+ * row genuinely stayed `pending`, reloading the page brought it right back. So
+ * the bar here is not "show an error", it's: say plainly that Arc stopped, keep
+ * whatever partial work did land, promise nothing went out, and put the way
+ * forward one click away. `onRetry` re-runs the original question through the
+ * same path Regenerate uses, so there is no second code path to keep honest.
+ */
+function StalledReply({ reason, onRetry }: { reason: ArcStalledReason; onRetry?: () => void }) {
+  return (
+    <div className="arc-stalled-reply" role="status">
+      <CircleAlert size={15} aria-hidden />
+      <p>{arcStalledMessage(reason)}</p>
+      {onRetry ? (
+        <button type="button" onClick={onRetry}>
+          <RotateCcw size={13} aria-hidden />
+          Try again
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ReviewableWork({ children }: { children: ReactNode }) {
   return (
     <section className="arc-response-output" aria-label="Reviewable work">
@@ -410,8 +436,10 @@ export function LiveConversation({
     return <ArcLauncher greetName={operatorName} waiting={waiting} onPick={onSuggestion} />;
   }
 
-  // While a reply is in flight, hide edit/regenerate — the turn is already running.
-  const awaitingReply = Boolean(optimisticTurn) || messages.some((message) => message.status === "pending" || (message.role === "arc" && !message.body.trim()));
+  // While a reply is in flight, hide edit/regenerate — the turn is already
+  // running. A stalled run is explicitly not in flight, so those come back:
+  // recovering from a dead turn is exactly when you need them.
+  const awaitingReply = Boolean(optimisticTurn) || hasArcReplyInFlight(messages);
   const lastIndex = messages.length - 1;
 
   const arcMenuItems = (message: ArcMessage, index: number): MessageMenuItem[] => {
@@ -441,7 +469,8 @@ export function LiveConversation({
     <>
       {messages.map((message, index) => {
         if (message.role === "operator") return <OperatorMessage key={message.id} body={message.body} timeIso={message.createdAt} attachments={message.attachments} onEdit={awaitingReply ? undefined : (newBody) => onEdit(message.id, newBody)} onContextMenu={(event, helpers) => openMenu(event, operatorMenuItems(message, helpers.startEdit))} />;
-        const pending = message.status === "pending" || (message.role === "arc" && !message.body.trim());
+        const pending = isArcReplyInFlight(message);
+        const stalled = Boolean(message.stalled);
         const operatorMessage = operatorMessageBefore(messages, index);
         // Runner-measured wall-clock. Message rows are inserted before the run,
         // so subtracting their created_at values reported 0s for real work.
@@ -465,14 +494,22 @@ export function LiveConversation({
           recallCount: message.recall?.length ?? 0,
           actions: message.actions,
         });
-        const failed = message.status === "failed";
+        // A stalled run has no verdict of its own to report — it never finished.
+        // Read it as failed so the receipt shows what did land before it died.
+        const failed = message.status === "failed" || stalled;
         return (
           <AssistantMessage key={message.id} timeIso={message.createdAt} active={pending} onContextMenu={pending ? undefined : (event) => openMenu(event, arcMenuItems(message, index))}>
-            <RunTrace pending={pending} responding={pending && Boolean(message.body.trim())} reasoning={message.reasoning} steps={message.steps} toolCalls={message.toolCalls} contract={contract} thoughtSeconds={thoughtSeconds} startedAtIso={message.createdAt} answerText={message.body} onStop={pending && message.agentTaskId ? () => onCancelRun(message.agentTaskId as string, message.conversationId) : undefined} stopping={stoppingTaskId === message.agentTaskId} outcome={message.status === "failed" ? (message.body.startsWith("Stopped by you") ? "canceled" : "failed") : "complete"} />
+            <RunTrace pending={pending} responding={pending && Boolean(message.body.trim())} reasoning={message.reasoning} steps={message.steps} toolCalls={message.toolCalls} contract={contract} thoughtSeconds={thoughtSeconds} startedAtIso={message.createdAt} answerText={message.body} onStop={pending && message.agentTaskId ? () => onCancelRun(message.agentTaskId as string, message.conversationId) : undefined} stopping={stoppingTaskId === message.agentTaskId} outcome={failed ? (message.body.startsWith("Stopped by you") ? "canceled" : "failed") : "complete"} />
             {/* One container across the whole lifecycle: `message.body` is the
                 partial reply while pending and the final reply once settled, so
                 completion patches this node instead of replacing it. */}
             <ArcAnswer text={message.body} streaming={pending} />
+            {stalled ? (
+              <StalledReply
+                reason={message.stalledReason ?? "timed_out"}
+                onRetry={awaitingReply ? undefined : () => onRegenerate(message.id)}
+              />
+            ) : null}
             {!pending ? (
               <ResponseMeta
                 outcome={failed ? null : outcomeView}
@@ -520,7 +557,9 @@ export function LiveConversation({
               );
             })() : null}
             {!pending && message.suggestions.length ? <div className="arc-suggestions">{message.suggestions.map((suggestion, index) => <button type="button" key={`${suggestion}-${index}`} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div> : null}
-            {!pending ? <MessageActions message={message} onRegenerate={!awaitingReply && index === lastIndex ? () => onRegenerate(message.id) : undefined} /> : null}
+            {/* No copy/rate row on a stalled turn: there is no answer to copy or
+                rate, and StalledReply already carries the one action worth taking. */}
+            {!pending && !stalled ? <MessageActions message={message} onRegenerate={!awaitingReply && index === lastIndex ? () => onRegenerate(message.id) : undefined} /> : null}
           </AssistantMessage>
         );
       })}

@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { type ArcActionCard, type ArcMedia, type ArcMention, type ArcMode, type ArcQuestion, type ArcRecall, type ArcRoute, type ArcStepKind, parseActions, parseMedia, parseMentions, parseQuestions, parseRecall } from "@/domain";
+import { type ArcActionCard, type ArcMedia, type ArcMention, type ArcMode, type ArcQuestion, type ArcRecall, type ArcRoute, type ArcRunTaskState, type ArcStalledReason, type ArcStepKind, parseActions, parseMedia, parseMentions, parseQuestions, parseRecall } from "@/domain";
 import { type ArcSkillId } from "@/lib/arc-skills/catalog";
 
 import { getSupabaseAdminClient } from "../supabase/server";
@@ -91,6 +91,14 @@ export type ArcMessage = {
    * completion so the receipt does not infer duration from two insert times. */
   runDurationMs?: number | null;
   createdAt: string;
+  /**
+   * DERIVED, not persisted: this reply is still `pending` but its run is gone
+   * (see `decideArcRunStalled`). Set by the read model, never stored — the row
+   * keeps its real status, and the moment a reply actually lands this clears on
+   * its own. The UI reads this to stop spinning and offer Try again.
+   */
+  stalled?: boolean;
+  stalledReason?: ArcStalledReason;
 };
 
 type ConversationRow = {
@@ -669,6 +677,28 @@ export async function listMessages(
     .order("created_at", { ascending: true });
   assertOk("arc_messages list", error);
   return ((data ?? []) as MessageRow[]).map(toMessage);
+}
+
+/**
+ * The queue state behind a set of in-flight replies, keyed by task id.
+ *
+ * Used to tell a run that is genuinely working from one the runner abandoned —
+ * see `decideArcRunStalled`. Only ever called with the task ids of `pending`
+ * messages, so this is a handful of rows on a primary key, not a scan.
+ */
+export async function listArcRunTaskStates(
+  taskIds: string[],
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<Map<string, ArcRunTaskState>> {
+  const ids = [...new Set(taskIds.filter(Boolean))];
+  if (ids.length === 0) return new Map();
+  const { data, error } = await client
+    .from("agent_tasks")
+    .select("id, status, started_at, created_at")
+    .in("id", ids);
+  assertOk("agent_tasks run states", error);
+  const rows = (data ?? []) as { id: string; status: string; started_at: string | null; created_at: string | null }[];
+  return new Map(rows.map((row) => [row.id, { status: row.status, startedAt: row.started_at, createdAt: row.created_at }]));
 }
 
 /**
