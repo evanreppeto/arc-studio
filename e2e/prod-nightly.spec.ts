@@ -2,6 +2,7 @@ import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 
 import { GOLDEN_QUESTIONS, gradeGoldenAnswer } from "../src/domain/arc-eval";
 import { WORK_STATE_LABEL } from "../src/domain/vocabulary";
+import { assertExpectedTenant } from "./tenant";
 
 /**
  * NIGHTLY PROD SMOKE (BSR-478).
@@ -26,6 +27,15 @@ import { WORK_STATE_LABEL } from "../src/domain/vocabulary";
  *
  * The seeded data is frozen (the org is archived and nothing writes to it but
  * this run), which is exactly what makes the known-fact assertions stable.
+ *
+ * That paragraph used to be the ONLY thing keeping this suite off the live
+ * tenant — prose, in a file whose credentials come from a repo secret nobody
+ * reads it before changing. `assertSmokeTenant` below now enforces it: every
+ * test that touches the app confirms the resolved workspace is the seeded one
+ * BEFORE it does anything, and step 4 confirms it again immediately before its
+ * write. Repoint E2E_EMAIL at a live-tenant account and the run stops with
+ * "wrong workspace" instead of quietly filing revision requests against real
+ * customer campaigns.
  */
 
 /**
@@ -88,6 +98,24 @@ function requireDeploy() {
   test.skip(!PASSWORD, "set the PROD_E2E_PASSWORD secret to run the nightly smoke");
 }
 
+/**
+ * Confirm this run is in the SEEDED SMOKE ORG before it touches anything.
+ *
+ * This suite writes (step 4 requests a revision), and the tenant it writes to is
+ * decided by a repo secret. Prod's two orgs are indistinguishable on screen —
+ * same org name, same workspace name — so a credential repointed at the live
+ * tenant would look completely normal while filing revision requests against a
+ * real customer's campaigns. The only thing that ever prevented that was a
+ * comment. Now it is an assertion, and it runs before every step.
+ *
+ * Pinned by E2E_EXPECTED_WORKSPACE_ID (set in .github/workflows/prod-nightly.yml).
+ */
+async function openSmokeTenant(page: Page, context: BrowserContext, path: string, label: string) {
+  await login(context);
+  await page.goto(path, { waitUntil: "domcontentloaded" });
+  await assertExpectedTenant(page, label);
+}
+
 /** Count outbound dispatches visible in the Outbox, so step 5 can prove the run sent nothing. */
 async function sentCount(page: Page): Promise<number> {
   await page.goto("/outbox", { waitUntil: "domcontentloaded" });
@@ -100,15 +128,14 @@ test.describe("nightly prod smoke", () => {
   test.beforeEach(requireDeploy);
 
   test("step 2: the console home renders real data, not the empty state", async ({ page, context }) => {
-    await login(context);
-    await page.goto("/home", { waitUntil: "domcontentloaded" });
-
-    expect(page.url(), "step 2: should not be bounced back to login").not.toContain("/login");
+    await openSmokeTenant(page, context, "/home", "step 2 (console home)");
 
     // An empty state has masked schema errors before — a page that renders
     // "nothing yet" looks identical to a page whose query silently returned
     // zero rows. Assert a non-zero count, which the empty state cannot produce.
     const body = page.locator("body");
+    // Kept as a render check only. `/big shoulders/i` matches BOTH of prod's
+    // orgs, so it never identified anything; the tenant assertion above does.
     await expect(body, "step 2: the tenant should render").toContainText(/big shoulders/i);
     await expect(body, "step 2: home should show a non-zero count, not an empty state").toContainText(/[1-9]\d*/);
   });
@@ -138,11 +165,15 @@ test.describe("nightly prod smoke", () => {
         );
         test.setTimeout(ARC_REPLY_TIMEOUT_MS + 60_000);
 
-        await login(context);
         // A fresh conversation per question: shared context would let an earlier
         // answer supply a later one's facts, which is the same echo problem the
         // question wording is designed to avoid.
-        await page.goto("/arc?new=1", { waitUntil: "domcontentloaded" });
+        //
+        // The tenant check matters here beyond safety: the golden questions are
+        // graded against facts seeded into THIS org. Asked in the live tenant
+        // they would fail as "Arc's reasoning degraded", which is the most
+        // expensive possible way to be told the credential moved.
+        await openSmokeTenant(page, context, "/arc?new=1", `${question.id} (golden question)`);
 
         const composer = page.locator(".arc-composer textarea");
         await expect(composer, `${question.id}: the Arc composer should be present`).toBeVisible();
@@ -167,8 +198,10 @@ test.describe("nightly prod smoke", () => {
   });
 
   test("step 4: a campaign revision request persists", async ({ page, context }) => {
-    await login(context);
-    await page.goto("/campaigns", { waitUntil: "domcontentloaded" });
+    // The only WRITE in this suite. The tenant gate is not a formality here —
+    // everything below files a revision request against whatever campaign it
+    // finds, and in the live tenant that is a real customer's campaign.
+    await openSmokeTenant(page, context, "/campaigns", "step 4 (campaign revision)");
     await expect(page.locator("body"), "step 4: the campaigns list should render").toContainText(/campaign/i);
 
     // Walk campaigns until one has an asset still awaiting a decision. Which
@@ -269,7 +302,10 @@ test.describe("nightly prod smoke", () => {
   });
 
   test("step 5: the smoke run sent nothing outbound", async ({ page, context }) => {
-    await login(context);
+    // Counting the wrong tenant's Outbox would compare two unrelated numbers and
+    // still report "nothing was sent" — the one assertion in this project that
+    // must never be satisfiable by accident.
+    await openSmokeTenant(page, context, "/outbox", "step 5 (outbound count)");
     const before = await sentCount(page);
 
     // Re-read after exercising the app. Outbound is approval-gated and nothing
