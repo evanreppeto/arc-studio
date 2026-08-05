@@ -2289,7 +2289,7 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
    strings and still gave Skills the narrowest box of the four. `flex: 1 1 auto`
    sizes each tab to its own label first, so "Conversations" and "Connectors"
    fit without clipping and nothing has to be re-tuned when a label changes. */
-.arc-drawer-nav { flex: none; display: flex; gap: 4px; margin: 8px 0 18px; padding: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--inset); }
+.arc-drawer-nav { flex: none; display: flex; gap: 4px; margin: 8px 0 12px; padding: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--inset); }
 .arc-drawer-nav button { flex: 1 1 auto; min-width: 0; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 6px; font-size: var(--dz-xs); cursor: pointer; transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast); }
 .arc-drawer-nav button > svg { flex: none; }
 .arc-drawer-nav button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2361,70 +2361,99 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-history-head p,
 .arc-share-head p { margin: 4px 0 0; color: var(--muted); font-size: var(--dz-sm); }
 .arc-history-eyebrow { display: block; margin-bottom: 7px; color: var(--accent-contrast); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+/* The conversations view is a list, so everything above the list is overhead.
+   It carries one quiet action row, one search field and one control row — the
+   panel used to spend ~260px on a serif title, a subtitle, a bordered button, a
+   filled search box and two stacked control rows before the first chat. */
 .arc-new-chat {
-  min-height: 38px;
+  min-height: 32px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   width: 100%;
-  padding: 0 11px;
-  border: 1px solid var(--line-2);
-  border-radius: 9px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-2);
   text-decoration: none;
   cursor: pointer;
   font-size: var(--dz-md);
   font-weight: 600;
-  transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast), transform var(--arc-fast);
+  transition: color var(--arc-fast), background var(--arc-fast);
 }
-.arc-new-chat:hover { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
-.arc-new-chat:active { transform: translateY(1px); }
+.arc-new-chat > svg { flex: none; color: var(--muted); transition: color var(--arc-fast); }
+.arc-new-chat:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
+.arc-new-chat:hover > svg { color: var(--accent); }
 .arc-history-search {
-  height: 36px;
+  height: 30px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  margin-top: 9px;
-  padding: 0 10px;
-  border: 1px solid var(--line-2);
-  border-radius: 9px;
-  background: var(--inset);
+  gap: 7px;
+  margin-top: 4px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
   color: var(--muted);
 }
 .arc-history-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--dz-sm); }
-.arc-history-search:focus-within { border-color: var(--accent-border); }
+.arc-history-search:focus-within { border-color: var(--accent-border); background: var(--inset); }
 .arc-history-search input:focus-visible { outline: 0; }
 .arc-history-search input::placeholder { color: var(--muted); }
-.arc-history-filters { display: flex; align-items: center; gap: 5px; margin-top: 9px; }
-.arc-history-filters button { min-height: 29px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); padding: 0 9px; font-size: var(--dz-xs); cursor: pointer; }
+.arc-history-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.arc-history-filters { min-width: 0; display: flex; align-items: center; gap: 2px; }
+.arc-history-filters button { min-height: 24px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); padding: 0 7px; font-size: var(--dz-xs); cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
 .arc-history-filters button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
-.arc-history-filters button.is-active { border-color: var(--line-2); background: var(--inset); color: var(--text); }
-.arc-history-filters small { min-width: 15px; height: 15px; display: grid; place-items: center; border-radius: 999px; background: rgba(255, 255, 255, .055); color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
-.arc-thread-grouping { display: flex; align-items: center; gap: 4px; margin: 7px 0 0; padding-top: 7px; border-top: 1px solid var(--line); }
-.arc-thread-grouping button { min-height: 27px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); padding: 0 8px; font-size: var(--dz-xs); cursor: pointer; }
-.arc-thread-grouping button:hover { color: var(--text-2); background: rgba(255, 255, 255, .035); }
-.arc-thread-grouping button.is-active { background: rgba(255, 255, 255, .055); color: var(--text); }
-.arc-history-attention { display: flex; align-items: center; gap: 7px; margin-top: 9px; }
-.arc-history-attention > button { min-height: 34px; flex: 1; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--accent-border); border-radius: 9px; background: var(--accent-soft); color: var(--accent-contrast); padding: 0 10px; cursor: pointer; }
-.arc-history-attention > button > span { display: inline-flex; align-items: center; gap: 7px; }
+.arc-history-filters button.is-active { background: rgba(255, 255, 255, .06); color: var(--text); }
+.arc-history-filters small { color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-history-attention { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.arc-history-attention > button { min-height: 28px; flex: 1; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); color: var(--accent-contrast); padding: 0 9px; cursor: pointer; }
+.arc-history-attention > button > span { display: inline-flex; align-items: center; gap: 6px; }
 .arc-history-attention b { font-size: var(--dz-xs); font-weight: 620; }
-.arc-history-attention > span { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); padding: 0 9px; font-size: var(--dz-xs); }
-.arc-history-list { min-height: 0; flex: 1; overflow: auto; margin: 10px -4px 0; padding: 0 4px; }
-.arc-history-group h3 { display: flex; align-items: center; gap: 6px; margin: 14px 8px 5px; color: var(--muted); font-size: var(--dz-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
-.arc-campaign-group-icon { width: 12px; height: 12px; display: grid; flex: none; place-items: center; color: currentColor; }
-.arc-history-item { position: relative; display: flex; align-items: center; border-radius: 9px; }
+.arc-history-attention > span { flex: none; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); padding: 0 4px; font-size: var(--dz-xs); }
+.arc-history-list { min-height: 0; flex: 1; overflow: auto; margin: 6px -4px 0; padding: 0 4px; }
+/* Two standing sections — Campaigns, then whatever isn't in one. Campaigns are
+   folders rather than a grouping mode you switch to, because a campaign is
+   what an operator looks a chat up by; the date headings live inside the
+   second section, where they still carry the whole meaning. */
+.arc-history-section + .arc-history-section { margin-top: 14px; }
+.arc-history .arc-history-section-head { display: flex; align-items: center; gap: 6px; margin: 6px 8px 4px; color: var(--muted); font-size: var(--dz-xs); font-weight: 650; letter-spacing: .09em; text-transform: uppercase; }
+.arc-history-section-head > svg { flex: none; color: var(--accent); }
+.arc-history-section-head > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-history-section-head > small { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); font-weight: 500; letter-spacing: 0; }
+.arc-history .arc-campaign-folder-head { width: 100%; min-height: 28px; display: flex; align-items: center; gap: 7px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 8px; font-family: inherit; font-size: var(--dz-md); font-weight: 580; text-align: left; cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-history .arc-campaign-folder-head:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
+.arc-campaign-folder-head > svg { flex: none; }
+.arc-campaign-folder-caret { color: var(--muted); transition: transform var(--arc-fast); }
+.arc-campaign-folder[data-open="true"] .arc-campaign-folder-caret { transform: rotate(90deg); }
+.arc-campaign-folder-head > svg:nth-of-type(2) { color: var(--accent); }
+.arc-campaign-folder-head > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-campaign-folder-head > small { flex: none; color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-campaign-folder-dot { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: arc-dot 1.4s ease-in-out infinite; }
+/* The nesting guide, not a divider: it tells you at a glance which rows belong
+   to the campaign above them. */
+.arc-campaign-folder-body { margin: 1px 0 5px 14px; padding-left: 5px; border-left: 1px solid var(--line-2); }
+.arc-history .arc-history-more { min-height: 24px; display: inline-flex; align-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); margin-left: 8px; padding: 0 6px; font-family: inherit; font-size: var(--dz-xs); font-weight: 600; cursor: pointer; transition: color var(--arc-fast), background var(--arc-fast); }
+.arc-history .arc-history-more:hover { color: var(--accent-contrast); background: rgba(255, 255, 255, .04); }
+/* Sentence case, not caps: a date is subordinate to the section above it, and
+   two stacked uppercase labels read as two competing headings. */
+.arc-history-group h4 { display: flex; align-items: center; gap: 6px; margin: 10px 8px 2px; color: var(--muted); font-size: var(--dz-sm); font-weight: 550; letter-spacing: 0; text-transform: none; }
+.arc-history-group:first-of-type h4 { margin-top: 4px; }
+.arc-history-item { position: relative; display: flex; align-items: center; border-radius: 7px; }
 .arc-history-item:hover { background: rgba(255, 255, 255, .04); }
 .arc-history-item.is-active { background: var(--inset); }
-.arc-history-item.is-active::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 2px; background: var(--accent); }
+.arc-history-item.is-active::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; border-radius: 2px; background: var(--accent); }
+/* A row is one line: title left, its time (or working state) right. The 52px
+   two-line row showed four chats where the list now shows seven. */
 .arc-history-open {
   min-width: 0;
   flex: 1;
-  min-height: 52px;
+  min-height: 30px;
   display: flex;
   align-items: center;
-  padding: 8px 10px;
+  padding: 5px 8px;
   border: 0;
   background: transparent;
   color: var(--text-2);
@@ -2434,22 +2463,20 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 }
 .arc-history-item:hover .arc-history-open,
 .arc-history-item.is-active .arc-history-open { color: var(--text); }
-.arc-history-open > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
-.arc-history-open b { font-size: var(--dz-sm); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-history-open > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.arc-thread-line { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.arc-history-open b { min-width: 0; flex: 1; font-size: var(--dz-md); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-history-open small { color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); }
+.arc-thread-line em { flex: none; color: var(--muted); font-family: var(--mono); font-size: var(--dz-xs); font-style: normal; }
+.arc-thread-line em.arc-thread-working { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-contrast); font-family: var(--sans); }
 .arc-history-open small.arc-thread-preview { min-width: 0; display: flex; align-items: center; gap: 5px; font-family: var(--sans); font-size: var(--dz-xs); }
-.arc-history-open small.arc-thread-preview[data-campaign="true"] { color: var(--accent-contrast); }
-.arc-history-open small.arc-thread-preview svg { flex: none; color: var(--accent); }
 .arc-history-open small.arc-thread-preview span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.arc-history-open small.arc-thread-preview em { flex: none; color: var(--muted); font-size: var(--dz-xs); font-style: normal; }
-.arc-history-open small.arc-thread-working { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-contrast); font-family: var(--sans); font-size: var(--dz-xs); }
-.arc-history-open small.arc-thread-working em { min-width: 0; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; border-left: 1px solid var(--line-2); color: var(--accent-contrast); padding-left: 6px; font-size: var(--dz-xs); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .arc-thread-dots { display: inline-flex; align-items: center; gap: 2.5px; }
 .arc-thread-dots i { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--accent); animation: arc-dot 1.05s ease-in-out infinite; }
 .arc-thread-dots i:nth-child(2) { animation-delay: .14s; }
 .arc-thread-dots i:nth-child(3) { animation-delay: .28s; }
 .arc-history-pin { flex: none; margin-right: 3px; color: var(--accent); }
-.arc-history-menu-btn { flex: none; width: 28px; height: 28px; margin-right: 5px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), background var(--arc-fast); }
+.arc-history-menu-btn { flex: none; width: 24px; height: 24px; margin-right: 4px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), background var(--arc-fast); }
 .arc-history-item:hover .arc-history-menu-btn,
 .arc-history-menu-btn[aria-expanded="true"] { opacity: 1; }
 .arc-history-menu-btn:hover,
@@ -2496,8 +2523,8 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-history-menu-confirm > div { display: flex; justify-content: flex-end; gap: 6px; }
 .arc-history-menu-confirm button { min-height: 28px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); padding: 0 10px; font-size: var(--dz-sm); cursor: pointer; }
 .arc-history-menu-confirm button.is-danger { border-color: transparent; background: var(--red); color: #fff; font-weight: 600; }
-.arc-history-item.is-renaming { padding: 6px 8px; }
-.arc-history-item.is-renaming input { width: 100%; min-height: 38px; border: 1px solid var(--accent-border); border-radius: 8px; outline: 0; background: var(--inset); color: var(--text); padding: 0 10px; font-size: var(--dz-md); }
+.arc-history-item.is-renaming { padding: 3px 6px; }
+.arc-history-item.is-renaming input { width: 100%; min-height: 32px; border: 1px solid var(--accent-border); border-radius: 8px; outline: 0; background: var(--inset); color: var(--text); padding: 0 10px; font-size: var(--dz-md); }
 .arc-history-empty { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); text-align: center; padding: 24px; }
 .arc-history-empty b { color: var(--text-2); font-size: var(--dz-md); font-weight: 600; }
 .arc-history-empty span { font-size: var(--dz-sm); }
@@ -2813,8 +2840,10 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   .arc-new-chat,
   .arc-history-search,
   .arc-history-filters button,
-  .arc-thread-grouping button,
+  .arc-campaign-folder-head,
+  .arc-history-more,
   .arc-archived-toggle,
+  .arc-history-open,
   .arc-history-menu > button { min-height: 44px; }
   /* One step up from `--dz-xs` for touch, still on the drawer's scale. */
   .arc-drawer-nav button { font-size: var(--dz-sm); }
