@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AuthBrandPanel } from "@/components/ui/auth-brand-panel";
 import { FormValidityMessages } from "@/components/ui/form-validity";
+import { SubmitOnEnter } from "@/components/ui/submit-on-enter";
 import { PasswordField } from "@/components/ui/password-field";
 
 export const metadata = { title: "Set a new password — Arc Studio" };
@@ -59,6 +60,7 @@ export default async function ResetPasswordPage({
 
           <form action="/api/auth/reset-password" method="post" className="mt-7 space-y-4">
             <FormValidityMessages />
+            <SubmitOnEnter />
             <div>
               <label htmlFor="password" className={labelClass}>
                 New password
@@ -69,6 +71,7 @@ export default async function ResetPasswordPage({
                 autoComplete="new-password"
                 required
                 minLength={8}
+                autoFocus
                 placeholder="At least 8 characters"
                 className={inputClass}
               />

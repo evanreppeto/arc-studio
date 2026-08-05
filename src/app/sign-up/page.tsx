@@ -8,6 +8,7 @@ import { PENDING_CONFIRMATION_COOKIE, readPendingConfirmationEmail } from "@/lib
 
 import { AuthBrandPanel } from "@/components/ui/auth-brand-panel";
 import { FormValidityMessages } from "@/components/ui/form-validity";
+import { SubmitOnEnter } from "@/components/ui/submit-on-enter";
 import { PasswordField } from "@/components/ui/password-field";
 import { INDUSTRY_OPTIONS } from "@/lib/personas/industry-templates";
 
@@ -135,6 +136,7 @@ function SignUpForm({ error, from }: { error: string | null; from: string }) {
 
       <form action="/api/auth/sign-up" method="post" className="mt-5 space-y-3">
         <FormValidityMessages />
+        <SubmitOnEnter />
         <input type="hidden" name="workspaceIntent" value="create" />
         <input type="hidden" name="from" value={from} />
 
@@ -143,7 +145,8 @@ function SignUpForm({ error, from }: { error: string | null; from: string }) {
             <label htmlFor="firstName" className={labelClass}>
               First name
             </label>
-            <input id="firstName" name="firstName" autoComplete="given-name" required className={inputClass} />
+            {/* Focus starts in the form, so Enter submits from page load. */}
+            <input id="firstName" name="firstName" autoComplete="given-name" required autoFocus className={inputClass} />
           </div>
           <div>
             <label htmlFor="lastName" className={labelClass}>

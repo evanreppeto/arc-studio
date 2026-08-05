@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AuthBrandPanel } from "@/components/ui/auth-brand-panel";
 import { FormValidityMessages } from "@/components/ui/form-validity";
+import { SubmitOnEnter } from "@/components/ui/submit-on-enter";
 
 export const metadata = { title: "Reset your password — Arc Studio" };
 
@@ -55,11 +56,13 @@ export default async function ForgotPasswordPage({
           ) : (
             <form action="/api/auth/forgot-password" method="post" className="mt-7 space-y-4">
               <FormValidityMessages />
+              <SubmitOnEnter />
               <div>
                 <label htmlFor="email" className={labelClass}>
                   Work email
                 </label>
-                <input id="email" name="email" type="email" autoComplete="email" required placeholder="you@company.com" className={inputClass} />
+                {/* Focus starts in the form, so Enter submits from page load. */}
+                <input id="email" name="email" type="email" autoComplete="email" required autoFocus placeholder="you@company.com" className={inputClass} />
               </div>
               <button
                 type="submit"
