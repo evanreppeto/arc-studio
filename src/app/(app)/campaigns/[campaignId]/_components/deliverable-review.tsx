@@ -152,20 +152,10 @@ export function ReviewBlock({
         </p>
       )}
 
-      {showDetail && rec?.riskFlags && rec.riskFlags.length > 0 && (
-        <div className="flags rvflags">
-          {rec.riskFlags.map((f) => (
-            <span className="flag" key={f}>
-              {riskFlagLabel(f)}
-            </span>
-          ))}
-        </div>
-      )}
-
       {showDetail && edits.length > 0 && (
         <details className="rvfold">
           <summary>
-            What to change <span className="rvcount">{edits.length}</span>
+            Arc&rsquo;s suggested rewrites <span className="rvcount">{edits.length}</span>
           </summary>
           <ol className="rvedits">
             {edits.map((edit, i) => (
@@ -194,6 +184,18 @@ export function ReviewBlock({
             </p>
           )}
           {rec?.rationale && <p className="rvbody">{rec.rationale}</p>}
+          {/* These sat loose between the last finding and the folds, reading as
+              a chip belonging to nothing. They are the reviewer's summary of
+              why, so they live with the reasoning. */}
+          {rec?.riskFlags && rec.riskFlags.length > 0 && (
+            <div className="flags rvflags">
+              {rec.riskFlags.map((f) => (
+                <span className="flag" key={f}>
+                  {riskFlagLabel(f)}
+                </span>
+              ))}
+            </div>
+          )}
         </details>
       )}
 
