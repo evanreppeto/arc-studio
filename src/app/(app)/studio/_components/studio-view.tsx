@@ -584,6 +584,13 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   }, []);
 
   // Why generation is unavailable (honest gating), or null when it's ready.
+  // A workspace with no campaigns cannot "pick" one, and telling it to is how a
+  // gate sends someone to an empty list to look for something that isn't there.
+  const hasCampaigns = campaigns.length > 0;
+  const campaignGateText = hasCampaigns
+    ? "Pick a campaign above first"
+    : "Create a campaign first — anything you generate attaches to one";
+
   // The off-reason comes from `resolveMediaGeneration`, which already names the
   // connector and where to switch it on. The fallback is only for a caller that
   // passes none — it must still not name an env var (BSR-731).
@@ -592,7 +599,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     : !live
       ? "Connect a workspace to generate"
       : !campaignId
-        ? "Pick a campaign above first"
+        ? campaignGateText
         : !bg?.url
           ? "Select an approved photo as the background"
           : null;
@@ -664,7 +671,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     : !live
       ? "Connect a workspace to generate"
       : !campaignId
-        ? "Pick a campaign above first"
+        ? campaignGateText
         : !videoPrompt.trim()
           ? "Describe the video you want first"
           : null;
@@ -819,10 +826,14 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           <span className="cdivr" />
           <a className="gbtn" href="/library"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>Save to Library</a>
           {/* Sent to /campaigns even with a campaign picked two controls to the
-              left, which dropped you on a list to find the one you'd already chosen. */}
+              left, which dropped you on a list to find the one you'd already chosen.
+              THREE states, not two: a workspace with no campaigns at all was told
+              to "Pick a campaign" — the primary action on the screen inviting a
+              choice from an empty list, directly under a banner explaining that
+              none exist yet. */}
           <Link className="gbtn gold" href={campaignId ? `/campaigns/${campaignId}` : "/campaigns"}>
             <svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>
-            {campaignId ? "Open campaign" : "Pick a campaign"}
+            {campaignId ? "Open campaign" : hasCampaigns ? "Pick a campaign" : "Create a campaign"}
           </Link>
         </div>
       </div>
