@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createSupabaseQueryMock, type MockResponse } from "@/lib/repos/__tests__/test-helpers";
 
-import { buildReasoning, getCampaignWorkspaceDetail, getCampaignWorkspaceList, listCampaignNames, selectIn } from "./read-model";
+import { buildReasoning, getCampaignWorkspaceDetail, getCampaignWorkspaceList, listCampaignNames, parseCampaignSourceSignal, selectIn } from "./read-model";
 
 // buildReasoning only reads a handful of fields; cast minimal fixtures to the
 // row shapes to keep the test focused on the distillation logic.
@@ -921,5 +921,49 @@ describe("adjacent campaign tables are workspace-filtered too", () => {
     const supabase = createSupabaseQueryMock({ campaign_assets: { data: [], error: null } });
     await selectIn(supabase, "campaign_assets", "id", "campaign_id", ["c1"], undefined, "org-1", "workspace-1");
     expect(eqCalls(supabase)).toContainEqual(["workspace_id", "workspace-1"]);
+  });
+});
+
+describe("parseCampaignSourceSignal", () => {
+  // Verbatim shape from the live workspace's weather-triggered campaign:
+  // urgency at the top level, timing nested one level down under `evidence`.
+  it("reads the shape the agent actually writes", () => {
+    expect(
+      parseCampaignSourceSignal({
+        origin: "opportunity",
+        urgency: "low",
+        evidence: {
+          area: "Cook, IL / DuPage, IL +1 more",
+          category: "property_damage",
+          severity: "advisory",
+          eventType: "Flood Advisory",
+          startsAt: "2026-08-01T06:47:00-05:00",
+          endsAt: "2026-08-01T09:45:00-05:00",
+        },
+      }),
+    ).toEqual({
+      urgency: "low",
+      eventType: "Flood Advisory",
+      startsAtIso: "2026-08-01T06:47:00-05:00",
+      endsAtIso: "2026-08-01T09:45:00-05:00",
+    });
+  });
+
+  it("accepts snake_case and a flat payload", () => {
+    expect(parseCampaignSourceSignal({ urgency: "high", event_type: "Hail", ends_at: "2026-08-09T00:00:00Z" })).toEqual({
+      urgency: "high",
+      eventType: "Hail",
+      startsAtIso: null,
+      endsAtIso: "2026-08-09T00:00:00Z",
+    });
+  });
+
+  // An operator-created package has no window to close, and `{}` is what those
+  // rows actually hold in prod — three of the five live campaigns.
+  it("returns null rather than an all-null signal", () => {
+    expect(parseCampaignSourceSignal({})).toBeNull();
+    expect(parseCampaignSourceSignal(null)).toBeNull();
+    expect(parseCampaignSourceSignal("not an object")).toBeNull();
+    expect(parseCampaignSourceSignal({ origin: "opportunity", evidence: { area: "Cook, IL" } })).toBeNull();
   });
 });
