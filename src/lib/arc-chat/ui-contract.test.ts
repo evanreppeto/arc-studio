@@ -106,6 +106,15 @@ describe("Arc UI accessibility contract", () => {
     expect(VIEW_SOURCE).toContain('if (view === "skills" && skillsMode === "library") { setSkillsMode("installed"); return true; }');
   });
 
+  it("never hides a search hit inside a collapsed campaign folder", () => {
+    // A folder only appears in a filtered list because it holds a match. If the
+    // operator's own collapse — or the row cap — survived the search, the
+    // folder would show a count with nothing under it, which reads as a bug in
+    // search rather than a closed folder.
+    expect(VIEW_SOURCE).toContain("const open = searching || (campaignOpen[folder.id] ??");
+    expect(VIEW_SOURCE).toContain("const capped = !searching &&");
+  });
+
   it("does not clamp connector copy into an unreadable stub", () => {
     // The old 2-line clamp cut settings prose mid-word in a 386px panel, and the
     // rest was unreachable. Rows size to the registry's one-line summary instead.
