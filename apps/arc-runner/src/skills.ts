@@ -107,6 +107,14 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
       "create_campaign_draft",
       "generate_image",
       "generate_video",
+      // Required, not optional, alongside generate_image: the prompt tells Arc
+      // that a request to put a logo / phone number / any words onto an existing
+      // image MUST go through compose_creative, because image generation is
+      // hardened to strip text and logos and a regenerated background silently
+      // drops the request. Without it here the allowlist removed the only tool
+      // that can satisfy that instruction, and every branding revision ended in
+      // Arc correctly reporting it had no way to do the work (BSR-759).
+      "compose_creative",
       "analyze_website",
       "propose_brand_profile",
       "emit_card",
