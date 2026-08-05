@@ -39,16 +39,40 @@
 .arc-campaign .cstrack i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .arc-campaign .csmeta { font-family: var(--mono); font-size: 10px; color: var(--muted); }
 
-.arc-campaign .ctabs { display: flex; gap: 2px; padding: 0 clamp(22px, 3vw, 38px); border-bottom: 1px solid var(--line-2); margin-top: 18px; flex-shrink: 0; }
+/* Sticky, because the page scrolls as one now (see `.cbody`) and the tab row is
+   how you get to Overview / Performance / Sources / History. It has to keep an
+   opaque background: transparent, it would let the deliverables scroll through
+   the words. */
+.arc-campaign .ctabs { position: sticky; top: 0; z-index: 6; display: flex; gap: 2px; padding: 0 clamp(22px, 3vw, 38px); border-bottom: 1px solid var(--line-2); margin-top: 18px; flex-shrink: 0; background: var(--canvas); }
 .arc-campaign .ctab { position: relative; display: flex; align-items: center; gap: 8px; padding: 11px 14px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: color 0.15s var(--ease); }
 .arc-campaign .ctab:hover { color: var(--text); }
 .arc-campaign .ctab.on { color: var(--text); }
 .arc-campaign .ctab.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px; }
 .arc-campaign .ctab .cnt { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: 5px; padding: 1px 6px; }
 
-.arc-campaign .cbody { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: clamp(20px, 2.5vw, 34px); padding: 22px clamp(22px, 3vw, 38px) 30px; overflow: hidden; }
-.arc-campaign .cscroll { overflow-y: auto; min-width: 0; }
-.arc-campaign .csnap { overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
+/* One scroll for the page, not two panes side by side.
+   This used to be an `overflow: hidden` grid of two independent scrollers under
+   a fixed header, which meant the deliverables — the thing the screen is for —
+   were read through a window of whatever height the header left over: 354px on
+   a 720px-tall display, out of a 747px list. Two scrollbars a gap apart also
+   made the wheel do different things depending on which half the pointer was
+   over. Now the header scrolls away and the deliverables get the viewport; the
+   tab row and the readiness rail stay put by being sticky, which is what those
+   two actually needed. The narrow branch below has done exactly this since it
+   was written — for the same reason, one breakpoint early. */
+.arc-campaign { overflow-y: auto; }
+/* `flex: none`, NOT the `flex: 1; min-height: 0` this had while it was its own
+   scroll container. In a column flex box, a growing/shrinking item is sized by
+   the free space and lets its content spill out of its own box — the page still
+   scrolled correctly, because the spill grew `.arc-campaign`'s scroll height,
+   but `.cbody` itself measured 405px against a 2200px page. That box is the
+   sticky rail's containing block, so the rail unstuck 400px in and scrolled
+   away with the deliverables. */
+.arc-campaign .cbody { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: clamp(20px, 2.5vw, 34px); padding: 22px clamp(22px, 3vw, 38px) 30px; align-items: start; }
+.arc-campaign .cscroll { min-width: 0; }
+/* `align-self: start` is load-bearing: a stretched grid item is as tall as the
+   row, and a sticky element cannot move inside its own box. */
+.arc-campaign .csnap { position: sticky; top: 56px; align-self: start; max-height: calc(100dvh - 150px); overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
 
 .arc-campaign .cerr { font-size: 12px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: 9px; padding: 9px 12px; margin-bottom: 14px; }
 
@@ -365,12 +389,11 @@
      does it at 900px. Below 1040 the sidebar stacks and the panel gets WIDER,
      so three columns is the right call in the gap between the two breakpoints. */
   .arc-campaign .lockgrid { grid-template-columns: 1fr; }
-  /* Let the whole page scroll instead of trapping deliverables in a short inner
-     pane below a tall stacked header. The perf tables keep their own horizontal
-     scroll so a narrow screen can't break the page width. */
-  .arc-campaign { overflow-y: auto; }
-  .arc-campaign .cbody { display: block; overflow: visible; }
-  .arc-campaign .cscroll { overflow: visible; padding-bottom: 40px; }
+  /* The page already scrolls as one at every width; here the two columns also
+     stop being columns. The perf tables keep their own horizontal scroll so a
+     narrow screen can't break the page width. */
+  .arc-campaign .cbody { display: block; }
+  .arc-campaign .cscroll { padding-bottom: 40px; }
   .arc-campaign .pchan, .arc-campaign .passets { overflow-x: auto; }
   .arc-campaign .pchead, .arc-campaign .pcrow { min-width: 420px; }
   .arc-campaign .pahead, .arc-campaign .parow { min-width: 520px; }
@@ -425,30 +448,65 @@
 .extsend .exinput { flex: 1; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text); font-size: 12px; padding: 8px 10px; }
 
 /* Full-size media preview (the tile lightbox). Rides the shared .modal-* card,
-   so only the stage and the provenance list are defined here. */
-.arc-campaign .lbstatus { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-bottom: 12px; }
-.arc-campaign .lbwho { font-size: 11.5px; color: var(--muted); }
+   so only the stage and the provenance rail are defined here.
 
-/* Risk flags sit above the image — the reviewer must meet them before they
-   scroll, not after. */
-.arc-campaign .lbrisk { border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px 13px; margin-bottom: 12px; }
+   The dialog is portaled into the shell by overlay-portal.tsx, which takes it
+   out from under `.arc-campaign` — so the scope travels with it on a
+   `display: contents` wrapper, the same way `.rq-scope` does below. Every rule
+   in this block missed until that wrapper existed, and the dialog rendered as
+   raw markup: an uncapped full-bleed image and a warning icon at its intrinsic
+   size, taller than the creative it was flagging. */
+.arc-app .lb-scope { display: contents; }
+
+/* Stage left, everything written about the creative down a rail on the right.
+   The picture is what the reviewer came to judge, so it keeps the width; the
+   provenance used to run underneath it, which put the image and its own
+   metadata at two different scroll positions. */
+.arc-campaign .lbgrid { display: grid; grid-template-columns: minmax(0, 1fr) 322px; gap: 18px; align-items: start; }
+
+/* The frame hugs the picture vertically — a fixed-height stage letterboxed a
+   4:3 image inside 460px of empty black, which reads as a loading state. The
+   cap is on the image itself so a 9:16 vertical is judged at the same scale a
+   16:9 is, and neither pushes the dialog past the fold. */
+.arc-campaign .lbstage { display: flex; align-items: center; justify-content: center; min-height: 180px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--canvas-deep, #101013); padding: 10px; overflow: hidden; }
+/* contain, never cover — the tile crops, the full-size view must not. */
+.arc-campaign .lbimg { display: block; max-width: 100%; max-height: min(56vh, 600px); object-fit: contain; border-radius: 6px; }
+.arc-campaign .lbnoprev { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.arc-campaign .lbfail { margin: 0; padding: 24px 12px; font-size: 12px; line-height: 1.55; color: var(--muted); text-align: center; max-width: 46ch; }
+
+/* The rail scrolls on its own so a long prompt can never push the picture off
+   screen; it is capped to the stage so the two columns end together. */
+.arc-campaign .lbside { display: flex; flex-direction: column; gap: 12px; max-height: min(58vh, 620px); overflow-y: auto; padding-right: 3px; }
+.arc-campaign .lbstatus { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.arc-campaign .lbwho { font-size: 11.5px; color: var(--muted); }
+.arc-campaign .lbnote { margin: -4px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+
+.arc-campaign .lbrisk { border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px 13px; }
 .arc-campaign .lbrisk b { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--red-text); }
-.arc-campaign .lbrisk b svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+.arc-campaign .lbrisk b svg { width: 14px; height: 14px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-campaign .lbrisk ul { margin: 7px 0 0; padding-left: 21px; }
 .arc-campaign .lbrisk li { font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
 .arc-campaign .lbrisk p { margin: 7px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
 
-.arc-campaign .lbstage { display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--line-2); background: var(--canvas-deep, #101013); padding: 10px; margin-bottom: 14px; }
-/* contain, never cover — the 4:3 tile crops, the full-size view must not. */
-.arc-campaign .lbimg { display: block; max-width: 100%; max-height: min(58vh, 620px); object-fit: contain; border-radius: 6px; }
-.arc-campaign .lbnoprev { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.arc-campaign .lbfail { margin: 0; padding: 24px 12px; font-size: 12px; line-height: 1.55; color: var(--muted); text-align: center; max-width: 46ch; }
+/* Deciding the picture, from where the picture is. Sits directly under the
+   state it changes and above the reference facts, because it is the reason the
+   dialog is open — the provenance below is what you consult, this is what you
+   came to do. */
+.arc-campaign .lbdecide { border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); padding: 11px 12px; display: flex; flex-direction: column; gap: 9px; }
+.arc-campaign .lbdecrow { display: flex; flex-wrap: wrap; gap: 7px; }
+.arc-campaign .lbdecrow .cbtn { height: 30px; padding: 0 11px; }
+.arc-campaign .lback { display: flex; flex-direction: column; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); }
+.arc-campaign .lback textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 12px; line-height: 1.5; padding: 7px 9px; }
+.arc-campaign .lback textarea:focus-visible { outline: 2px solid var(--accent-border-strong); outline-offset: 1px; }
+.arc-campaign .lbdecerr { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--red-text); }
+.arc-campaign .lbdecnote { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--muted); }
+
 .arc-campaign .lbmeta { margin: 0; display: flex; flex-direction: column; }
 .arc-campaign .lbrow { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line-2); }
-.arc-campaign .lbrow:first-child { border-top: 0; }
-.arc-campaign .lbrow dt { flex-shrink: 0; width: 108px; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+.arc-campaign .lbrow:first-child { border-top: 0; padding-top: 0; }
+.arc-campaign .lbrow dt { flex-shrink: 0; width: 84px; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
 .arc-campaign .lbrow dd { margin: 0; min-width: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); overflow-wrap: anywhere; }
-.arc-campaign .lbsec { margin-top: 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px 12px; }
+.arc-campaign .lbsec { border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px 12px; }
 .arc-campaign .lbsec b { display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
 .arc-campaign .lbprompt p { margin: 0; font-family: var(--mono); font-size: 11px; line-height: 1.55; color: var(--text-2); overflow-wrap: anywhere; }
 /* Same lineage read as the Library card: the tuple's first value is a dot
@@ -462,6 +520,15 @@
 .arc-campaign .lbdot.pv-upload { background: var(--blue); }
 .arc-campaign .lbstepper { display: flex; align-items: center; gap: 8px; margin-right: auto; }
 .arc-campaign .lbcount { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* Below the two-column width the rail stacks under the stage and stops being
+   its own scroll region — nesting a short scroller inside the modal's own
+   scroll is worse than one long read. */
+@media (max-width: 880px) {
+  .arc-campaign .lbgrid { grid-template-columns: 1fr; }
+  .arc-campaign .lbside { max-height: none; overflow: visible; }
+  .arc-campaign .lbimg { max-height: min(44vh, 420px); }
+}
 
 /* This sheet was the one route stylesheet with motion and no reduced-motion
    escape. Everything here is a short colour transition except `.perflearn-cta`,

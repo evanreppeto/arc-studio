@@ -37,6 +37,14 @@ export type RecordGeneratedMediaInput = {
   format?: string | null;
   riskFlags?: string[];
   uploadedBy?: string;
+  /**
+   * How the bytes were made. Defaults to `ai_generated` — the only producer
+   * this served at first. `composite` is the other real one: a real logo over an
+   * AI background is not the same provenance claim, and the Asset Review surface
+   * shows the difference. Both are values `media_assets_source_check` accepts;
+   * anything outside that CHECK is rejected by the database, not by TypeScript.
+   */
+  source?: "ai_generated" | "composite";
 };
 
 /** A readable file name from the prompt, so the Library is scannable rather than
@@ -73,7 +81,7 @@ export async function recordGeneratedMedia(input: RecordGeneratedMediaInput): Pr
       contentType: input.contentType,
       kind: input.kind,
       byteSize: input.byteSize,
-      source: "ai_generated",
+      source: input.source ?? "ai_generated",
       provenance: {
         generator: "arc",
         ...(input.model ? { model: input.model } : {}),
@@ -82,7 +90,9 @@ export async function recordGeneratedMedia(input: RecordGeneratedMediaInput): Pr
         ...(input.prompt ? { prompt: input.prompt } : {}),
       },
       riskFlags: input.riskFlags ?? [],
-      tags: ["ai-generated"],
+      // The tag follows the source: filtering the Library for "ai-generated" and
+      // getting composites back would overstate what is purely synthetic.
+      tags: [input.source === "composite" ? "composite" : "ai-generated"],
       uploadedBy: input.uploadedBy ?? "arc",
       // Held for review like any other unreviewed asset — see recordStoredAsset.
       availableToArc: false,
