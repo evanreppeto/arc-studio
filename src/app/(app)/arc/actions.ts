@@ -14,10 +14,11 @@ import {
   type ArcRoute,
   type CampaignAssetType,
   type ArcAssetStatus,
+  type ArcDraftFinding,
 } from "@/domain";
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
-import { decideAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
-import { type ArcAssetBody, getArcAssetBodies, getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
+import { decideAsset, undoAssetDecision, type ApprovalDecision } from "@/lib/campaigns/decisions";
+import { type ArcAssetBody, getArcAssetBodies, getArcAssetChecks, getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
 import { requestAssetRevision } from "@/lib/campaigns/revisions";
 import { getArcDisplayName } from "@/lib/arc-chat/agent-config";
 import { isAcceptedAttachment } from "@/lib/arc-chat/attachment-types";
@@ -654,6 +655,28 @@ export async function getArcAssetBodiesAction(
 }
 
 /**
+ * The guardrail findings recorded against a conversation's approval-gated cards.
+ *
+ * A card's `flags` are frozen at draft time and on prod are usually empty, while
+ * the assets behind them hold open findings — including blockers. Fetched
+ * alongside the bodies so the chat reports what was actually found rather than
+ * what the card happened to freeze.
+ */
+export async function getArcAssetChecksAction(
+  assetIds: string[],
+): Promise<Record<string, ArcDraftFinding[]>> {
+  await requireOperator();
+  if (!Array.isArray(assetIds) || assetIds.length === 0) return {};
+  if (!isSupabaseAdminConfigured()) return {};
+  try {
+    const ctx = await getCurrentWorkspaceContext();
+    return await getArcAssetChecks(assetIds, ctx.orgId);
+  } catch {
+    return {};
+  }
+}
+
+/**
  * The tail of a conversation, for a surface that renders Arc inline without
  * owning the whole chat view — Studio's copilot panel (BSR-681).
  *
@@ -712,6 +735,33 @@ export async function decideArcDraftAction(input: {
     return { ok: true, persisted: true, status: result.status };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Couldn't record that decision." };
+  }
+}
+
+/**
+ * Take back the last decision on a drafted deliverable.
+ *
+ * Approving from the chat was irreversible, and the card collapses once decided
+ * — so a misclick both committed the decision and hid the thing it was made
+ * about. The revert itself is append-only (`undoDecision` writes a `reverted`
+ * row and restores the previous status); it never deletes history and never
+ * unlocks outbound, so this cannot send anything.
+ */
+export async function undoArcDraftDecisionAction(input: {
+  assetId: string;
+}): Promise<ArcDraftDecisionResult> {
+  await requireOperator();
+  if (!input.assetId.trim()) return { ok: false, error: "This draft is missing its asset reference." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, status: "draft" };
+
+  try {
+    const operator = await getOperatorActor();
+    const tenant = await getCurrentAgentTaskTenantFields();
+    const result = await undoAssetDecision({ assetId: input.assetId, operator, tenant });
+    revalidatePath("/arc");
+    return { ok: true, persisted: true, status: result.restoredStatus };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Couldn't undo that decision." };
   }
 }
 

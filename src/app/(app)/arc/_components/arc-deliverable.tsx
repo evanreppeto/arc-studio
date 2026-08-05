@@ -38,12 +38,17 @@ import {
   ChevronRight,
   Maximize2,
   PencilLine,
+  ShieldQuestion,
+  Undo2,
   X,
 } from "lucide-react";
 
 import {
-  ARC_MEDIUM_LABEL,
+  ARC_CHECK_LABEL,
   arcDeliverableMedium,
+  arcDraftCheckState,
+  ARC_SEVERITY_TONE,
+  ARC_MEDIUM_LABEL,
   ASSET_NOUN,
   countOf,
   isLongDraftBody,
@@ -52,10 +57,12 @@ import {
   type ArcAssetStatus,
   type ArcDeliverableMedium,
   type ArcDraftContent,
+  type ArcDraftFinding,
   type ArcMedia,
 } from "@/domain";
 import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 
+import { undoArcDraftDecisionAction } from "../actions";
 import { OverlayPortal } from "../../_components/overlay-portal";
 import { assetStatusMeta, ChannelIcon, isDecidedAssetStatus, useDraftDecision } from "./arc-messages";
 import type { PaneBox } from "./arc-view.types";
@@ -68,6 +75,22 @@ function resolveDraftText(card: ArcActionCard, bodies: Record<string, ArcAssetBo
   const fetched = bodies[card.approval?.assetId ?? ""]?.body;
   if (fetched) return { text: fetched, full: true };
   return { text: card.preview ?? "", full: false };
+}
+
+/**
+ * What to call a deliverable, best source first.
+ *
+ * The copy's own headline wins — it is the thing itself. Then the asset's LIVE
+ * title, because the card's is frozen at draft time and drifts: on prod, cards
+ * still read "needs revision (placeholder)" for drafts Arc has since revised.
+ * The frozen title is the last resort, not the default.
+ */
+function deliverableHeading(
+  card: ArcActionCard,
+  content: ArcDraftContent,
+  bodies: Record<string, ArcAssetBody>,
+): string {
+  return content.headline ?? bodies[card.approval?.assetId ?? ""]?.title ?? card.title;
 }
 
 /** Pull a named lead-in field out of the parsed content, case-insensitively. */
@@ -221,6 +244,48 @@ export function DeliverableCanvas({ card, content }: { card: ArcActionCard; cont
   );
 }
 
+/**
+ * What Arc checked, including when it checked nothing.
+ *
+ * The chat used to render `flags` when present and nothing when absent. On prod
+ * that meant silence for 13 of 16 draft cards — the operator could not tell an
+ * inspected draft from an uninspected one, on the screen where they decide
+ * whether copy reaches a customer. `unchecked` gets its own colourless tone and
+ * never borrows the "passed" green.
+ */
+function DraftChecks({ flags, findings, limit }: { flags: ArcActionCard["flags"]; findings?: ArcDraftFinding[]; limit?: number }) {
+  const state = arcDraftCheckState({ flags, findings });
+  // Nothing loaded yet: say nothing. Claiming "no checks recorded" here is the
+  // bug this replaced — it was false for exactly the drafts that had findings.
+  if (state === "unknown") return null;
+
+  const open = (findings ?? []).filter((f) => f.open);
+  const shown = limit ? open.slice(0, limit) : open;
+
+  return (
+    <div className="arc-dlv-flags" data-check={state}>
+      {state === "unchecked" ? (
+        <span className="arc-dlv-unchecked" title="No guardrail result is recorded against this draft. Read it before approving.">
+          <ShieldQuestion size={12} />{ARC_CHECK_LABEL.unchecked}
+        </span>
+      ) : null}
+      {shown.map((f) => (
+        <span key={f.id} className={`arc-action-flag is-${ARC_SEVERITY_TONE[f.severity]}`} title={f.matchedText ? `Matched: ${f.matchedText}` : undefined}>
+          {f.message}
+        </span>
+      ))}
+      {limit && open.length > limit ? <span className="arc-dlv-more-findings">+{open.length - limit} more</span> : null}
+      {/* The card's own frozen flags still render when there is nothing live to
+          show — they are a real record of what Arc checked at draft time. */}
+      {open.length === 0
+        ? (limit ? flags.slice(0, limit) : flags).map((flag, index) => (
+            <span key={`${flag.label}-${index}`} className={`arc-action-flag is-${flag.tone}`}>{flag.label}</span>
+          ))
+        : null}
+    </div>
+  );
+}
+
 /* ── Decisions ──────────────────────────────────────────────────────────── */
 
 /** Approve / Revise / Decline plus the revise composer. One component so the
@@ -290,6 +355,7 @@ export function InlineDeliverable({
   card,
   status,
   bodies,
+  checks,
   onStatus,
   onOpen,
   onContextMenu,
@@ -297,6 +363,9 @@ export function InlineDeliverable({
   card: ArcActionCard;
   status: ArcAssetStatus | null;
   bodies: Record<string, ArcAssetBody>;
+  /** Live findings by asset id. A MISSING key means not loaded; an empty array
+   *  means loaded with none — see arcDraftCheckState. */
+  checks: Record<string, ArcDraftFinding[]>;
   onStatus: (assetId: string, status: ArcAssetStatus) => void;
   onOpen: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
@@ -310,22 +379,56 @@ export function InlineDeliverable({
   const content = parseArcDraftContent(text);
   const decision = useDraftDecision({ approval: card.approval, status, onResolved: onStatus });
   const medium = arcDeliverableMedium({ channel: card.channel, format: card.format });
+  const findings = checks[card.approval?.assetId ?? ""];
   const collapsed = isDecidedAssetStatus(status) && !reopened;
+
+  const [undoing, setUndoing] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
+
+  /** Take the decision back. Append-only server-side: it records a `reverted`
+   *  row and restores the previous status — it never deletes history and never
+   *  unlocks outbound, so undo cannot send anything. */
+  const undo = () => {
+    const assetId = card.approval?.assetId;
+    if (!assetId || undoing) return;
+    setUndoing(true);
+    setUndoError(null);
+    undoArcDraftDecisionAction({ assetId }).then((result) => {
+      setUndoing(false);
+      if (!result.ok) return setUndoError(result.error);
+      // Back to undecided, which un-collapses the card on the next render.
+      onStatus(assetId, "draft");
+      setReopened(false);
+    });
+  };
 
   // Only offer "Show more" once we hold copy that has more to show. While the
   // card is on its stored preview the honest control is "Open" — the rest of the
   // text is not in the browser yet.
   const canExpand = full && isLongDraftBody(content.body, CLAMP_LINES);
-  const heading = content.headline ?? card.title;
+  // Live asset title beats the card's frozen one: on prod, cards still read
+  // "needs revision (placeholder)" for drafts Arc has since revised. The
+  // content's own headline still wins over both — it is the copy itself.
+  const heading = deliverableHeading(card, content, bodies);
 
   if (collapsed) {
     return (
-      <button type="button" className="arc-dlv-collapsed" data-status={status ?? "review"} onClick={() => setReopened(true)} onContextMenu={onContextMenu}>
-        <span className="arc-dlv-collapsed-icon"><ChannelIcon channel={card.channel} size={14} /></span>
-        <span className="arc-dlv-collapsed-title"><b>{heading}</b><small>{ARC_MEDIUM_LABEL[medium]}</small></span>
-        <em className={`arc-dlv-status is-${meta.tone}`}><i />{meta.label}</em>
-        <ChevronDown size={14} />
-      </button>
+      /* Not a <button>: it carries its own Undo control, and a button inside a
+         button is invalid and unreachable by keyboard. */
+      <div className="arc-dlv-collapsed" data-status={status ?? "review"} onContextMenu={onContextMenu}>
+        <button type="button" className="arc-dlv-collapsed-open" onClick={() => setReopened(true)} aria-label={`Reopen ${heading}`}>
+          <span className="arc-dlv-collapsed-icon"><ChannelIcon channel={card.channel} size={14} /></span>
+          <span className="arc-dlv-collapsed-title"><b>{heading}</b><small>{ARC_MEDIUM_LABEL[medium]}</small></span>
+          <em className={`arc-dlv-status is-${meta.tone}`}><i />{meta.label}</em>
+          <ChevronDown size={14} />
+        </button>
+        {/* The decision is reversible, and this row is where a misclick ends up
+            — approving both commits it and hides the thing it was made about. */}
+        <button type="button" className="arc-dlv-undo" onClick={undo} disabled={undoing}>
+          <Undo2 size={12} />{undoing ? "Undoing…" : "Undo"}
+        </button>
+        {undoError ? <span className="arc-dlv-undo-error" role="status">{undoError}</span> : null}
+      </div>
     );
   }
 
@@ -351,13 +454,10 @@ export function InlineDeliverable({
         </button>
       ) : null}
 
-      {card.flags.length > 0 ? (
-        <div className="arc-dlv-flags">
-          {card.flags.slice(0, 4).map((flag, index) => (
-            <span key={`${flag.label}-${index}`} className={`arc-action-flag is-${flag.tone}`}>{flag.label}</span>
-          ))}
-        </div>
-      ) : null}
+      {/* Always rendered, including when there is nothing to report — an empty
+          flag list used to render nothing at all, which made a draft nobody had
+          checked look exactly like one that passed. */}
+      <DraftChecks flags={card.flags} findings={findings} limit={4} />
 
       <footer className="arc-dlv-foot">
         <DecisionBar card={card} decision={decision} status={status} />
@@ -421,7 +521,7 @@ function IndexTile({
       <span className="arc-dlv-tile-preview" aria-hidden="true">
         <DeliverableCanvas card={card} content={content} />
       </span>
-      <span className="arc-dlv-tile-foot">{content.headline ?? card.title}</span>
+      <span className="arc-dlv-tile-foot">{deliverableHeading(card, content, bodies)}</span>
     </button>
   );
 }
@@ -444,14 +544,20 @@ export function DeliverableReview({
   cards,
   statuses,
   bodies,
+  checks,
   paneBox,
+  returnLabel,
   onStatus,
   onClose,
 }: {
   cards: ArcActionCard[];
   statuses: Record<string, ArcAssetStatus>;
   bodies: Record<string, ArcAssetBody>;
+  checks: Record<string, ArcDraftFinding[]>;
   paneBox: PaneBox | null;
+  /** Where closing returns to, when that isn't the conversation — e.g. the
+   *  workspace sidebar the operator selected this from. */
+  returnLabel?: string;
   onStatus: (assetId: string, status: ArcAssetStatus) => void;
   onClose: () => void;
 }) {
@@ -469,6 +575,7 @@ export function DeliverableReview({
   const { reset } = decision;
   const { text } = resolveDraftText(card, bodies);
   const content = parseArcDraftContent(text);
+  const findings = checks[assetId];
   const medium = arcDeliverableMedium({ channel: card.channel, format: card.format });
 
   /** Back goes UP a level: detail → index when there is one, else out to chat. */
@@ -500,10 +607,16 @@ export function DeliverableReview({
   }, [goBack, step, showingIndex, cards.length]);
 
   const returningToIndex = !showingIndex && cards.length > 1;
-  const backLabel = returningToIndex ? `All ${countOf(cards.length, ASSET_NOUN)}` : "Back to chat";
+  // Closing lands wherever the operator opened this from. Selecting a
+  // deliverable in the workspace sidebar leaves that sidebar open underneath, so
+  // "Back to chat" would name a place this button does not go.
+  const exitLabel = returnLabel ?? "Back to chat";
+  const backLabel = returningToIndex ? `All ${countOf(cards.length, ASSET_NOUN)}` : exitLabel;
   // Spelled out for a screen reader: the visible label is a destination, and out
   // of context "All 4 assets" doesn't say it is the way back to them.
-  const backAria = returningToIndex ? `Back to all ${countOf(cards.length, ASSET_NOUN)}` : "Back to the conversation";
+  const backAria = returningToIndex
+    ? `Back to all ${countOf(cards.length, ASSET_NOUN)}`
+    : returnLabel ? `Back to ${returnLabel.toLowerCase()}` : "Back to the conversation";
 
   return (
     <OverlayPortal>
@@ -516,23 +629,31 @@ export function DeliverableReview({
         exit={reduceMotion ? undefined : { opacity: 0 }}
         onClick={onClose}
       />
-      <motion.section
+      {/* Two elements on purpose. The outer one is a transparent frame pinned to
+          the content pane whose only job is to CENTRE — it takes no pointer
+          events, so the dimmed chat behind it stays clickable-to-dismiss. The
+          inner card is the thing you see, and its height comes from the draft
+          rather than from the pane, so a short SMS gets a short card. */}
+      <motion.div
         className="arc-dlv-review"
+        style={paneBox ? { top: paneBox.top, left: paneBox.left, width: paneBox.width, height: paneBox.height } : undefined}
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.97, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={reduceMotion ? undefined : { opacity: 0, scale: 0.98, y: 4 }}
+        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      >
+      <section
+        className="arc-dlv-card"
         role="dialog"
         aria-modal="true"
         aria-label="Review what Arc drafted"
-        style={paneBox ? { top: paneBox.top, left: paneBox.left, width: paneBox.width, height: paneBox.height } : undefined}
-        initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={reduceMotion ? undefined : { opacity: 0, y: 6 }}
-        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
       >
         <header className="arc-dlv-review-head">
           <button type="button" className="arc-dlv-back" onClick={goBack} aria-label={backAria} autoFocus>
             <ArrowLeft size={15} />{backLabel}
           </button>
           <div className="arc-dlv-review-title">
-            <h2>{showingIndex ? "Campaign deliverables" : content.headline ?? card.title}</h2>
+            <h2>{showingIndex ? "Campaign deliverables" : deliverableHeading(card, content, bodies)}</h2>
             <p>{showingIndex ? `${countOf(cards.length, ASSET_NOUN)} · ${approved} approved` : `${ARC_MEDIUM_LABEL[medium]}${card.format ? ` · ${card.format}` : ""}`}</p>
           </div>
           {!showingIndex && cards.length > 1 ? (
@@ -594,16 +715,10 @@ export function DeliverableReview({
                       ))}
                     </section>
                   ) : null}
-                  {card.flags.length > 0 ? (
-                    <section>
-                      <h4>Checks</h4>
-                      <div className="arc-dlv-flags">
-                        {card.flags.map((flag, flagIndex) => (
-                          <span key={`${flag.label}-${flagIndex}`} className={`arc-action-flag is-${flag.tone}`}>{flag.label}</span>
-                        ))}
-                      </div>
-                    </section>
-                  ) : null}
+                  <section>
+                    <h4>Checks</h4>
+                    <DraftChecks flags={card.flags} findings={findings} />
+                  </section>
                 </aside>
               </motion.div>
             )}
@@ -615,7 +730,8 @@ export function DeliverableReview({
             <DecisionBar card={card} decision={decision} status={status} />
           </footer>
         ) : null}
-      </motion.section>
+      </section>
+      </motion.div>
     </OverlayPortal>
   );
 }

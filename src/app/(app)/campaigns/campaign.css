@@ -212,7 +212,7 @@
 .arc-campaign .mediatile:hover .mtzoom, .arc-campaign .mediatile:focus-visible .mtzoom { opacity: 1; }
 .arc-campaign .mediatile .mtzoom svg { width: 12px; height: 12px; stroke: #ecebe6; fill: none; stroke-width: 1.9; }
 .arc-campaign .mediatile .mtscrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 10, 12, 0.05), rgba(10, 10, 12, 0.62)); }
-.arc-campaign .mediatile .mtbadge { position: absolute; top: 6px; left: 6px; font-family: var(--mono); font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 4px; padding: 2px 5px; }
+.arc-campaign .mediatile .mtbadge { position: absolute; top: 6px; left: 6px; font-family: var(--mono); font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 4px; padding: 2px 5px; }
 .arc-campaign .mediatile .mtbadge.ai { color: #201808; background: var(--accent); }
 .arc-campaign .mediatile .mtbadge.real { color: var(--text-2); background: rgba(20, 20, 24, 0.72); }
 .arc-campaign .mediatile .mttitle { position: absolute; left: 7px; right: 7px; bottom: 6px; font-size: 9.5px; font-weight: 600; color: #ecebe6; line-height: 1.3; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
@@ -413,7 +413,7 @@
 .arc-campaign-modal .extsend, .extsend { display: flex; flex-direction: column; gap: 14px; }
 .extsend .exsec { border-top: 1px solid var(--line); padding-top: 12px; }
 .extsend .exsec:first-child { border-top: 0; padding-top: 0; }
-.extsend .exlabel { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.extsend .exlabel { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
 .extsend .exlabel span { min-width: 0; }
 .extsend .exactions { display: inline-flex; gap: 6px; text-transform: none; letter-spacing: 0; }
 .extsend .exvalue { font-size: 12.5px; color: var(--text); }
@@ -446,10 +446,10 @@
 .arc-campaign .lbmeta { margin: 0; display: flex; flex-direction: column; }
 .arc-campaign .lbrow { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line-2); }
 .arc-campaign .lbrow:first-child { border-top: 0; }
-.arc-campaign .lbrow dt { flex-shrink: 0; width: 108px; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+.arc-campaign .lbrow dt { flex-shrink: 0; width: 108px; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
 .arc-campaign .lbrow dd { margin: 0; min-width: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); overflow-wrap: anywhere; }
 .arc-campaign .lbsec { margin-top: 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px 12px; }
-.arc-campaign .lbsec b { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.arc-campaign .lbsec b { display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
 .arc-campaign .lbprompt p { margin: 0; font-family: var(--mono); font-size: 11px; line-height: 1.55; color: var(--text-2); overflow-wrap: anywhere; }
 /* Same lineage read as the Library card: the tuple's first value is a dot
    colour, not a label. */

@@ -5,7 +5,7 @@
 //
 // This is illustrative sample content for a demo tenant, not a hardcoded customer.
 
-import type { ArcActionCard, ArcMention, ArcRecall } from "@/domain";
+import type { ArcActionCard, ArcDraftFinding, ArcMention, ArcRecall } from "@/domain";
 import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 import type { ArcAttachment, ArcMessage, ArcStep, ArcToolCall } from "@/lib/arc-chat/persistence";
 import type { ArcRecentConversationVM, ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
@@ -149,7 +149,12 @@ export const DEMO_PACKAGE_CARDS: ArcActionCard[] = [
     status: "draft",
     preview: "Free personalized walkthrough for teams evaluating Meridian. See how it fits your workflow before your trial winds down.",
     rows: [{ name: "Destination", meta: "Campaign-matched" }],
-    flags: [{ tone: "ok", label: "No overclaim" }],
+    // Deliberately flagless, and it is the COMMON case: a census of prod found
+    // 13 of 16 approval-bearing draft cards carrying no flags at all. With every
+    // fixture flagged, the preview only ever showed "checks passed" and the
+    // state an operator actually meets most often — "no checks recorded" —
+    // could not be reviewed on the one screen where this design gets reviewed.
+    flags: [],
     approval: { kind: "campaign", campaignId: "demo-campaign", assetId: "demo-asset-landing" },
   },
 ];
@@ -197,6 +202,7 @@ export const DEMO_ASSET_BODIES: Record<string, ArcAssetBody> = {
   "demo-asset-email": {
     id: "demo-asset-email",
     edited: false,
+    title: "Demo follow-up email",
     body: [
       "SUBJECT: You looked at pricing — here's a walkthrough",
       "PREHEADER: Fifteen minutes, no pitch. We'll map Meridian to how your team already works.",
@@ -219,10 +225,15 @@ export const DEMO_ASSET_BODIES: Record<string, ArcAssetBody> = {
   "demo-asset-sms": {
     id: "demo-asset-sms",
     edited: false,
+    // Drifted from the card's frozen "Warm demo check-in", and SMS carries no
+    // lead-in headline — so this is the one fixture that actually exercises the
+    // live-title tier rather than being shadowed by the copy's own headline.
+    title: "Warm demo check-in (revised, opt-out added)",
     body: "Hi {first_name} — it's the {brand} team. Saw your team exploring Meridian, no charge and no pressure. Want a quick walkthrough? Reply STOP to opt out.",
   },
   "demo-asset-social": {
     id: "demo-asset-social",
+    title: "High-intent awareness — \"See it on your data\"",
     edited: false,
     body: [
       "Headline: See Meridian tailored to your team",
@@ -232,6 +243,37 @@ export const DEMO_ASSET_BODIES: Record<string, ArcAssetBody> = {
       "Fifteen minutes, your own data on screen, no pitch. We'll show the parts that matter to how your team already works and skip the rest.",
     ].join("\n"),
   },
+};
+
+/**
+ * Guardrail findings for the demo cards, standing in for `getArcAssetChecks`.
+ *
+ * Shaped like prod, which is the point: there, 13 of 16 draft cards carry NO
+ * flags while the assets behind them hold 15 open findings — 13 `warning` and
+ * 2 `blocker`. So the landing page carries an open blocker while its card
+ * carries nothing, which is exactly the case that used to render as "nothing
+ * flagged" one click from approval.
+ *
+ * `demo-asset-sms` is present but EMPTY on purpose — that is the "we looked and
+ * found none" answer, which must render differently from "we have not looked".
+ */
+export const DEMO_ASSET_CHECKS: Record<string, ArcDraftFinding[]> = {
+  "demo-asset-landing": [
+    {
+      id: "demo-finding-1",
+      severity: "blocker",
+      message: "Contradicts the documented plan list: the page offers a tier the brand kit does not sell.",
+      matchedText: "every plan includes onboarding",
+      open: true,
+    },
+    {
+      id: "demo-finding-2",
+      severity: "warning",
+      message: "Could not ground the \"15 minutes\" claim in any brain node.",
+      open: true,
+    },
+  ],
+  "demo-asset-sms": [],
 };
 
 export const DEMO_ATTACHMENTS: ArcAttachment[] = [

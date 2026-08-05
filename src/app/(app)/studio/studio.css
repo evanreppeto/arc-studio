@@ -35,7 +35,7 @@
 
 /* sources */
 .arc-studio .sources { border-right: 1px solid var(--line); min-height: 0; overflow: auto; padding: 14px 13px; background: color-mix(in srgb, var(--canvas-deep) 14%, transparent); }
-.arc-studio .seyl { font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin: 0 2px 9px; }
+.arc-studio .seyl { font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin: 0 2px 9px; }
 .arc-studio .stabs { display: flex; gap: 3px; margin-bottom: 12px; background: var(--inset); border: 1px solid var(--line-2); border-radius: 9px; padding: 3px; }
 .arc-studio .stab { flex: 1; text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); padding: 6px 3px; border-radius: 7px; cursor: pointer; transition: 0.14s; }
 .arc-studio .stab:hover { color: var(--text-2); }
@@ -245,7 +245,7 @@
    "Ask Arc for variations" was rendering 149px inside the inspector column. */
 .arc-studio .strip { display: flex; align-items: center; flex-wrap: nowrap; gap: 9px; padding: 11px 18px; border-top: 1px solid var(--line); min-height: 78px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .arc-studio .strip::-webkit-scrollbar { display: none; }
-.arc-studio .strip .sl { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.arc-studio .strip .sl { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .arc-studio .vthumb { width: 52px; height: 52px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line-2); position: relative; cursor: pointer; flex-shrink: 0; transition: border-color 0.15s, transform 0.15s var(--ease); }
 .arc-studio .vthumb:hover { border-color: var(--accent-border); }
 .arc-studio .vthumb.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
@@ -285,7 +285,7 @@
    was a scroll away, whichever one you actually wanted. */
 .arc-studio .psec { margin-bottom: 6px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
 .arc-studio .psec:last-child { border-bottom: none; }
-.arc-studio .ph2 { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin: 0; padding: 10px 2px; display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; transition: color 0.14s; }
+.arc-studio .ph2 { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin: 0; padding: 10px 2px; display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; transition: color 0.14s; }
 .arc-studio .ph2::-webkit-details-marker { display: none; }
 .arc-studio .ph2:hover { color: var(--text-2); }
 .arc-studio .psec[open] > .ph2 { color: var(--text-2); }
@@ -307,9 +307,10 @@
 .arc-studio .draftmeta .actl { margin-top: 7px; padding: 0; }
 /* Permanently true, never derived — a footnote, not a second finding competing
    with the one computed above it. */
-.arc-studio .gnote { margin-top: 9px; font-size: 10px; line-height: 1.5; color: var(--muted); border-left: 2px solid var(--line-2); padding-left: 9px; }
+/* 1px, not 2px — §8 bans side-stripe borders wider than a hairline on callouts. */
+.arc-studio .gnote { margin-top: 9px; font-size: 10px; line-height: 1.5; color: var(--muted); border-left: 1px solid var(--line-2); padding-left: 9px; }
 .arc-studio .brief { border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, var(--accent-soft), transparent 70%); padding: 13px; margin-bottom: 20px; }
-.arc-studio .brief .bh { display: flex; align-items: center; gap: 8px; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: var(--accent-contrast); text-transform: uppercase; }
+.arc-studio .brief .bh { display: flex; align-items: center; gap: 8px; font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--accent-contrast); text-transform: uppercase; }
 .arc-studio .brief .bn { font-family: var(--serif); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 7px 0 3px; }
 .arc-studio .brief .bmeta { font-size: 10.5px; line-height: 1.45; color: var(--accent); }
 .arc-studio .brief .brow { margin-top: 10px; font-size: 11px; color: var(--text-2); line-height: 1.5; }
@@ -398,7 +399,7 @@
 .arc-studio .arcempty-d b { color: var(--text-2); font-weight: 600; }
 /* Two paragraphs of prose was the whole empty state. Openers give the pane
    something to do; they only fill the box — nothing is sent. */
-.arc-studio .arcstart-l { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.arc-studio .arcstart-l { font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .arc-studio .arcstart { display: flex; flex-direction: column; gap: 6px; }
 .arc-studio .starter { text-align: left; font-family: inherit; font-size: 11.5px; line-height: 1.45; color: var(--text-2); background: var(--panel); border: 1px solid var(--line-2); border-radius: 9px; padding: 8px 11px; cursor: pointer; transition: 0.14s; }
 .arc-studio .starter:hover:not(:disabled) { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
@@ -451,7 +452,7 @@
    where five of them sat past the right edge behind a scroll with no scrollbar.
    Wraps rather than scrolls: this row has vertical room, the toolbar didn't. */
 .arc-studio .arcasks { margin-bottom: 9px; }
-.arc-studio .arcaskt { display: flex; align-items: center; gap: 6px; padding: 0 0 7px; border: 0; background: transparent; font-family: inherit; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); cursor: pointer; transition: color 0.14s; }
+.arc-studio .arcaskt { display: flex; align-items: center; gap: 6px; padding: 0 0 7px; border: 0; background: transparent; font-family: inherit; font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); cursor: pointer; transition: color 0.14s; }
 .arc-studio .arcaskt:hover { color: var(--text-2); }
 .arc-studio .arcaskc { display: grid; place-items: center; width: 11px; height: 11px; color: var(--line-3); transition: transform 0.18s var(--ease); }
 .arc-studio .arcaskc.on { transform: rotate(90deg); color: var(--accent); }
