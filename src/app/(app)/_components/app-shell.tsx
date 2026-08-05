@@ -505,7 +505,13 @@ export function AppShell({
             >
               <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
             </button>
-            <h1 className="crumb">{crumb}</h1>
+            {/* A div, not an h1. This small top-bar label was the document's only h1 on
+                every route, while the page's real title sat below it as an h2 —
+                so /campaigns announced "Campaigns" twice and the visible
+                hierarchy disagreed with the semantic one. Each route now owns
+                its own h1. Tailwind preflight already zeroes heading margins,
+                so nothing moves. */}
+            <div className="crumb">{crumb}</div>
             <button
               type="button"
               className="search"

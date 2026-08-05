@@ -2573,6 +2573,9 @@ export function ArcView({
 
   return (
     <div className="arc-chat" ref={chatRootRef} data-workspace-open={panelVisible ? "true" : "false"} data-new-conversation={live && !visibleConversationId && visibleMessages.length === 0 && !optimisticTurn ? "true" : "false"}>
+      {/* The chat surface has no visible title; this names the document so the
+          route still has exactly one h1 like every other. */}
+      <h1 className="sr-only">Arc</h1>
       <header className="arc-conversation-header">
         <button type="button" ref={historyButtonRef} className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-expanded={historyOpen} aria-haspopup="dialog" aria-label="Open conversations"><MessagesSquare size={17} /><span>Conversations</span></button>
         <div className="arc-conversation-title"><h2>{header.title}</h2><p>{header.subtitle}</p></div>

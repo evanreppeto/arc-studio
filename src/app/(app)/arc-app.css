@@ -425,7 +425,7 @@
   & .col-r { border-left: 1px solid var(--line); padding: 26px 24px 48px; background: color-mix(in srgb, var(--canvas-deep) 22%, transparent); }
 
   & .date { font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: 0.02em; }
-  & h2.greet { font-family: var(--serif); font-weight: 500; font-size: 33px; line-height: 1.02; letter-spacing: -0.02em; margin: 10px 0 9px; }
+  & h1.greet { font-family: var(--serif); font-weight: 500; font-size: 33px; line-height: 1.02; letter-spacing: -0.02em; margin: 10px 0 9px; }
   & .subline { font-size: 13px; color: var(--text-2); }
   & .subline .dot { color: var(--line-3); margin: 0 8px; }
 
@@ -592,7 +592,7 @@
     & .opps { grid-template-columns: 1fr; }
 
     /* Home hero + section headers scale down so nothing overflows. */
-    & h2.greet { font-size: 27px; }
+    & h1.greet { font-size: 27px; }
     & .focal { padding: 16px 15px; }
     /* Focal top row: let the title own its own line; citations + confidence
        wrap beneath it instead of colliding with the wrapping headline. */
@@ -764,7 +764,7 @@
   min-width: 0;
 }
 .arc-app .arc-grid .chrow { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
-.arc-app .arc-grid h2.ct { font-family: var(--serif); font-weight: 500; font-size: 29px; letter-spacing: -.02em; margin: 0; color: var(--text); }
+.arc-app .arc-grid h1.ct { font-family: var(--serif); font-weight: 500; font-size: 29px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-grid .csub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 /* The one fact a whole column was spending ~210px repeating on every row. */
 .arc-app .arc-grid .csub .csub-em { color: var(--text-2); font-weight: 500; }
@@ -1533,7 +1533,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 /* persona command header — title, stat cards, Arc-drafts banner (ported from build-personas.html) */
 .arc-app .arc-personas .phead { padding: 20px clamp(22px, 3vw, 38px) 0; flex-shrink: 0; }
 .arc-app .arc-personas .ph1row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-.arc-app .arc-personas h2.pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
+.arc-app .arc-personas h1.pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-personas .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; max-width: 60ch; white-space: normal; }
 .arc-app .arc-personas .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; }
 .arc-app .arc-personas .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
@@ -1676,6 +1676,9 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain.graph { display: flex; flex-direction: column; overflow: hidden; }
 .arc-app .arc-brain .bhead { padding: 18px clamp(22px, 3vw, 38px) 0; flex-shrink: 0; }
 .arc-app .arc-brain .bh1row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+/* Library's page title had no size rule at all — it rendered at body size while
+   every other route's .pt is 27px. Pre-existing, found while promoting these to h1. */
+.arc-app .arc-library .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-brain .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-brain .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 .arc-app .arc-brain .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; }
@@ -2350,7 +2353,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    scope defines local fallbacks; --ok/--warn/--accent are inherited.
    ============================================================================ */
 .arc-app .journeys { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px clamp(16px, 3vw, 30px) 48px; --jr-blue: #88b6d8; --jr-blue-soft: rgba(136, 182, 216, 0.14); }
-.arc-app .journeys .jr-head h2 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 10px; }
+.arc-app .journeys .jr-head h1 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 10px; }
 .arc-app .journeys h2 { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 /* Sits INSIDE an <h2>, and h1/h2/h3 are globally Fraunces — so omitting the
    family here did not mean "default", it meant the display serif at 11.5px.
