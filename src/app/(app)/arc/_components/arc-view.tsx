@@ -66,6 +66,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 
 import {
+  ARC_RUN_STALE_MS,
   type ArcActionCard,
   type ArcAssetStatus,
   type ArcDraftFinding,
@@ -117,6 +118,7 @@ import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import {
   getArcConversationHeader,
   getArcConversationScrollTarget,
+  hasArcReplyInFlight,
   shouldShowDemoLauncher,
   shouldUseDemoSeedWorkspace,
 } from "@/lib/arc-chat/view-state";
@@ -1625,7 +1627,10 @@ export function ArcView({
   const [streamOverlay, setStreamOverlay] = useState<ArcStreamOverlay | null>(null);
   const visibleConversationId = startingNewConversation ? null : activeConversationId;
   const visibleMessages = startingNewConversation ? [] : messages;
-  const awaitingReply = live && (Boolean(optimisticTurn) || visibleMessages.some((message) => message.status === "pending" || (message.role === "arc" && !message.body.trim())));
+  // A run the server has judged dead is deliberately not "awaiting" — that is
+  // what unlocks the composer, tears down the SSE subscription, and stops the
+  // spinner on a turn the runner abandoned.
+  const awaitingReply = live && (Boolean(optimisticTurn) || hasArcReplyInFlight(visibleMessages));
   // The newest reply that actually built something. A stable id (not the message
   // array) so the auto-open effect below fires on a new asset-bearing run rather
   // than on every render.
@@ -1724,17 +1729,32 @@ export function ArcView({
     };
   }, [live, awaitingReply, visibleConversationId, router]);
 
-  // Backstop: reconcile with the server on a slow cadence while awaiting, so a
-  // blocked or proxy-buffered SSE stream still resolves. Defense in depth, not the
-  // primary path — the SSE stream above carries the live updates.
+  // Backstop: reconcile with the server while awaiting, so a blocked or
+  // proxy-buffered SSE stream still resolves. Defense in depth, not the primary
+  // path — the SSE stream above carries the live updates.
+  //
+  // This used to give up flat at 120s, which left an operator sitting on a dead
+  // run watching a spinner that could never resolve: the server doesn't judge a
+  // run stalled until ARC_RUN_STALE_MS (180s), so the client stopped looking a
+  // full minute *before* the answer existed. It now keeps checking — slowly,
+  // once the useful fast window is over — until past the stale cutoff, at which
+  // point the stall verdict arrives, `awaitingReply` flips false, and this tears
+  // itself down. The ceiling is derived from the cutoff so the two can't drift.
   useEffect(() => {
     if (!awaitingReply) return;
     const startedAt = Date.now();
-    const interval = window.setInterval(() => {
-      if (Date.now() - startedAt > 120_000) return window.clearInterval(interval);
+    const ceiling = ARC_RUN_STALE_MS + 60_000;
+    let timer = 0;
+    const tick = () => {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed > ceiling) return;
       router.refresh();
-    }, 6000);
-    return () => window.clearInterval(interval);
+      // Fast while a reply is plausibly seconds away; slow once we're only
+      // waiting to be told it isn't coming.
+      timer = window.setTimeout(tick, elapsed < 120_000 ? 6_000 : 15_000);
+    };
+    timer = window.setTimeout(tick, 6_000);
+    return () => window.clearTimeout(timer);
   }, [awaitingReply, router]);
 
   // The workspace exists to hold campaign assets, so that is the only thing that
