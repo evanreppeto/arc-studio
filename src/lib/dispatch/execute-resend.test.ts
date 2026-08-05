@@ -18,7 +18,10 @@ const ENABLED_RESEND = { enabled: true, env_var: "RESEND_API_KEY", config: { fro
 // and a workspace sender identity with the postal address CAN-SPAM requires.
 // Without these the executor now refuses — see the dedicated gate tests below.
 const COMPLIANCE_ROWS = {
-  contacts: { data: { email_unsubscribed_at: null }, error: null },
+  contacts: { data: { email_unsubscribed_at: null, status: "active" }, error: null },
+  // The address-keyed half of the gate. maybeSingle() returns null for "no such
+  // row" on a real client; the mock's unmapped default is [], so state it.
+  email_suppressions: { data: null, error: null },
   app_settings: {
     data: [
       { key: "email_sender_name", value: "Big Shoulders Restoration" },

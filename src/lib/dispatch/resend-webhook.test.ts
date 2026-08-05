@@ -49,10 +49,13 @@ const DISPATCH = {
   campaign_id: "c1",
   campaign_asset_id: "a1",
   contact_id: "ct1",
+  // The address this dispatch actually mailed — the fallback key for a
+  // suppression when the provider event omits the recipient.
+  payload: { to: "lead@example.com" },
 };
 
 function openedEvent() {
-  return { type: "email.opened" as const, emailId: "re_msg_1", createdAt: "2026-07-23T12:00:00.000Z", clickedLink: null };
+  return { type: "email.opened" as const, emailId: "re_msg_1", createdAt: "2026-07-23T12:00:00.000Z", clickedLink: null, recipient: null, bounceType: null };
 }
 
 describe("recordResendWebhookEvent", () => {
@@ -118,6 +121,78 @@ describe("recordResendWebhookEvent", () => {
     );
     expect(result).toEqual({ ok: true, recorded: false, note: "Ignored email.sent." });
     expect(supabase.calls.length).toBe(0);
+  });
+
+  it("adds the recipient to the suppression register on a spam complaint", async () => {
+    // Before BSR-482 a complaint wrote an engagement row and nothing else, so
+    // the very next campaign mailed the same address again.
+    const supabase = createSupabaseQueryMock({
+      campaign_dispatches: { data: DISPATCH, error: null },
+      engagement_events: { data: null, error: null },
+      email_suppressions: { data: null, error: null },
+      contacts: { data: null, error: null },
+    });
+
+    const result = await recordResendWebhookEvent(
+      { event: { ...openedEvent(), type: "email.complained", recipient: "lead@example.com" }, externalEventId: "svix_c" },
+      supabase,
+    );
+
+    expect(result.ok).toBe(true);
+    const suppression = supabase.calls
+      .filter(([method]) => method === "upsert")
+      .map(([, arg]) => arg as Record<string, unknown>)
+      .find((arg) => arg.reason === "complaint");
+    expect(suppression).toMatchObject({ org_id: "org-1", email: "lead@example.com", reason: "complaint", source: "resend" });
+  });
+
+  it("suppresses on a PERMANENT bounce but not a transient one", async () => {
+    function run(bounceType: string) {
+      const supabase = createSupabaseQueryMock({
+        campaign_dispatches: { data: DISPATCH, error: null },
+        engagement_events: { data: null, error: null },
+        email_suppressions: { data: null, error: null },
+        contacts: { data: null, error: null },
+      });
+      return recordResendWebhookEvent(
+        {
+          event: { ...openedEvent(), type: "email.bounced", recipient: "lead@example.com", bounceType },
+          externalEventId: `svix_b_${bounceType}`,
+        },
+        supabase,
+      ).then(() => supabase);
+    }
+
+    const permanent = await run("Permanent");
+    expect(
+      permanent.calls.some(([method, arg]) => method === "upsert" && (arg as Record<string, unknown>).reason === "bounce"),
+    ).toBe(true);
+
+    // A full mailbox must not permanently drop a reachable customer.
+    const transient = await run("Transient");
+    expect(
+      transient.calls.some(([method, arg]) => method === "upsert" && (arg as Record<string, unknown>).reason === "bounce"),
+    ).toBe(false);
+  });
+
+  it("falls back to the dispatch's own address when the provider sends no recipient", async () => {
+    const supabase = createSupabaseQueryMock({
+      campaign_dispatches: { data: DISPATCH, error: null },
+      engagement_events: { data: null, error: null },
+      email_suppressions: { data: null, error: null },
+      contacts: { data: null, error: null },
+    });
+
+    await recordResendWebhookEvent(
+      { event: { ...openedEvent(), type: "email.complained", recipient: null }, externalEventId: "svix_c2" },
+      supabase,
+    );
+
+    const suppression = supabase.calls
+      .filter(([method]) => method === "upsert")
+      .map(([, arg]) => arg as Record<string, unknown>)
+      .find((arg) => arg.reason === "complaint");
+    expect(suppression).toMatchObject({ email: "lead@example.com" });
   });
 
   it("surfaces a write failure so the route can 500 and svix retries", async () => {
