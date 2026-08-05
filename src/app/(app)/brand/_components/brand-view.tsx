@@ -12,6 +12,7 @@ import { EditIdentityModal } from "./edit-identity-modal";
 import { LogoSet } from "./logo-set";
 import { EditPaletteModal } from "./edit-palette-modal";
 import { EditTypographyModal } from "./edit-typography-modal";
+import { AppImage } from "../../_components/app-image";
 
 const STUDIO = "/studio";
 const BRAIN = "/brain";
@@ -181,8 +182,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
       <div className="brandhero">
         <div className="mk2">
           {logoUrl
-            ? /* eslint-disable-next-line @next/next/no-img-element -- a tenant-uploaded URL on any host; next/image would need every storage domain allow-listed */
-              <img src={logoUrl} alt={`${identity.name} logo`} />
+            ? <AppImage src={logoUrl} alt={`${identity.name} logo`} />
             : <svg viewBox="0 0 24 24"><path d="M5 8l5 4-5 4M11 16h8" /></svg>}
         </div>
         <div className="bid">

@@ -14,6 +14,7 @@ import { DRAG_ASSETS, FolderTree, ROOT_FOLDER, type Folder } from "./folder-tree
 import { RAIL_MAX, RAIL_MIN, TILE_SIZES, getLibraryPrefs, getServerLibraryPrefs, setLibraryPrefs, subscribeLibraryPrefs, type TileSize } from "./library-prefs";
 import { Define } from "../../_components/define";
 import { OverlayPortal } from "../../_components/overlay-portal";
+import { AppImage } from "../../_components/app-image";
 
 type Kind = "image" | "video" | "logo" | "document";
 type Prov = "real" | "ai" | "comp" | "upload" | "logo" | "doc";
@@ -172,7 +173,7 @@ function ThumbMedia({ a }: { a: Asset }) {
     <>
       <Svg markup={SC[a.sc] || SC.photo} />
       {url && !failed ? (
-        <img src={url} loading="lazy" alt="" onError={() => setFailed(true)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+        <AppImage src={url} alt="" onError={() => setFailed(true)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
       ) : null}
     </>
   );

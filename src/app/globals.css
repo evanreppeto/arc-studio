@@ -1076,6 +1076,38 @@ time,
 @keyframes arc-skel-slide { 100% { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .arc-skel::after { animation: none; } }
 
+/* Media placeholder for <AppImage>. Reuses .arc-skel's sweep language so a loading
+   thumbnail reads the same as loading text.
+
+   Painted as the image's OWN background rather than a wrapper: an <img> renders its
+   background behind its image content, so the skeleton fills exactly the box the
+   parent already sized and needs no extra DOM. Once decoded, the background is
+   dropped and the real pixels fade in — a thumbnail never appears as an empty box. */
+.appimg {
+  background-color: var(--surface-inset);
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: appimg-sweep 1.5s ease-in-out infinite;
+}
+.appimg[data-loaded="true"] {
+  background-image: none;
+  background-color: transparent;
+  animation: appimg-in 260ms ease-out both;
+}
+@keyframes appimg-sweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes appimg-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .appimg { animation: none; }
+  .appimg[data-loaded="true"] { animation: none; }
+}
+
 @keyframes text-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }

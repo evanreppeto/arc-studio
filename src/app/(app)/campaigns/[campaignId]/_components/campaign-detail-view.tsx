@@ -52,6 +52,7 @@ import {
   shareCampaignWithMemberAction,
   unshareCampaignMemberAction,
 } from "../../sharing-actions";
+import { AppImage } from "../../../_components/app-image";
 
 
 const CATEGORY_LABEL: Record<CampaignWorkspaceAssetCategory, string> = {
@@ -217,8 +218,7 @@ function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () =>
       style={{ aspectRatio: tileAspect(media.format) }}
     >
       {thumb && !failed ? (
-        // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
-        <img className="mtimg" src={thumb} alt={media.title} loading="lazy" onError={() => setFailed(true)} />
+        <AppImage className="mtimg" src={thumb} alt={media.title} onError={() => setFailed(true)} />
       ) : null}
       <span className="mtscrim" />
       <span className={`mtbadge ${media.origin === "generated" ? "ai" : "real"}`}>
@@ -256,8 +256,7 @@ function LightboxStage({ media }: { media: CampaignMediaAsset }) {
   }
   if (media.type === "image") {
     return (
-      // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
-      <img className="lbimg" src={media.url} alt={media.title} onError={() => setFailed(true)} />
+      <AppImage className="lbimg" src={media.url} alt={media.title} loading="eager" onError={() => setFailed(true)} />
     );
   }
   if (media.type === "video") {
@@ -271,8 +270,7 @@ function LightboxStage({ media }: { media: CampaignMediaAsset }) {
   return (
     <div className="lbnoprev">
       {media.thumbnailUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
-        <img className="lbimg" src={media.thumbnailUrl} alt={media.title} onError={() => setFailed(true)} />
+        <AppImage className="lbimg" src={media.thumbnailUrl} alt={media.title} loading="eager" onError={() => setFailed(true)} />
       ) : null}
       <p className="lbfail">No inline preview for this {media.type}. Open the original to view it.</p>
     </div>

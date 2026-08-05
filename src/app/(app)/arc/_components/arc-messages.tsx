@@ -72,6 +72,7 @@ import { collapseTraceRows } from "@/lib/arc-chat/trace-rows";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import { resolveArcRunViewState } from "@/lib/arc-chat/run-view-state";
 import { getToolKind } from "@/lib/arc-chat/tool-labels";
+import { AppImage } from "../../_components/app-image";
 import {
   buildArcWorkspaceEvidence,
   buildArcWorkspaceRuns,
@@ -492,8 +493,7 @@ export function ThinkingIndicator({ label }: { label: string }) {
 /** A tiny image thumbnail (composer chip). Attachment URLs are arbitrary signed
  *  URLs, so next/image (which needs configured remote patterns) doesn't fit. */
 export function ChipThumb({ url }: { url: string }) {
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={url} alt="" className="arc-chip-thumb" />;
+  return <AppImage src={url} alt="" className="arc-chip-thumb" />;
 }
 
 /** Renders a message's attachments — image uploads as clickable thumbnails, other
@@ -506,8 +506,7 @@ export function MessageAttachments({ attachments }: { attachments: ArcAttachment
     <div className="arc-attachments">
       {images.map((attachment) => (
         <a key={attachment.objectPath} href={attachment.url} target="_blank" rel="noopener noreferrer" className="arc-attachment-image" title={attachment.name}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={attachment.url} alt={attachment.name} loading="lazy" />
+          <AppImage src={attachment.url} alt={attachment.name} />
         </a>
       ))}
       {files.map((attachment) => (
@@ -654,7 +653,7 @@ function DeliverableThumb({ card }: { card: ArcActionCard }) {
   }
   return (
     <span className="arc-created-icon has-media">
-      <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />
+      <AppImage src={src} alt="" onError={() => setFailed(true)} />
     </span>
   );
 }

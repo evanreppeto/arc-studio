@@ -13,6 +13,7 @@ import { type ReviewQueueEntry } from "@/lib/campaigns/read-model";
 import { nextActionFor, type SignalTiming } from "./board-derivations";
 import { NewCampaignModal } from "./new-campaign-modal";
 import { needsOperatorAttention, type CampaignTone } from "./tone";
+import { AppImage } from "../../_components/app-image";
 
 export type { CampaignTone } from "./tone";
 
@@ -128,8 +129,7 @@ function CampaignAvatar({ thumbnailUrl, mediaCount }: { thumbnailUrl: string | n
   return (
     <span className={`pav${showImage ? " hasthumb" : ""}`}>
       {showImage ? (
-        // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
-        <img className="pavimg" src={thumbnailUrl as string} alt="" loading="lazy" onError={() => setFailed(true)} />
+        <AppImage className="pavimg" src={thumbnailUrl as string} alt="" onError={() => setFailed(true)} />
       ) : (
         CampIcon
       )}
@@ -177,8 +177,7 @@ function DeliverableStrip({
             <>
               <span className="dthumb">
                 {piece.thumbnailUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
-                  <img src={piece.thumbnailUrl} alt="" loading="lazy" />
+                  <AppImage src={piece.thumbnailUrl} alt="" />
                 ) : (
                   svgIcon('<path d="M4 5h16v14H4z"/><path d="M4 10h16M9 10v9"/>')
                 )}
