@@ -629,16 +629,24 @@ export function DeliverableReview({
         exit={reduceMotion ? undefined : { opacity: 0 }}
         onClick={onClose}
       />
-      <motion.section
+      {/* Two elements on purpose. The outer one is a transparent frame pinned to
+          the content pane whose only job is to CENTRE — it takes no pointer
+          events, so the dimmed chat behind it stays clickable-to-dismiss. The
+          inner card is the thing you see, and its height comes from the draft
+          rather than from the pane, so a short SMS gets a short card. */}
+      <motion.div
         className="arc-dlv-review"
+        style={paneBox ? { top: paneBox.top, left: paneBox.left, width: paneBox.width, height: paneBox.height } : undefined}
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.97, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={reduceMotion ? undefined : { opacity: 0, scale: 0.98, y: 4 }}
+        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      >
+      <section
+        className="arc-dlv-card"
         role="dialog"
         aria-modal="true"
         aria-label="Review what Arc drafted"
-        style={paneBox ? { top: paneBox.top, left: paneBox.left, width: paneBox.width, height: paneBox.height } : undefined}
-        initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={reduceMotion ? undefined : { opacity: 0, y: 6 }}
-        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
       >
         <header className="arc-dlv-review-head">
           <button type="button" className="arc-dlv-back" onClick={goBack} aria-label={backAria} autoFocus>
@@ -722,7 +730,8 @@ export function DeliverableReview({
             <DecisionBar card={card} decision={decision} status={status} />
           </footer>
         ) : null}
-      </motion.section>
+      </section>
+      </motion.div>
     </OverlayPortal>
   );
 }
