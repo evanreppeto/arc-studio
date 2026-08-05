@@ -511,6 +511,11 @@
 .arc-studio .canvas .cblock-ring { position: absolute; inset: -8px; border: 1px dashed var(--accent-border); border-radius: 6px; pointer-events: none; }
 .arc-studio .canvas .cblock-handle { position: absolute; right: -14px; bottom: -14px; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--canvas-deep, #101013); cursor: ew-resize; touch-action: none; }
 .arc-studio .canvas .cblock-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The logo's second handle. Opposite corner from the scale grip so the two can
+   never be grabbed for each other, and a grab cursor because it sweeps rather
+   than resizes. */
+.arc-studio .canvas .cblock-handle.rot { right: auto; bottom: auto; left: -14px; top: -14px; cursor: grab; background: var(--canvas-deep, #101013); border-color: var(--accent); }
+.arc-studio .canvas .cblock-handle.rot:active { cursor: grabbing; }
 
 @media (prefers-reduced-motion: reduce) {
   .arc-studio .canvas .clayer { transition: none; }

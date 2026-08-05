@@ -6,7 +6,12 @@ import {
   CREATIVE_LAYOUTS,
   CREATIVE_TEMPLATE_IDS,
   HEADLINE_SCALE_RANGE,
+  LOGO_NUDGE_LIMIT,
+  LOGO_ROTATE_LIMIT,
+  LOGO_SCALE_RANGE,
   clampLayoutOverride,
+  isLogoPlaced,
+  logoTransform,
   creativeScale,
   withLayoutOverride,
 } from "../index";
@@ -82,7 +87,16 @@ describe("layout overrides (constrained canvas editing)", () => {
   // A client can send anything; the renderer clamps the same values the canvas did.
   it("refuses NaN and undefined rather than propagating them into CSS", () => {
     expect(clampLayoutOverride({ copyDx: Number.NaN }).copyDx).toBe(0);
-    expect(clampLayoutOverride(undefined)).toEqual({ copyDx: 0, copyDy: 0, headlineScale: 1 });
+    expect(clampLayoutOverride({ logoRotate: Number.NaN }).logoRotate).toBe(0);
+    expect(clampLayoutOverride(undefined)).toEqual({
+      copyDx: 0,
+      copyDy: 0,
+      headlineScale: 1,
+      logoDx: 0,
+      logoDy: 0,
+      logoScale: 1,
+      logoRotate: 0,
+    });
   });
 
   it("returns the layout untouched when nothing was moved", () => {
@@ -144,5 +158,51 @@ describe("subhead slot", () => {
     const scaled = withLayoutOverride(CREATIVE_LAYOUTS.bold, { headlineScale: 1.5 });
     expect(scaled.subhead.size).toBe(CREATIVE_LAYOUTS.bold.subhead.size * 1.5);
     expect(scaled.kicker.size).toBe(CREATIVE_LAYOUTS.bold.kicker.size);
+  });
+});
+
+/**
+ * Free logo placement.
+ *
+ * The templates pinned the mark — bold to a corner, editorial and minimal into a
+ * flowed foot row — and the app explained that as a rule: your logo "can't" go on
+ * the van panel. It was never a rule. What generation enforces is that the MODEL
+ * must not draw your mark (it renders a garbled counterfeit), which is a reason
+ * the model can't draw it, not a reason your real file can't sit there.
+ *
+ * Expressed as a TRANSFORM so all three templates honour it without
+ * restructuring, and computed by one function so the preview and the export
+ * cannot disagree — the BSR-679 property.
+ */
+describe("logo placement", () => {
+  it("is untouched by default, so a template renders exactly as before", () => {
+    expect(logoTransform(undefined, (n) => `${n}px`)).toBeNull();
+    expect(logoTransform({ logoDx: 0, logoScale: 1, logoRotate: 0 }, (n) => `${n}px`)).toBeNull();
+    expect(isLogoPlaced(undefined)).toBe(false);
+  });
+
+  it("reaches the middle of the frame, which a copy-block nudge cannot", () => {
+    // The whole point: 56px from the corner cannot reach a van panel mid-frame.
+    expect(LOGO_NUDGE_LIMIT).toBeGreaterThanOrEqual(CREATIVE_DESIGN_WIDTH);
+    expect(clampLayoutOverride({ logoDx: 500 }).logoDx).toBe(500);
+  });
+
+  it("orders the transform translate → rotate → scale", () => {
+    // Order is load-bearing: rotate-then-translate would swing a placed mark off
+    // the surface it was dragged onto.
+    const out = logoTransform({ logoDx: 10, logoDy: -4, logoScale: 2, logoRotate: 12 }, (n) => `${n}px`);
+    expect(out?.transform).toBe("translate(10px, -4px) rotate(12deg) scale(2)");
+    expect(out?.transformOrigin).toBe("center");
+  });
+
+  it("renders in the caller's own units, so preview and export agree", () => {
+    // Same numbers, two unit spaces — px for the exporter, cqw for the canvas.
+    expect(logoTransform({ logoDx: 108 }, (n) => `${n}px`)?.transform).toContain("108px");
+    expect(logoTransform({ logoDx: 108 }, (n) => `calc(${n} / 1080 * 100cqw)`)?.transform).toContain("100cqw");
+  });
+
+  it("clamps a placement that arrived from a client", () => {
+    expect(clampLayoutOverride({ logoScale: 99 }).logoScale).toBe(LOGO_SCALE_RANGE.max);
+    expect(clampLayoutOverride({ logoRotate: -9999 }).logoRotate).toBe(-LOGO_ROTATE_LIMIT);
   });
 });

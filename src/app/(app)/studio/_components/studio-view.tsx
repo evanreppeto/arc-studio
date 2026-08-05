@@ -321,7 +321,17 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // template keeps everything else, which is what keeps creative on brand.
   const [selectedLayer, setSelectedLayer] = useState<CanvasLayer | null>(null);
   const [layoutOverride, setLayoutOverride] = useState<CreativeLayoutOverride>({});
-  const nudged = Boolean(layoutOverride.copyDx || layoutOverride.copyDy || (layoutOverride.headlineScale ?? 1) !== 1);
+  // Includes the logo, or "Reset layout" would put the copy back and leave the
+  // mark stranded on the van panel with no way to say "never mind".
+  const nudged = Boolean(
+    layoutOverride.copyDx ||
+      layoutOverride.copyDy ||
+      (layoutOverride.headlineScale ?? 1) !== 1 ||
+      layoutOverride.logoDx ||
+      layoutOverride.logoDy ||
+      (layoutOverride.logoScale ?? 1) !== 1 ||
+      layoutOverride.logoRotate,
+  );
 
   // Escape drops the selection — but only when focus is not inside a field, or
   // it would fight the modals and the in-place text editor, which use Escape to

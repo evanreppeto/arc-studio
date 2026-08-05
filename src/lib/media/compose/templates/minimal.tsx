@@ -6,7 +6,7 @@ import { brandColor } from "./tokens";
 /** Minimal: solid brand-primary side panel with the headline; photo fills the rest.
  *
  *  Geometry and type scale come from CREATIVE_LAYOUTS.minimal (BSR-679). */
-export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl }) => {
+export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, layout, backgroundDataUrl, logoDataUrl, logoStyle }) => {
   const u = creativeScale(dims.width);
   const L = layout;
   const c = (ref: Parameters<typeof brandColor>[1]) => brandColor(brand, ref);
@@ -48,9 +48,9 @@ export const templateMinimal: CreativeTemplate = ({ brand, copy, dims, layout, b
         }}
       >
         {logoDataUrl ? (
-          <img src={logoDataUrl} style={{ width: L.logo.width * u, height: L.logo.height * u, objectFit: "contain" }} />
+          <img src={logoDataUrl} style={{ width: L.logo.width * u, height: L.logo.height * u, objectFit: "contain", ...(logoStyle ?? {}) }} />
         ) : (
-          <div style={{ display: "flex", color: c("light"), fontFamily: "Heading", fontSize: L.logo.fallbackSize * u }}>
+          <div style={{ display: "flex", color: c("light"), fontFamily: "Heading", fontSize: L.logo.fallbackSize * u, ...(logoStyle ?? {}) }}>
             {brand.displayName}
           </div>
         )}
