@@ -658,6 +658,11 @@ export { isDecidedAssetStatus };
  * because spanning runs is the one thing the inline trace cannot do, but as
  * navigation: one line per run, expandable, rather than forty rows deep.
  */
+/** How wide the workspace sidebar sits. Wide enough to read a deliverable's
+ *  title and channel without truncating; narrow enough that it stays a list and
+ *  never tries to be the reader — the full-pane preview is the reader. */
+const WORK_PANEL_WIDTH = 400;
+
 export function ArcWorkPanel({
   message,
   messages,
@@ -797,7 +802,7 @@ export function ArcWorkPanel({
       {/* Scrim and panel portal together — see overlay-portal.tsx. */}
       <motion.button
         type="button"
-        className="arc-deliverable-scrim"
+        className="arc-dlv-scrim"
         aria-label="Close conversation workspace"
         initial={reduceMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -807,10 +812,22 @@ export function ArcWorkPanel({
     <motion.aside
       className="arc-artifact-workspace arc-work-panel"
       aria-label="Conversation workspace"
-      style={paneBox ? { top: paneBox.top, left: paneBox.left, width: paneBox.width, height: paneBox.height } : undefined}
-      initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={reduceMotion ? undefined : { opacity: 0, y: 6 }}
+      /* A right-hand sidebar again, but an OVERLAYING one. The original rail
+         docked, which meant it paid for itself out of the conversation's width
+         (`margin-right: clamp(340px, 30cqi, 420px)`) and squeezed the reading
+         column every time it opened. Anchored to the pane's right edge and
+         floated over it, the list is where a list belongs and the chat keeps
+         its full measure — and picking something here opens it big rather than
+         trying to render it in 390px. */
+      style={paneBox ? {
+        top: paneBox.top,
+        left: paneBox.left + Math.max(0, paneBox.width - Math.min(WORK_PANEL_WIDTH, paneBox.width)),
+        width: Math.min(WORK_PANEL_WIDTH, paneBox.width),
+        height: paneBox.height,
+      } : undefined}
+      initial={reduceMotion ? false : { opacity: 0, x: 18 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={reduceMotion ? undefined : { opacity: 0, x: 14 }}
       transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
     >
       <header className="arc-artifact-header">
