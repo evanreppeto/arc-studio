@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ASSET_NOUN, countOf, WORK_STATE_LABEL, personaAccent,} from "@/domain";
 
 import { createCampaign, loadReviewQueueAction, type NewCampaignInput } from "../actions";
-import { applyFindingFixAction, decideCampaignAsset, requestCampaignRevision } from "../[campaignId]/actions";
+import { applyFindingFixAction, decideCampaignAsset, editCampaignDraftAction, requestCampaignRevision } from "../[campaignId]/actions";
 import { ReviewQueue } from "../[campaignId]/_components/review-queue";
 import { type ReviewQueueEntry } from "@/lib/campaigns/read-model";
 import { nextActionFor, type SignalTiming } from "./board-derivations";
@@ -596,6 +596,26 @@ export function CampaignsBoard({
           }}
           // No editor on this screen. Editing hands off to the campaign that
           // owns the deliverable rather than growing a second one here.
+          // Saves through `editCampaignDraftAction` — the same path the campaign
+          // page's editor uses, which writes edited_body and never touches
+          // dispatch_locked. The entry is patched in place so the new copy shows
+          // without closing the queue and losing the operator's position.
+          onSaveCopy={(asset, body) => {
+            const entry = queue.find((e) => e.asset.id === asset.id);
+            if (!entry) return;
+            startQueueTransition(async () => {
+              const res = await editCampaignDraftAction({ campaignId: entry.campaignId, assetId: asset.id, body });
+              if (!res.ok) {
+                setQueueError(res.error);
+                return;
+              }
+              setQueue((current) =>
+                current?.map((e) =>
+                  e.asset.id === asset.id ? { ...e, asset: { ...e.asset, preview: body, body } } : e,
+                ) ?? current,
+              );
+            });
+          }}
           onEdit={(asset) => {
             const entry = queue.find((e) => e.asset.id === asset.id);
             setQueue(null);

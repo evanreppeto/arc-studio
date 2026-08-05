@@ -292,16 +292,84 @@ export function DeliverableCopy({
   asset,
   expanded,
   onToggle,
+  onSave,
+  saving = false,
 }: {
   asset: CampaignWorkspaceAsset;
   expanded: boolean;
   onToggle: () => void;
+  /**
+   * Save an edit to this draft's copy, in place.
+   *
+   * Absent on a decided deliverable, and for the same reason `onApplyFix` is:
+   * editing approved copy would be a quiet way around the approval gate. Absent
+   * also means the draft is not clickable, so there is no affordance offering
+   * something that will not work.
+   */
+  onSave?: (body: string) => void;
+  saving?: boolean;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<string | null>(null);
+  /**
+   * Closes when the saved copy comes back on the asset — derived, not an effect.
+   * The parent patches `preview` after the write lands, so matching it is the
+   * success signal; a failed save leaves the editor open with the text still in
+   * it, and the error surfaces above. (Local eslint rejects setState inside an
+   * effect, and a success flag threaded back down would be a second source of
+   * truth for "did it save".)
+   */
+  const editing = draft !== null && asset.preview.trim() !== submitted;
+
   if (!asset.preview) return null;
+
+  if (editing) {
+    return (
+      <div className="dcopy editing">
+        <label className="dcopylabel" htmlFor={`edit-${asset.id}`}>
+          Editing the draft
+        </label>
+        <textarea
+          id={`edit-${asset.id}`}
+          className="dedit"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={Math.min(24, Math.max(8, draft.split("\n").length + 2))}
+          autoFocus
+          disabled={saving}
+        />
+        <div className="deditbar">
+          <button
+            type="button"
+            className="cbtn gold"
+            disabled={saving || !draft.trim() || draft.trim() === asset.preview.trim()}
+            onClick={() => {
+              const body = draft.trim();
+              setSubmitted(body);
+              onSave?.(body);
+            }}
+          >
+            {saving ? "Saving…" : "Save copy"}
+          </button>
+          <button type="button" className="cbtn ghost" onClick={() => setDraft(null)} disabled={saving}>
+            Cancel
+          </button>
+          <span className="deditnote">Saving does not approve it — nothing goes out because of this.</span>
+        </div>
+      </div>
+    );
+  }
+
   const segments = highlightClaims(asset.preview, asset.findings.map((f) => f.claim));
   const long = isLongCopy(asset.preview);
   return (
-    <div className="dcopy">
+    <div className={onSave ? "dcopy canedit" : "dcopy"}>
+      {onSave && (
+        <button type="button" className="dcopyedit" onClick={() => setDraft(asset.preview)}>
+          {svg('<path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z"/>')}
+          Edit
+        </button>
+      )}
       <div className={long && !expanded ? "dbody clamped" : "dbody"}>
         {segments.map((seg, i) =>
           seg.findingIndex === null ? (

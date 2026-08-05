@@ -32,6 +32,7 @@ export function ReviewQueue({
   onRevise,
   onApplyFix,
   onEdit,
+  onSaveCopy,
   onClose,
   closeLabel = "Back to the campaign",
 }: {
@@ -48,6 +49,8 @@ export function ReviewQueue({
   /** Editing is a different mode of work — it hands back to the list, which
    *  owns the editor, rather than growing a second one in here. */
   onEdit: (asset: CampaignWorkspaceAsset) => void;
+  /** Save an edit to the draft in place. Omitted → the draft is read-only. */
+  onSaveCopy?: (asset: CampaignWorkspaceAsset, body: string) => void;
   onClose: () => void;
   closeLabel?: string;
 }) {
@@ -264,6 +267,13 @@ export function ReviewQueue({
                 critique of a document the reader had not seen. */}
             <DeliverableCopy
               asset={asset}
+              // Undecided only, on the same effective status the pill above
+              // reads. Editing copy that has already been approved would be a
+              // quiet way around the approval gate.
+              onSave={onSaveCopy && !/approved|declined|rejected|archived/i.test(asset.approval?.status ?? asset.status)
+                ? (body) => onSaveCopy(asset, body)
+                : undefined}
+              saving={pending}
               expanded={expandedCopy.has(asset.id)}
               onToggle={() =>
                 setExpandedCopy((current) => {
