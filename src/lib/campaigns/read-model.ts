@@ -11,6 +11,7 @@ import { arcAssetStatusFromDb, arcFindingSeverity, campaignDriver, deriveCampaig
   type ConsideredAudience,
   type ArcDraftFinding,
 } from "@/domain";
+import { mediaReviewKey } from "@/lib/campaigns/media-identity";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { reportDegraded } from "@/lib/observability/report-degraded";
@@ -3542,14 +3543,11 @@ type MediaApprovalRow = {
   created_at: string | null;
 };
 
-/** Key a media asset for review lookup. The id is exact; the storage path is
- *  the fallback that works on entries written before the id was threaded
- *  through — which today is all of them in prod. */
-function mediaReviewKey(media: Pick<CampaignMediaAsset, "libraryAssetId" | "storagePath">): string | null {
-  if (media.libraryAssetId) return `id:${media.libraryAssetId}`;
-  if (media.storagePath) return `path:${media.storagePath}`;
-  return null;
-}
+// Key a media asset for review lookup. Imported rather than defined here: the
+// operator's decide action resolves the same blob to the same row through
+// `resolveMediaAssetId`, and if the two ever disagreed about which picture an
+// entry IS, a reviewer would approve one image and watch a different one change
+// state. One rule, one file — see media-identity.ts.
 
 /**
  * Resolve each asset's own review decision from `approval_items`.

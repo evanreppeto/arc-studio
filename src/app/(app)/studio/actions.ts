@@ -24,6 +24,7 @@ import { getMediaProviderWithKey, isMediaGenEnabled } from "@/lib/media";
 import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { renderCreative } from "@/lib/media/compose/renderer";
+import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { hardenImagePrompt } from "@/lib/media/prompt";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
 import { storeGeneratedImage, storeGeneratedMedia } from "@/lib/media/storage";
@@ -131,6 +132,11 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
      *  image, the rendered headline for a composite. Hoisted because both
      *  branches must supply it: it is the only screenable text creative has. */
     let screenableText: string;
+    // The stored object's real size and type, captured where the bytes are, for
+    // the Library row written below. Guessing either would put a wrong number on
+    // a provenance record.
+    let storedBytes = 0;
+    let storedContentType = "image/png";
 
     if (input.engine === "image") {
       const prompt = (input.prompt ?? "").trim();
@@ -149,6 +155,8 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const ext = gen.contentType.includes("png") ? "png" : gen.contentType.includes("webp") ? "webp" : "jpg";
       objectPath = `arc-generated/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.${ext}`;
       const url = await storeGeneratedImage(objectPath, gen.bytes, gen.contentType);
+      storedBytes = gen.bytes.byteLength;
+      storedContentType = gen.contentType;
       await recordUsageEvent({
         orgId: ctx.orgId,
         workspaceId: tenant.workspace_id,
@@ -211,6 +219,8 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const { bytes, contentType } = await renderCreative({ template, format, brand, copy, backgroundUrl, layoutOverride: input.layoutOverride });
       objectPath = `arc-composite/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.png`;
       const url = await storeGeneratedMedia(objectPath, bytes, contentType);
+      storedBytes = bytes.byteLength;
+      storedContentType = contentType;
       media = { kind: "image", url, source: "composite", format, riskFlags: [COMPOSITE_RISK] };
       assetType = "social_ad";
       // A composite carries real, operator-authored marketing copy — headline,
@@ -218,6 +228,32 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       // exists for, and it was going through unscreened too.
       screenableText = [copy.headline, copy.kicker, copy.subhead, copy.ctaLabel].filter(Boolean).join("\n");
     }
+
+    // Put it in the Library first (BSR-634). Studio wrote to the bucket and
+    // promoted a campaign asset without ever writing a `media_assets` row, so
+    // Studio creative had no database identity — invisible to /library, to
+    // Studio's own background picker, and to every surface that records
+    // something ABOUT a picture, including its review state and any decision on
+    // it. Best-effort by construction: the render is done and already metered.
+    const libraryAssetId = await recordGeneratedMedia({
+      orgId: ctx.orgId,
+      objectPath,
+      publicUrl: media.url,
+      contentType: storedContentType,
+      kind: "image",
+      byteSize: storedBytes,
+      // The same text the copy screen runs on — the scene prompt for a generated
+      // image, the rendered copy for a composite. One definition of "the text
+      // that produced this asset", so the Library's provenance and the approval
+      // gate cannot describe it differently.
+      prompt: screenableText,
+      model: media.model,
+      jobId: media.jobId,
+      format: media.format,
+      riskFlags: media.riskFlags,
+      source: media.source === "composite" ? "composite" : "ai_generated",
+      uploadedBy: operator,
+    });
 
     // Land the approval-gated draft (pending_approval + dispatch_locked) on the
     // chosen campaign, provenance-tagged. Never unlocks outbound.
@@ -240,6 +276,10 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
         jobId: media.jobId,
         format: media.format,
         riskFlags: media.riskFlags,
+        // Carries the exact row id into the campaign entry, so the campaign
+        // surface joins this picture to its record by primary key instead of
+        // falling back to matching storage paths.
+        ...(libraryAssetId ? { libraryAssetId } : {}),
       },
       tenant,
     });
@@ -411,6 +451,22 @@ export async function pollStudioVideo(input: PollStudioVideoInput): Promise<Poll
       model: input.model,
       riskFlags: deriveImageRiskFlags(input.prompt),
     };
+    // Same Library row the image paths write — a finished video is creative that
+    // has to be reviewable and reusable, not just a URL on a campaign asset.
+    const libraryAssetId = await recordGeneratedMedia({
+      orgId: ctx.orgId,
+      objectPath,
+      publicUrl: media.url,
+      contentType: result.contentType,
+      kind: "video",
+      byteSize: result.bytes.byteLength,
+      prompt: input.prompt,
+      model: input.model,
+      format: media.format,
+      riskFlags: media.riskFlags,
+      uploadedBy: operator,
+    });
+
     const { campaignId } = await resolveOrCreateCampaign({ operator, campaignId: input.campaignId, tenant });
     const { assetId } = await promoteAssetToCampaign({
       operator,
@@ -425,6 +481,7 @@ export async function pollStudioVideo(input: PollStudioVideoInput): Promise<Poll
         model: media.model,
         format: media.format,
         riskFlags: media.riskFlags,
+        ...(libraryAssetId ? { libraryAssetId } : {}),
       },
       tenant,
     });

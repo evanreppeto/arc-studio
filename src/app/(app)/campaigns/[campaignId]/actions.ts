@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { describeFixFailure, validateRevisionInstruction } from "@/domain";
+import { describeFixFailure, validateRevisionInstruction, type AssetDecision } from "@/domain";
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
@@ -11,6 +11,8 @@ import { buildExternalSendPackage, recordExternalSend, type ExternalSendPackage 
 import { decideAsset, reopenAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
 import { editDraftAsset } from "@/lib/campaigns/draft-editing";
 import { applyFindingFix } from "@/lib/campaigns/inline-fix";
+import { MEDIA_RESOLVE_MESSAGE, resolveMediaAssetId } from "@/lib/campaigns/media-identity";
+import { decideAssetApproval } from "@/lib/media-library/approval";
 import { launchCampaign } from "@/lib/campaigns/launch";
 import { redispatchStalledRevision } from "@/lib/campaigns/revision-recovery";
 import { requestAssetRevision } from "@/lib/campaigns/revisions";
@@ -48,6 +50,20 @@ export type LaunchCampaignActionResult =
   | { ok: false; error: string };
 
 const DECISIONS: ReadonlySet<string> = new Set(["approved", "declined", "archived"]);
+
+/**
+ * What a reviewer may decide about one PICTURE. A superset of the deliverable's
+ * three: creative can be sent back for another pass (`needs_revision`), which a
+ * deliverable expresses through the separate revision-request path instead.
+ * Validated here rather than trusted from the client — this is a server action,
+ * so its argument is an untrusted input like any request body.
+ */
+const ASSET_DECISIONS: ReadonlySet<AssetDecision> = new Set<AssetDecision>([
+  "approved",
+  "declined",
+  "needs_revision",
+  "archived",
+]);
 
 export async function decideCampaignAsset(campaignId: string, assetId: string, decision: string): Promise<CampaignActionResult> {
   await requireOperator();
@@ -329,5 +345,102 @@ export async function applyFindingFixAction(input: {
     return { ok: true, persisted: true, replaced: result.replaced };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not apply that fix." };
+  }
+}
+
+/**
+ * Record a decision on ONE piece of creative, from the campaign that carries it.
+ *
+ * The picture and the deliverable are separate approvals and always have been:
+ * approving an email does not approve the image inside it, which is why the
+ * preview says so out loud. Until now the only place a picture could be decided
+ * was `/library` — so a reviewer looking straight at the creative, in the
+ * campaign it belongs to, had to leave, find it among everything else the
+ * workspace has ever stored, and decide it out of context. This is the same
+ * decision from where it is actually made.
+ *
+ * It writes through `decideAssetApproval`, the one asset-approval path
+ * (`approval_items` + `approval_decisions`, same table and audit trail as
+ * campaigns) — deliberately NOT a second, softer route to "approved". The
+ * flagged-asset acknowledgement gate comes with it, and reads the flags from the
+ * row rather than from this call.
+ *
+ * Approving here readies the image for a human-gated next step. It sends
+ * nothing and unlocks no dispatch, exactly as every other approval on this
+ * screen.
+ */
+export type DecideMediaActionResult =
+  | { ok: true; persisted: boolean; status: AssetDecision; reviewer: string; reviewedAt: string }
+  | { ok: false; error: string; flags?: string[] };
+
+export async function decideCampaignMediaAction(input: {
+  campaignId: string;
+  /** The entry's identity as the read-model built it — id when recorded, else storage path. */
+  libraryAssetId: string | null;
+  storagePath: string | null;
+  decision: AssetDecision;
+  notes?: string | null;
+  /** Required to approve a picture that carries risk flags. */
+  acknowledgement?: string | null;
+}): Promise<DecideMediaActionResult> {
+  await requireOperator();
+  if (!ASSET_DECISIONS.has(input.decision)) return { ok: false, error: "Unknown decision." };
+
+  if (!isSupabaseAdminConfigured()) {
+    return {
+      ok: true,
+      persisted: false,
+      status: input.decision,
+      reviewer: "You",
+      reviewedAt: new Date().toISOString(),
+    };
+  }
+
+  const ctx = await getCurrentWorkspaceContext();
+  // Refuse rather than widen to org-wide. An unresolved workspace is not a
+  // reason to let a decision land on any picture in the organisation.
+  if (!ctx.orgId || !ctx.workspaceId) return { ok: false, error: "No workspace is selected, so nothing was recorded." };
+
+  try {
+    const client = getSupabaseAdminClient();
+    // Resolved through the same rule the read-model used to decide what this
+    // picture's review state IS, so the decision lands on the row the operator
+    // was shown — see media-identity.ts.
+    const resolved = await resolveMediaAssetId(
+      client,
+      { libraryAssetId: input.libraryAssetId, storagePath: input.storagePath },
+      ctx.orgId,
+      ctx.workspaceId,
+    );
+    // A picture with no row is a real case (composites predate the Library
+    // registration). Say so — do not report a decision nothing recorded.
+    if (!resolved.ok) return { ok: false, error: MEDIA_RESOLVE_MESSAGE[resolved.reason] };
+
+    const operator = await getOperatorActor();
+    const result = await decideAssetApproval(
+      {
+        assetId: resolved.assetId,
+        orgId: ctx.orgId,
+        decision: input.decision,
+        operator,
+        notes: input.notes ?? null,
+        acknowledgement: input.acknowledgement ?? null,
+      },
+      client,
+    );
+    if (!result.ok) return { ok: false, error: result.error, flags: result.flags };
+
+    revalidatePath(`/campaigns/${input.campaignId}`);
+    // The Library shows the same asset's state, and it is now stale there too.
+    revalidatePath("/library");
+    return {
+      ok: true,
+      persisted: true,
+      status: result.status,
+      reviewer: operator,
+      reviewedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not record the decision." };
   }
 }
