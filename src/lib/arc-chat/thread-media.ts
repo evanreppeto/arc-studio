@@ -20,12 +20,27 @@ export type ArcThreadMedia = {
 /**
  * Flatten one reply's creative for an inline panel.
  *
- * Two sources, because the runner writes to both and only one of them carries
- * the approval: an action card holds the asset it drafted AND the `{campaignId,
- * assetId}` that asset is pending under, while `metadata.media` is the reply's
- * media array with no approval attached. Cards are read first so a render that
- * appears in both comes back approvable rather than inert; the url is the
- * identity for that dedupe.
+ * **Action cards are where the creative actually is.** Censused on prod
+ * 2026-08-05 across all 51 Arc replies: `metadata.actions` carried media on 5
+ * cards, and `metadata.media` was populated on **zero**. An earlier note here
+ * claimed the runner "writes to both" — it does not, and reading that as parity
+ * would send the next person looking in the wrong place. `metadata.media` is
+ * still read below because the type allows it and a runner change would start
+ * filling it, but treat it as the unused branch it is, not a co-equal source.
+ *
+ * A card is the only place the approval lives (`{campaignId, assetId}`), so
+ * cards are read first: a url appearing in both must come back approvable rather
+ * than inert. The url is the identity for that dedupe.
+ *
+ * Two things the census settled about the shape:
+ * - `media.caption` was null on all five, so `card.title` is what actually names
+ *   every tile an operator sees ("Service Van — Driveway Morning (Logo Added)").
+ *   The fallback is load-bearing, not a nicety.
+ * - Media rides on cards both WITH and WITHOUT an approval (4 and 1 of the 5), so
+ *   both branches are real traffic. The panel renders the approval-less one as an
+ *   unattached tile rather than offering a button with nothing behind it.
+ * - `format` is free text from the runner ("4:3" appears, which is not one of
+ *   Studio's four formats). It is displayed, never looked up — keep it that way.
  *
  * Pure on purpose: `arc/actions.ts` is `"use server"` and may only export async
  * functions, and this is the piece worth testing.
@@ -49,6 +64,8 @@ export function toArcThreadMedia(message: {
     });
   };
   for (const card of message.actions ?? []) push(card.media, card.approval, card.title ?? null);
+  // Unused on every prod row censused so far — see the note above. Kept so a
+  // runner that starts populating metadata.media doesn't silently show nothing.
   for (const media of message.media ?? []) push(media, undefined, null);
   return out;
 }
