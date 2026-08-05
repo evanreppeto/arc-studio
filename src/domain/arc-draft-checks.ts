@@ -1,45 +1,99 @@
 /**
- * Whether anyone actually checked this draft.
+ * Whether anyone actually checked this draft, and what they found.
  *
- * A deliverable card carries `flags` — guardrail results Arc recorded when it
- * drafted. The chat rendered them when present and rendered NOTHING when absent,
- * which quietly conflated two very different states:
+ * A deliverable card carries `flags` — guardrail results Arc froze into
+ * `arc_messages.metadata` at the moment it drafted. The chat rendered those and
+ * nothing else, which turned out to be a much bigger problem than it looked:
  *
- *   - "checked, and nothing came up"  → safe to approve at a glance
- *   - "no check was recorded"         → nobody has looked at this
+ * A census of prod found 13 of 16 approval-bearing draft cards carrying zero
+ * flags — and those same 13 assets have **15 open guardrail findings** recorded
+ * against them, 13 `warning` and 2 `blocker`. The checks ran. The results were
+ * written down. They live in `guardrail_findings`, keyed by `campaign_asset_id`,
+ * and the chat had never read that table. So a draft with an unresolved blocker
+ * ("Contradicts documented service area") rendered as though nothing had been
+ * flagged, one click from approval.
  *
- * Those are not the same claim, and the difference is not academic here: a
- * census of prod found **13 of 16** approval-bearing draft cards carrying zero
- * flags. So the common case on real data is the one the UI said nothing about,
- * and an operator scanning a package had no way to tell an inspected draft from
- * an uninspected one.
+ * The frozen `flags` are therefore a snapshot, not the truth — the same
+ * relationship `preview` has to the real draft body. Both are read live now.
  *
- * This is also why `cleanApprovableDrafts` must not be wired to a bulk-approve
- * button as it stands: it treats "no warn/risk flags" as clean, which on prod
- * data would sweep 13 of 16 unchecked drafts through a human's approval — the
- * exact thing the approval gate exists to prevent.
+ * ## Four states, and why `unknown` has to exist
  *
- * `unchecked` gets its own colourless tone wherever it renders. It must never
- * borrow the tone of `clean`; that would restate an absence of evidence as
- * evidence of absence, on the screen where someone decides whether copy reaches
- * a customer.
+ * The first attempt at this shipped three states and said "No checks recorded"
+ * whenever `flags` was empty. That sentence was FALSE for exactly the 13 drafts
+ * that mattered, which is worse than the silence it replaced: it turned missing
+ * data into a confident wrong answer on the screen where copy gets approved.
+ *
+ * So a surface that has not yet loaded the live findings reports `unknown` and
+ * says nothing. Only a surface that has actually looked, and found none, is
+ * allowed to say none were recorded.
  */
 
 import type { ArcActionFlag } from "./arc-chat";
 
-export type ArcDraftCheckState = "clean" | "flagged" | "unchecked";
+/** One recorded guardrail finding, as a review surface needs it. */
+export type ArcDraftFinding = {
+  id: string;
+  severity: ArcFindingSeverity;
+  message: string;
+  /** The phrase that tripped the check, when the guardrail captured one. */
+  matchedText?: string;
+  /** `open` findings are unresolved. A resolved one is history, not a warning. */
+  open: boolean;
+};
 
-export function arcDraftCheckState(flags: readonly ArcActionFlag[] | undefined): ArcDraftCheckState {
-  if (!flags || flags.length === 0) return "unchecked";
-  if (flags.some((flag) => flag.tone === "warn" || flag.tone === "risk")) return "flagged";
-  return "clean";
+export type ArcFindingSeverity = "blocker" | "warning" | "info";
+
+/** Prod stores `blocker` and `warning`. Anything unrecognised is treated as a
+ *  warning rather than ignored — an unknown severity is not a safe severity. */
+export function arcFindingSeverity(raw: string | null | undefined): ArcFindingSeverity {
+  const value = (raw ?? "").trim().toLowerCase();
+  if (value === "blocker" || value === "block" || value === "error" || value === "critical") return "blocker";
+  if (value === "info" || value === "notice") return "info";
+  return "warning";
 }
 
-/** What to say about each state. Phrased as what is KNOWN, not as reassurance —
- *  "no checks recorded" is the honest reading of an empty flag list, whereas
- *  "looks fine" would be a claim nothing in the data supports. */
+export const ARC_SEVERITY_TONE: Record<ArcFindingSeverity, "risk" | "warn" | "ok"> = {
+  blocker: "risk",
+  warning: "warn",
+  info: "ok",
+};
+
+export type ArcDraftCheckState =
+  /** Checked, nothing unresolved. */
+  | "clean"
+  /** At least one unresolved finding. */
+  | "flagged"
+  /** Looked, and no check was ever recorded. */
+  | "unchecked"
+  /** Haven't looked yet — say nothing. */
+  | "unknown";
+
+export function arcDraftCheckState(input: {
+  flags?: readonly ArcActionFlag[];
+  /** `undefined` means the live findings have not loaded. An empty ARRAY means
+   *  they loaded and there are none — a different claim entirely. */
+  findings?: readonly ArcDraftFinding[];
+}): ArcDraftCheckState {
+  const flags = input.flags ?? [];
+  const findings = input.findings;
+
+  // Anything unresolved outranks everything: the reviewer needs the worst news.
+  if (findings?.some((f) => f.open)) return "flagged";
+  if (flags.some((f) => f.tone === "warn" || f.tone === "risk")) return "flagged";
+
+  if (findings === undefined) {
+    // Not loaded. A card's own flags can still prove a check happened, but their
+    // ABSENCE proves nothing — that is the false claim this state exists to stop.
+    return flags.length > 0 ? "clean" : "unknown";
+  }
+
+  if (findings.length > 0 || flags.length > 0) return "clean";
+  return "unchecked";
+}
+
 export const ARC_CHECK_LABEL: Record<ArcDraftCheckState, string> = {
   clean: "Checks passed",
   flagged: "Needs a look",
   unchecked: "No checks recorded",
+  unknown: "",
 };
