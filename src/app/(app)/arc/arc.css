@@ -399,6 +399,51 @@
 .arc-status-update span { min-width: 0; display: flex; gap: 5px; }
 .arc-status-update b { color: var(--ok-text); font-weight: 650; }
 
+/* Wrapper so a per-message notice can sit with its operator message rather than
+   being a sibling of the whole feed. Layout passthrough — the message keeps
+   owning its own alignment and margins. */
+.arc-message-slot { display: contents; }
+
+/* A failure reported where it happened, instead of in the composer chip row at
+   the far bottom of the screen. Aligned right with the operator message it
+   follows; full-width under an Arc reply. */
+.arc-message-notice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  /* Matches the operator bubble it sits under, so it reads as belonging to that
+     message rather than to the thread. Widened under an Arc reply below. */
+  max-width: min(52%, 420px);
+  margin: -13px 0 24px auto;
+  border: 1px solid var(--red-border);
+  border-radius: 9px;
+  background: var(--red-soft);
+  padding: 7px 9px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.arc-message-notice > svg { flex: none; color: var(--red-text); }
+.arc-message-notice > span { min-width: 0; }
+.arc-message-notice button {
+  flex: none;
+  min-width: 22px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  cursor: pointer;
+}
+.arc-message-notice button:hover { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--text); }
+.arc-message-notice button:focus-visible { outline: 2px solid var(--red-text); outline-offset: 1px; }
+.arc-assistant-message .arc-message-notice { max-width: 82ch; margin: 12px 0 0; }
+
 /* A turn whose run died. Stated once, calmly, with the way out attached — it
    replaces a spinner that used to run forever, so it has to read as a finished
    state rather than another kind of waiting. Red is the destructive/failure
@@ -2670,6 +2715,54 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
 .arc-history-menu-confirm button.is-danger { border-color: transparent; background: var(--red); color: #fff; font-weight: 600; }
 .arc-history-item.is-renaming { padding: 3px 6px; }
 .arc-history-item.is-renaming input { width: 100%; min-height: 32px; border: 1px solid var(--accent-border); border-radius: 8px; outline: 0; background: var(--inset); color: var(--text); padding: 0 10px; font-size: var(--dz-md); }
+
+/* Message-body search results. A separate section from the title matches above:
+   "this chat is called X" and "this chat says X" are different answers, and the
+   quote is the whole reason a hit is worth showing. */
+.arc-history-messages { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); }
+.arc-history-messages .arc-history-section-head .is-spinning { margin-left: auto; color: var(--muted); }
+.arc-message-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 8px 9px;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.arc-message-hit:hover { border-color: var(--line-2); background: var(--inset); }
+.arc-message-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.arc-message-hit-head { display: flex; align-items: baseline; gap: 7px; }
+.arc-message-hit-head b {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--dz-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arc-message-hit-head small { flex: none; margin-left: auto; color: var(--muted); font-size: var(--dz-xs); }
+.arc-message-hit-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--dz-sm);
+  line-height: 1.5;
+}
+/* The match itself. `mark` defaults to a black-on-yellow that belongs to no
+   theme here; this is the workspace accent at reading weight. */
+.arc-message-hit mark {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--text);
+  padding: 0 1px;
+}
+.arc-history-messages-empty { margin: 2px 0 0; color: var(--muted); font-size: var(--dz-sm); padding: 4px 9px 8px; }
 
 /* ── Skills and connectors ──────────────────────────────────────────────── */
 /* This block used to declare `--skill-blue: #5bb7e8` and friends — a hardcoded

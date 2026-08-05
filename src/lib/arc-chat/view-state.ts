@@ -20,6 +20,34 @@ export function hasArcReplyInFlight(messages: ArcMessage[]): boolean {
   return messages.some(isArcReplyInFlight);
 }
 
+/**
+ * Should ↑ in the composer open your last message for editing?
+ *
+ * The convention in every chat app, and the reason edit-and-resend was
+ * effectively undiscoverable here — it was a hover button and a right-click
+ * item, neither of which anyone finds.
+ *
+ * Gated hard on an EMPTY composer: with any text typed, ↑ has to stay the
+ * cursor key it has always been, or it steals navigation inside a draft the
+ * operator is still writing. Also refuses while a menu is open (↑ is already
+ * that menu's key) and while a turn is in flight (the edit would race it).
+ */
+export function shouldEditLastOnArrowUp({
+  draft,
+  live,
+  busy,
+  menuOpen,
+  hasOperatorMessage,
+}: {
+  draft: string;
+  live: boolean;
+  busy: boolean;
+  menuOpen: boolean;
+  hasOperatorMessage: boolean;
+}): boolean {
+  return live && !busy && !menuOpen && !draft && hasOperatorMessage;
+}
+
 export function shouldShowDemoLauncher({
   selectedDemoId,
   turnCount,

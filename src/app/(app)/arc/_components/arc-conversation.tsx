@@ -259,6 +259,29 @@ function StalledReply({ reason, onRetry }: { reason: ArcStalledReason; onRetry?:
   );
 }
 
+/**
+ * A failure that belongs to one message, shown at that message.
+ *
+ * Every error in this screen used to land in `composerNotice` — one shared
+ * string, no severity, no auto-dismiss — so a regenerate that failed on the
+ * third turn reported itself at the bottom of the page beside the send button,
+ * and overwrote whatever the previous error had been. Distance from the cause
+ * is the whole problem, so this renders inline and is dismissible.
+ */
+function MessageNotice({ text, onDismiss }: { text: string; onDismiss?: () => void }) {
+  return (
+    <div className="arc-message-notice" role="alert">
+      <CircleAlert size={13} aria-hidden />
+      <span>{text}</span>
+      {onDismiss ? (
+        <button type="button" onClick={onDismiss} aria-label="Dismiss">
+          <X size={12} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ReviewableWork({ children }: { children: ReactNode }) {
   return (
     <section className="arc-response-output" aria-label="Reviewable work">
@@ -406,6 +429,9 @@ export function LiveConversation({
   onAssetStatus,
   assetBodies,
   assetChecks,
+  editSignal,
+  messageNotice,
+  onDismissMessageNotice,
 }: {
   messages: ArcMessage[];
   optimisticTurn?: OptimisticArcTurn | null;
@@ -426,6 +452,11 @@ export function LiveConversation({
   onCancelRun: (taskId: string, conversationId: string) => void;
   stoppingTaskId: string | null;
   onAssetStatus: (assetId: string, status: ArcAssetStatus) => void;
+  /** Which message the composer's ↑ asked to edit, and how many times. */
+  editSignal?: { id: string; n: number } | null;
+  /** A failure that belongs to one message, shown at that message. */
+  messageNotice?: { id: string; text: string } | null;
+  onDismissMessageNotice?: () => void;
 }) {
   const { openMenu, menuElement } = useMessageContextMenu();
   const router = useRouter();
@@ -468,7 +499,21 @@ export function LiveConversation({
   return (
     <>
       {messages.map((message, index) => {
-        if (message.role === "operator") return <OperatorMessage key={message.id} body={message.body} timeIso={message.createdAt} attachments={message.attachments} onEdit={awaitingReply ? undefined : (newBody) => onEdit(message.id, newBody)} onContextMenu={(event, helpers) => openMenu(event, operatorMenuItems(message, helpers.startEdit))} />;
+        if (message.role === "operator") {
+          return (
+            <div key={message.id} className="arc-message-slot">
+              <OperatorMessage
+                body={message.body}
+                timeIso={message.createdAt}
+                attachments={message.attachments}
+                onEdit={awaitingReply ? undefined : (newBody) => onEdit(message.id, newBody)}
+                onContextMenu={(event, helpers) => openMenu(event, operatorMenuItems(message, helpers.startEdit))}
+                startEditSignal={editSignal?.id === message.id ? editSignal.n : 0}
+              />
+              {messageNotice?.id === message.id ? <MessageNotice text={messageNotice.text} onDismiss={onDismissMessageNotice} /> : null}
+            </div>
+          );
+        }
         const pending = isArcReplyInFlight(message);
         const stalled = Boolean(message.stalled);
         const operatorMessage = operatorMessageBefore(messages, index);
@@ -560,6 +605,7 @@ export function LiveConversation({
             {/* No copy/rate row on a stalled turn: there is no answer to copy or
                 rate, and StalledReply already carries the one action worth taking. */}
             {!pending && !stalled ? <MessageActions message={message} onRegenerate={!awaitingReply && index === lastIndex ? () => onRegenerate(message.id) : undefined} /> : null}
+            {messageNotice?.id === message.id ? <MessageNotice text={messageNotice.text} onDismiss={onDismissMessageNotice} /> : null}
           </AssistantMessage>
         );
       })}

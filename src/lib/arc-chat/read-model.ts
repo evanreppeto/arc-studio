@@ -1,5 +1,5 @@
 import "server-only";
-import { decideArcRunStalled } from "@/domain";
+import { decideArcRunStalled, flattenArcMarkdown } from "@/domain";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getOperatorActor } from "@/lib/auth/operator";
@@ -292,11 +292,8 @@ const GROUP_ORDER = ["Pinned", "Today", "Yesterday", "Previous 7 days", "Earlier
 
 function summaryPreview(summary: string | null) {
   if (!summary) return null;
-  const clean = summary
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/[#>*_`[\]()]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Shared with message search so the two can't quote the same text differently.
+  const clean = flattenArcMarkdown(summary, { dropCodeBlocks: true });
   if (!clean) return null;
   const sentence = clean.split(/(?<=[.!?])\s+/)[0] ?? clean;
   return sentence.length <= 96 ? sentence : `${sentence.slice(0, 95).trimEnd()}…`;
