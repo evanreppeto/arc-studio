@@ -1,4 +1,5 @@
 import "server-only";
+import { decideArcRunStalled } from "@/domain";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getOperatorActor } from "@/lib/auth/operator";
@@ -7,6 +8,7 @@ import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabas
 
 import {
   listActiveArcRunConversationIds,
+  listArcRunTaskStates,
   listConversationsForViewer,
   listMessages,
   type ArcConversation,
@@ -50,6 +52,43 @@ export type ArcChatModel =
    *  an outage — `/arc` reads this to fall back to the mock conversation. */
   | { status: "not_configured" };
 
+/**
+ * Flag in-flight replies whose run has actually died.
+ *
+ * Without this a stranded turn renders `pending` forever — and because the row
+ * really is `pending`, reloading the page reproduces the spinner rather than
+ * clearing it. Marking it here is read-side only: the row is untouched, so if a
+ * slow reply does eventually land it simply renders as the reply it is.
+ *
+ * Best-effort by design. A failed task lookup means we can't prove a run is
+ * dead, and the safe reading of "no evidence" is to leave the messages alone —
+ * a spinner is a smaller lie than a false "Arc stopped responding" on a run
+ * that is still working.
+ */
+async function markStalledRuns(messages: ArcMessage[], nowMs: number): Promise<ArcMessage[]> {
+  const pending = messages.filter((message) => message.role === "arc" && message.status === "pending");
+  if (pending.length === 0) return messages;
+
+  const taskStates = await listArcRunTaskStates(
+    pending.map((message) => message.agentTaskId).filter((id): id is string => Boolean(id)),
+  ).catch((error) => {
+    reportDegraded(error, { scope: "arc-chat.markStalledRuns", surface: "secondary" });
+    return null;
+  });
+  if (!taskStates) return messages;
+
+  return messages.map((message) => {
+    if (message.role !== "arc" || message.status !== "pending") return message;
+    const verdict = decideArcRunStalled({
+      status: message.status,
+      createdAt: message.createdAt,
+      task: message.agentTaskId ? taskStates.get(message.agentTaskId) ?? null : null,
+      nowMs,
+    });
+    return verdict.stalled ? { ...message, stalled: true, stalledReason: verdict.reason } : message;
+  });
+}
+
 export async function getArcChatModel(
   requestedConversationId?: string | null,
   opts?: { startBlank?: boolean },
@@ -89,7 +128,7 @@ export async function getArcChatModel(
         ? conversations.find((c) => c.id === requestedConversationId)
         : undefined) ?? conversations[0];
 
-    const messages = await listMessages(active.id);
+    const messages = await markStalledRuns(await listMessages(active.id), nowMs);
     return {
       status: "live",
       operator,
