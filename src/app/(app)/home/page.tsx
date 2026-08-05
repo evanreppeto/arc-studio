@@ -176,7 +176,7 @@ export default async function HomePage() {
             </div>
             <div className="focal">
             <div className="row1">
-              <h2>{focal.title}</h2>
+              <h4>{focal.title}</h4>
               {evidenceFacts(focal.evidence).length > 0 && (
                 <span className="cites">
                   <span className="cites-label">Evidence</span>

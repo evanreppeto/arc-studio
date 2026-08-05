@@ -213,7 +213,7 @@
      every navigation row into a dense dashboard. */
   & .rail-recents { margin: 20px 5px 12px; padding-top: 14px; border-top: 1px solid var(--line); }
   & .rail-recents-head { display: flex; align-items: center; justify-content: space-between; padding: 0 5px 6px; }
-  & .rail-recents-head h2 { margin: 0; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); font: 600 10.5px/1.4 var(--sans); letter-spacing: 0.11em; text-transform: uppercase; }
+  & .rail-recents-head .rail-recents-title { margin: 0; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); font: 600 10.5px/1.4 var(--sans); letter-spacing: 0.11em; text-transform: uppercase; }
   & .rail-recents-head a { color: var(--muted); font-size: 10.5px; font-weight: 600; text-decoration: none; transition: color 0.15s var(--ease); }
   & .rail-recents-head a:hover { color: var(--accent); }
   /* "New" reads as an action, not a caption: a bordered chip with a plus, sized
@@ -453,7 +453,10 @@
   /* focal */
   & .focal { margin-top: 22px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 50%, var(--panel)), var(--panel)); padding: 18px 20px; box-shadow: 0 18px 50px -34px rgba(0, 0, 0, 0.9); }
   & .focal .row1 { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-  & .focal h2 { font-family: var(--serif); font-weight: 500; font-size: 19px; letter-spacing: -0.01em; margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  /* h4, not h2: the card now sits under an h3 "Top opportunity" section
+     heading, and an h2 inside an h3's section outranks the heading that
+     introduces it. Same type, correct descent. */
+  & .focal h4 { font-family: var(--serif); font-weight: 500; font-size: 19px; letter-spacing: -0.01em; margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   & .focal .cites { display: inline-flex; align-items: center; gap: 5px; }
   & .focal .cites-label { font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; color: var(--muted); text-transform: uppercase; }
   & .focal .cite { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line-2); background: var(--inset); font-family: var(--mono); font-size: 10px; color: var(--accent); cursor: pointer; transition: border-color 0.15s, color 0.15s; }
@@ -802,7 +805,13 @@
 .arc-app .arc-grid .sortopt:hover { background: var(--inset); color: var(--text); }
 .arc-app .arc-grid .sortopt.on { color: var(--accent-contrast); background: var(--accent-soft); }
 
-.arc-app .arc-grid .tablewrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); }
+/* `flex: 0 1 auto`, not `flex: 1`. Filling the column meant a four-row table
+   drew ~600px of empty bordered panel beneath it, so a workspace with four
+   campaigns read as an empty one — the frame promised content that wasn't
+   there. Basing the size on content and keeping `shrink` + `min-height: 0`
+   preserves the behaviour that mattered: a long table still shrinks to the
+   space available and scrolls inside itself rather than growing the page. */
+.arc-app .arc-grid .tablewrap { flex: 0 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); }
 .arc-app .arc-grid .dt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .arc-app .arc-grid .dt thead th { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--panel) 96%, #000); text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 11px 14px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 .arc-app .arc-grid .dt tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--text-2); }
