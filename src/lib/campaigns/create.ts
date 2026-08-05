@@ -512,7 +512,7 @@ export type PromoteAssetInput = {
 
 /** The verdict of the deterministic copy screen, mapped onto the approval queue's
  *  own status/risk vocabulary. */
-type CopyScreen = {
+export type CopyScreen = {
   riskLevel: string;
   status: string;
   complianceNotes: string | null;
@@ -543,8 +543,12 @@ const UNSCREENED: CopyScreen = {
  * Only an *active* Brand Kit screens, mirroring getBusinessContext: a draft kit
  * means the operator hasn't committed to those rules yet, and there is no banned
  * list to check against.
+ *
+ * Exported for `reviseCampaignAsset`, which replaces the copy on an asset that is
+ * already in the queue. A revision that skipped this would be a way around the
+ * screen: submit clean copy, then "revise" the banned phrase back in.
  */
-async function screenDraftCopy(
+export async function screenDraftCopy(
   body: string | null,
   assetType: string,
   client: SupabaseClient,
