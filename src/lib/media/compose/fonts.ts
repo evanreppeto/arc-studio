@@ -6,10 +6,27 @@ import { DEFAULT_BODY_FONT, DEFAULT_HEADING_FONT, resolveBrandFont, type BrandTo
 /** A font entry in the shape `ImageResponse` expects. */
 export type LoadedFont = { name: string; data: Buffer; weight: 400 | 700; style: "normal" };
 
-/** Read a bundled font. `new URL(..., import.meta.url)` lets Next's file tracer
- *  bundle the `.ttf` for the route at build time (a bare cwd path would not be traced). */
+/**
+ * Read a bundled font. `new URL(..., import.meta.url)` lets Next's file tracer
+ * bundle the `.ttf` for the route at build time (a bare cwd path would not be
+ * traced), so the URL construction has to stay.
+ *
+ * `.href` — a STRING — is what gets passed on, never the `URL` object. In the
+ * deployed bundle the global `URL` is a different class from the one `node:url`
+ * instance-checks against, so handing over the object throws the self-refuting
+ *
+ *   The "path" argument must be of type string or an instance of URL.
+ *   Received an instance of URL
+ *
+ * and every composed creative fails. Found by clicking Generate on prod
+ * (2026-08-05); Studio's whole compose path was down. Nothing in 5,300 tests
+ * could see it — vitest runs in plain Node where both realms are the same
+ * class, so the object form passes locally and fails only once bundled. The
+ * string form is correct in both, which is why this must not be "simplified"
+ * back to passing the URL.
+ */
 async function readFont(relative: string): Promise<Buffer> {
-  return readFile(fileURLToPath(new URL(`./fonts/${relative}`, import.meta.url)));
+  return readFile(fileURLToPath(new URL(`./fonts/${relative}`, import.meta.url).href));
 }
 
 /**
