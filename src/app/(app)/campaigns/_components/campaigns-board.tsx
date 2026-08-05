@@ -64,6 +64,8 @@ export type CampaignRow = {
    * actually contained was to leave the page.
    */
   pieces: CampaignPiece[];
+  /** Holds nothing but generation prompts — grouped under "Creative from Studio". */
+  creativeOnly: boolean;
 };
 
 const CampIcon = (
@@ -110,6 +112,9 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
     timing: null,
     contents: "",
     pieces: [],
+    // A campaign the operator just created by hand is outbound work by intent,
+    // whatever ends up in it. It cannot be a Studio batch at zero assets.
+    creativeOnly: false,
     href: `/campaigns/${id}`,
     // A package created seconds ago carries no creative yet, same reasoning as
     // pendingCount above.
@@ -333,8 +338,16 @@ export function CampaignsBoard({
     () => [...allRows].sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]),
     [allRows],
   );
-  const waitingRows = useMemo(() => visible.filter(needsOperatorAttention), [visible]);
-  const restRows = useMemo(() => visible.filter((r) => !needsOperatorAttention(r)), [visible]);
+  // Studio's generation batches are campaigns only because the campaign IS the
+  // approval gate — Studio cannot attach creative anywhere else. On the live
+  // workspace they were half of "Needs you", so a queue meant to show what needs
+  // the operator's judgement was 50% image prompts. They get their own heading
+  // rather than being hidden: they still need deciding, they are just not
+  // outbound work. See `isCreativeOnlyCampaign`.
+  const creativeRows = useMemo(() => visible.filter((r) => r.creativeOnly), [visible]);
+  const campaignRows = useMemo(() => visible.filter((r) => !r.creativeOnly), [visible]);
+  const waitingRows = useMemo(() => campaignRows.filter(needsOperatorAttention), [campaignRows]);
+  const restRows = useMemo(() => campaignRows.filter((r) => !needsOperatorAttention(r)), [campaignRows]);
 
   // Create a campaign: when it persists, jump into the new draft's detail page;
   // offline it drops in an optimistic draft row and stays on the board. Failures
@@ -540,6 +553,15 @@ export function CampaignsBoard({
           <>
             <h3 className="cmp-sec">{waitingRows.length > 0 ? "Everything else" : "All campaigns"} <span className="cmp-secn">{restRows.length}</span></h3>
             {renderCards(restRows)}
+          </>
+        )}
+        {/* Last, and named for what it is. These hold generated images and video
+            waiting on a decision — real work, but not something that reaches a
+            customer, so it does not belong in the outbound queue above. */}
+        {creativeRows.length > 0 && (
+          <>
+            <h3 className="cmp-sec">Creative from Studio <span className="cmp-secn">{creativeRows.length}</span></h3>
+            {renderCards(creativeRows)}
           </>
         )}
           </>

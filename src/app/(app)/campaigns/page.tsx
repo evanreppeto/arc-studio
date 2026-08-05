@@ -94,6 +94,7 @@ function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
     brief: item.objective?.trim() || item.campaignTheme?.trim() || item.whyBuilt?.trim() || "New campaign",
     timing: signalTiming(item.signal, nowMs),
     tone,
+    creativeOnly: item.creativeOnly,
     statusLabel: TONE_LABEL[tone],
     next,
     nextTone,

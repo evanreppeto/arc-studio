@@ -3,6 +3,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import { arcAssetStatusFromDb, arcFindingSeverity, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
   parseConsideredAudiences,
   humanizeArcProse,
+  isCreativeOnlyCampaign,
   isFixKind,
   type InlineFix,
   normalizeHandoffNote,
@@ -177,6 +178,12 @@ export type CampaignWorkspaceListItem = {
   driver: CampaignDriver;
   /** Distinct channel labels for the card subline, e.g. ["Meta", "Email"]. */
   channels: string[];
+  /**
+   * Every deliverable is a raw generation prompt — this is a Studio batch, not
+   * something that goes to a customer. The board groups these separately rather
+   * than mixing them into the approval queue. See `isCreativeOnlyCampaign`.
+   */
+  creativeOnly: boolean;
   previewText: string | null;
   previewLabel: string | null;
   contentPieces: CampaignListContentPiece[];
@@ -1041,6 +1048,11 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
         assetTypes,
         driver: campaignDriver({ sourceSystem: campaign.source_system ?? null, lifecycle: launch.lifecycle }),
         channels: orderedChannels(campaignAssetRows.map((asset) => humanizeChannel(asset.asset_type ?? asset.channel ?? ""))),
+        // From the RAW rows, deliberately. `campaignAssets[].assetType` has
+        // already been humanized, and `humanizeChannel` collapses image_prompt
+        // and social_ad both to "Paid" — classifying off either would make a
+        // generation batch indistinguishable from an ad.
+        creativeOnly: isCreativeOnlyCampaign(campaignAssetRows.map((asset) => asset.asset_type ?? "")),
         previewText: preview?.text ?? null,
         previewLabel: preview?.label ?? null,
         contentPieces: buildListContentPieces(campaignAssets),
@@ -1232,6 +1244,9 @@ function buildDemoListItem(campaign: DemoCampaign): CampaignWorkspaceListItem {
     assetTypes,
     driver: campaign.driver,
     channels: campaign.channels.slice(0, 3),
+    // Demo pieces carry humanized kinds ("Image Prompt"); the classifier
+    // normalizes, so the demo and live branches agree on the same campaign.
+    creativeOnly: isCreativeOnlyCampaign(campaign.pieces.map((piece) => piece.kind)),
     previewText: firstPreview,
     previewLabel: contentPieces[0]?.channel ?? null,
     contentPieces,
