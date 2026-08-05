@@ -849,8 +849,11 @@
 }
 a.cmp-name:hover { color: var(--accent-contrast); }
 a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* What it IS, above why it exists. Reads at --text-2 while the objective drops
+   to --muted, so the concrete line wins the glance. */
+.arc-app .arc-campaigns .cmp-what { margin: 5px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text-2); font-weight: 500; }
 .arc-app .arc-campaigns .cmp-brief {
-  margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); max-width: 68ch;
+  margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); max-width: 68ch;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .arc-app .arc-campaigns .cmp-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11.5px; color: var(--muted); }
@@ -860,13 +863,10 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 .arc-app .arc-campaigns .cmp-state { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
 .arc-app .arc-campaigns .cmp-next { font-size: 12px; color: var(--muted); }
-/* Gold ONLY here — the single instruction on the card. */
-.arc-app .arc-campaigns .cmp-act {
-  display: inline-flex; align-items: center; gap: 6px; padding: 0; border: none; background: none;
-  font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--accent-contrast); cursor: pointer;
-  border-radius: 5px; transition: gap .16s var(--ease);
-}
-.arc-app .arc-campaigns .cmp-act svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
+/* The one instruction on the card, as a real button — `.gbtn.gold` carries the
+   fill, so this only sets the arrow's nudge. Accent-coloured text asked to be
+   recognised as a control; a button just is one. */
+.arc-app .arc-campaigns .cmp-act { height: 32px; padding: 0 13px; white-space: nowrap; transition: gap .16s var(--ease), filter .15s, transform .15s; }
 .arc-app .arc-campaigns .cmp-act:hover:not(:disabled) { gap: 9px; }
 .arc-app .arc-campaigns .cmp-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .arc-app .arc-campaigns .cmp-act:disabled { cursor: default; opacity: .6; }

@@ -4,7 +4,7 @@ import {
   CAMPAIGN_NOUN,
   countOf,
   WORK_STATE_LABEL, personaAccent,} from "@/domain";
-import { nextActionFor, pieceLabel, signalTiming } from "./_components/board-derivations";
+import { describeContents, nextActionFor, pieceLabel, signalTiming } from "./_components/board-derivations";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 
 // The review queue opens from this screen as well as from a campaign, and every
@@ -103,6 +103,11 @@ function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
     // identically to an empty one.
     thumbnailUrl: item.thumbnailUrl,
     mediaCount: item.mediaCount,
+    // Composed from the same kinds the opened card lists, so "An email and a
+    // text message" can never disagree with the assets shown underneath it.
+    contents: describeContents(
+      item.contentPieces.map((piece) => humanizeChannel(piece.kind || piece.channel) || ""),
+    ),
     // Through the same `toneFor`/`TONE_LABEL` pair the row's own status pill
     // uses, so a piece and its campaign never label the same state differently.
     pieces: item.contentPieces.map((piece) => {

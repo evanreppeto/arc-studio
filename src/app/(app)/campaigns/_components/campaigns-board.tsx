@@ -53,6 +53,8 @@ export type CampaignRow = {
   thumbnailUrl: string | null;
   /** How many media assets the package carries, thumbnail included. */
   mediaCount: number;
+  /** What is in this campaign, in plain words: "An email and a text message". */
+  contents: string;
   /**
    * The campaign's deliverables, for the opened row.
    *
@@ -126,6 +128,7 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
     updatedRel: "now",
     updatedAbs: "",
     timing: null,
+    contents: "",
     pieces: [],
     href: `/campaigns/${id}`,
     // A package created seconds ago carries no creative yet, same reasoning as
@@ -446,8 +449,12 @@ export function CampaignsBoard({
         </div>
       )}
 
+      {/* Empty filters are hidden. Six tabs over four campaigns — four of them
+          reading 0 — is six decisions before the first useful one, and a tab
+          that can only ever show nothing is not a choice. The one you are on
+          always stays, so the row never shifts under a click. */}
       <div className="subtabs">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t.key === "all" || t.key === tab || (counts[t.key] ?? 0) > 0).map((t) => (
           <button
             key={t.key}
             type="button"
@@ -571,6 +578,10 @@ export function CampaignsBoard({
                         {r.name}
                       </Link>
                     )}
+                    {/* What Arc actually made, before why it made it. The card
+                        used to lead with the objective — consultant prose about
+                        a goal that never says what the thing IS. */}
+                    {r.contents && <p className="cmp-what">{r.contents}</p>}
                     <p className="cmp-brief">{r.brief}</p>
                     <div className="cmp-meta">
                       {/* Persona identity comes from `personaAccent()`, per
@@ -591,10 +602,12 @@ export function CampaignsBoard({
                       <span className="pd" />
                       {r.statusLabel}
                     </span>
+                    {/* A real button, not accent-coloured text. The one thing to
+                        do on this card should look like a thing you press. */}
                     {r.pendingCount > 0 ? (
                       <button
                         type="button"
-                        className="cmp-act"
+                        className="gbtn gold cmp-act"
                         onClick={() => openQueue({ id: r.id, name: r.name })}
                         disabled={queueLoadingFor !== null}
                       >
@@ -647,11 +660,13 @@ export function CampaignsBoard({
         </span>
         {/* The review control moved to the header — see the note there. Leaving a
             second copy down here would just be two buttons for one action. */}
-        <div className="pager">
-          <span className="pgnum">
-            {visible.length === 0 ? "0 of 0" : `1–${visible.length} of ${visible.length}`}
-          </span>
-        </div>
+        {/* "1–4 of 4" is a pager with nothing to page. It appears once there is
+            enough on screen for "where am I in this list" to be a real question. */}
+        {visible.length > 12 && (
+          <div className="pager">
+            <span className="pgnum">{`1–${visible.length} of ${visible.length}`}</span>
+          </div>
+        )}
       </div>
 
       {/* Mounted while `queue` is non-null, NOT while it has entries: draining the
