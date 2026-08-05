@@ -1064,7 +1064,13 @@
   letter-spacing: .07em; text-transform: uppercase;
 }
 .arc-dlv-kind svg { color: var(--accent); }
-.arc-dlv-kind small { color: var(--line-3); font-size: 10px; letter-spacing: .04em; text-transform: none; }
+/* `--line-3` is a HAIRLINE token (rgba(232,224,205,.20)) and was rendering this
+   text at 1.7:1. It carries the asset's spec — "64-account segment",
+   "152 / 160 chars", "1:1 · Meta" — directly above Approve/Decline, which is
+   exactly what an operator needs to read before deciding. `--muted` is the
+   muted TEXT token, sits on the next line of the same block in arc-app.css, and
+   measures 5.3:1 here. It is also what the parent `.arc-dlv-kind` already uses. */
+.arc-dlv-kind small { color: var(--muted); font-size: 10px; letter-spacing: .04em; text-transform: none; }
 .arc-dlv-kind small::before { content: "·"; margin-right: 6px; }
 .arc-dlv-status {
   margin-left: auto;

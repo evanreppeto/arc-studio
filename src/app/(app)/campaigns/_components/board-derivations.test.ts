@@ -4,17 +4,33 @@ import { buildLaunchState, type CampaignWorkspaceAsset } from "@/lib/campaigns/r
 
 import { constantAudience, describeContents, nextActionFor, pieceLabel, signalTiming, type DeliverableCounts } from "./board-derivations";
 
-function counts(approved: number, required: number): DeliverableCounts {
-  return { approved, required };
+function counts(approved: number, required: number, held?: number): DeliverableCounts {
+  return { approved, required, ...(held === undefined ? {} : { held }) };
 }
 
 describe("nextActionFor", () => {
   it("puts the human instruction ahead of everything else", () => {
-    expect(nextActionFor("draft", 6, counts(4, 10))).toEqual({ next: "Approve 6 assets", nextTone: "go" });
+    expect(nextActionFor("draft", 6, counts(4, 10))).toEqual({ next: "Review 6 assets", nextTone: "go" });
   });
 
   it("singularizes the instruction", () => {
-    expect(nextActionFor("draft", 1, counts(0, 1)).next).toBe("Approve 1 asset");
+    expect(nextActionFor("draft", 1, counts(0, 1)).next).toBe("Review 1 asset");
+  });
+
+  /**
+   * The verb has to match what the control does.
+   *
+   * This button calls `openQueue(...)` — it opens the one-at-a-time review
+   * queue and approves nothing on its own. While it read "Approve N assets" the
+   * board's most prominent control advertised a blind bulk-approve of
+   * customer-facing copy, which is the exact action the approval gate exists to
+   * prevent. Nobody had to click it wrongly for that to be a problem: the label
+   * is what an owner reads when deciding whether to open it at all.
+   */
+  it("never tells the operator the button approves anything", () => {
+    for (const n of [1, 2, 6, 17]) {
+      expect(nextActionFor("draft", n, counts(0, n)).next).not.toMatch(/approve/i);
+    }
   });
 
   it.each([
@@ -36,6 +52,23 @@ describe("nextActionFor", () => {
   it("does not let an archived package read as ready work", () => {
     // "All 6 assets approved" is true and misleading on something put away.
     expect(nextActionFor("archived", 0, counts(6, 6)).next).not.toMatch(/approved/);
+  });
+
+  /**
+   * Archiving a campaign archives its deliverables, so `required` — which counts
+   * non-archived gating work — is 0 for every archived row. Reading that number
+   * printed "Nothing in it" on the live board directly above a disclosure
+   * offering "Show 5 assets": the row contradicting itself in adjacent controls.
+   *
+   * `held` is what the row will actually disclose, so the two agree.
+   */
+  it("counts what an archived row holds, not what it still requires", () => {
+    expect(nextActionFor("archived", 0, counts(0, 0, 5)).next).toBe("5 assets kept");
+    expect(nextActionFor("archived", 0, counts(0, 0, 1)).next).toBe("1 asset kept");
+  });
+
+  it("still says nothing-in-it for an archived row that really is empty", () => {
+    expect(nextActionFor("archived", 0, counts(0, 0, 0)).next).toBe("Nothing in it");
   });
 
   it("reports progress when a row asks nothing", () => {
@@ -220,6 +253,26 @@ describe("describeContents", () => {
     expect(describeContents(["Postcard"])).toBe("A postcard");
     expect(describeContents(["Advert"])).toBe("An advert");
     expect(describeContents([""])).toBe("A draft");
+  });
+
+  /**
+   * "an one pager" shipped to the live campaigns board.
+   *
+   * `one_pager` is not in PLAIN_KIND (keyed "one-pager", with a hyphen), so it
+   * fell through to a fallback that picked the article from the first LETTER.
+   * English picks it from the first SOUND, and "one" starts /w/.
+   */
+  it("picks the article by sound, not by first letter", () => {
+    expect(describeContents(["one pager"])).toBe("A one pager");
+    expect(describeContents(["user guide"])).toBe("A user guide");
+    expect(describeContents(["hour-long ad"])).toBe("An hour-long ad");
+    expect(describeContents(["honest review"])).toBe("An honest review");
+  });
+
+  it("leaves the ordinary letter rule alone for everything else", () => {
+    expect(describeContents(["umbrella insert"])).toBe("An umbrella insert");
+    expect(describeContents(["update"])).toBe("An update");
+    expect(describeContents(["postcard"])).toBe("A postcard");
   });
 
   it("never leads with a lowercase letter", () => {
