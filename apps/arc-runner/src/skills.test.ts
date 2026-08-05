@@ -41,6 +41,22 @@ describe("Arc skill registry", () => {
     expect(skill?.allowedTools).not.toContain("create_campaign_draft");
   });
 
+  it("grants approval-gated drafting the compositor its own prompt sends branding revisions to", () => {
+    const skill = resolveArcSkill("approval-gated-drafting");
+
+    // Every campaign task — including an operator's asset revision — is woken
+    // with this skill. The prompt routes "put our logo / phone number / any
+    // words on this image" to compose_creative and explicitly forbids solving it
+    // by regenerating the background. Dropping it from the allowlist made that
+    // instruction unsatisfiable: three stranded revisions on prod ran to
+    // completion and revised nothing (BSR-759).
+    expect(skill?.allowedTools).toContain("compose_creative");
+    expect(skill?.allowedTools).toContain("generate_image");
+    // The boundary that matters is outbound, and it is unchanged: compose_creative
+    // lands its result through /campaigns/draft-asset as an approval-gated draft.
+    expect(skill?.approvalPolicy).toBe("approval_gated_drafts");
+  });
+
   it("registers an approval-gated campaign-package skill that drafts but does not generate media", () => {
     const skill = resolveArcSkill("campaign-package-drafting");
 
