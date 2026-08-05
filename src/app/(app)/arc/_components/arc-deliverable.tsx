@@ -445,6 +445,7 @@ export function DeliverableReview({
   statuses,
   bodies,
   paneBox,
+  returnLabel,
   onStatus,
   onClose,
 }: {
@@ -452,6 +453,9 @@ export function DeliverableReview({
   statuses: Record<string, ArcAssetStatus>;
   bodies: Record<string, ArcAssetBody>;
   paneBox: PaneBox | null;
+  /** Where closing returns to, when that isn't the conversation — e.g. the
+   *  workspace sidebar the operator selected this from. */
+  returnLabel?: string;
   onStatus: (assetId: string, status: ArcAssetStatus) => void;
   onClose: () => void;
 }) {
@@ -500,10 +504,16 @@ export function DeliverableReview({
   }, [goBack, step, showingIndex, cards.length]);
 
   const returningToIndex = !showingIndex && cards.length > 1;
-  const backLabel = returningToIndex ? `All ${countOf(cards.length, ASSET_NOUN)}` : "Back to chat";
+  // Closing lands wherever the operator opened this from. Selecting a
+  // deliverable in the workspace sidebar leaves that sidebar open underneath, so
+  // "Back to chat" would name a place this button does not go.
+  const exitLabel = returnLabel ?? "Back to chat";
+  const backLabel = returningToIndex ? `All ${countOf(cards.length, ASSET_NOUN)}` : exitLabel;
   // Spelled out for a screen reader: the visible label is a destination, and out
   // of context "All 4 assets" doesn't say it is the way back to them.
-  const backAria = returningToIndex ? `Back to all ${countOf(cards.length, ASSET_NOUN)}` : "Back to the conversation";
+  const backAria = returningToIndex
+    ? `Back to all ${countOf(cards.length, ASSET_NOUN)}`
+    : returnLabel ? `Back to ${returnLabel.toLowerCase()}` : "Back to the conversation";
 
   return (
     <OverlayPortal>

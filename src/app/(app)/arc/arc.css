@@ -2007,10 +2007,13 @@
 .arc-composer-menu-empty { padding: 9px 10px; color: var(--muted); font-size: 9.5px; }
 
 /* ── Campaign artifact workspace ───────────────────────────────────────── */
-/* Was a 390px right rail that also shrank the chat to make room for itself.
-   Now it covers the content pane, positioned from a measured PaneBox like the
-   review overlay and the thread drawer — so opening it costs no chat width and
-   the content inside gets the whole pane instead of a sliver of it. */
+/* A right-hand sidebar that OVERLAYS rather than docks.
+   The original rail docked, so it paid for itself out of the conversation's
+   width and squeezed the reading column every time it opened. Anchored to the
+   pane's right edge and floated over it (position + width come from the
+   measured PaneBox in the component), the list costs the chat nothing — and
+   selecting something here opens the full-pane preview instead of trying to
+   render a deliverable in 400px. */
 .arc-artifact-workspace {
   position: fixed;
   z-index: 59;
@@ -2018,9 +2021,10 @@
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   border: 1px solid var(--line-3);
-  border-radius: 14px;
+  border-radius: 14px 0 0 14px;
+  border-right: 0;
   background: var(--canvas-deep);
-  box-shadow: 0 30px 80px -40px rgba(0, 0, 0, .96);
+  box-shadow: -30px 0 70px -38px rgba(0, 0, 0, .96);
 }
 .arc-artifact-header {
   min-height: 76px;
