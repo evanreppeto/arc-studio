@@ -14,10 +14,11 @@ import {
   type ArcRoute,
   type CampaignAssetType,
   type ArcAssetStatus,
+  type ArcDraftFinding,
 } from "@/domain";
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
 import { decideAsset, undoAssetDecision, type ApprovalDecision } from "@/lib/campaigns/decisions";
-import { type ArcAssetBody, getArcAssetBodies, getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
+import { type ArcAssetBody, getArcAssetBodies, getArcAssetChecks, getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
 import { requestAssetRevision } from "@/lib/campaigns/revisions";
 import { getArcDisplayName } from "@/lib/arc-chat/agent-config";
 import { isAcceptedAttachment } from "@/lib/arc-chat/attachment-types";
@@ -648,6 +649,28 @@ export async function getArcAssetBodiesAction(
   try {
     const ctx = await getCurrentWorkspaceContext();
     return await getArcAssetBodies(assetIds, ctx.orgId);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The guardrail findings recorded against a conversation's approval-gated cards.
+ *
+ * A card's `flags` are frozen at draft time and on prod are usually empty, while
+ * the assets behind them hold open findings — including blockers. Fetched
+ * alongside the bodies so the chat reports what was actually found rather than
+ * what the card happened to freeze.
+ */
+export async function getArcAssetChecksAction(
+  assetIds: string[],
+): Promise<Record<string, ArcDraftFinding[]>> {
+  await requireOperator();
+  if (!Array.isArray(assetIds) || assetIds.length === 0) return {};
+  if (!isSupabaseAdminConfigured()) return {};
+  try {
+    const ctx = await getCurrentWorkspaceContext();
+    return await getArcAssetChecks(assetIds, ctx.orgId);
   } catch {
     return {};
   }

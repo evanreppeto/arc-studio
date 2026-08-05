@@ -47,6 +47,7 @@ import {
   ARC_CHECK_LABEL,
   arcDeliverableMedium,
   arcDraftCheckState,
+  ARC_SEVERITY_TONE,
   ARC_MEDIUM_LABEL,
   ASSET_NOUN,
   countOf,
@@ -56,6 +57,7 @@ import {
   type ArcAssetStatus,
   type ArcDeliverableMedium,
   type ArcDraftContent,
+  type ArcDraftFinding,
   type ArcMedia,
 } from "@/domain";
 import type { ArcAssetBody } from "@/lib/campaigns/read-model";
@@ -235,19 +237,35 @@ export function DeliverableCanvas({ card, content }: { card: ArcActionCard; cont
  * whether copy reaches a customer. `unchecked` gets its own colourless tone and
  * never borrows the "passed" green.
  */
-function DraftChecks({ flags, limit }: { flags: ArcActionCard["flags"]; limit?: number }) {
-  const state = arcDraftCheckState(flags);
+function DraftChecks({ flags, findings, limit }: { flags: ArcActionCard["flags"]; findings?: ArcDraftFinding[]; limit?: number }) {
+  const state = arcDraftCheckState({ flags, findings });
+  // Nothing loaded yet: say nothing. Claiming "no checks recorded" here is the
+  // bug this replaced — it was false for exactly the drafts that had findings.
+  if (state === "unknown") return null;
+
+  const open = (findings ?? []).filter((f) => f.open);
+  const shown = limit ? open.slice(0, limit) : open;
+
   return (
     <div className="arc-dlv-flags" data-check={state}>
       {state === "unchecked" ? (
-        <span className="arc-dlv-unchecked" title="Arc recorded no guardrail result for this draft. Read it before approving.">
+        <span className="arc-dlv-unchecked" title="No guardrail result is recorded against this draft. Read it before approving.">
           <ShieldQuestion size={12} />{ARC_CHECK_LABEL.unchecked}
         </span>
-      ) : (
-        (limit ? flags.slice(0, limit) : flags).map((flag, index) => (
-          <span key={`${flag.label}-${index}`} className={`arc-action-flag is-${flag.tone}`}>{flag.label}</span>
-        ))
-      )}
+      ) : null}
+      {shown.map((f) => (
+        <span key={f.id} className={`arc-action-flag is-${ARC_SEVERITY_TONE[f.severity]}`} title={f.matchedText ? `Matched: ${f.matchedText}` : undefined}>
+          {f.message}
+        </span>
+      ))}
+      {limit && open.length > limit ? <span className="arc-dlv-more-findings">+{open.length - limit} more</span> : null}
+      {/* The card's own frozen flags still render when there is nothing live to
+          show — they are a real record of what Arc checked at draft time. */}
+      {open.length === 0
+        ? (limit ? flags.slice(0, limit) : flags).map((flag, index) => (
+            <span key={`${flag.label}-${index}`} className={`arc-action-flag is-${flag.tone}`}>{flag.label}</span>
+          ))
+        : null}
     </div>
   );
 }
@@ -321,6 +339,7 @@ export function InlineDeliverable({
   card,
   status,
   bodies,
+  checks,
   onStatus,
   onOpen,
   onContextMenu,
@@ -328,6 +347,9 @@ export function InlineDeliverable({
   card: ArcActionCard;
   status: ArcAssetStatus | null;
   bodies: Record<string, ArcAssetBody>;
+  /** Live findings by asset id. A MISSING key means not loaded; an empty array
+   *  means loaded with none — see arcDraftCheckState. */
+  checks: Record<string, ArcDraftFinding[]>;
   onStatus: (assetId: string, status: ArcAssetStatus) => void;
   onOpen: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
@@ -341,6 +363,7 @@ export function InlineDeliverable({
   const content = parseArcDraftContent(text);
   const decision = useDraftDecision({ approval: card.approval, status, onResolved: onStatus });
   const medium = arcDeliverableMedium({ channel: card.channel, format: card.format });
+  const findings = checks[card.approval?.assetId ?? ""];
   const collapsed = isDecidedAssetStatus(status) && !reopened;
 
   const [undoing, setUndoing] = useState(false);
@@ -415,7 +438,7 @@ export function InlineDeliverable({
       {/* Always rendered, including when there is nothing to report — an empty
           flag list used to render nothing at all, which made a draft nobody had
           checked look exactly like one that passed. */}
-      <DraftChecks flags={card.flags} limit={4} />
+      <DraftChecks flags={card.flags} findings={findings} limit={4} />
 
       <footer className="arc-dlv-foot">
         <DecisionBar card={card} decision={decision} status={status} />
@@ -502,6 +525,7 @@ export function DeliverableReview({
   cards,
   statuses,
   bodies,
+  checks,
   paneBox,
   returnLabel,
   onStatus,
@@ -510,6 +534,7 @@ export function DeliverableReview({
   cards: ArcActionCard[];
   statuses: Record<string, ArcAssetStatus>;
   bodies: Record<string, ArcAssetBody>;
+  checks: Record<string, ArcDraftFinding[]>;
   paneBox: PaneBox | null;
   /** Where closing returns to, when that isn't the conversation — e.g. the
    *  workspace sidebar the operator selected this from. */
@@ -531,6 +556,7 @@ export function DeliverableReview({
   const { reset } = decision;
   const { text } = resolveDraftText(card, bodies);
   const content = parseArcDraftContent(text);
+  const findings = checks[assetId];
   const medium = arcDeliverableMedium({ channel: card.channel, format: card.format });
 
   /** Back goes UP a level: detail → index when there is one, else out to chat. */
@@ -664,7 +690,7 @@ export function DeliverableReview({
                   ) : null}
                   <section>
                     <h4>Checks</h4>
-                    <DraftChecks flags={card.flags} />
+                    <DraftChecks flags={card.flags} findings={findings} />
                   </section>
                 </aside>
               </motion.div>

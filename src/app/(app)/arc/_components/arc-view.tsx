@@ -68,6 +68,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   type ArcActionCard,
   type ArcAssetStatus,
+  type ArcDraftFinding,
   type ArcMention,
   type ArcMode,
   type ArcRoute,
@@ -127,6 +128,7 @@ import {
   deleteArcConversationAction,
   editAndResendArcMessageAction,
   getArcAssetBodiesAction,
+  getArcAssetChecksAction,
   getArcAssetStatusesAction,
   pinArcConversationAction,
   regenerateArcReplyAction,
@@ -166,7 +168,7 @@ import type {
   PaneBox,
   ThreadItem,
 } from "./arc-view.types";
-import { DEMO_ASSET_BODIES, DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING, DEMO_WORKSPACE_CARDS } from "./arc-demo-data";
+import { DEMO_ASSET_BODIES, DEMO_ASSET_CHECKS, DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING, DEMO_WORKSPACE_CARDS } from "./arc-demo-data";
 import { ArcWorkPanel, ChipThumb, QuestionPrompt } from "./arc-messages";
 import { DeliverableReview } from "./arc-deliverable";
 import { ArcLauncher, DemoConversation, LiveConversation, type OptimisticArcTurn } from "./arc-conversation";
@@ -1581,6 +1583,10 @@ export function ArcView({
   // instead of a receipt pointing at one. Keyed by asset id, same as statuses.
   // The offline preview seeds from fixtures; live seeds from the asset rows.
   const [assetBodies, setAssetBodies] = useState<Record<string, ArcAssetBody>>(live ? {} : DEMO_ASSET_BODIES);
+  // Live guardrail findings per asset. A MISSING key means "not loaded yet" and
+  // an empty array means "loaded, none recorded" — the card renders very
+  // different things for those two, so the distinction is load-bearing.
+  const [assetChecks, setAssetChecks] = useState<Record<string, ArcDraftFinding[]>>(live ? {} : DEMO_ASSET_CHECKS);
   const resolvedDemoConversationId =
     initialDemoConversationId &&
     (initialDemoConversationId === "new" ||
@@ -2369,6 +2375,29 @@ export function ArcView({
     return () => { cancelled = true; };
   }, [live, conversationAssetKey]);
 
+  /**
+   * The findings recorded against those same assets.
+   *
+   * The card's own `flags` are frozen at draft time and on prod are usually
+   * empty while the asset holds OPEN findings — 15 of them across 13 assets,
+   * two of which are blockers. Reading live is the only way the chat can report
+   * a finding raised after Arc drafted, or stop reporting one since resolved.
+   */
+  useEffect(() => {
+    if (!live || !conversationAssetKey) return;
+    let cancelled = false;
+    getArcAssetChecksAction(conversationAssetKey.split(","))
+      .then((fromDb) => {
+        if (cancelled || !fromDb) return;
+        setAssetChecks((current) => ({ ...current, ...fromDb }));
+      })
+      .catch(() => {
+        // Best-effort: the card falls back to "unknown" and stays silent about
+        // checks rather than claiming there were none.
+      });
+    return () => { cancelled = true; };
+  }, [live, conversationAssetKey]);
+
   const needsReviewCards = reviewableWorkCards.filter((card) => {
     const status = assetStatuses[card.approval?.assetId ?? ""] ?? card.status ?? "draft";
     return status !== "approved" && status !== "rejected" && status !== "revision";
@@ -2454,7 +2483,7 @@ export function ArcView({
       <div className="arc-conversation-scroll" ref={scrollRef}>
         <div className="arc-conversation-column">
           {live && historyLoadError ? <div className="arc-history-load-error" role="status"><CircleAlert size={15} /><span><b>History is temporarily unavailable.</b>{historyLoadError}</span></div> : null}
-          {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} assetBodies={assetBodies} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} assetBodies={assetBodies} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
+          {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} assetBodies={assetBodies} assetChecks={assetChecks} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} assetBodies={assetBodies} assetChecks={assetChecks} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
           {/* Room for the reply to arrive into, so the question can sit at the
               top of the view while the answer grows downward beneath it.
               Always mounted, and sized to exactly the shortfall — it shrinks as
@@ -2600,7 +2629,7 @@ export function ArcView({
           one from cross-fading its text under the incoming one. */}
       <AnimatePresence mode="wait">
         {reviewCards && reviewCards.length > 0
-          ? <DeliverableReview key="asset-review" cards={reviewCards} statuses={assetStatuses} bodies={assetBodies} paneBox={panelPaneBox} returnLabel={workPanelOpen ? "Workspace" : undefined} onStatus={recordAssetStatus} onClose={() => setReviewCards(null)} />
+          ? <DeliverableReview key="asset-review" cards={reviewCards} statuses={assetStatuses} bodies={assetBodies} checks={assetChecks} paneBox={panelPaneBox} returnLabel={workPanelOpen ? "Workspace" : undefined} onStatus={recordAssetStatus} onClose={() => setReviewCards(null)} />
           : workPanelOpen
             ? <ArcWorkPanel key="work-panel" message={latestArcMessage} messages={live ? renderedMessages : undefined} cards={workCards} statuses={assetStatuses} demoSeed={demoSeed} demoPending={demoPending} demoRequest={latestDemoRequest} demoOutcome={latestDemoArcTurn ? latestDemoArcTurn.outcome ?? "complete" : undefined} paneBox={panelPaneBox} onReview={openReview} onRecover={recoverRun} onClose={() => setWorkPanelVisibility(false)} />
             : null}

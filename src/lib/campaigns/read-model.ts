@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
+import { arcAssetStatusFromDb, arcFindingSeverity, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
   parseConsideredAudiences,
   humanizeArcProse,
   isFixKind,
@@ -9,6 +9,7 @@ import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExt
   toWorkState,
   WORK_STATE_LABEL,
   type ConsideredAudience,
+  type ArcDraftFinding,
 } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
@@ -777,6 +778,58 @@ export async function getArcAssetBodies(
       const body = authored ?? row.draft_body?.trim() ?? "";
       if (!body) continue;
       out[row.id] = { id: row.id, body, edited: Boolean(authored) };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The guardrail findings recorded against a set of assets, keyed by asset id.
+ *
+ * The Arc chat rendered a card's frozen `flags` and nothing else. A census of
+ * prod found 13 of 16 approval-bearing cards carrying zero flags while those
+ * same assets held 15 OPEN findings — 13 warnings and 2 blockers. The checks had
+ * run and been recorded; the chat had simply never read the table they land in.
+ *
+ * Read live for the same reason bodies are (see `getArcAssetBodies`): the card
+ * is frozen JSON in `arc_messages.metadata`, so it cannot learn about a finding
+ * raised after Arc drafted — and a finding resolved since is no longer a
+ * warning. Org-scoped; returns {} rather than throwing, and the caller
+ * distinguishes "no findings" from "not loaded" (see `arcDraftCheckState`).
+ */
+export async function getArcAssetChecks(
+  assetIds: readonly string[],
+  orgId?: string,
+  client?: SupabaseClient,
+): Promise<Record<string, ArcDraftFinding[]>> {
+  const ids = [...new Set(assetIds.filter((id) => typeof id === "string" && id.trim()))];
+  if (ids.length === 0) return {};
+  if (!client && !isSupabaseAdminConfigured()) return {};
+  try {
+    const supabase = client ?? getSupabaseAdminClient();
+    const { data, error } = await applyOrgScope(
+      supabase.from("guardrail_findings").select("id,campaign_asset_id,severity,status,matched_text,finding_message"),
+      orgId,
+    ).in("campaign_asset_id", ids);
+    assertSupabaseResult("guardrail_findings", error);
+
+    const out: Record<string, ArcDraftFinding[]> = {};
+    // Every requested id gets an entry, including an EMPTY one. That empty array
+    // is the difference between "we looked and found none" and "we haven't
+    // looked" — the caller renders very different things for those two.
+    for (const id of ids) out[id] = [];
+    for (const row of (data ?? []) as GuardrailFindingRow[]) {
+      const assetId = row.campaign_asset_id;
+      if (!assetId || !out[assetId]) continue;
+      out[assetId].push({
+        id: row.id,
+        severity: arcFindingSeverity(row.severity),
+        message: row.finding_message,
+        matchedText: row.matched_text ?? undefined,
+        open: (row.status ?? "").toLowerCase() === "open",
+      });
     }
     return out;
   } catch {

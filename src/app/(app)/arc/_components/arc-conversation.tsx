@@ -12,7 +12,7 @@ import { ArrowRight, ArrowUpRight, Bookmark, Brain, Check, CircleAlert, Clipboar
 import ReactMarkdown from "react-markdown";
 
 import { WORK_STATE_LABEL } from "@/domain";
-import type { ArcActionCard, ArcAssetStatus, ArcMention, ArcMode, ArcRecall, ArcRoute } from "@/domain";
+import type { ArcActionCard, ArcAssetStatus, ArcDraftFinding, ArcMention, ArcMode, ArcRecall, ArcRoute } from "@/domain";
 import type { ArcMessage, ArcStep } from "@/lib/arc-chat/persistence";
 import { buildArcLauncherRecommendation } from "@/lib/arc-chat/launcher-state";
 import { buildArcOutcomeView, type ArcOutcomeBadge } from "@/lib/arc-chat/outcome-view";
@@ -379,6 +379,7 @@ export function LiveConversation({
   stoppingTaskId,
   onAssetStatus,
   assetBodies,
+  assetChecks,
 }: {
   messages: ArcMessage[];
   optimisticTurn?: OptimisticArcTurn | null;
@@ -389,6 +390,9 @@ export function LiveConversation({
    *  until the fetch lands, and empty forever without a backend — a card falls
    *  back to its own stored preview either way. */
   assetBodies: Record<string, ArcAssetBody>;
+  /** Live guardrail findings by asset id. A missing key means not loaded yet;
+   *  an empty array means loaded with none recorded. */
+  assetChecks: Record<string, ArcDraftFinding[]>;
   onSuggestion: (value: string) => void;
   onReview: (cards: ArcActionCard[]) => void;
   onEdit: (messageId: string, newBody: string) => void;
@@ -504,7 +508,7 @@ export function LiveConversation({
                           key={`${card.approval?.assetId ?? card.title}-${cardIndex}`}
                           card={card}
                           status={statusOf(card)}
-                          bodies={assetBodies}
+                          bodies={assetBodies} checks={assetChecks}
                           onStatus={onAssetStatus}
                           onOpen={() => onReview([card])}
                           onContextMenu={(event) => openMenu(event, receiptMenuItems({ card, status: statusOf(card), onOpen: () => onReview([card]), onAssetStatus }))}
@@ -546,6 +550,7 @@ export function DemoConversation({
   includeSeed,
   packageStatuses,
   assetBodies,
+  assetChecks,
   pendingContract,
   onReview,
   onEditResend,
@@ -557,6 +562,7 @@ export function DemoConversation({
   includeSeed: boolean;
   packageStatuses: Record<string, ArcAssetStatus>;
   assetBodies: Record<string, ArcAssetBody>;
+  assetChecks: Record<string, ArcDraftFinding[]>;
   pendingContract: ArcRunContract;
   onReview: (cards: ArcActionCard[]) => void;
   onEditResend: (body: string) => void;
@@ -621,14 +627,14 @@ export function DemoConversation({
             <ReviewableWork>
               <DeliverablePackageHead cards={DEMO_PACKAGE_CARDS} statuses={packageStatuses} onReviewAll={() => onReview(DEMO_PACKAGE_CARDS)} onContextMenu={(event) => openMenu(event, packageMenuItems({ cards: DEMO_PACKAGE_CARDS, statusOf, onOpen: () => onReview(DEMO_PACKAGE_CARDS), onAssetStatus }))} />
               {DEMO_PACKAGE_CARDS.map((card, cardIndex) => (
-                <InlineDeliverable key={`${card.approval?.assetId ?? card.title}-${cardIndex}`} card={card} status={statusOf(card)} bodies={assetBodies} onStatus={onAssetStatus} onOpen={() => onReview([card])} onContextMenu={(event) => openMenu(event, receiptMenuItems({ card, status: statusOf(card), onOpen: () => onReview([card]), onAssetStatus }))} />
+                <InlineDeliverable key={`${card.approval?.assetId ?? card.title}-${cardIndex}`} card={card} status={statusOf(card)} bodies={assetBodies} checks={assetChecks} onStatus={onAssetStatus} onOpen={() => onReview([card])} onContextMenu={(event) => openMenu(event, receiptMenuItems({ card, status: statusOf(card), onOpen: () => onReview([card]), onAssetStatus }))} />
               ))}
             </ReviewableWork>
           </AssistantMessage>
           <OperatorMessage time="9:44 AM" body="Looks good. Draft the email." onEdit={editable} onContextMenu={operatorMenu("Looks good. Draft the email.")} />
           <AssistantMessage time="9:45 AM" onContextMenu={(event) => openMenu(event, demoArcItems("The demo email for the 64 active-trial, high-intent accounts is ready for review."))}>
             <div className="arc-answer"><p>The demo email for the 64 active-trial, high-intent accounts is ready for review.</p></div>
-            <ReviewableWork><InlineDeliverable card={DEMO_DRAFT_CARD} status={statusOf(DEMO_DRAFT_CARD)} bodies={assetBodies} onStatus={onAssetStatus} onOpen={() => onReview([DEMO_DRAFT_CARD])} onContextMenu={(event) => openMenu(event, receiptMenuItems({ card: DEMO_DRAFT_CARD, status: statusOf(DEMO_DRAFT_CARD), onOpen: () => onReview([DEMO_DRAFT_CARD]), onAssetStatus }))} /></ReviewableWork>
+            <ReviewableWork><InlineDeliverable card={DEMO_DRAFT_CARD} status={statusOf(DEMO_DRAFT_CARD)} bodies={assetBodies} checks={assetChecks} onStatus={onAssetStatus} onOpen={() => onReview([DEMO_DRAFT_CARD])} onContextMenu={(event) => openMenu(event, receiptMenuItems({ card: DEMO_DRAFT_CARD, status: statusOf(DEMO_DRAFT_CARD), onOpen: () => onReview([DEMO_DRAFT_CARD]), onAssetStatus }))} /></ReviewableWork>
           </AssistantMessage>
         </>
       ) : null}

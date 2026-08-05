@@ -5,7 +5,7 @@
 //
 // This is illustrative sample content for a demo tenant, not a hardcoded customer.
 
-import type { ArcActionCard, ArcMention, ArcRecall } from "@/domain";
+import type { ArcActionCard, ArcDraftFinding, ArcMention, ArcRecall } from "@/domain";
 import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 import type { ArcAttachment, ArcMessage, ArcStep, ArcToolCall } from "@/lib/arc-chat/persistence";
 import type { ArcRecentConversationVM, ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
@@ -237,6 +237,37 @@ export const DEMO_ASSET_BODIES: Record<string, ArcAssetBody> = {
       "Fifteen minutes, your own data on screen, no pitch. We'll show the parts that matter to how your team already works and skip the rest.",
     ].join("\n"),
   },
+};
+
+/**
+ * Guardrail findings for the demo cards, standing in for `getArcAssetChecks`.
+ *
+ * Shaped like prod, which is the point: there, 13 of 16 draft cards carry NO
+ * flags while the assets behind them hold 15 open findings — 13 `warning` and
+ * 2 `blocker`. So the landing page carries an open blocker while its card
+ * carries nothing, which is exactly the case that used to render as "nothing
+ * flagged" one click from approval.
+ *
+ * `demo-asset-sms` is present but EMPTY on purpose — that is the "we looked and
+ * found none" answer, which must render differently from "we have not looked".
+ */
+export const DEMO_ASSET_CHECKS: Record<string, ArcDraftFinding[]> = {
+  "demo-asset-landing": [
+    {
+      id: "demo-finding-1",
+      severity: "blocker",
+      message: "Contradicts the documented plan list: the page offers a tier the brand kit does not sell.",
+      matchedText: "every plan includes onboarding",
+      open: true,
+    },
+    {
+      id: "demo-finding-2",
+      severity: "warning",
+      message: "Could not ground the \"15 minutes\" claim in any brain node.",
+      open: true,
+    },
+  ],
+  "demo-asset-sms": [],
 };
 
 export const DEMO_ATTACHMENTS: ArcAttachment[] = [

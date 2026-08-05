@@ -1020,6 +1020,17 @@
   color: var(--muted); font-size: 10px; font-weight: 600;
 }
 .arc-dlv-detail-side .arc-dlv-flags { padding: 0; }
+/* A finding is a sentence, not a tag — it has to wrap and stay readable. */
+.arc-dlv-flags[data-check="flagged"] .arc-action-flag {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
+}
+.arc-dlv-more-findings { align-self: center; color: var(--muted); font-size: 10px; }
+/* An unresolved blocker outranks the card's border colour: a draft can be
+   "Needs you" on approval state and blocked on content at the same time. */
+.arc-dlv:has(.arc-dlv-flags[data-check="flagged"]) { border-color: color-mix(in srgb, var(--priority) 45%, var(--line-2)); }
 
 .arc-dlv-foot { margin-top: 12px; padding: 10px 12px 11px; border-top: 1px solid var(--line); }
 
