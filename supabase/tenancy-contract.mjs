@@ -86,6 +86,10 @@ export const TENANCY_CONTRACT = {
   journey_identities: "org",
   journey_touchpoints: "org",
   engagement_events: "org",
+  // An opt-out is a fact about a person, not about a workspace's process. If two
+  // workspaces in one company could disagree about it, one of them is emailing
+  // someone who said stop — so it can only be org-owned (BSR-482).
+  email_suppressions: "org",
   events: "org",
   integrity_findings: "org",
   routing_decisions: "org",

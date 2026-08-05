@@ -21,6 +21,11 @@ export const ContactRowSchema = z.object({
   phone: z.string().nullable(),
   title: z.string().nullable(),
   metadata: z.record(z.string(), z.unknown()),
+  // Optional so callers that select a narrower projection still parse. It is
+  // carried on the parsed Contact because the audience resolver filters on it —
+  // the schema dropping this column is what let unsubscribed contacts through
+  // every preview and every external-send export (BSR-482).
+  email_unsubscribed_at: z.string().nullable().optional(),
   created_at: z.string().datetime({ offset: true }),
   updated_at: z.string().datetime({ offset: true }),
 });
@@ -37,6 +42,7 @@ export const ContactSchema = ContactRowSchema.transform((row) => ({
   phone: row.phone,
   title: row.title,
   metadata: row.metadata,
+  emailUnsubscribedAt: row.email_unsubscribed_at ?? null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 }));

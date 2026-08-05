@@ -3,8 +3,9 @@
 import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
-import { type MediaConfig, parseMediaConfig } from "@/domain";
-import { requireOperator } from "@/lib/auth/operator";
+import { type MediaConfig, normalizeEmailAddress, parseMediaConfig } from "@/domain";
+import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
+import { recordEmailSuppression } from "@/lib/email-suppression/persistence";
 import { sendWorkspaceInviteEmail } from "@/lib/auth/send-invite-email";
 import {
   changeWorkspaceMemberRole,
@@ -397,6 +398,61 @@ export async function saveEmailIdentitySettings(input: {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save email identity." };
   }
+
+  revalidatePath("/settings");
+  return { ok: true, persisted: true };
+}
+
+/**
+ * Add an address to the suppression register by hand.
+ *
+ * The compliance case for this: an opt-out given by phone, by reply, or in
+ * person is legally identical to one given by clicking the link, and before this
+ * existed an operator had no way to honor it short of editing the database. The
+ * gap was quiet, because the only visible opt-out path worked fine.
+ *
+ * Suppression is an outbound REFUSAL, so this needs no approval gate — it can
+ * only ever reduce what gets sent.
+ */
+export async function suppressEmailAddress(input: { address: string; note?: string }): Promise<SettingsWriteResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const address = normalizeEmailAddress(input.address);
+  if (!address) return { ok: false, error: "Enter an email address to suppress." };
+  // Same permissive shape check the audience resolver uses — a typo'd address in
+  // the register is harmless, but an obviously malformed one is a mistake worth
+  // catching at the point of entry.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+    return { ok: false, error: `"${input.address.trim()}" doesn't look like an email address.` };
+  }
+
+  const org = await resolveOrgForSave();
+  if (!org.ok) return org;
+
+  const client = getSupabaseAdminClient();
+  // Link the CRM contact when one shares the address, so the contact-level flag
+  // is mirrored too and the CRM doesn't keep showing them as emailable.
+  const { data: contact } = await client
+    .from("contacts")
+    .select("id")
+    .eq("org_id", org.orgId)
+    .ilike("email", address)
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+
+  const recorded = await recordEmailSuppression(
+    {
+      orgId: org.orgId,
+      address,
+      reason: "manual",
+      source: await getOperatorActor(),
+      detail: input.note?.trim().slice(0, 300) || null,
+      contactId: contact?.id ?? null,
+    },
+    client,
+  );
+  if (!recorded.ok) return { ok: false, error: recorded.error };
 
   revalidatePath("/settings");
   return { ok: true, persisted: true };

@@ -5,8 +5,10 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import {
   dispatchStatusForResendEvent,
   engagementForResendEvent,
+  suppressionForResendEvent,
   type ResendWebhookEvent,
 } from "@/domain";
+import { recordEmailSuppression } from "@/lib/email-suppression/persistence";
 
 /**
  * The write side of the Resend engagement webhook: resolve the provider's
@@ -62,7 +64,16 @@ type DispatchRow = {
   campaign_id: string | null;
   campaign_asset_id: string | null;
   contact_id: string | null;
+  payload: { to?: string | string[] } | null;
 };
+
+/** The address a dispatch actually mailed, for keying a suppression. */
+function dispatchAddress(dispatch: DispatchRow): string | null {
+  const to = dispatch.payload?.to;
+  if (typeof to === "string") return to;
+  if (Array.isArray(to) && typeof to[0] === "string") return to[0];
+  return null;
+}
 
 export type RecordResendEventResult =
   | { ok: true; recorded: boolean; note: string }
@@ -80,11 +91,12 @@ export async function recordResendWebhookEvent(
 
   const engagement = engagementForResendEvent(event);
   const nextStatus = dispatchStatusForResendEvent(event.type);
-  if (!engagement && !nextStatus) return { ok: true, recorded: false, note: `Ignored ${event.type}.` };
+  const suppression = suppressionForResendEvent(event);
+  if (!engagement && !nextStatus && !suppression) return { ok: true, recorded: false, note: `Ignored ${event.type}.` };
 
   const { data: dispatch, error: dispatchError } = await client
     .from("campaign_dispatches")
-    .select("id,org_id,status,campaign_id,campaign_asset_id,contact_id")
+    .select("id,org_id,status,campaign_id,campaign_asset_id,contact_id,payload")
     .eq("provider_message_id", event.emailId)
     .maybeSingle<DispatchRow>();
   if (dispatchError) return { ok: false, error: `campaign_dispatches lookup: ${dispatchError.message}` };
@@ -130,6 +142,28 @@ export async function recordResendWebhookEvent(
       .eq("org_id", dispatch.org_id)
       .eq("status", "sent");
     if (updateError) return { ok: false, error: `campaign_dispatches update: ${updateError.message}` };
+  }
+
+  // A hard bounce or a spam complaint must stop the NEXT campaign too, not just
+  // fail this dispatch. Keyed by the address the provider reports, falling back
+  // to what this dispatch mailed — the register is address-keyed precisely so a
+  // provider event, which knows no contact id, can write to it.
+  //
+  // Runs after the engagement insert so a suppression failure can't cost us the
+  // event record, and is idempotent so a svix redelivery is harmless.
+  if (suppression) {
+    const recorded = await recordEmailSuppression(
+      {
+        orgId: dispatch.org_id,
+        address: event.recipient ?? dispatchAddress(dispatch),
+        reason: suppression.reason,
+        source: "resend",
+        detail: suppression.detail,
+        contactId: dispatch.contact_id,
+      },
+      client,
+    );
+    if (!recorded.ok) return { ok: false, error: recorded.error };
   }
 
   return { ok: true, recorded: Boolean(engagement), note: `Recorded ${event.type}.` };

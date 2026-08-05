@@ -123,6 +123,8 @@ export * from "./signup-attribution";
 // Pre-flight for arming ARC_BILLING_ENFORCEMENT (BSR-621).
 export * from "./billing-enforcement-preflight";
 export * from "./email-compliance";
+// The address-keyed half of compliance: who must NOT be mailed, and why (BSR-482).
+export * from "./email-suppression";
 export * from "./lead-fit";
 export * from "./arc-eval";
 export * from "./brain-dedup";

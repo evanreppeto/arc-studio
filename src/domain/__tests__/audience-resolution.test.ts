@@ -18,6 +18,7 @@ function contact(overrides: Partial<Contact> & { id: string }): Contact {
     phone: "312-555-0100",
     title: null,
     metadata: {},
+    emailUnsubscribedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -154,5 +155,66 @@ describe("resolveCampaignAudience", () => {
 
     const clean = resolveCampaignAudience(target, [contact({ id: "a" }), contact({ id: "b", email: "b@example.com" })], "email");
     expect(clean.summary).toBe("2 recipients");
+  });
+});
+
+describe("resolveCampaignAudience — email consent (BSR-482)", () => {
+  const target: CampaignAudienceTarget = { persona: "persona_homeowner_emergency" };
+
+  it("drops a contact carrying the opt-out flag", () => {
+    // Previously this was checked ONLY at send time, so an unsubscribed contact
+    // was still enqueued as a dispatch — and still exported to an operator's own
+    // ESP, where our send gate never runs.
+    const res = resolveCampaignAudience(
+      target,
+      [
+        contact({ id: "ok", email: "ok@example.com" }),
+        contact({ id: "gone", email: "gone@example.com", emailUnsubscribedAt: "2026-08-01T00:00:00.000Z" }),
+      ],
+      "email",
+    );
+    expect(res.recipients.map((r) => r.contactId)).toEqual(["ok"]);
+    expect(res.suppressed).toEqual([{ contactId: "gone", reason: "unsubscribed" }]);
+  });
+
+  it("drops an address in the org register even when the contact row is clean", () => {
+    // The re-import case: the contact row is brand new and carries no flag.
+    const res = resolveCampaignAudience(
+      target,
+      [contact({ id: "reimported", email: "gone@example.com" })],
+      "email",
+      { suppressedAddresses: new Set(["gone@example.com"]) },
+    );
+    expect(res.recipients).toHaveLength(0);
+    expect(res.suppressed).toEqual([{ contactId: "reimported", reason: "unsubscribed" }]);
+  });
+
+  it("matches the register case-insensitively", () => {
+    const res = resolveCampaignAudience(
+      target,
+      [contact({ id: "c1", email: "  Gone@Example.COM " })],
+      "email",
+      { suppressedAddresses: new Set(["gone@example.com"]) },
+    );
+    expect(res.recipients).toHaveLength(0);
+  });
+
+  it("reports missing_email ahead of consent — the more useful reason wins", () => {
+    const res = resolveCampaignAudience(
+      target,
+      [contact({ id: "c1", email: null, emailUnsubscribedAt: "2026-08-01T00:00:00.000Z" })],
+      "email",
+    );
+    expect(res.suppressed).toEqual([{ contactId: "c1", reason: "missing_email" }]);
+  });
+
+  it("does not apply the email register to an SMS send", () => {
+    const res = resolveCampaignAudience(
+      target,
+      [contact({ id: "c1", email: "gone@example.com", phone: "312-555-0100" })],
+      "sms",
+      { suppressedAddresses: new Set(["gone@example.com"]) },
+    );
+    expect(res.recipients.map((r) => r.contactId)).toEqual(["c1"]);
   });
 });
