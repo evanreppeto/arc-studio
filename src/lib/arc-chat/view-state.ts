@@ -1,3 +1,25 @@
+import type { ArcMessage } from "./persistence";
+
+/**
+ * Is this reply still being worked on?
+ *
+ * An arc row counts as in-flight while it is `pending`, and also while it is a
+ * settled row with no body yet (the runner inserts the row before it writes a
+ * word). A run the read model has marked `stalled` is explicitly NOT in flight:
+ * it satisfies both of those shapes and would otherwise spin forever, which is
+ * the whole bug. Keeping the rule in one function means the composer lock, the
+ * SSE subscription, and the message renderer can never disagree about it.
+ */
+export function isArcReplyInFlight(message: ArcMessage): boolean {
+  if (message.stalled) return false;
+  return message.status === "pending" || (message.role === "arc" && !message.body.trim());
+}
+
+/** Any reply in this conversation still working. */
+export function hasArcReplyInFlight(messages: ArcMessage[]): boolean {
+  return messages.some(isArcReplyInFlight);
+}
+
 export function shouldShowDemoLauncher({
   selectedDemoId,
   turnCount,
