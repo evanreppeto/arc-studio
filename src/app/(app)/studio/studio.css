@@ -588,9 +588,19 @@
   animation: studioShimmer 2.4s linear infinite;
 }
 @keyframes studioShimmer { to { background-position: -220% 0; } }
-.arc-studio .arcnote { border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 10px; padding: 9px 11px; font-size: 11.5px; line-height: 1.6; color: var(--text-2); }
+/* A footnote to Arc's answer, folded. It was an always-open gold box five lines
+   tall — louder than the reply it annotates — and it rendered from the OPERATOR's
+   message, below the pending bubble, so it lectured before Arc had spoken. */
+.arc-studio .arcnote { border: 1px solid var(--line-2); background: var(--panel); border-radius: 10px; padding: 7px 10px; font-size: 11.5px; line-height: 1.6; color: var(--text-2); }
+.arc-studio .arcnote[open] { border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-studio .arcnote b { color: var(--text); font-weight: 600; }
-.arc-studio .arcnote .arcnote-h { display: block; margin-bottom: 3px; }
+.arc-studio .arcnote .arcnote-h { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--text-2); cursor: pointer; list-style: none; }
+.arc-studio .arcnote .arcnote-h::-webkit-details-marker { display: none; }
+.arc-studio .arcnote[open] .arcnote-h { color: var(--text); margin-bottom: 5px; }
+.arc-studio .arcnote .arcnote-c { display: grid; place-items: center; width: 11px; height: 11px; flex-shrink: 0; color: var(--accent); transition: transform 0.18s var(--ease); }
+.arc-studio .arcnote[open] .arcnote-c { transform: rotate(90deg); }
+.arc-studio .arcnote .arcnote-c svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+.arc-studio .arcnote .arcnote-b { display: block; }
 .arc-studio .arcopen { align-self: flex-start; margin-top: 2px; font-size: 11.5px; color: var(--muted); text-decoration: none; }
 .arc-studio .arcopen:hover { color: var(--accent-contrast); }
 

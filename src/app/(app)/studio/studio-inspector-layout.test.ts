@@ -273,3 +273,31 @@ describe("Design pane controls are focusable and named", () => {
     expect(view).toMatch(/title=\{genGate \?\? undefined\}/);
   });
 });
+
+/**
+ * The logo note annotates an answer; it does not pre-empt one.
+ *
+ * Reported as "what is this? It appears before Arc even has a moment to respond."
+ * It was computed from the OPERATOR's message alone and rendered below the
+ * pending bubble, so it argued with a request while Arc was still working on it.
+ * The trigger was a bare word list including `text`, `words` and `caption`, so
+ * editing the canvas copy summoned a warning about logos in generated images.
+ */
+describe("logo hint", () => {
+  const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+
+  it("waits for Arc to have replied", () => {
+    const hint = view.match(/const logoHint = useMemo\([\s\S]*?\}, \[[^\]]*\]\);/)?.[0] ?? "";
+    expect(hint).toMatch(/if \(!replied\) return false;/);
+    expect(hint).toMatch(/\[thread, replied\]/);
+  });
+
+  it("no longer fires on any mention of text or a caption", () => {
+    expect(view).not.toMatch(/BAKED_TEXT_RE/);
+    expect(view).toMatch(/wantsBrandingInScene/);
+  });
+
+  it("folds, so it cannot outshout the reply it annotates", () => {
+    expect(view).toMatch(/<details className="arcnote"/);
+  });
+});
