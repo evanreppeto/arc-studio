@@ -166,8 +166,15 @@ export default async function HomePage() {
         <SetupChecklist checklist={activation.checklist} />
 
         {focal && (
-          <div className="focal">
-            <div className="lab">Top opportunity</div>
+          <>
+            {/* Was a gold uppercase kicker inside the card, which §3 bans above a
+                title. The words still earn their place — this card needs to say
+                what it is — so they become a section heading in the same rhythm
+                as "Open opportunities" and "Active campaigns" below. */}
+            <div className="sech">
+              <h3>Top opportunity</h3>
+            </div>
+            <div className="focal">
             <div className="row1">
               <h2>{focal.title}</h2>
               {evidenceFacts(focal.evidence).length > 0 && (
@@ -198,7 +205,8 @@ export default async function HomePage() {
                 Draft with Arc
               </Link>
             </div>
-          </div>
+            </div>
+          </>
         )}
 
         <div className="sech">
