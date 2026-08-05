@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createSupabaseQueryMock, type MockResponse } from "@/lib/repos/__tests__/test-helpers";
 
-import { buildReasoning, getCampaignWorkspaceDetail, getCampaignWorkspaceList, listCampaignNames, selectIn } from "./read-model";
+import { buildExecutiveOverview, buildReasoning, getCampaignWorkspaceDetail, getCampaignWorkspaceList, listCampaignNames, parseCampaignSourceSignal, selectIn } from "./read-model";
 
 // buildReasoning only reads a handful of fields; cast minimal fixtures to the
 // row shapes to keep the test focused on the distillation logic.
@@ -40,12 +40,23 @@ describe("buildReasoning", () => {
     expect(result.promptInputs.map((p) => p.label)).toEqual(["Persona", "Channel"]);
   });
 
-  it("falls back gracefully when nothing is recorded", () => {
+  // Null, not a placeholder sentence. The view guards these with `&&` to hide an
+  // absent field, and a truthy "Arc has not recorded reasoning for this campaign
+  // yet." defeated the guard — so the reasoning panel rendered that sentence, in
+  // the same styling as real reasoning, on every live campaign (`reasoning_payload`
+  // is `{}` on all of them).
+  it("reports nothing recorded as absent, not as prose", () => {
     const result = buildReasoning(campaign({}, {}), [asset(null)]);
-    expect(result.whyBuilt).toMatch(/not recorded reasoning/i);
+    expect(result.whyBuilt).toBeNull();
+    expect(result.recommendedAction).toBeNull();
     expect(result.guardrailFlags).toEqual([]);
     expect(result.toolsUsed).toEqual([]);
     expect(result.promptInputs).toEqual([]);
+  });
+
+  it("still prefers the campaign's own objective over nothing", () => {
+    const result = buildReasoning({ reasoning_payload: {}, audit_payload: {}, objective: "Win back lapsed clients." } as never, []);
+    expect(result.whyBuilt).toBe("Win back lapsed clients.");
   });
 });
 
@@ -921,5 +932,79 @@ describe("adjacent campaign tables are workspace-filtered too", () => {
     const supabase = createSupabaseQueryMock({ campaign_assets: { data: [], error: null } });
     await selectIn(supabase, "campaign_assets", "id", "campaign_id", ["c1"], undefined, "org-1", "workspace-1");
     expect(eqCalls(supabase)).toContainEqual(["workspace_id", "workspace-1"]);
+  });
+});
+
+describe("parseCampaignSourceSignal", () => {
+  // Verbatim shape from the live workspace's weather-triggered campaign:
+  // urgency at the top level, timing nested one level down under `evidence`.
+  it("reads the shape the agent actually writes", () => {
+    expect(
+      parseCampaignSourceSignal({
+        origin: "opportunity",
+        urgency: "low",
+        evidence: {
+          area: "Cook, IL / DuPage, IL +1 more",
+          category: "property_damage",
+          severity: "advisory",
+          eventType: "Flood Advisory",
+          startsAt: "2026-08-01T06:47:00-05:00",
+          endsAt: "2026-08-01T09:45:00-05:00",
+        },
+      }),
+    ).toEqual({
+      urgency: "low",
+      eventType: "Flood Advisory",
+      startsAtIso: "2026-08-01T06:47:00-05:00",
+      endsAtIso: "2026-08-01T09:45:00-05:00",
+    });
+  });
+
+  it("accepts snake_case and a flat payload", () => {
+    expect(parseCampaignSourceSignal({ urgency: "high", event_type: "Hail", ends_at: "2026-08-09T00:00:00Z" })).toEqual({
+      urgency: "high",
+      eventType: "Hail",
+      startsAtIso: null,
+      endsAtIso: "2026-08-09T00:00:00Z",
+    });
+  });
+
+  // An operator-created package has no window to close, and `{}` is what those
+  // rows actually hold in prod — three of the five live campaigns.
+  it("returns null rather than an all-null signal", () => {
+    expect(parseCampaignSourceSignal({})).toBeNull();
+    expect(parseCampaignSourceSignal(null)).toBeNull();
+    expect(parseCampaignSourceSignal("not an object")).toBeNull();
+    expect(parseCampaignSourceSignal({ origin: "opportunity", evidence: { area: "Cook, IL" } })).toBeNull();
+  });
+});
+
+describe("buildExecutiveOverview 'Why now'", () => {
+  const bare = {
+    assets: [],
+    approvals: [],
+    sources: [],
+    reasoning: { whyBuilt: null, recommendedAction: null, guardrailFlags: [], toolsUsed: [], promptInputs: [] },
+  };
+
+  // The brief's rows are rendered through `.filter(([, v]) => v)`, so "" removes
+  // the row. Interpolating an absent signal would instead print a headless
+  // ". Goal: reduce decision friction and make the next step clear."
+  it("is empty rather than headless when nothing explains the campaign", () => {
+    const overview = buildExecutiveOverview({
+      ...bare,
+      campaign: { source_signal: {}, reasoning_payload: {}, audit_payload: {}, persona: "emergency_homeowner" } as never,
+    });
+    expect(overview.why).toBe("");
+    expect(overview.why).not.toMatch(/^\./);
+  });
+
+  it("still builds the sentence when a reason exists", () => {
+    const overview = buildExecutiveOverview({
+      ...bare,
+      reasoning: { ...bare.reasoning, whyBuilt: "Flood advisory hit three service-area ZIPs." },
+      campaign: { source_signal: {}, reasoning_payload: {}, audit_payload: {}, persona: "emergency_homeowner" } as never,
+    });
+    expect(overview.why).toBe("Flood advisory hit three service-area ZIPs. Goal: reduce decision friction and make the next step clear.");
   });
 });

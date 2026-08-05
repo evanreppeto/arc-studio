@@ -5,14 +5,21 @@ import { type CampaignEconomics } from "@/domain";
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
 import { buildAttributedPanel, buildDemoPanel, buildWeeklyTrend } from "./campaign-panel";
-import { getCampaignAnalyticsDemoDetail } from "./campaign-demo-detail";
+import { demoCampaignSeeds, getCampaignAnalyticsDemoDetail } from "./campaign-demo-detail";
 import { getCampaignTrendRows } from "./attribution-read-model";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe("buildDemoPanel", () => {
   it("maps the illustrative demo detail into the shared panel shape", () => {
-    const detail = getCampaignAnalyticsDemoDetail("demo-emergency-water-response-2026");
+    // Whatever campaign the demo is CURRENTLY serving, not a hard-coded id.
+    //
+    // This line used to name `demo-emergency-water-response-2026` and passed for
+    // months while the panel was unreachable in every preview: that id is real,
+    // but only under `ARC_DEMO_INDUSTRY=restoration`, which no launch config
+    // sets. The test proved the mapper worked on a campaign nobody could open.
+    // Asking the seed list keeps it pointed at something actually reachable.
+    const detail = getCampaignAnalyticsDemoDetail(demoCampaignSeeds()[0].id);
     expect(detail).not.toBeNull();
 
     const panel = buildDemoPanel(detail!);

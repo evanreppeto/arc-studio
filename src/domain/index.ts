@@ -161,3 +161,15 @@ export * from "./tool-payload";
 
 // How long a message keeps its payload (BSR-741).
 export * from "./metadata-retention";
+
+// Splitting a stored draft body into its lead-in fields and its copy, so the
+// chat can render the deliverable instead of linking to it.
+export * from "./arc-draft-content";
+
+// What kind of thing a deliverable is, so a surface renders it as that medium
+// rather than as a uniform box.
+export * from "./arc-deliverable-medium";
+
+// Whether a draft was actually checked. "No checks recorded" is not "checks
+// passed", and the chat used to render both as nothing.
+export * from "./arc-draft-checks";

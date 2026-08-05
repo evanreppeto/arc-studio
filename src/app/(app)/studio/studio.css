@@ -73,7 +73,13 @@
 .arc-studio .lg { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
 
 /* stage */
-.arc-studio .stage { min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--canvas); }
+/* `container-type: inline-size`, not `size`: the toolbar below drops its labels
+   by how much room THE STAGE has, and the stage is one pane of a three-column
+   shell — a window media query would be answering a different question, and gets
+   it wrong the moment the nav rail collapses. Inline-size containment only
+   contains the inline axis, so the height chain (.stagewrap flex:1 → .canvasfit)
+   is untouched; `size` would contain the block axis too and break it. */
+.arc-studio .stage { min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--canvas); container-type: inline-size; container-name: stage; }
 /* One row, scrolled — not wrapped.
    Thirteen 46px stacked tiles plus standalone dividers wrapped into FOUR rows in
    the 476px stage a 1280px window leaves, 225px of chrome above the artboard,
@@ -81,7 +87,14 @@
    fits thirteen labelled controls across 476px, so this stops pretending: the
    tools are compact inline pills on a single non-wrapping row that scrolls when
    the stage is narrow and simply fits when it isn't. Groups stay atomic so a
-   label never separates from its tools. */
+   label never separates from its tools.
+
+   Not wrapping was the right call; thirteen was the wrong number. Compacting
+   them still needed 1455px of row inside a 636px stage at 1440×900 — Edit and
+   half of Generate were off the right edge, and `scrollbar-width: none` meant
+   nothing on screen said so. The eight AI pills have moved to the Arc pane (they
+   only ever typed into its composer), leaving six controls that fit outright.
+   The overflow rules stay as the floor for a narrow window, not as the design. */
 .arc-studio .toolbar { display: flex; align-items: center; flex-wrap: nowrap; column-gap: 16px; padding: 7px 14px; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .arc-studio .toolbar::-webkit-scrollbar { display: none; }
 /* Scroll shadows, the pure-CSS way: the two `local` layers are painted in the
@@ -97,13 +110,27 @@
 }
 .arc-studio .tgrp { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
 .arc-studio .tgrpt { display: flex; align-items: center; gap: 2px; }
-.arc-studio .tglabel { font-size: 8.5px; font-weight: 700; letter-spacing: 0.11em; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
 .arc-studio .tool { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-2); font-family: inherit; cursor: pointer; transition: 0.13s; flex-shrink: 0; position: relative; }
 .arc-studio .tool:hover { background: rgba(255, 255, 255, 0.045); color: var(--text); }
 .arc-studio .tool.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--text); }
 .arc-studio .tool svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; flex-shrink: 0; }
 .arc-studio .tool .tlbl { font-size: 11px; font-weight: 600; white-space: nowrap; }
-.arc-studio .tool.ai .tdot { width: 4px; height: 4px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
+/* The single AI entry point, in place of eight pills. Pushed to the end of the
+   row so it reads as the destination rather than another canvas tool. */
+.arc-studio .toolarc { margin-left: auto; flex-shrink: 0; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); color: var(--accent-contrast); font-family: inherit; cursor: pointer; transition: 0.13s; }
+.arc-studio .toolarc:hover { background: rgba(200, 162, 74, 0.2); }
+.arc-studio .toolarc svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; flex-shrink: 0; }
+.arc-studio .toolarc .tlbl { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.arc-studio .toolarc .tdot { width: 4px; height: 4px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
+/* Below ~600px of stage the labelled pills stop fitting — at a 1280px window the
+   stage is 476px wide. The canvas tools go icon-only (their tooltip and
+   aria-label still name them) rather than sliding off the right edge behind a
+   scrollbar nobody can see. "Ask Arc" keeps its label: it is the one control
+   here that leads somewhere else, and an unlabelled speech bubble doesn't say so. */
+@container stage (max-width: 600px) {
+  .arc-studio .tool { padding: 0 7px; }
+  .arc-studio .tool .tlbl { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+}
 .arc-studio .formats { display: flex; align-items: center; gap: 7px; padding: 11px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .arc-studio .modeseg { display: flex; gap: 2px; background: var(--inset); border: 1px solid var(--line-2); border-radius: 8px; padding: 2px; }
 .arc-studio .modeseg span { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--muted); padding: 5px 10px; border-radius: 6px; cursor: pointer; transition: 0.14s; }
@@ -351,11 +378,17 @@
 /* A long campaign name wrapped this line onto two rows and pushed the head out
    of alignment; one line, clipped, is enough — the picker above holds the full name. */
 .arc-studio .archead .ad span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-studio .arcnew { margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--muted); font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; transition: 0.14s; }
+.arc-studio .arcnew:hover { border-color: var(--accent-border); color: var(--text-2); }
+.arc-studio .arcnew svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.2; }
 
 /* What askArc() actually appends to every message, made visible. */
 .arc-studio .arcctxbar { display: flex; align-items: center; gap: 5px; padding: 8px 16px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
-.arc-studio .arcctxbar .acx { font-family: var(--mono); font-size: 9px; letter-spacing: 0.04em; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: 5px; padding: 2px 6px; }
-.arc-studio .arcctxbar .acxn { margin-left: auto; font-size: 9.5px; color: var(--muted); }
+.arc-studio .arcctxbar .acx { font-family: var(--mono); font-size: 9px; letter-spacing: 0.04em; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
+/* The background's name is the only variable-length chip; it clips rather than
+   pushing "Arc sees the canvas" out of the 320px column. */
+.arc-studio .arcctxbar .acxb { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.arc-studio .arcctxbar .acxn { margin-left: auto; flex-shrink: 0; font-size: 9.5px; color: var(--muted); }
 .arc-studio .arcscroll { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px; }
 /* Honest empty state for the Arc pane: the composer below starts a real Arc
    conversation and routes to /arc, so no transcript is ever rendered here. */
@@ -409,15 +442,33 @@
 .arc-studio .achip:hover { border-color: var(--accent-border); color: var(--text); background: var(--accent-soft); }
 .arc-studio .achip svg { width: 12px; height: 12px; stroke: var(--accent); fill: none; stroke-width: 1.8; }
 .arc-studio .composer { border-top: 1px solid var(--line); padding: 11px 14px 13px; flex-shrink: 0; background: color-mix(in srgb, var(--canvas-deep) 30%, transparent); }
-.arc-studio .modes { display: flex; gap: 5px; }
-.arc-studio .mode { font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--muted); background: transparent; border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 11px; cursor: pointer; transition: 0.14s; }
-.arc-studio .mode:hover { color: var(--text-2); }
-.arc-studio .mode.on { color: var(--accent-contrast); border-color: var(--accent-border); background: var(--accent-soft); }
-.arc-studio .modehint { font-size: 10px; color: var(--muted); margin: 7px 2px 9px; line-height: 1.4; }
+/* The Ask/Act/Draft segmented control lived here. It set a word in the message
+   preamble and nothing else — the mode was never passed to the send action, so
+   every message ran as `act` whichever button was lit. The capability is now read
+   off the request (resolveArcComposerMode), which is what the main chat composer
+   already did. */
+/* "Ask Arc to…" — the eight AI tools that used to be pills on the stage toolbar,
+   where five of them sat past the right edge behind a scroll with no scrollbar.
+   Wraps rather than scrolls: this row has vertical room, the toolbar didn't. */
+.arc-studio .arcasks { margin-bottom: 9px; }
+.arc-studio .arcaskt { display: flex; align-items: center; gap: 6px; padding: 0 0 7px; border: 0; background: transparent; font-family: inherit; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); cursor: pointer; transition: color 0.14s; }
+.arc-studio .arcaskt:hover { color: var(--text-2); }
+.arc-studio .arcaskc { display: grid; place-items: center; width: 11px; height: 11px; color: var(--line-3); transition: transform 0.18s var(--ease); }
+.arc-studio .arcaskc.on { transform: rotate(90deg); color: var(--accent); }
+.arc-studio .arcaskc svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+.arc-studio .arcaskr { display: flex; flex-wrap: wrap; gap: 5px; }
+.arc-studio .arcask { display: inline-flex; align-items: center; gap: 5px; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--text-2); background: var(--panel); border: 1px solid var(--line-2); border-radius: 15px; padding: 4px 10px 4px 8px; cursor: pointer; transition: 0.14s; }
+.arc-studio .arcask:hover:not(:disabled) { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
+.arc-studio .arcask:disabled { opacity: 0.5; cursor: default; }
+.arc-studio .arcask svg { width: 12px; height: 12px; stroke: var(--accent); fill: none; stroke-width: 1.8; flex-shrink: 0; }
 .arc-studio .cbox { border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); padding: 9px 11px; display: flex; align-items: flex-end; gap: 9px; transition: border-color 0.14s; }
 .arc-studio .cbox:focus-within { border-color: var(--accent-border); }
-.arc-studio .cbox textarea { flex: 1; border: none; background: transparent; color: var(--text); font-family: inherit; font-size: 12px; resize: none; outline: none; line-height: 1.5; max-height: 80px; }
-.arc-studio .csend { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; cursor: pointer; display: grid; place-items: center; flex-shrink: 0; }
+/* max-height is the ceiling the JS auto-grow stops at (168px), not a scroll box
+   for a one-line slot: `rows={1}` + an 80px cap scrolled anything past a dozen
+   words inside a 20px window while three-quarters of the pane sat empty. */
+.arc-studio .cbox textarea { flex: 1; border: none; background: transparent; color: var(--text); font-family: inherit; font-size: 12px; resize: none; outline: none; line-height: 1.5; max-height: 168px; overflow-y: auto; }
+.arc-studio .csend { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; cursor: pointer; display: grid; place-items: center; flex-shrink: 0; transition: opacity 0.14s; }
+.arc-studio .csend:disabled { opacity: 0.4; cursor: default; }
 .arc-studio .csend svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.2; }
 .arc-studio .clock { font-size: 9.5px; color: var(--muted); margin-top: 8px; display: flex; align-items: center; gap: 6px; justify-content: center; }
 .arc-studio .clock svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2; }
@@ -471,9 +522,45 @@
 /* No padding here: .arcscroll already pads the pane, and both applying it put a
    28px gutter around the transcript in a 320px column. */
 .arc-studio .arcthread { display: flex; flex-direction: column; gap: 10px; }
+/* A turn is the bubble PLUS whatever it produced, so the render and the follow-ups
+   stay attached to the message that made them rather than floating in the column. */
+.arc-studio .arcwrap { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.arc-studio .arcwrap.me { align-items: flex-end; }
+.arc-studio .arcwrap.arc { align-items: flex-start; }
 .arc-studio .arcmsg { font-size: 12.5px; line-height: 1.55; border-radius: 10px; padding: 9px 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.arc-studio .arcmsg.me { align-self: flex-end; max-width: 88%; background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--text); }
-.arc-studio .arcmsg.arc { align-self: flex-start; max-width: 92%; background: var(--inset); border: 1px solid var(--line-2); color: var(--text-2); }
+.arc-studio .arcmsg.me { max-width: 88%; background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--text); }
+.arc-studio .arcmsg.arc { max-width: 92%; background: var(--inset); border: 1px solid var(--line-2); color: var(--text-2); }
+/* What Arc actually made. Until this existed the reply arrived as a paragraph
+   about a picture the operator could not see, in a tool built for looking at the
+   picture — and the pane's own empty state promised otherwise. */
+.arc-studio .arcmedia { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.arc-studio .arcshot { position: relative; width: 84px; height: 84px; padding: 0; border: 1px solid var(--line-2); border-radius: 9px; overflow: hidden; background: var(--inset); cursor: pointer; transition: border-color 0.15s, transform 0.15s var(--ease); }
+.arc-studio .arcshot:hover { border-color: var(--accent-border); }
+.arc-studio .arcshot.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.arc-studio .arcshot.loose { border-style: dashed; }
+.arc-studio .arcshot img, .arc-studio .arcshot video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.arc-studio .arcshotm { position: absolute; bottom: 0; left: 0; right: 0; font-family: var(--mono); font-size: 8px; text-align: center; padding: 2px 0; background: rgba(16, 16, 19, 0.78); color: var(--text-2); white-space: nowrap; }
+.arc-studio .arcshotm.loose { color: var(--warn-text); }
+/* Arc's words → the canvas field they belong to. The value is shown in full on
+   the chip because the operator is picking BETWEEN options ("write three
+   headlines"), and a truncated headline can't be chosen between. */
+.arc-studio .arcapply { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+.arc-studio .arcapply-l { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.arc-studio .arcapplyb { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; font-family: inherit; background: var(--panel); border: 1px solid var(--line-2); border-left: 2px solid var(--accent-border); border-radius: 8px; padding: 6px 9px; cursor: pointer; transition: 0.14s; }
+.arc-studio .arcapplyb:hover { border-color: var(--accent-border); border-left-color: var(--accent); background: var(--accent-soft); }
+.arc-studio .arcapplyf { font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-contrast); }
+.arc-studio .arcapplyv { font-size: 11.5px; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+/* Reusing a generated scene as the canvas photo. Quieter than the copy chips —
+   it changes the picture, so it should read as deliberate, not as a suggestion
+   sitting next to three others. */
+.arc-studio .arcusebg { display: flex; flex-wrap: wrap; gap: 5px; }
+.arc-studio .arcusebgb { display: inline-flex; align-items: center; gap: 6px; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--text-2); background: transparent; border: 1px solid var(--line-2); border-radius: 14px; padding: 4px 11px 4px 9px; cursor: pointer; transition: 0.14s; }
+.arc-studio .arcusebgb:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
+.arc-studio .arcusebgb svg { width: 12px; height: 12px; stroke: var(--accent); fill: none; stroke-width: 1.8; flex-shrink: 0; }
+/* Arc's own follow-ups. They fill the composer; they never send on their own. */
+.arc-studio .arcsugg { display: flex; flex-wrap: wrap; gap: 5px; }
+.arc-studio .arcsuggb { font-family: inherit; text-align: left; font-size: 11px; line-height: 1.4; color: var(--text-2); background: transparent; border: 1px dashed var(--line-2); border-radius: 14px; padding: 4px 10px; cursor: pointer; transition: 0.14s; }
+.arc-studio .arcsuggb:hover { border-style: solid; border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
 /* The machine preamble we append to the sent body — present, but clearly not
    part of what the operator typed. */
 .arc-studio .arcctx { display: block; margin-top: 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.02em; color: var(--muted); opacity: 0.85; }
