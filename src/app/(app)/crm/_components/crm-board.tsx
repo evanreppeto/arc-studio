@@ -961,7 +961,7 @@ export function CrmBoard({
       )}
       <div className="chrow">
         <div>
-          <h2 className="ct">{active.label}</h2>
+          <h1 className="ct">{active.label}</h1>
           <div className="csub">
             {countFor(active).toLocaleString()} {active.noun} · kept up to date by Arc
           </div>

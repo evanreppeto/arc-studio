@@ -464,7 +464,7 @@ export function CampaignsBoard({
     <div className="arc-grid arc-campaigns">
       <div className="chrow">
         <div>
-          <h2 className="ct">Campaigns</h2>
+          <h1 className="ct">Campaigns</h1>
           {/* The job, in one sentence. The old subhead counted our inventory
               ("4 campaigns drafted by Arc") — true, and not what the owner came
               to find out. */}

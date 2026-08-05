@@ -269,7 +269,7 @@ export function PersonasView({ personas, initialSlug, failed = null }: {
       <div className="phead">
         <div className="ph1row">
           <div>
-            <h2 className="pt">Personas</h2>
+            <h1 className="pt">Personas</h1>
             <div className="psub">Who you sell to — and how Arc talks to each type</div>
           </div>
           <div style={{ display: "flex", gap: 9 }}>
