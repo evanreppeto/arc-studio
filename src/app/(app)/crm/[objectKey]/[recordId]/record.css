@@ -67,7 +67,7 @@
 }
 .arc-record .recscroll { min-width: 0; overflow: auto; padding: 22px clamp(22px, 3vw, 38px) 44px; }
 .arc-record .snap { border-left: 1px solid var(--line); overflow: auto; padding: 20px 20px 40px; background: color-mix(in srgb, var(--canvas-deep) 18%, transparent); }
-.arc-record .sh { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin: 0 0 12px; display: flex; align-items: center; gap: 9px; }
+.arc-record .sh { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin: 0 0 12px; display: flex; align-items: center; gap: 9px; }
 .arc-record .sh .est { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.02em; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 4px; padding: 1px 6px; text-transform: none; font-weight: 600; }
 .arc-record .sh .wired { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.02em; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); border-radius: 4px; padding: 1px 6px; text-transform: none; font-weight: 600; }
 .arc-record .sec { margin-bottom: 26px; }
@@ -90,7 +90,7 @@
 .arc-record .fld .fv { font-size: 13px; color: var(--text); margin-top: 3px; display: flex; align-items: center; gap: 7px; word-break: break-word; }
 .arc-record .fld .fv a { color: var(--accent-contrast); }
 .arc-record .nba { border: 1px solid var(--accent-border); border-radius: 13px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 45%, var(--panel)), var(--panel)); padding: 18px 20px; }
-.arc-record .nba .nl { font-size: 10px; font-weight: 700; letter-spacing: 0.13em; color: var(--accent); text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 9px; }
+.arc-record .nba .nl { font-size: 10px; font-weight: 600; letter-spacing: 0.13em; color: var(--accent); text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 9px; }
 .arc-record .nrow { font-size: 12.5px; color: var(--text-2); line-height: 1.55; margin-bottom: 9px; max-width: 72ch; }
 .arc-record .nrow b { color: var(--text); font-weight: 600; }
 .arc-record .nbtns { display: flex; gap: 9px; margin-top: 13px; flex-wrap: wrap; }
