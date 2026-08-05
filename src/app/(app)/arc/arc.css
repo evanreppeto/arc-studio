@@ -1010,6 +1010,16 @@
 .arc-dlv-more svg { transition: transform var(--arc-fast); }
 
 .arc-dlv-flags { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 0; }
+/* "No checks recorded" gets a colourless tone of its own. It must never borrow
+   the green of a recorded pass — that would render an absence of evidence as
+   evidence of absence, on the screen where copy gets approved. */
+.arc-dlv-unchecked {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  border: 1px dashed var(--line-3); border-radius: 999px;
+  color: var(--muted); font-size: 10px; font-weight: 600;
+}
+.arc-dlv-detail-side .arc-dlv-flags { padding: 0; }
 
 .arc-dlv-foot { margin-top: 12px; padding: 10px 12px 11px; border-top: 1px solid var(--line); }
 
