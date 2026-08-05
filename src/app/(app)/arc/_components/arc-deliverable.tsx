@@ -39,6 +39,7 @@ import {
   Maximize2,
   PencilLine,
   ShieldQuestion,
+  Undo2,
   X,
 } from "lucide-react";
 
@@ -59,6 +60,7 @@ import {
 } from "@/domain";
 import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 
+import { undoArcDraftDecisionAction } from "../actions";
 import { OverlayPortal } from "../../_components/overlay-portal";
 import { assetStatusMeta, ChannelIcon, isDecidedAssetStatus, useDraftDecision } from "./arc-messages";
 import type { PaneBox } from "./arc-view.types";
@@ -341,6 +343,26 @@ export function InlineDeliverable({
   const medium = arcDeliverableMedium({ channel: card.channel, format: card.format });
   const collapsed = isDecidedAssetStatus(status) && !reopened;
 
+  const [undoing, setUndoing] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
+
+  /** Take the decision back. Append-only server-side: it records a `reverted`
+   *  row and restores the previous status — it never deletes history and never
+   *  unlocks outbound, so undo cannot send anything. */
+  const undo = () => {
+    const assetId = card.approval?.assetId;
+    if (!assetId || undoing) return;
+    setUndoing(true);
+    setUndoError(null);
+    undoArcDraftDecisionAction({ assetId }).then((result) => {
+      setUndoing(false);
+      if (!result.ok) return setUndoError(result.error);
+      // Back to undecided, which un-collapses the card on the next render.
+      onStatus(assetId, "draft");
+      setReopened(false);
+    });
+  };
+
   // Only offer "Show more" once we hold copy that has more to show. While the
   // card is on its stored preview the honest control is "Open" — the rest of the
   // text is not in the browser yet.
@@ -349,12 +371,22 @@ export function InlineDeliverable({
 
   if (collapsed) {
     return (
-      <button type="button" className="arc-dlv-collapsed" data-status={status ?? "review"} onClick={() => setReopened(true)} onContextMenu={onContextMenu}>
-        <span className="arc-dlv-collapsed-icon"><ChannelIcon channel={card.channel} size={14} /></span>
-        <span className="arc-dlv-collapsed-title"><b>{heading}</b><small>{ARC_MEDIUM_LABEL[medium]}</small></span>
-        <em className={`arc-dlv-status is-${meta.tone}`}><i />{meta.label}</em>
-        <ChevronDown size={14} />
-      </button>
+      /* Not a <button>: it carries its own Undo control, and a button inside a
+         button is invalid and unreachable by keyboard. */
+      <div className="arc-dlv-collapsed" data-status={status ?? "review"} onContextMenu={onContextMenu}>
+        <button type="button" className="arc-dlv-collapsed-open" onClick={() => setReopened(true)} aria-label={`Reopen ${heading}`}>
+          <span className="arc-dlv-collapsed-icon"><ChannelIcon channel={card.channel} size={14} /></span>
+          <span className="arc-dlv-collapsed-title"><b>{heading}</b><small>{ARC_MEDIUM_LABEL[medium]}</small></span>
+          <em className={`arc-dlv-status is-${meta.tone}`}><i />{meta.label}</em>
+          <ChevronDown size={14} />
+        </button>
+        {/* The decision is reversible, and this row is where a misclick ends up
+            — approving both commits it and hides the thing it was made about. */}
+        <button type="button" className="arc-dlv-undo" onClick={undo} disabled={undoing}>
+          <Undo2 size={12} />{undoing ? "Undoing…" : "Undo"}
+        </button>
+        {undoError ? <span className="arc-dlv-undo-error" role="status">{undoError}</span> : null}
+      </div>
     );
   }
 

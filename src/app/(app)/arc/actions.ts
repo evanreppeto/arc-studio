@@ -16,7 +16,7 @@ import {
   type ArcAssetStatus,
 } from "@/domain";
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
-import { decideAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
+import { decideAsset, undoAssetDecision, type ApprovalDecision } from "@/lib/campaigns/decisions";
 import { type ArcAssetBody, getArcAssetBodies, getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
 import { requestAssetRevision } from "@/lib/campaigns/revisions";
 import { getArcDisplayName } from "@/lib/arc-chat/agent-config";
@@ -712,6 +712,33 @@ export async function decideArcDraftAction(input: {
     return { ok: true, persisted: true, status: result.status };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Couldn't record that decision." };
+  }
+}
+
+/**
+ * Take back the last decision on a drafted deliverable.
+ *
+ * Approving from the chat was irreversible, and the card collapses once decided
+ * — so a misclick both committed the decision and hid the thing it was made
+ * about. The revert itself is append-only (`undoDecision` writes a `reverted`
+ * row and restores the previous status); it never deletes history and never
+ * unlocks outbound, so this cannot send anything.
+ */
+export async function undoArcDraftDecisionAction(input: {
+  assetId: string;
+}): Promise<ArcDraftDecisionResult> {
+  await requireOperator();
+  if (!input.assetId.trim()) return { ok: false, error: "This draft is missing its asset reference." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, status: "draft" };
+
+  try {
+    const operator = await getOperatorActor();
+    const tenant = await getCurrentAgentTaskTenantFields();
+    const result = await undoAssetDecision({ assetId: input.assetId, operator, tenant });
+    revalidatePath("/arc");
+    return { ok: true, persisted: true, status: result.restoredStatus };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Couldn't undo that decision." };
   }
 }
 
