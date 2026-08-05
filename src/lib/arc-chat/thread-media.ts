@@ -13,6 +13,11 @@ export type ArcThreadMedia = {
   url: string;
   caption: string | null;
   format: string | null;
+  /** Provenance as the runner tagged it — `ai_generated`, `composite`, … It is
+   *  what tells a generated SCENE (safe to reuse as a canvas background, since
+   *  generation strips text by design) from a finished COMPOSITE that already
+   *  has the logo and copy burned into its pixels. */
+  source: string | null;
   campaignId: string | null;
   assetId: string | null;
 };
@@ -41,6 +46,8 @@ export type ArcThreadMedia = {
  *   unattached tile rather than offering a button with nothing behind it.
  * - `format` is free text from the runner ("4:3" appears, which is not one of
  *   Studio's four formats). It is displayed, never looked up — keep it that way.
+ * - `source` was present on all five: 3 `ai_generated`, 2 `composite`. Studio
+ *   only offers "Use as background" for the former — see the note there.
  *
  * Pure on purpose: `arc/actions.ts` is `"use server"` and may only export async
  * functions, and this is the piece worth testing.
@@ -59,6 +66,7 @@ export function toArcThreadMedia(message: {
       url: media.url,
       caption: media.caption?.trim() || fallbackCaption?.trim() || null,
       format: media.format ?? null,
+      source: media.source ?? null,
       campaignId: approval?.campaignId ?? null,
       assetId: approval?.assetId ?? null,
     });

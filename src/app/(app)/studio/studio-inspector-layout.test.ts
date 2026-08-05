@@ -134,6 +134,41 @@ describe("Arc composer", () => {
     expect(view).toMatch(/m\.media\.map/);
     expect(CSS).toMatch(/\.arc-studio \.arcshot\s*\{/);
   });
+
+  /**
+   * Arc could make a new asset but not touch the creative in front of you: the
+   * answer to "rewrite this punchier" was words to retype by hand, and a
+   * generated photo could only be looked at, never composed on.
+   */
+  it("can put Arc's words into the canvas fields", () => {
+    expect(view).toMatch(/extractCanvasCopy\(body\)/);
+    expect(view).toMatch(/onClick=\{\(\) => applyCopy\(s\)\}/);
+  });
+
+  /**
+   * The double-bake guard, and the reason `source` is carried through at all. A
+   * `composite` already has the logo and headline in its pixels; making it the
+   * background would composite the operator's copy on top of Arc's. Only a
+   * generated scene may be adopted — generation strips text by design.
+   */
+  it("only offers a generated scene as the background, never a composite", () => {
+    expect(view).toMatch(/md\.source === "ai_generated"/);
+    const fn = view.match(/const applyArcMediaAsBackground[\s\S]*?\n  \};/)?.[0] ?? "";
+    expect(fn).toMatch(/media\.source !== "ai_generated"/);
+    expect(fn).toMatch(/return;/);
+  });
+
+  /**
+   * The pane's own copy asks have to produce output the parse can read. The
+   * extractor is label-driven and fails closed, so an unlabelled reply yields
+   * nothing — which would make the most common copy request the one case the
+   * Apply control never fires on.
+   */
+  it("asks for labelled copy in the quick asks that request copy", () => {
+    const actions = view.match(/const ARC_ACTIONS = \[[\s\S]*?\n\] as const;/)?.[0] ?? "";
+    expect(actions).toMatch(/id: "headlines"[^\n]*Headline:/);
+    expect(actions).toMatch(/id: "shorter"[^\n]*Headline:/);
+  });
 });
 
 /**
