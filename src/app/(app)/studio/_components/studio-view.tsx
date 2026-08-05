@@ -8,6 +8,8 @@ import { type CreativeLayoutOverride } from "@/domain";
 import { resolveArcComposerMode } from "@/lib/arc-chat/composer-mode";
 import { hasRepliedToLastMessage } from "@/lib/arc-chat/thread-state";
 
+import { extractCanvasCopy, FIELD_LABEL_TEXT, type CopySuggestion } from "./arc-copy";
+
 import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
 import { generateStudioAsset, pollStudioVideo, startStudioVideo } from "../actions";
@@ -128,8 +130,8 @@ const ARC_ACTIONS = [
   { id: "genimg", label: "New image", ask: "Generate a new image for this creative.", d: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z"/>' },
   { id: "genvid", label: "Make a video", ask: "Turn this creative into a short video.", d: '<rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9l4-2v10l-4-2"/>' },
   { id: "reframe", label: "Resize", ask: "Resize this creative for the other formats — 1:1, 4:5, 9:16 and 16:9.", d: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 6v12"/>' },
-  { id: "headlines", label: "Headlines", ask: "Write three headline options for this ad.", d: '<path d="M5 7h14M5 7V5h14v2M12 7v12M9 19h6"/>' },
-  { id: "shorter", label: "Punch it up", ask: "Rewrite this shorter and punchier.", d: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>' },
+  { id: "headlines", label: "Headlines", ask: "Write three headline options for this ad. Put each on its own line starting with 'Headline:'.", d: '<path d="M5 7h14M5 7V5h14v2M12 7v12M9 19h6"/>' },
+  { id: "shorter", label: "Punch it up", ask: "Rewrite this creative shorter and punchier. Give the result as lines starting with 'Headline:', 'Subhead:' and 'CTA:'.", d: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>' },
   { id: "expand", label: "Expand", imageOnly: true, ask: "Expand this image to fill more of the frame without cropping the subject.", d: '<path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3"/>' },
   { id: "cutout", label: "Cut-out", imageOnly: true, ask: "Cut the subject out of this photo onto a clean background.", d: '<path d="M5 5l14 14M9 5a4 4 0 014 4M5 9a4 4 0 004 4"/><rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="3 3"/>' },
   { id: "upscale", label: "Upscale", imageOnly: true, ask: "Upscale this image to a higher resolution.", d: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>' },
@@ -871,6 +873,35 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     });
   };
 
+  /**
+   * Reuse one of Arc's renders as the canvas background, so the next Generate
+   * composites your copy and logo over it.
+   *
+   * Offered ONLY for a generated scene (`ai_generated`). A `composite` already
+   * has the brand lockup and the headline burned into its pixels — making it the
+   * background would composite them a second time, text over text. That is the
+   * same trap the preview state avoids by never swapping `bg` for a render, and
+   * `source` is the field that tells the two apart.
+   */
+  const applyArcMediaAsBackground = (media: ArcThreadMessage["media"][number]) => {
+    if (media.kind !== "image" || media.source !== "ai_generated") return;
+    setBg({ s: "", l: media.caption ?? "Arc image", p: "ai", url: media.url });
+    // Drop the tile selection: the background no longer matches anything in the
+    // sources panel, and a stale ring would point at the wrong photo.
+    setSelTile(-1);
+    setPreview(null);
+    setTab("design");
+  };
+
+  /** Put one of Arc's suggested lines into the canvas field it belongs to. One
+   *  field per click, never a batch — the operator sees each change land. */
+  const applyCopy = (suggestion: CopySuggestion) => {
+    if (suggestion.field === "kicker") setKicker(suggestion.value);
+    else if (suggestion.field === "headline") setHeadline(suggestion.value);
+    else if (suggestion.field === "subhead") setSub(suggestion.value);
+    else setCta(suggestion.value);
+  };
+
   /** Fill the composer without sending, and make sure the pane is showing.
    *  Never overwrites: a half-typed message is the operator's, not ours. */
   const seedAsk = (ask: string) => {
@@ -1443,6 +1474,10 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     <div className="arcthread">
                       {visibleThread.map((m) => {
                         const { body, context } = splitStudioContext(m.body);
+                        // Copy Arc proposed that this canvas can actually take.
+                        // Label-driven and fails closed — prose yields nothing
+                        // rather than a guess at which sentence is the headline.
+                        const copy = m.role === "operator" ? [] : extractCanvasCopy(body);
                         return (
                           <div key={m.id} className={`arcwrap ${m.role === "operator" ? "me" : "arc"}`}>
                             <div className={`arcmsg ${m.role === "operator" ? "me" : "arc"}`}>
@@ -1454,6 +1489,27 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                                   the canonical thread replaced the optimistic copy. */}
                               {context ? <span className="arcctx">{context}</span> : null}
                             </div>
+                            {/* Arc's words, into the canvas field they belong to.
+                                Without this Arc could make a new asset but not
+                                touch the creative in front of you: the answer to
+                                "rewrite this punchier" was words to retype. */}
+                            {copy.length > 0 ? (
+                              <div className="arcapply">
+                                <div className="arcapply-l">Put on the canvas</div>
+                                {copy.map((s, i) => (
+                                  <button
+                                    type="button"
+                                    key={`${s.field}-${i}`}
+                                    className="arcapplyb"
+                                    onClick={() => applyCopy(s)}
+                                    title={`Replace the ${FIELD_LABEL_TEXT[s.field].toLowerCase()} with this`}
+                                  >
+                                    <span className="arcapplyf">{FIELD_LABEL_TEXT[s.field]}</span>
+                                    <span className="arcapplyv">{s.value}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
                             {/* The render itself. A creative tool's copilot that
                                 answers a "make me an image" with prose about an
                                 image it made is not answering. */}
@@ -1486,6 +1542,28 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                                     </span>
                                   </button>
                                 ))}
+                              </div>
+                            ) : null}
+                            {/* Only a generated SCENE can become the background.
+                                A composite already carries the logo and copy in
+                                its pixels, and compositing over it would lay
+                                yours on top of Arc's. */}
+                            {m.media.some((md) => md.kind === "image" && md.source === "ai_generated") ? (
+                              <div className="arcusebg">
+                                {m.media
+                                  .filter((md) => md.kind === "image" && md.source === "ai_generated")
+                                  .map((md) => (
+                                    <button
+                                      type="button"
+                                      key={`bg-${md.url}`}
+                                      className="arcusebgb"
+                                      onClick={() => applyArcMediaAsBackground(md)}
+                                      title="Put this behind your copy on the canvas, then Generate to composite"
+                                    >
+                                      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-4 4 3 3-2 5 4" /></svg>
+                                      Use as background
+                                    </button>
+                                  ))}
                               </div>
                             ) : null}
                             {/* Arc's own follow-ups, when it offers them. They fill

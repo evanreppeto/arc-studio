@@ -541,6 +541,22 @@
 .arc-studio .arcshot img, .arc-studio .arcshot video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .arc-studio .arcshotm { position: absolute; bottom: 0; left: 0; right: 0; font-family: var(--mono); font-size: 8px; text-align: center; padding: 2px 0; background: rgba(16, 16, 19, 0.78); color: var(--text-2); white-space: nowrap; }
 .arc-studio .arcshotm.loose { color: var(--warn-text); }
+/* Arc's words → the canvas field they belong to. The value is shown in full on
+   the chip because the operator is picking BETWEEN options ("write three
+   headlines"), and a truncated headline can't be chosen between. */
+.arc-studio .arcapply { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+.arc-studio .arcapply-l { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.arc-studio .arcapplyb { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; font-family: inherit; background: var(--panel); border: 1px solid var(--line-2); border-left: 2px solid var(--accent-border); border-radius: 8px; padding: 6px 9px; cursor: pointer; transition: 0.14s; }
+.arc-studio .arcapplyb:hover { border-color: var(--accent-border); border-left-color: var(--accent); background: var(--accent-soft); }
+.arc-studio .arcapplyf { font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-contrast); }
+.arc-studio .arcapplyv { font-size: 11.5px; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+/* Reusing a generated scene as the canvas photo. Quieter than the copy chips —
+   it changes the picture, so it should read as deliberate, not as a suggestion
+   sitting next to three others. */
+.arc-studio .arcusebg { display: flex; flex-wrap: wrap; gap: 5px; }
+.arc-studio .arcusebgb { display: inline-flex; align-items: center; gap: 6px; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--text-2); background: transparent; border: 1px solid var(--line-2); border-radius: 14px; padding: 4px 11px 4px 9px; cursor: pointer; transition: 0.14s; }
+.arc-studio .arcusebgb:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
+.arc-studio .arcusebgb svg { width: 12px; height: 12px; stroke: var(--accent); fill: none; stroke-width: 1.8; flex-shrink: 0; }
 /* Arc's own follow-ups. They fill the composer; they never send on their own. */
 .arc-studio .arcsugg { display: flex; flex-wrap: wrap; gap: 5px; }
 .arc-studio .arcsuggb { font-family: inherit; text-align: left; font-size: 11px; line-height: 1.4; color: var(--text-2); background: transparent; border: 1px dashed var(--line-2); border-radius: 14px; padding: 4px 10px; cursor: pointer; transition: 0.14s; }
