@@ -16,6 +16,7 @@ import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { canonicalIndustryKey } from "@/lib/product-language";
 
 import { CampaignsBoard, type CampaignRow, type CampaignTone } from "./_components/campaigns-board";
+import { deskTone } from "./_components/tone";
 
 export const metadata = { title: "Campaigns — Arc Studio" };
 
@@ -63,7 +64,12 @@ function formatAbs(iso: string): string {
 }
 
 function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
-  const tone = toneFor(item.status);
+  // The campaign's own status, and then the state the row should actually WEAR.
+  // A campaign carries two states — `campaign_status` and the state of the
+  // deliverables inside it — and the board used to file by the second while
+  // printing the first, so a card under "Needs you" wore an "Approved" pill.
+  // See `deskTone`.
+  const tone = deskTone(toneFor(item.status), item.pendingCount);
   // launchState's counts, NOT item.rollup — the two disagree, and this column
   // has to match the page the row links to. See `DeliverableCounts`.
   const { next, nextTone } = nextActionFor(tone, item.pendingCount, {
