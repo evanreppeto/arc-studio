@@ -8,7 +8,14 @@ import { type Contact } from "./contacts";
 export type AudienceContact = Pick<
   Contact,
   "id" | "persona" | "status" | "email" | "phone" | "fullName" | "companyId"
->;
+> & {
+  /**
+   * When this contact opted out of email. Optional so a full `Contact` still
+   * satisfies the type structurally — but the I/O layer must select it, or every
+   * unsubscribed contact resolves as a recipient (BSR-482).
+   */
+  emailUnsubscribedAt?: string | null;
+};
 
 /**
  * Pure, deterministic audience resolution for a campaign send.
@@ -48,10 +55,42 @@ export type SuppressionReason =
   | "status_do_not_contact"
   | "status_inactive"
   | "status_archived"
+  | "unsubscribed"
   | "missing_email"
   | "invalid_email"
   | "missing_phone"
   | "duplicate";
+
+/** Plain-English reason, for the Outbox and the external-send preview. */
+export function describeAudienceSuppression(reason: SuppressionReason): string {
+  switch (reason) {
+    case "status_do_not_contact":
+      return "marked do-not-contact";
+    case "status_inactive":
+      return "inactive";
+    case "status_archived":
+      return "archived";
+    case "unsubscribed":
+      return "unsubscribed or bounced";
+    case "missing_email":
+      return "no email address";
+    case "invalid_email":
+      return "malformed email address";
+    case "missing_phone":
+      return "no phone number";
+    case "duplicate":
+      return "duplicate address";
+  }
+}
+
+/** Counts by reason, so a preview can say WHICH kind of suppression it hit. */
+export function summarizeSuppressions(
+  suppressed: readonly SuppressedRecipient[],
+): Array<{ reason: SuppressionReason; count: number }> {
+  const counts = new Map<SuppressionReason, number>();
+  for (const entry of suppressed) counts.set(entry.reason, (counts.get(entry.reason) ?? 0) + 1);
+  return [...counts.entries()].map(([reason, count]) => ({ reason, count }));
+}
 
 export type ResolvedRecipient = {
   contactId: string;
@@ -99,6 +138,25 @@ function suppressionForStatus(status: AudienceContact["status"]): SuppressionRea
   }
 }
 
+export type AudienceOptions = {
+  /**
+   * Every suppressed address in the org, normalized — from `email_suppressions`.
+   * Omitted only where there is genuinely no client to load it (pure tests);
+   * a production caller that omits it silently loses the address-keyed half of
+   * suppression, which is the half that survives a contact re-import.
+   */
+  suppressedAddresses?: ReadonlySet<string>;
+};
+
+function isEmailSuppressed(
+  contact: AudienceContact,
+  address: string,
+  suppressedAddresses: ReadonlySet<string> | undefined,
+): boolean {
+  if (contact.emailUnsubscribedAt) return true;
+  return Boolean(suppressedAddresses?.has(address));
+}
+
 /** Is this contact in the campaign's candidate set (before eligibility filtering)? */
 function isCandidate(contact: AudienceContact, target: CampaignAudienceTarget): boolean {
   // Operator-picked contacts always qualify (persona-agnostic); they still go
@@ -118,6 +176,7 @@ export function resolveCampaignAudience(
   target: CampaignAudienceTarget,
   contacts: readonly AudienceContact[],
   channel: AudienceChannel = "email",
+  options: AudienceOptions = {},
 ): AudienceResolution {
   const recipients: ResolvedRecipient[] = [];
   const suppressed: SuppressedRecipient[] = [];
@@ -135,6 +194,19 @@ export function resolveCampaignAudience(
     const address = resolveAddress(contact, channel);
     if (address.reason) {
       suppressed.push({ contactId: contact.id, reason: address.reason });
+      continue;
+    }
+
+    // Consent, checked HERE and not only at send time. It was previously send-time
+    // only, which meant unsubscribed contacts were still enqueued as dispatches
+    // (dying one by one at the gate) and — the real leak — still appeared in the
+    // external-send CSV an operator pastes into their own ESP, where our gate
+    // does not run at all.
+    //
+    // Two keys because either alone misses: the per-contact flag, and the
+    // org-wide address register that survives a re-import.
+    if (channel === "email" && isEmailSuppressed(contact, address.value, options.suppressedAddresses)) {
+      suppressed.push({ contactId: contact.id, reason: "unsubscribed" });
       continue;
     }
 

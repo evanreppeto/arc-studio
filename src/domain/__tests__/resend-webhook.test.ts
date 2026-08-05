@@ -18,6 +18,8 @@ describe("parseResendWebhookEvent", () => {
       emailId: "re_msg_1",
       createdAt: "2026-07-23T12:00:00.000Z",
       clickedLink: null,
+      recipient: null,
+      bounceType: null,
     });
   });
 
@@ -36,7 +38,7 @@ describe("parseResendWebhookEvent", () => {
 });
 
 describe("engagementForResendEvent", () => {
-  const base: Omit<ResendWebhookEvent, "type"> = { emailId: "re_msg_1", createdAt: null, clickedLink: null };
+  const base: Omit<ResendWebhookEvent, "type"> = { emailId: "re_msg_1", createdAt: null, clickedLink: null, recipient: null, bounceType: null };
 
   it("maps opens and clicks to inbound journey-visible event types", () => {
     expect(engagementForResendEvent({ ...base, type: "email.opened" })).toMatchObject({ eventType: "email_open", direction: "inbound" });

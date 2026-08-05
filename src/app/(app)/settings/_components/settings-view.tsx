@@ -7,6 +7,7 @@ import { createContext, useContext, useEffect, useState, useTransition, type Rea
 import type { SettingsTeamInvite, SettingsTeamMember, SettingsTeamView, WorkspaceActivityEntry } from "@/lib/auth/team-view";
 import type { WaitlistView } from "@/lib/waitlist/read-model";
 import type { HealthConsoleView } from "@/lib/observability/health-console";
+import type { SuppressionView } from "@/lib/email-suppression/read-model";
 import type { CustomFieldDefinition, CustomFieldObjectKey, ObjectLabelOverride, PipelineObjectKey, PipelineStage } from "@/domain";
 
 import { CustomFieldsPanel } from "./custom-fields-panel";
@@ -58,6 +59,7 @@ import {
   removeMember,
   saveAppearanceSettings,
   saveEmailIdentitySettings,
+  suppressEmailAddress,
   saveGeneralSettings,
   saveMediaDefaults,
   saveRunnerDisplayName,
@@ -630,7 +632,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
+export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, suppression = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; suppression?: SuppressionView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
   const [cur, setCur] = useState("overview");
   // Health and the waitlist are platform-level, not workspace-level: the server
   // sends null unless the viewer is a platform admin, so the group — and every
@@ -1112,7 +1114,10 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         {activeSub === "Agent" ? (
           <AgentIdentityPanel settings={settings} />
         ) : activeSub === "Email" ? (
-          <EmailIdentityPanel settings={settings} />
+          <>
+            <EmailIdentityPanel settings={settings} />
+            <SuppressionPanel view={suppression} />
+          </>
         ) : (
           <GeneralPanel brandName={brandName} workspaceName={workspaceName || brandName} settings={settings} workspaceLogoUrl={workspaceLogoUrl} />
         )}
@@ -1912,6 +1917,151 @@ function EmailIdentityPanel({ settings }: { settings: AppSettings }) {
       </div>
     </Panel>
   );
+}
+
+/**
+ * The suppression register — who this workspace must never email, and why.
+ *
+ * This screen is the answer to "did the unsubscribe actually work?", which until
+ * now had no answer anywhere in the product: the opt-out column was read by three
+ * files, none of them a page. It also carries the manual add, because an opt-out
+ * given over the phone is legally the same as one given by clicking a link.
+ *
+ * Filtering is client-side over a capped server load — the cap is stated rather
+ * than silently truncating, so "12 suppressed" can't stand in for four thousand.
+ */
+function SuppressionPanel({ view }: { view: SuppressionView | null }) {
+  const [query, setQuery] = useState("");
+  const [address, setAddress] = useState("");
+  const [note, setNote] = useState("");
+  const [status, setStatus] = useState<SaveStatus>(null);
+  const [pending, setPending] = useState(false);
+
+  const entries = view?.entries ?? [];
+  const needle = query.trim().toLowerCase();
+  const shown = needle ? entries.filter((e) => e.email.includes(needle)) : entries;
+  const capped = Boolean(view && view.total > entries.length);
+
+  async function add() {
+    setPending(true);
+    setStatus(null);
+    const res = await suppressEmailAddress({ address, note });
+    setPending(false);
+    setStatus(toStatus(res, "Suppressed."));
+    if (res.ok) {
+      setAddress("");
+      setNote("");
+    }
+  }
+
+  return (
+    <Panel
+      title="Suppression list"
+      foot="Checked on every send, native or exported. Nothing on this list can be emailed again."
+    >
+      {!view ? (
+        <p className="sld" style={{ margin: 0 }}>
+          Connect your workspace to see who has opted out.
+        </p>
+      ) : view.failed ? (
+        <div className="cerr" style={{ margin: 0 }}>
+          Could not read the suppression list, so this isn&apos;t a clean bill of health — it&apos;s an unknown.
+          Sending stays gated on the live check either way. {view.failed}
+        </div>
+      ) : (
+        <>
+          <Row
+            label="Add an address"
+            desc="For an opt-out someone gave you by phone, by reply, or in person. This can't be undone from here."
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <input
+                className="inp"
+                style={{ flex: "1 1 220px" }}
+                value={address}
+                placeholder="name@example.com"
+                onChange={(e) => setAddress(e.target.value)}
+                maxLength={320}
+              />
+              <input
+                className="inp"
+                style={{ flex: "1 1 200px" }}
+                value={note}
+                placeholder="Why? (optional)"
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={300}
+              />
+              <button className="btn" onClick={add} disabled={pending || !address.trim()}>
+                {pending ? "Adding…" : "Suppress"}
+              </button>
+            </div>
+          </Row>
+
+          <Row
+            label={`${view.total} suppressed`}
+            desc={capped ? `Showing the ${entries.length} most recent.` : undefined}
+          >
+            <input
+              className="inp"
+              value={query}
+              placeholder="Search addresses"
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </Row>
+
+          <div style={{ padding: "4px 0 0" }}>
+            <Status status={status} />
+          </div>
+
+          {shown.length === 0 ? (
+            <p className="sld" style={{ margin: "10px 0 0" }}>
+              {entries.length === 0
+                ? "Nobody has opted out yet."
+                : `No suppressed address matches "${query.trim()}".`}
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", margin: "10px 0 0", padding: 0, display: "grid", gap: 8 }}>
+              {shown.map((entry) => (
+                // Grid rather than flex-wrap: a long reason used to push the
+                // badge and date onto their own line, so each row aligned
+                // differently from the one above it.
+                <li
+                  key={entry.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                    alignItems: "baseline",
+                    columnGap: 16,
+                    padding: "9px 0",
+                    borderTop: "1px solid var(--hairline)",
+                  }}
+                >
+                  <span style={{ display: "grid", gap: 2, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, wordBreak: "break-all" }}>{entry.email}</span>
+                    <span className="sld">
+                      {entry.reasonDescription}
+                      {entry.detail ? ` ${entry.detail}` : ""}
+                    </span>
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, whiteSpace: "nowrap" }}>
+                    <span className="tg">{entry.reasonLabel}</span>
+                    <span className="sld">{formatSuppressedAt(entry.createdAt)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/** Date only — the hour someone unsubscribed is noise on a compliance register. */
+function formatSuppressedAt(value: string): string {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return "";
+  return new Date(parsed).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 function GeneralPanel({ brandName, workspaceName, settings, workspaceLogoUrl }: { brandName: string; workspaceName: string; settings: AppSettings; workspaceLogoUrl: string | null }) {

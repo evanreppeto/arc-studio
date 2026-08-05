@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { verifyUnsubscribeToken } from "@/domain";
 import { getUnsubscribeSecret } from "@/lib/dispatch/email-identity";
+import { recordEmailSuppression } from "@/lib/email-suppression/persistence";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -75,16 +76,39 @@ export async function POST(request: Request): Promise<NextResponse> {
     return page("Unavailable", `<h1 style="font-size:20px;margin:0;">We couldn't process this right now. Please reply to the email instead.</h1>`, 503);
   }
 
-  const { error } = await getSupabaseAdminClient()
+  const client = getSupabaseAdminClient();
+
+  // Look up the address so the opt-out can be recorded against it, not only
+  // against this contact id. Without that, re-importing the contact — which
+  // BSR-481 makes routine — hands us a fresh row with no opt-out and the person
+  // is emailable again.
+  const { data: contact, error: lookupError } = await client
     .from("contacts")
-    .update({ email_unsubscribed_at: new Date().toISOString() })
+    .select("email")
     .eq("id", contactId)
     .eq("org_id", orgId)
-    // Idempotent: Gmail's one-click may fire more than once, and re-POSTing
-    // must not move the original opt-out timestamp.
-    .is("email_unsubscribed_at", null);
+    .maybeSingle<{ email: string | null }>();
 
-  if (error) {
+  if (lookupError) {
+    return page("Something went wrong", `<h1 style="font-size:20px;margin:0;">We couldn't complete that. Please reply to the email instead.</h1>`, 500);
+  }
+
+  // recordEmailSuppression writes the register AND mirrors onto the contact,
+  // both idempotently — Gmail's one-click may fire more than once, and a
+  // re-POST must not move the original opt-out timestamp.
+  const recorded = await recordEmailSuppression(
+    {
+      orgId,
+      address: contact?.email,
+      reason: "unsubscribe",
+      source: "recipient",
+      detail: "Clicked the unsubscribe link in an email.",
+      contactId,
+    },
+    client,
+  );
+
+  if (!recorded.ok) {
     return page("Something went wrong", `<h1 style="font-size:20px;margin:0;">We couldn't complete that. Please reply to the email instead.</h1>`, 500);
   }
 

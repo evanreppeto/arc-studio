@@ -14,10 +14,11 @@ import {
   type ArcRoute,
   type CampaignAssetType,
   type ArcAssetStatus,
+  type ArcDraftFinding,
 } from "@/domain";
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
-import { decideAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
-import { getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
+import { decideAsset, undoAssetDecision, type ApprovalDecision } from "@/lib/campaigns/decisions";
+import { type ArcAssetBody, getArcAssetBodies, getArcAssetChecks, getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
 import { requestAssetRevision } from "@/lib/campaigns/revisions";
 import { getArcDisplayName } from "@/lib/arc-chat/agent-config";
 import { isAcceptedAttachment } from "@/lib/arc-chat/attachment-types";
@@ -52,6 +53,7 @@ import { createNode } from "@/lib/knowledge-graph/persistence";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { assertConversationAccess } from "@/lib/arc-chat/sharing";
 import { logArcChatStatus } from "@/lib/arc-chat/status-log";
+import { toArcThreadMedia, type ArcThreadMedia } from "@/lib/arc-chat/thread-media";
 import { ALL_ARC_SKILLS, ARC_SKILL_LIBRARY, skillIdForArcCommand } from "@/lib/arc-skills/catalog";
 import { instructionForWorkspaceSkill, parseWorkspaceArcSkills, type WorkspaceArcSkill } from "@/lib/arc-skills/custom";
 import { ARC_CUSTOM_SKILLS_SETTING, getWorkspaceArcSkills, previewGithubArcSkill } from "@/lib/arc-skills/github";
@@ -78,15 +80,24 @@ const MAX_MESSAGE_LENGTH = 8000;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const CONTEXT_SCOPES = new Set(["workspace", "brand", "crm", "campaigns"]);
 
-/** One message as an inline surface needs it — body and role, nothing else.
- *  Deliberately narrower than ArcMessage: Studio's panel is not the chat view
- *  and should not start carrying action cards, recall and feedback state. */
+/** One message as an inline surface needs it.
+ *
+ *  Deliberately narrower than ArcMessage: Studio's panel is not the chat view and
+ *  should not start carrying recall, feedback and step traces. It DOES carry
+ *  `media` and `suggestions`, because without them a creative tool's copilot can
+ *  generate a picture and show the operator a paragraph about it — Studio's own
+ *  empty state promised the render would appear, and it never did. */
 export type ArcThreadMessage = {
   id: string;
   role: "operator" | "arc" | string;
   body: string;
   status: string;
   createdAt: string;
+  /** Creative attached to this reply. Empty on operator messages and on replies
+   *  that made nothing. */
+  media: ArcThreadMedia[];
+  /** Follow-ups Arc offered after this reply (agent-provided; usually empty). */
+  suggestions: string[];
 };
 
 export type SendArcMessageResult =
@@ -622,6 +633,50 @@ export async function getArcAssetStatusesAction(
 }
 
 /**
+ * The readable copy behind a conversation's approval-gated cards.
+ *
+ * The inline deliverable card renders the draft itself, and the card's own
+ * `preview` is only the first ~280 characters of it. Fetched lazily per message
+ * so a long thread doesn't pull every body it has ever mentioned, and failing
+ * soft: an empty map leaves each card on its stored preview.
+ */
+export async function getArcAssetBodiesAction(
+  assetIds: string[],
+): Promise<Record<string, ArcAssetBody>> {
+  await requireOperator();
+  if (!Array.isArray(assetIds) || assetIds.length === 0) return {};
+  if (!isSupabaseAdminConfigured()) return {};
+  try {
+    const ctx = await getCurrentWorkspaceContext();
+    return await getArcAssetBodies(assetIds, ctx.orgId);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The guardrail findings recorded against a conversation's approval-gated cards.
+ *
+ * A card's `flags` are frozen at draft time and on prod are usually empty, while
+ * the assets behind them hold open findings — including blockers. Fetched
+ * alongside the bodies so the chat reports what was actually found rather than
+ * what the card happened to freeze.
+ */
+export async function getArcAssetChecksAction(
+  assetIds: string[],
+): Promise<Record<string, ArcDraftFinding[]>> {
+  await requireOperator();
+  if (!Array.isArray(assetIds) || assetIds.length === 0) return {};
+  if (!isSupabaseAdminConfigured()) return {};
+  try {
+    const ctx = await getCurrentWorkspaceContext();
+    return await getArcAssetChecks(assetIds, ctx.orgId);
+  } catch {
+    return {};
+  }
+}
+
+/**
  * The tail of a conversation, for a surface that renders Arc inline without
  * owning the whole chat view — Studio's copilot panel (BSR-681).
  *
@@ -653,6 +708,8 @@ export async function getArcConversationTailAction(input: {
         body: message.body,
         status: message.status,
         createdAt: message.createdAt,
+        media: toArcThreadMedia(message),
+        suggestions: message.suggestions ?? [],
       })),
     };
   } catch (error) {
@@ -678,6 +735,33 @@ export async function decideArcDraftAction(input: {
     return { ok: true, persisted: true, status: result.status };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Couldn't record that decision." };
+  }
+}
+
+/**
+ * Take back the last decision on a drafted deliverable.
+ *
+ * Approving from the chat was irreversible, and the card collapses once decided
+ * — so a misclick both committed the decision and hid the thing it was made
+ * about. The revert itself is append-only (`undoDecision` writes a `reverted`
+ * row and restores the previous status); it never deletes history and never
+ * unlocks outbound, so this cannot send anything.
+ */
+export async function undoArcDraftDecisionAction(input: {
+  assetId: string;
+}): Promise<ArcDraftDecisionResult> {
+  await requireOperator();
+  if (!input.assetId.trim()) return { ok: false, error: "This draft is missing its asset reference." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, status: "draft" };
+
+  try {
+    const operator = await getOperatorActor();
+    const tenant = await getCurrentAgentTaskTenantFields();
+    const result = await undoAssetDecision({ assetId: input.assetId, operator, tenant });
+    revalidatePath("/arc");
+    return { ok: true, persisted: true, status: result.restoredStatus };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Couldn't undo that decision." };
   }
 }
 

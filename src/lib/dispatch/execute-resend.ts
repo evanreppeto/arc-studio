@@ -16,7 +16,9 @@ import { recordConnectionUse } from "@/lib/connections/persistence";
 import { sendResendEmail } from "@/lib/connections/resend-client";
 import { readConnectorCredential } from "@/lib/connectors/credentials";
 
-import { getUnsubscribeSecret, isContactSuppressed, loadWorkspaceEmailIdentity } from "./email-identity";
+import { checkEmailSuppression } from "@/lib/email-suppression/persistence";
+
+import { getUnsubscribeSecret, loadWorkspaceEmailIdentity } from "./email-identity";
 import { isLiveSendEnabled } from "./live-send";
 import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
@@ -243,7 +245,17 @@ export async function executeResendDispatch(
 
   // Consent, then compliance, then brand — in that order, because each is a
   // reason NOT to send and the cheapest refusal should come first.
-  const suppression = await isContactSuppressed(dispatch.contact_id, client);
+  const suppression = await checkEmailSuppression(
+    {
+      orgId: dispatch.org_id,
+      contactId: dispatch.contact_id,
+      // The address the dispatch will actually mail, not the contact's current
+      // one — those diverge once a payload is queued, and the address in the
+      // payload is the one that reaches a human.
+      address: Array.isArray(dispatch.payload?.to) ? dispatch.payload.to[0] : dispatch.payload?.to,
+    },
+    client,
+  );
   if (suppression.suppressed) {
     await markFailed(client, dispatch.org_id, dispatchId, dispatch.campaign_id, operator, suppression.reason ?? "Recipient is suppressed.");
     return { ok: false, message: suppression.reason ?? "Recipient is suppressed." };

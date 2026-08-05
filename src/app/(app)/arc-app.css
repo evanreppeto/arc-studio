@@ -432,7 +432,7 @@
 
   /* focal */
   & .focal { margin-top: 22px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 50%, var(--panel)), var(--panel)); padding: 18px 20px; box-shadow: 0 18px 50px -34px rgba(0, 0, 0, 0.9); }
-  & .focal .lab { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; color: var(--accent); text-transform: uppercase; }
+  & .focal .lab { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; color: var(--accent); text-transform: uppercase; }
   & .focal .row1 { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
   & .focal h2 { font-family: var(--serif); font-weight: 500; font-size: 19px; letter-spacing: -0.01em; margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   & .focal .cites { display: inline-flex; align-items: center; gap: 5px; }
@@ -744,6 +744,8 @@
 .arc-app .arc-grid .chrow { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
 .arc-app .arc-grid h2.ct { font-family: var(--serif); font-weight: 500; font-size: 29px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-grid .csub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+/* The one fact a whole column was spending ~210px repeating on every row. */
+.arc-app .arc-grid .csub .csub-em { color: var(--text-2); font-weight: 500; }
 .arc-app .arc-grid .chrow .sp { margin-left: auto; display: flex; gap: 9px; align-items: center; }
 .arc-app .arc-grid .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: .15s; text-decoration: none; }
 .arc-app .arc-grid .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
@@ -816,6 +818,65 @@
   background: var(--panel); color: var(--text-2); font-family: var(--mono); font-size: 9.5px; font-weight: 600;
 }
 .arc-app .arc-grid .pnm { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; max-width: 210px; }
+/* Campaign names are sentences, not handles: "Chicago Flood Response — Emergency
+   Homeowner (Aug 2026)" and its v2 both ellipsed to the same 30 characters, so
+   two different campaigns — one approved, one archived — rendered as the same
+   string. The 210px cap is a CRM-table metric and has no business on a column
+   that is already 34% of the table; wrap to two lines instead. */
+.arc-app .arc-campaigns .pnm { white-space: normal; max-width: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* --- The opened row -------------------------------------------------------
+   A campaign is a package of creative, and the board could only ever describe
+   one — you had to leave the page to find out what was in it. Opening a row
+   shows the deliverables the read-model was already carrying. */
+.arc-app .arc-campaigns .namecell { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.arc-app .arc-campaigns .drev {
+  flex: none; width: 20px; height: 20px; display: grid; place-items: center; margin-left: -6px;
+  border: none; background: none; padding: 0; color: var(--muted); cursor: pointer; border-radius: 5px;
+  transition: color .12s, transform .18s var(--ease);
+}
+.arc-app .arc-campaigns .drev svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+.arc-app .arc-campaigns .drev:hover { color: var(--text-2); }
+.arc-app .arc-campaigns .drev:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arc-app .arc-campaigns .drev.on { color: var(--accent-contrast); transform: rotate(90deg); }
+/* The open row and its drawer read as one block, so the hairline between them
+   goes and the pair shares a tint. */
+.arc-app .arc-campaigns .dt tbody tr.openrow td { background: color-mix(in srgb, var(--accent) 5%, transparent); border-bottom-color: transparent; }
+.arc-app .arc-campaigns .dt tbody tr.exprow td { padding: 0 14px 14px 34px; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.arc-app .arc-campaigns .dt tbody tr.exprow:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+
+.arc-app .arc-campaigns .dstrip { display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
+.arc-app .arc-campaigns .dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 7px; width: 100%; }
+.arc-app .arc-campaigns .dcard {
+  display: flex; align-items: center; gap: 9px; min-width: 0; padding: 7px 9px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--panel);
+}
+/* Undecided pieces are the work; settled ones are context for it. */
+.arc-app .arc-campaigns .dcard.waiting { border-color: var(--accent-border); background: var(--inset); }
+.arc-app .arc-campaigns .dcard:not(.waiting) { opacity: .72; }
+.arc-app .arc-campaigns .dthumb {
+  flex: none; width: 34px; height: 34px; border-radius: 7px; overflow: hidden; display: grid; place-items: center;
+  background: var(--canvas-deep, #101013); border: 1px solid var(--line-2); color: var(--muted);
+}
+.arc-app .arc-campaigns .dthumb img { width: 100%; height: 100%; object-fit: cover; }
+.arc-app .arc-campaigns .dthumb svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.arc-app .arc-campaigns .dmeta { min-width: 0; flex: 1; }
+.arc-app .arc-campaigns .dtitle { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-app .arc-campaigns .dkind { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+.arc-app .arc-campaigns .dcard .pill { flex: none; height: 20px; padding: 0 7px; font-size: 9.5px; }
+.arc-app .arc-campaigns .dreview { align-self: flex-start; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .arc-app .arc-campaigns .exprow .dstrip { animation: arcRise .32s var(--ease) both; }
+}
+
+/* How much life is left in the signal the package was built from. Sits between
+   the name and the brief because it qualifies the name, not the description. */
+.arc-app .arc-campaigns .sigchip {
+  display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 5px;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .02em; white-space: nowrap;
+}
+.arc-app .arc-campaigns .sigchip.muted { color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
+.arc-app .arc-campaigns .sigchip.warn { color: var(--red-text); background: var(--red-soft); border: 1px solid rgba(204, 106, 106, .4); }
 /* Was one nowrap line capped at 210px, which cut most real descriptions mid-word
    ("Turn recent high-intent interest int…"). The phone breakpoint below already
    clamps to two lines; desktop had no reason to be stricter. Two lines are
@@ -867,6 +928,17 @@
 .arc-app .arc-grid .nx { font-size: 12px; color: var(--text-2); }
 .arc-app .arc-grid .nx.go { color: var(--accent-contrast); font-weight: 500; }
 .arc-app .arc-grid .nx.warn { color: var(--red-text); }
+/* The next action when it IS an action. Carries `.nx.go`'s colour and weight —
+   the two must keep reading as one column — plus the affordances a span could
+   never have: a pointer, a hover underline, and a focus ring. */
+.arc-app .arc-grid .nxbtn {
+  padding: 0; border: none; background: none; font-family: inherit; font-size: 12px; font-weight: 500;
+  color: var(--accent-contrast); cursor: pointer; text-align: left; border-radius: 4px;
+  text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: text-decoration-color .12s;
+}
+.arc-app .arc-grid .nxbtn:hover { text-decoration-color: currentColor; }
+.arc-app .arc-grid .nxbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.arc-app .arc-grid .nxbtn:disabled { cursor: default; opacity: .6; text-decoration-color: transparent; }
 .arc-app .arc-grid .last b { color: var(--text-2); font-weight: 500; font-size: 12px; }
 .arc-app .arc-grid .last span { font-family: var(--mono); font-size: 10px; color: var(--muted); display: block; margin-top: 1px; }
 
@@ -1068,7 +1140,7 @@
 .arc-app .arc-outbox .card .ccamp { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
 .arc-app .arc-outbox .card .cmeta { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 10.5px; color: var(--text-2); flex-wrap: wrap; }
 .arc-app .arc-outbox .card .caudience { margin-top: 7px; font-size: 10.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.arc-app .arc-outbox .card .caudience span { margin-right: 6px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.arc-app .arc-outbox .card .caudience span { margin-right: 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .arc-app .arc-outbox .card .cmeta .mi { display: inline-flex; align-items: center; gap: 4px; }
 .arc-app .arc-outbox .card .cnote { font-size: 10.5px; margin-top: 8px; padding: 6px 8px; border-radius: 7px; background: var(--inset); color: var(--text-2); line-height: 1.4; }
 .arc-app .arc-outbox .card .cnote.warn { background: var(--warn-soft); color: var(--warn-text); }
@@ -1084,7 +1156,7 @@
 .arc-app .arc-outbox .card .send-preview { border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px; }
 .arc-app .arc-outbox .card .send-preview dl { display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .arc-app .arc-outbox .card .send-preview dl div { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; font-size: 10.5px; line-height: 1.35; }
-.arc-app .arc-outbox .card .send-preview dt { color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.arc-app .arc-outbox .card .send-preview dt { color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .arc-app .arc-outbox .card .send-preview dd { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
 .arc-app .arc-outbox .card .send-preview .missing { color: var(--warn-text); }
 .arc-app .arc-outbox .card .send-preview p { margin: 9px 0 0; padding-top: 9px; border-top: 1px solid var(--line); color: var(--text-2); font-size: 10.5px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
@@ -1094,7 +1166,7 @@
 .arc-app .arc-outbox .card .caconfirm .ccbtns .caction { margin-top: 0; flex: 1; }
 .arc-app .arc-outbox .card button.cccancel { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line, #d8d4cb); background: transparent; color: var(--muted, #6b6b74); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; }
 .arc-app .arc-outbox .card button.cccancel:disabled { opacity: .55; cursor: default; }
-.arc-app .arc-outbox .ownb { font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; margin-left: auto; flex-shrink: 0; }
+.arc-app .arc-outbox .ownb { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; margin-left: auto; flex-shrink: 0; }
 .arc-app .arc-outbox .ownb.agent { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-app .arc-outbox .ownb.human { color: var(--blue-text); background: var(--blue-soft); border: 1px solid rgba(136, 182, 216, .4); }
 .arc-app .arc-outbox .ownb.system { color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
@@ -1237,7 +1309,7 @@
 
 /* Arc-read recommendation box + action buttons */
 .arc-app .arc-analytics .recbox { border: 1px dashed var(--warn-border); border-radius: 9px; background: var(--warn-soft); padding: 11px 12px; margin-bottom: 12px; }
-.arc-app .arc-analytics .recbox .rl { font-size: 9px; font-weight: 700; letter-spacing: .1em; color: var(--warn-text); text-transform: uppercase; margin-bottom: 5px; }
+.arc-app .arc-analytics .recbox .rl { font-size: 9px; font-weight: 600; letter-spacing: .1em; color: var(--warn-text); text-transform: uppercase; margin-bottom: 5px; }
 .arc-app .arc-analytics .recbox .rt { font-size: 12px; color: var(--text); line-height: 1.5; }
 .arc-app .arc-analytics .abtns { display: flex; gap: 8px; flex-wrap: wrap; }
 .arc-app .arc-analytics .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 33px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; transition: .15s; }
@@ -1322,7 +1394,7 @@
 .arc-app .arc-analytics .airead { border: 1px solid var(--accent-border); border-radius: 13px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 42%, var(--panel)), var(--panel)); padding: 17px 19px; position: sticky; top: 0; }
 .arc-app .arc-analytics .airead .al { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
 .arc-app .arc-analytics .airead .am { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
-.arc-app .arc-analytics .airead .at { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--accent); text-transform: uppercase; }
+.arc-app .arc-analytics .airead .at { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--accent); text-transform: uppercase; }
 .arc-app .arc-analytics .airead p { font-size: 12.5px; color: var(--text-2); line-height: 1.6; margin: 0 0 11px; }
 .arc-app .arc-analytics .airead p b { color: var(--text); font-weight: 600; }
 .arc-app .arc-analytics .cited { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1330,7 +1402,7 @@
 .arc-app .arc-analytics .cit b { color: var(--accent-contrast); }
 
 /* activity feed */
-.arc-app .arc-analytics .aday { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 16px 2px 8px; }
+.arc-app .arc-analytics .aday { font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 16px 2px 8px; }
 .arc-app .arc-analytics .arow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 14px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); margin-bottom: 8px; }
 .arc-app .arc-analytics .arow .adot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .arc-app .arc-analytics .arow .atitle { font-size: 12.5px; font-weight: 600; color: var(--text); line-height: 1.3; }
@@ -1397,7 +1469,7 @@
 .arc-app .arc-personas .pbody { flex: 1; min-height: 0; display: grid; grid-template-columns: 336px minmax(0, 1fr); overflow: hidden; }
 .arc-app .arc-personas .pbody.cmp { grid-template-columns: 1fr; }
 .arc-app .arc-personas .roster { border-right: 1px solid var(--line); min-width: 0; overflow: auto; padding: 6px 14px 30px; }
-.arc-app .arc-personas .seglabel { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 14px 6px 8px; }
+.arc-app .arc-personas .seglabel { font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 14px 6px 8px; }
 .arc-app .arc-personas .prow { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); margin-bottom: 9px; cursor: pointer; transition: border-color .15s, transform .15s var(--ease); width: 100%; text-align: left; font-family: inherit; }
 .arc-app .arc-personas .prow:hover { border-color: var(--accent-border); }
 .arc-app .arc-personas .prow.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft), 0 16px 40px -30px rgba(0, 0, 0, .9); }
@@ -1429,7 +1501,7 @@
 .arc-app .arc-personas .dconf .ct { display: flex; align-items: center; gap: 7px; justify-content: flex-end; margin-top: 8px; }
 .arc-app .arc-personas .dconf .ctl { font-size: 9.5px; color: var(--muted); }
 .arc-app .arc-personas .sparkwrap svg { display: block; }
-.arc-app .arc-personas .sh { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 0 0 12px; }
+.arc-app .arc-personas .sh { font-size: 10px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 0 0 12px; }
 .arc-app .arc-personas .sec { margin-top: 24px; }
 /* Signals radar + Performance duo (ported from build-personas.html) */
 .arc-app .arc-personas .dduo { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 14px; align-items: stretch; }
@@ -1520,7 +1592,7 @@
 .arc-app .arc-brain .scroll { padding: 22px clamp(22px, 3vw, 38px) 44px; }
 .arc-app .arc-brain.graph .scroll { height: 100%; overflow: auto; }
 .arc-app .arc-brain .inner { max-width: 1080px; }
-.arc-app .arc-brain .sh { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
+.arc-app .arc-brain .sh { font-size: 10px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
 .arc-app .arc-brain .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); text-transform: none; letter-spacing: 0; }
 .arc-app .arc-brain .lead { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; line-height: 1.6; }
 .arc-app .arc-brain .lead b { color: var(--text-2); }
@@ -1654,14 +1726,14 @@
 .arc-app .arc-brain .inempty { color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 .arc-app .arc-brain .inh { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 11px; border-radius: 7px; background: var(--inset); border: 1px solid var(--line-2); }
 .arc-app .arc-brain .inh .ik { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.arc-app .arc-brain .inh .ikl { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.arc-app .arc-brain .inh .ikl { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
 .arc-app .arc-brain .innm { font-family: var(--serif); font-weight: 500; font-size: 18px; letter-spacing: -.01em; margin: 10px 0 6px; line-height: 1.2; color: var(--text); }
 .arc-app .arc-brain .insum { font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
 .arc-app .arc-brain .inrow { display: flex; align-items: center; gap: 9px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .arc-app .arc-brain .inrow:first-of-type { border-top: 1px solid var(--line); margin-top: 14px; }
 .arc-app .arc-brain .inrow .il { color: var(--muted); width: 96px; flex-shrink: 0; }
 .arc-app .arc-brain .inrow .iv { color: var(--text); font-weight: 500; display: flex; align-items: center; gap: 7px; }
-.arc-app .arc-brain .insec { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 20px 0 10px; }
+.arc-app .arc-brain .insec { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 20px 0 10px; }
 .arc-app .arc-brain .conn { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); margin-bottom: 7px; cursor: pointer; transition: border-color .14s; width: 100%; text-align: left; font: inherit; }
 .arc-app .arc-brain .conn:hover { border-color: var(--accent-border); }
 .arc-app .arc-brain .conn .cd { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -1896,7 +1968,7 @@
    viewport query never fired because 1280 > 1080. A container query asks the
    question the layout actually depends on. */
 @container oppdetail (max-width: 760px) { .arc-app .arc-opps .dgrid { grid-template-columns: minmax(0, 1fr); gap: 22px; } }
-.arc-app .arc-opps .lab { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--muted); text-transform: uppercase; margin-bottom: 11px; }
+.arc-app .arc-opps .lab { font-size: 10px; font-weight: 600; letter-spacing: .13em; color: var(--muted); text-transform: uppercase; margin-bottom: 11px; }
 .arc-app .arc-opps .summary { font-size: 13.5px; color: var(--text-2); line-height: 1.6; margin: 0 0 4px; max-width: 68ch; }
 .arc-app .arc-opps .blk { margin-top: 26px; }
 /* Evidence reads as a fact table: hairline rows, label left, value right. It was
@@ -1911,7 +1983,7 @@
 .arc-app .arc-opps .evitem dd { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
 @media (max-width: 620px) { .arc-app .arc-opps .evitem { grid-template-columns: minmax(0, 1fr); gap: 3px; } }
 .arc-app .arc-opps .recpanel { border: 1px solid var(--line-2); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent); padding: 18px 20px; }
-.arc-app .arc-opps .recpanel .rl { font-size: 10px; font-weight: 700; letter-spacing: .13em; color: var(--accent); text-transform: uppercase; }
+.arc-app .arc-opps .recpanel .rl { font-size: 10px; font-weight: 600; letter-spacing: .13em; color: var(--accent); text-transform: uppercase; }
 .arc-app .arc-opps .recpanel .rtxt { font-size: 13.5px; color: var(--text); line-height: 1.6; margin-top: 9px; }
 .arc-app .arc-opps .recpanel .sub { font-size: 11px; color: var(--muted); margin: 16px 0 8px; }
 .arc-app .arc-opps .types { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1929,7 +2001,7 @@
    — same specificity, so source order is what decides it. */
 @container oppdetail (max-width: 760px) { .arc-app .arc-opps .side { position: static; } }
 .arc-app .arc-opps .card { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 16px; }
-.arc-app .arc-opps .card .cl { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+.arc-app .arc-opps .card .cl { font-size: 10px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
 .arc-app .arc-opps .bignum { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -.02em; color: var(--accent-contrast); line-height: 1; }
 .arc-app .arc-opps .ctrack { height: 6px; border-radius: 99px; background: var(--inset); overflow: hidden; margin: 12px 0 6px; }
 .arc-app .arc-opps .cfill { height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); transition: width .8s var(--ease); }
@@ -2215,7 +2287,7 @@
 .arc-app .journeys .jr-who { display: flex; align-items: center; gap: 9px; min-width: 0; overflow: hidden; }
 .arc-app .journeys .jr-who b { flex-shrink: 0; max-width: 190px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-app .journeys .jr-persona { flex: 0 1 auto; min-width: 0; font-size: 10px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--panel); border-radius: 5px; padding: 1px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-app .journeys .jr-res { flex: 0 0 auto; font-size: 8.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+.arc-app .journeys .jr-res { flex: 0 0 auto; font-size: 8.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
 .arc-app .journeys .jr-res.anonymous { color: var(--jr-blue); background: var(--jr-blue-soft); }
 .arc-app .journeys .jr-res.stitched { color: var(--accent); background: var(--accent-soft); }
 .arc-app .journeys .jr-track { display: inline-flex; gap: 3px; }

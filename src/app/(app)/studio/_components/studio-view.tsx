@@ -5,7 +5,10 @@ import { type ChangeEvent, type CSSProperties, useEffect, useMemo, useRef, useSt
 
 import { type CreativeLayoutOverride } from "@/domain";
 
+import { resolveArcComposerMode } from "@/lib/arc-chat/composer-mode";
 import { hasRepliedToLastMessage } from "@/lib/arc-chat/thread-state";
+
+import { extractCanvasCopy, FIELD_LABEL_TEXT, type CopySuggestion } from "./arc-copy";
 
 import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
@@ -86,17 +89,20 @@ const ItemMedia = ({ item }: { item: Item }) =>
   );
 
 /**
- * The stage toolbar. Every entry now RESOLVES to something:
+ * The stage toolbar — the controls that act on the CANVAS.
  *
  * - `focus` — scrolls the Design pane to the section that control belongs to
  *   (and opens it if it's collapsed).
- * - `ask` — switches to the Arc pane and seeds the composer with the request,
- *   the same move "Ask Arc for variations" in the version strip already makes.
  * - `soon` — no implementation exists, so it says so through the app's
  *   `data-soon` toast rather than looking like a button that does nothing.
  *
- * Before this, all thirteen set a `tool` string nothing read and flipped the
- * inspector tab: eleven of them were indistinguishable from broken.
+ * The eight AI tools that used to live here have moved into the Arc pane (see
+ * ARC_ACTIONS). They never acted on the canvas — every one of them typed a
+ * sentence into Arc's composer — and keeping them here is what made this row
+ * 1455px wide inside a 636px stage: more than half the toolbar, including the
+ * whole Edit group, sat off the right edge behind a horizontal scroll with no
+ * scrollbar to suggest it was there. They now sit one click away in the pane
+ * that actually answers them, and this row fits.
  */
 const TOOLS = {
   compose: [
@@ -104,43 +110,34 @@ const TOOLS = {
     { t: "text", target: "design", label: "Text", focus: "sec-copy", d: '<path d="M5 7h14M5 7V5h14v2M12 7v12M9 19h6"/>' },
     { t: "recolor", target: "design", label: "Recolor", focus: "sec-look", d: '<circle cx="12" cy="12" r="8"/><circle cx="9" cy="9" r="1.3"/><circle cx="15" cy="9" r="1.3"/><circle cx="9" cy="15" r="1.3"/>' },
   ],
-  generate: [
-    { t: "genimg", target: "arc", label: "Image", ai: true, ask: "Generate a new image for this creative.", d: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z"/>' },
-    { t: "genvid", target: "arc", label: "Video", ai: true, ask: "Turn this creative into a short video.", d: '<rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9l4-2v10l-4-2"/>' },
-    { t: "vary", target: "arc", label: "Other versions", ai: true, ask: "Make a few on-brand variations of this creative.", d: '<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 002-2V9"/>' },
-  ],
-  edit: [
-    { t: "reframe", target: "arc", label: "Resize", ai: true, ask: "Resize this creative for the other formats — 1:1, 4:5, 9:16 and 16:9.", d: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 6v12"/>' },
-    { t: "expand", target: "arc", label: "Expand", ai: true, ask: "Expand this image to fill more of the frame without cropping the subject.", d: '<path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3"/>' },
-    { t: "cutout", target: "arc", label: "Cut-out", ai: true, ask: "Cut the subject out of this photo onto a clean background.", d: '<path d="M5 5l14 14M9 5a4 4 0 014 4M5 9a4 4 0 004 4"/><rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="3 3"/>' },
-    { t: "upscale", target: "arc", label: "Upscale", ai: true, ask: "Upscale this image to a higher resolution.", d: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>' },
-    { t: "animate", target: "arc", label: "Animate", ai: true, ask: "Add gentle motion to this image — a short looping clip.", d: '<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>' },
-  ],
   check: [
-    { t: "virality", target: "design", label: "Virality", soon: "Arc can't score creative for reach yet.", d: '<path d="M3 17l5-5 4 3 5-7 4 4"/><circle cx="8" cy="12" r="1"/>' },
     { t: "guardrails", target: "design", label: "Guardrails", focus: "sec-prov", d: '<path d="M12 3l8 4v6c0 4-3.5 7-8 8-4.5-1-8-4-8-8V7z"/><path d="M9 12l2 2 4-4"/>' },
+    { t: "virality", target: "design", label: "Virality", soon: "Arc can't score creative for reach yet.", d: '<path d="M3 17l5-5 4 3 5-7 4 4"/><circle cx="8" cy="12" r="1"/>' },
   ],
 } as const;
 
 type StudioTool = (typeof TOOLS)[keyof typeof TOOLS][number];
 
-/** What each composer mode tells Arc to come back with. The mode is a hint
- *  carried in the message preamble, not a capability switch — the copy says
- *  what you're asking for, never what Arc is prevented from doing. */
-const MODE_HINT: Record<string, string> = {
-  Ask: "Ask for an answer or an opinion — nothing gets made.",
-  Act: "Ask Arc to go and do something in the workspace.",
-  Draft: "Ask for creative you can review and approve.",
-};
-
-/** Openers that seed the composer. Plain requests a person would actually
- *  make of the thing on the canvas — they only fill the box, nothing is sent. */
-const STARTERS = [
-  "Write three headline options for this ad.",
-  "Make a few on-brand variations of this creative.",
-  "Rewrite this shorter and punchier.",
-  "Which of my approved photos would work better here?",
-];
+/**
+ * What you can ask Arc to make, in the Arc pane rather than the stage toolbar.
+ *
+ * Each one only FILLS the composer — nothing is sent until you press send, so
+ * the request stays yours to edit. `image`-only entries are hidden in video
+ * mode, where they'd offer to upscale or cut out a clip that doesn't exist yet.
+ */
+const ARC_ACTIONS = [
+  { id: "vary", label: "Variations", ask: "Make a few on-brand variations of this creative.", d: '<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 002-2V9"/>' },
+  { id: "genimg", label: "New image", ask: "Generate a new image for this creative.", d: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z"/>' },
+  { id: "genvid", label: "Make a video", ask: "Turn this creative into a short video.", d: '<rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9l4-2v10l-4-2"/>' },
+  { id: "reframe", label: "Resize", ask: "Resize this creative for the other formats — 1:1, 4:5, 9:16 and 16:9.", d: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 6v12"/>' },
+  { id: "headlines", label: "Headlines", ask: "Write three headline options for this ad. Put each on its own line starting with 'Headline:'.", d: '<path d="M5 7h14M5 7V5h14v2M12 7v12M9 19h6"/>' },
+  { id: "shorter", label: "Punch it up", ask: "Rewrite this creative shorter and punchier. Give the result as lines starting with 'Headline:', 'Subhead:' and 'CTA:'.", d: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>' },
+  { id: "expand", label: "Expand", imageOnly: true, ask: "Expand this image to fill more of the frame without cropping the subject.", d: '<path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3"/>' },
+  { id: "cutout", label: "Cut-out", imageOnly: true, ask: "Cut the subject out of this photo onto a clean background.", d: '<path d="M5 5l14 14M9 5a4 4 0 014 4M5 9a4 4 0 004 4"/><rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="3 3"/>' },
+  { id: "upscale", label: "Upscale", imageOnly: true, ask: "Upscale this image to a higher resolution.", d: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>' },
+  { id: "animate", label: "Animate", imageOnly: true, ask: "Add gentle motion to this image — a short looping clip.", d: '<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>' },
+  { id: "photo", label: "Better photo", ask: "Which of my approved photos would work better here?", d: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-4 4 3 3-2 5 4"/>' },
+] as const;
 
 /**
  * A collapsible inspector section. Defined at module scope on purpose: a
@@ -242,7 +239,10 @@ export function splitStudioContext(body: string): { body: string; context: strin
 const BAKED_TEXT_RE = /\b(logo|logos|watermark|branding|brand name|signage|sign|text|words|lettering|caption)\b/i;
 
 type CampaignRef = { id: string; name: string; href: string };
-type StudioDraft = { campaignId: string; assetId: string; url: string; source: string; format: string; title: string; status: string; kind?: "image" | "video" };
+/** `at` is what lets Studio's own renders and Arc's interleave in one list in
+ *  the order they actually happened, rather than one block after the other. */
+type StudioDraft = { campaignId: string; assetId: string; url: string; source: string; format: string; title: string; status: string; kind?: "image" | "video"; at: number; /** Who made it — the Generate button, or Arc in the copilot thread. `source`
+ *  can't answer this: a Studio composite and an Arc render are both AI-tagged. */ origin: "studio" | "arc" };
 
 /** Veo renders asynchronously; poll about every 10s for up to ~6 minutes. */
 const VIDEO_POLL_MS = 10_000;
@@ -350,7 +350,6 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [tab, setTab] = useState<"design" | "arc">("design");
   const [tool, setTool] = useState("overlay");
   const [tmpl, setTmpl] = useState(0);
-  const [cmode, setCmode] = useState("Draft");
   const [msg, setMsg] = useState("");
   const [sendErr, setSendErr] = useState<string | null>(null);
   const [sending, startSend] = useTransition();
@@ -362,6 +361,24 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [streamBody, setStreamBody] = useState<string | null>(null);
   const [reconcileTick, setReconcileTick] = useState(0);
   const threadEndRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  /** The quick-ask row, open by default and remembered for the session. It is
+   *  the whole reason the stage toolbar could shed its AI half, so it must be
+   *  reachable at any point in the conversation — not only from an empty pane. */
+  const [asksOpen, setAsksOpen] = useState(true);
+
+  /**
+   * Grow the composer with the message instead of scrolling a one-line slot.
+   * `rows={1}` plus a CSS max-height meant anything past ~12 words scrolled
+   * inside a 20px window while three-quarters of the pane sat empty above it.
+   * Height is reset to `auto` first, or it can only ever ratchet upward.
+   */
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 168)}px`;
+  }, [msg, tab]);
 
   /**
    * What the transcript actually shows. The runner writes the reply row BEFORE it
@@ -394,20 +411,34 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
 
   // The composer hands the operator's creative request to Arc: it starts a real
   // Arc conversation (outbound-locked like every Arc turn), seeded with the
-  // current Studio context (mode/format/headline), then drops them into the live
-  // thread where Arc's reply + drafts stream in. Offline it stays an inert note.
+  // current Studio context (format/headline/background), then drops them into the
+  // live thread where Arc's reply + drafts stream in. Offline it stays an inert note.
+  //
+  // The capability is READ OFF THE REQUEST, not off a control. Studio used to make
+  // the operator pick Ask / Act / Draft before typing — three words that only ever
+  // went into the preamble string below. `sendArcMessageAction` was never passed a
+  // mode at all, so every message ran as `act` whichever button was lit; the
+  // control was decoration on a decision Arc had already made. It now runs through
+  // the same `resolveArcComposerMode` the main chat composer uses, and the
+  // resolved mode is actually sent.
   const askArc = () => {
     const text = msg.trim();
     if (!text || sending || !live) return;
     setSendErr(null);
-    const context = `\n\n(From Studio · ${cmode} · ${mode} · ${FORMATS[fmt].r}${headline ? ` · headline: "${headline}"` : ""})`;
+    const context = `\n\n(From Studio · ${mode} · ${FORMATS[fmt].r}${headline ? ` · headline: "${headline}"` : ""}${bg ? ` · photo: "${bg.l}"` : ""})`;
     // Optimistic: the operator's own words appear immediately, so the panel
     // never looks like it swallowed the message while the round trip runs.
     const localId = `local-${Date.now()}`;
-    setThread((prev) => [...prev, { id: localId, role: "operator", body: text, status: "sent", createdAt: new Date().toISOString() }]);
+    setThread((prev) => [...prev, { id: localId, role: "operator", body: text, status: "sent", createdAt: new Date().toISOString(), media: [], suggestions: [] }]);
     setMsg("");
     startSend(async () => {
-      const result = await sendArcMessageAction({ conversationId: convId, body: text + context });
+      const result = await sendArcMessageAction({
+        conversationId: convId,
+        body: text + context,
+        // Inferred from what they wrote — the preamble is machine context and
+        // must not steer the capability, so the raw request is what's read.
+        mode: resolveArcComposerMode({ request: text }),
+      });
       if (result.ok) {
         setConvId(result.conversationId);
         setAwaitingReply(true);
@@ -549,6 +580,11 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // hardcoded campaign ("Storm-Season Reactivation") that no workspace owns.
   const selectedCampaignLabel = campaigns.find((c) => c.id === campaignId)?.name ?? null;
   const [drafts, setDrafts] = useState<StudioDraft[]>([]);
+  /** Review decisions made this session, by asset id. Kept apart from the draft
+   *  records because half of them are derived from the Arc thread and re-read
+   *  every few seconds — a status patched into a derived row doesn't survive. */
+  const [decisions, setDecisions] = useState<Record<string, string>>({});
+  const statusOf = (d: StudioDraft) => decisions[d.assetId] ?? d.status;
   /**
    * A rendered draft shown on the artboard in place of the live composite.
    *
@@ -646,7 +682,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         });
         if (res.ok && res.assetId && res.media) {
           const media = res.media;
-          const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: media.url, source: media.source, format: media.format, title: headline || "Studio creative", status: "pending_approval" };
+          const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: media.url, source: media.source, format: media.format, title: headline || "Studio creative", status: "pending_approval", at: Date.now(), origin: "studio" };
           setDrafts((prev) => [draft, ...prev]);
           // Put the render on the artboard. Only for the format that's actually
           // selected — a "resize for all platforms" run would otherwise leave the
@@ -708,7 +744,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           return;
         }
         if (poll.status === "done") {
-          const draft: StudioDraft = { campaignId: poll.campaignId, assetId: poll.assetId, url: poll.media.url, source: poll.media.source, format: poll.media.format, title, status: "pending_approval", kind: "video" };
+          const draft: StudioDraft = { campaignId: poll.campaignId, assetId: poll.assetId, url: poll.media.url, source: poll.media.source, format: poll.media.format, title, status: "pending_approval", kind: "video", at: Date.now(), origin: "studio" };
           setDrafts((prev) => [draft, ...prev]);
           setPreview(draft);
           return;
@@ -727,12 +763,17 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
 
   // Approve / decline reuse the wired campaign approval action; revise reuses the
   // wired revision request. Outbound stays locked through all of them.
+  //
+  // The decision is recorded in its own map rather than patched into `drafts`,
+  // because half the list is derived from the Arc thread and cannot be patched:
+  // approving one of Arc's renders would have flipped to "approved" and then
+  // silently reverted on the next 3s tail pull.
   const decideDraft = async (d: StudioDraft, decision: "approved" | "declined") => {
     if (draftBusy) return;
     setDraftBusy(d.assetId);
     const res = await decideArcDraftAction({ campaignId: d.campaignId, assetId: d.assetId, decision });
     setDraftBusy(null);
-    if (res.ok) setDrafts((prev) => prev.map((x) => (x.assetId === d.assetId ? { ...x, status: decision } : x)));
+    if (res.ok) setDecisions((prev) => ({ ...prev, [d.assetId]: decision }));
     else setGenErr(res.error);
   };
 
@@ -744,7 +785,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     const res = await requestArcDraftRevisionAction({ campaignId: d.campaignId, assetId: d.assetId, instruction });
     setDraftBusy(null);
     if (!res.ok) return setGenErr(res.error);
-    setDrafts((prev) => prev.map((x) => (x.assetId === d.assetId ? { ...x, status: "revision_requested" } : x)));
+    setDecisions((prev) => ({ ...prev, [d.assetId]: "revision_requested" }));
     // The status flip above says "revision requested", which is true — but it
     // says nothing about whether Arc took the job. On a dropped wake the request
     // is recorded and never runs, and nothing re-surfaces it, so silence here
@@ -758,17 +799,133 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     );
   };
 
+  /**
+   * Arc's own renders, lifted out of the transcript and into the same Drafts list
+   * the Generate button fills.
+   *
+   * This is the promise the pane's empty state has been making and not keeping:
+   * "anything Arc renders shows up under Drafts on the Design tab, and on the
+   * artboard, for your approval." It didn't. `ArcThreadMessage` carried body and
+   * role only, so a reply that had just generated a creative arrived here as a
+   * paragraph describing a picture the operator could not see — in a tool whose
+   * entire job is looking at the picture.
+   *
+   * DERIVED, not synced into `drafts`: the tail is re-pulled every 3s while
+   * waiting, so an effect that merged into state would be a setState inside an
+   * effect on a 3s timer. Only media carrying an approval is listed — the rows
+   * offer Approve / Revise / Decline and those need a real campaign + asset to
+   * act on. Media without one still renders inline in the thread and still opens
+   * on the artboard; it just isn't offered as something you can approve.
+   */
+  const arcDrafts = useMemo<StudioDraft[]>(() => {
+    const out: StudioDraft[] = [];
+    for (const message of thread) {
+      if (message.role === "operator") continue;
+      for (const media of message.media) {
+        if (!media.campaignId || !media.assetId) continue;
+        out.push({
+          campaignId: media.campaignId,
+          assetId: media.assetId,
+          url: media.url,
+          source: "ai_generated",
+          format: media.format ?? "—",
+          title: media.caption ?? "Arc draft",
+          status: "pending_approval",
+          kind: media.kind,
+          at: Date.parse(message.createdAt) || 0,
+          origin: "arc",
+        });
+      }
+    }
+    return out;
+  }, [thread]);
+
+  /**
+   * Everything awaiting review this session, newest first, whether Studio's
+   * Generate button made it or Arc did. Deduped by assetId — Arc's reply and a
+   * local generate can name the same asset — with the local copy winning, since
+   * it is the one whose decisions this component has been tracking.
+   */
+  const allDrafts = useMemo(() => {
+    const byId = new Map<string, StudioDraft>();
+    for (const d of arcDrafts) byId.set(d.assetId, d);
+    for (const d of drafts) byId.set(d.assetId, d);
+    return [...byId.values()].sort((a, b) => b.at - a.at);
+  }, [arcDrafts, drafts]);
+
+  /** Put a piece of Arc's creative on the artboard. Media with no approval has
+   *  no asset id to key on, so it gets one derived from its url — enough to
+   *  drive the selected-thumbnail highlight without pretending to be a draft. */
+  const previewArcMedia = (media: ArcThreadMessage["media"][number]) => {
+    setPreview({
+      campaignId: media.campaignId ?? "",
+      assetId: media.assetId ?? `arc:${media.url}`,
+      url: media.url,
+      source: "ai_generated",
+      format: media.format ?? "—",
+      title: media.caption ?? "Arc draft",
+      status: media.assetId ? "pending_approval" : "unlinked",
+      kind: media.kind,
+      // Not a list entry — nothing sorts the artboard — so it carries no
+      // timestamp rather than a made-up one.
+      at: 0,
+      origin: "arc",
+    });
+  };
+
+  /**
+   * Reuse one of Arc's renders as the canvas background, so the next Generate
+   * composites your copy and logo over it.
+   *
+   * Offered ONLY for a generated scene (`ai_generated`). A `composite` already
+   * has the brand lockup and the headline burned into its pixels — making it the
+   * background would composite them a second time, text over text. That is the
+   * same trap the preview state avoids by never swapping `bg` for a render, and
+   * `source` is the field that tells the two apart.
+   */
+  const applyArcMediaAsBackground = (media: ArcThreadMessage["media"][number]) => {
+    if (media.kind !== "image" || media.source !== "ai_generated") return;
+    setBg({ s: "", l: media.caption ?? "Arc image", p: "ai", url: media.url });
+    // Drop the tile selection: the background no longer matches anything in the
+    // sources panel, and a stale ring would point at the wrong photo.
+    setSelTile(-1);
+    setPreview(null);
+    setTab("design");
+  };
+
+  /** Put one of Arc's suggested lines into the canvas field it belongs to. One
+   *  field per click, never a batch — the operator sees each change land. */
+  const applyCopy = (suggestion: CopySuggestion) => {
+    if (suggestion.field === "kicker") setKicker(suggestion.value);
+    else if (suggestion.field === "headline") setHeadline(suggestion.value);
+    else if (suggestion.field === "subhead") setSub(suggestion.value);
+    else setCta(suggestion.value);
+  };
+
+  /** Fill the composer without sending, and make sure the pane is showing.
+   *  Never overwrites: a half-typed message is the operator's, not ours. */
+  const seedAsk = (ask: string) => {
+    setTab("arc");
+    setMsg((m) => (m.trim() ? m : ask));
+    requestAnimationFrame(() => composerRef.current?.focus());
+  };
+
+  /** Start over. Without this the pane was welded to the first conversation it
+   *  opened for the life of the tab — you could scroll the old thread, and that
+   *  was all. */
+  const resetThread = () => {
+    setConvId(null);
+    setThread([]);
+    setAwaitingReply(false);
+    setStreamBody(null);
+    setSendErr(null);
+  };
+
   const pickTool = (t: StudioTool) => {
     // `data-soon` already toasted; don't also move the operator somewhere that
     // has nothing to show them.
     if ("soon" in t && t.soon) return;
     setTool(t.t);
-    if (t.target === "arc") {
-      setTab("arc");
-      // Seed, never overwrite: a half-typed message is the operator's, not ours.
-      if ("ask" in t && t.ask) setMsg((m) => (m.trim() ? m : t.ask));
-      return;
-    }
     setTab("design");
     if (!("focus" in t) || !t.focus) return;
     const target = t.focus;
@@ -871,27 +1028,36 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
               that used to sit between the groups are gone: the labels already
               carry the grouping, and a wrapped row stranded them. */}
           <div className="toolbar">
-            {(["compose", "generate", "edit", "check"] as const).map((grp) => (
+            {/* No uppercase group captions: with five self-describing controls
+                left they cost ~105px of the row to label two obvious clusters,
+                and the row's job now is to fit. The 16px inter-group gap against
+                the 2px intra-group gap still reads as grouping. */}
+            {(["compose", "check"] as const).map((grp) => (
               <div className="tgrp" key={grp}>
-                <span className="tglabel">{grp === "check" ? "Check" : grp.charAt(0).toUpperCase() + grp.slice(1)}</span>
                 <div className="tgrpt">
                   {TOOLS[grp].map((t) => (
                     <button
                       type="button"
                       key={t.t}
-                      className={`tool${"ai" in t && t.ai ? " ai" : ""}${tool === t.t ? " on" : ""}`}
+                      className={`tool${tool === t.t ? " on" : ""}`}
                       aria-pressed={tool === t.t}
-                      title={"ai" in t && t.ai ? `${t.label} — runs on the AI engine` : t.label}
+                      title={t.label}
                       onClick={() => pickTool(t)}
                       {...("soon" in t && t.soon ? { "data-soon": t.soon } : {})}
                     >
-                      {"ai" in t && t.ai && <span className="tdot" />}
                       <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: t.d }} /><span className="tlbl">{t.label}</span>
                     </button>
                   ))}
                 </div>
               </div>
             ))}
+            {/* The one entry point to everything AI, in place of the eight pills
+                that used to sit here — five of them past the right edge. */}
+            <button type="button" className="toolarc" onClick={() => { setTab("arc"); requestAnimationFrame(() => composerRef.current?.focus()); }} title="Open the Arc copilot — generate, resize, upscale, animate">
+              <span className="tdot" />
+              <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>
+              <span className="tlbl">Ask Arc</span>
+            </button>
           </div>
 
           <div className="formats">
@@ -1017,7 +1183,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
               <span className="pp"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></span>
               <span className="tk"><span className="pl" /><span className="ph" /></span>
               <span className="tm">0:05 / 0:15</span>
-              <span className="sl" style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--muted)" }}>9:16 · MP4</span>
+              <span className="sl" style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--muted)" }}>9:16 · MP4</span>
             </div>
           )}
 
@@ -1028,10 +1194,10 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 which is the truth, not a placeholder. */}
             <span className="sl">This session</span>
             {live ? (
-              drafts.length === 0 ? (
+              allDrafts.length === 0 ? (
                 <span className="sl" style={{ textTransform: "none", letterSpacing: 0 }}>Nothing rendered yet</span>
               ) : (
-                drafts.slice(0, 8).map((d) => (
+                allDrafts.slice(0, 8).map((d) => (
                   <span
                     key={d.assetId}
                     className={`vthumb${preview?.assetId === d.assetId ? " on" : ""}`}
@@ -1063,14 +1229,14 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 ))}
               </>
             )}
-            <button className="vgen" onClick={() => { setTab("arc"); setMsg((m) => m || "Make a few on-brand variations of this creative."); }}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>Ask Arc for variations</button>
+            <button className="vgen" onClick={() => seedAsk("Make a few on-brand variations of this creative.")}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>Variations</button>
           </div>
         </section>
 
         {/* INSPECTOR */}
         <aside className="insp">
           <div className="itabs" role="tablist" aria-label="Inspector">
-            <button type="button" role="tab" aria-selected={tab === "design"} className={`itab${tab === "design" ? " on" : ""}`} onClick={() => setTab("design")}><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M4 9h16M9 9v11" /></svg>Design{drafts.length > 0 ? <span className="ibadge">{drafts.length}</span> : null}</button>
+            <button type="button" role="tab" aria-selected={tab === "design"} className={`itab${tab === "design" ? " on" : ""}`} onClick={() => setTab("design")}><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M4 9h16M9 9v11" /></svg>Design{allDrafts.length > 0 ? <span className="ibadge">{allDrafts.length}</span> : null}</button>
             <button type="button" role="tab" aria-selected={tab === "arc"} className={`itab${tab === "arc" ? " on" : ""}`} onClick={() => setTab("arc")}><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Arc</button>
           </div>
 
@@ -1097,9 +1263,14 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
 
                 {/* Right under the brief, not buried at the bottom of the pane:
                     this is what you just made and the only place to act on it. */}
-                {drafts.length > 0 && (
-                  <Section id="sec-drafts" title={`Drafts · ${drafts.length}`}>
-                    {drafts.map((d) => (
+                {allDrafts.length > 0 && (
+                  <Section id="sec-drafts" title={`Drafts · ${allDrafts.length}`}>
+                    {allDrafts.map((d) => {
+                      // Read through the decisions map — half these rows are derived
+                      // from the Arc thread, so their own `status` is whatever the
+                      // last tail pull said, not what you just clicked.
+                      const status = statusOf(d);
+                      return (
                       <div className="draftrow" key={d.assetId}>
                         <button
                           type="button"
@@ -1118,8 +1289,8 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                         </button>
                         <div className="draftmeta">
                           <div className="gt">{d.title}</div>
-                          <div className="gd">{d.format} · {d.status === "pending_approval" ? "awaiting your approval" : d.status === "approved" ? "approved — outbound still locked" : d.status === "declined" ? "declined" : "revision requested — Arc will re-draft"}</div>
-                          {d.status === "pending_approval" ? (
+                          <div className="gd">{d.origin === "arc" ? "From Arc · " : ""}{d.format} · {status === "pending_approval" ? "awaiting your approval" : status === "approved" ? "approved — outbound still locked" : status === "declined" ? "declined" : "revision requested — Arc will re-draft"}</div>
+                          {status === "pending_approval" ? (
                             <div className="actl">
                               <button className="abtn ap" disabled={draftBusy === d.assetId} onClick={() => decideDraft(d, "approved")}><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" /></svg>Approve</button>
                               <button className="abtn" disabled={draftBusy === d.assetId} onClick={() => reviseDraft(d)}>Revise</button>
@@ -1128,7 +1299,8 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                           ) : null}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                     <div className="clock" style={{ marginTop: 9 }}><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>Approving unlocks the next step — nothing sends without an explicit send.</div>
                   </Section>
                 )}
@@ -1254,14 +1426,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           ) : (
             <div className="ipane">
               <div className="arc">
-                {/* This pane is a LAUNCHER, not a transcript: askArc() starts a real Arc
-                    conversation and routes to /arc, so no reply is ever rendered here.
-                    It used to show a hardcoded conversation — a fake operator message, a
-                    fake "Thought for 4s" trace asserting Arc had read the workspace's
-                    Library and brand kit (with the real brand name interpolated), and
-                    three fake draft cards with no-op Approve/Revise/Decline buttons.
-                    None of it came from Arc. Replaced with an honest description of what
-                    the composer below actually does. */}
+                {/* The copilot: a real Arc conversation, seeded with what's on the
+                    canvas, answered in this pane. It used to be a launcher that
+                    threw you at /arc; before that, a hardcoded fake transcript. */}
                 <div className="archead">
                   {/* Arc's own mark, not a serif "A" in a box — the monogram read as a
                       stray letter next to the name it was already spelling out. */}
@@ -1270,15 +1437,23 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     <div className="at">Arc</div>
                     <div className="ad"><i /><span>{selectedCampaignLabel ? `Working in ${selectedCampaignLabel}` : "No campaign selected"}</span></div>
                   </div>
+                  {/* Without this the pane was welded to its first conversation for
+                      the life of the tab. */}
+                  {convId ? (
+                    <button type="button" className="arcnew" onClick={resetThread} title="Start a new conversation about this creative">
+                      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>New
+                    </button>
+                  ) : null}
                 </div>
-                {/* askArc() silently appends "(From Studio · Draft · image · 1:1)"
-                    to every message. Showing the same three values here means the
-                    operator can see what Arc is being told, rather than finding it
-                    in the transcript after the fact. */}
+                {/* askArc() appends "(From Studio · image · 1:1 · …)" to every
+                    message. Showing the same values here means the operator can see
+                    what Arc is being told, rather than finding it in the transcript
+                    after the fact. The mode chip that sat here is gone with the
+                    Ask/Act/Draft control — it named a choice nobody makes now. */}
                 <div className="arcctxbar" title="Sent with every message so Arc knows what you're looking at">
                   <span className="acx">{mode === "video" ? "Video" : "Image"}</span>
                   <span className="acx">{FORMATS[fmt].r}</span>
-                  <span className="acx">{cmode}</span>
+                  {bg ? <span className="acx acxb" title={bg.l}>{bg.l}</span> : null}
                   <span className="acxn">Arc sees the canvas</span>
                 </div>
                 <div className="arcscroll">
@@ -1286,42 +1461,120 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     <div className="arcempty">
                       <div className="arcempty-t">Ask Arc about this creative</div>
                       <p className="arcempty-d">
-                        Your message starts a real Arc conversation seeded with what&rsquo;s on the canvas.
-                        The reply lands here — you keep the artboard.
+                        Say what you want in your own words — a question, or a job to do.
+                        Arc works out which it is; you don&rsquo;t pick a mode. The reply lands
+                        here and you keep the artboard.
                       </p>
-                      <div className="arcstart-l">Try one</div>
-                      <div className="arcstart">
-                        {STARTERS.map((s) => (
-                          <button
-                            type="button"
-                            key={s}
-                            className="starter"
-                            onClick={() => setMsg(s)}
-                            disabled={!live}
-                            {...(!live ? { "data-soon": "Connect a workspace to chat with Arc" } : {})}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
                       <p className="arcempty-f">
-                        Anything Arc renders shows up under <b>Drafts</b> on the Design tab, and on the
-                        artboard, for your approval.
+                        Anything Arc renders appears in this thread, on the artboard, and under
+                        <b> Drafts</b> on the Design tab for your approval. Nothing sends.
                       </p>
                     </div>
                   ) : (
                     <div className="arcthread">
                       {visibleThread.map((m) => {
                         const { body, context } = splitStudioContext(m.body);
+                        // Copy Arc proposed that this canvas can actually take.
+                        // Label-driven and fails closed — prose yields nothing
+                        // rather than a guess at which sentence is the headline.
+                        const copy = m.role === "operator" ? [] : extractCanvasCopy(body);
                         return (
-                          <div key={m.id} className={`arcmsg ${m.role === "operator" ? "me" : "arc"}`}>
-                            {body}
-                            {/* The Studio context is appended to what we SEND so Arc
-                                knows the canvas state — but it is machine preamble,
-                                not something the operator typed. Showing it inside
-                                the bubble also made the message visibly change once
-                                the canonical thread replaced the optimistic copy. */}
-                            {context ? <span className="arcctx">{context}</span> : null}
+                          <div key={m.id} className={`arcwrap ${m.role === "operator" ? "me" : "arc"}`}>
+                            <div className={`arcmsg ${m.role === "operator" ? "me" : "arc"}`}>
+                              {body}
+                              {/* The Studio context is appended to what we SEND so Arc
+                                  knows the canvas state — but it is machine preamble,
+                                  not something the operator typed. Showing it inside
+                                  the bubble also made the message visibly change once
+                                  the canonical thread replaced the optimistic copy. */}
+                              {context ? <span className="arcctx">{context}</span> : null}
+                            </div>
+                            {/* Arc's words, into the canvas field they belong to.
+                                Without this Arc could make a new asset but not
+                                touch the creative in front of you: the answer to
+                                "rewrite this punchier" was words to retype. */}
+                            {copy.length > 0 ? (
+                              <div className="arcapply">
+                                <div className="arcapply-l">Put on the canvas</div>
+                                {copy.map((s, i) => (
+                                  <button
+                                    type="button"
+                                    key={`${s.field}-${i}`}
+                                    className="arcapplyb"
+                                    onClick={() => applyCopy(s)}
+                                    title={`Replace the ${FIELD_LABEL_TEXT[s.field].toLowerCase()} with this`}
+                                  >
+                                    <span className="arcapplyf">{FIELD_LABEL_TEXT[s.field]}</span>
+                                    <span className="arcapplyv">{s.value}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                            {/* The render itself. A creative tool's copilot that
+                                answers a "make me an image" with prose about an
+                                image it made is not answering. */}
+                            {m.media.length > 0 ? (
+                              <div className="arcmedia">
+                                {m.media.map((md) => (
+                                  <button
+                                    type="button"
+                                    key={md.url}
+                                    // `loose` — Arc showed a render it never attached to a
+                                    // campaign, so there is no asset to approve. Said with a
+                                    // dashed edge and a word, not left to be discovered by
+                                    // looking for an Approve button that isn't in the list.
+                                    className={`arcshot${preview?.url === md.url ? " on" : ""}${md.assetId ? "" : " loose"}`}
+                                    onClick={() => previewArcMedia(md)}
+                                    title={
+                                      md.assetId
+                                        ? `${md.caption ?? "Arc draft"} — show on the artboard, approve under Drafts`
+                                        : `${md.caption ?? "Arc render"} — show on the artboard. Not attached to a campaign, so there's nothing to approve.`
+                                    }
+                                  >
+                                    {md.kind === "video" ? (
+                                      <video src={md.url} muted playsInline preload="metadata" />
+                                    ) : (
+                                      // eslint-disable-next-line @next/next/no-img-element -- generated media URL
+                                      <img src={md.url} alt={md.caption ?? "Arc draft"} />
+                                    )}
+                                    <span className={`arcshotm${md.assetId ? "" : " loose"}`}>
+                                      {md.assetId ? md.format ?? "draft" : "unattached"}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                            {/* Only a generated SCENE can become the background.
+                                A composite already carries the logo and copy in
+                                its pixels, and compositing over it would lay
+                                yours on top of Arc's. */}
+                            {m.media.some((md) => md.kind === "image" && md.source === "ai_generated") ? (
+                              <div className="arcusebg">
+                                {m.media
+                                  .filter((md) => md.kind === "image" && md.source === "ai_generated")
+                                  .map((md) => (
+                                    <button
+                                      type="button"
+                                      key={`bg-${md.url}`}
+                                      className="arcusebgb"
+                                      onClick={() => applyArcMediaAsBackground(md)}
+                                      title="Put this behind your copy on the canvas, then Generate to composite"
+                                    >
+                                      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-4 4 3 3-2 5 4" /></svg>
+                                      Use as background
+                                    </button>
+                                  ))}
+                              </div>
+                            ) : null}
+                            {/* Arc's own follow-ups, when it offers them. They fill
+                                the composer; they never send on their own. */}
+                            {m.suggestions.length > 0 ? (
+                              <div className="arcsugg">
+                                {m.suggestions.slice(0, 3).map((s) => (
+                                  <button type="button" key={s} className="arcsuggb" onClick={() => seedAsk(s)}>{s}</button>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })}
@@ -1360,28 +1613,61 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   )}
                 </div>
                 <div className="composer">
-                  <div className="modes" role="group" aria-label="What to ask Arc for">
-                    {["Ask", "Act", "Draft"].map((m) => (
-                      <button type="button" key={m} className={`mode${cmode === m ? " on" : ""}`} aria-pressed={cmode === m} onClick={() => setCmode(m)}>{m}</button>
-                    ))}
+                  {/* The asks that used to be pills on the stage toolbar, where more
+                      than half of them were off the right edge behind a scroll. They
+                      belong beside the composer they type into, and they stay
+                      reachable mid-conversation instead of only on an empty pane.
+                      Collapsible, because a creative tool's chat is mostly reading. */}
+                  <div className="arcasks">
+                    <button
+                      type="button"
+                      className="arcaskt"
+                      aria-expanded={asksOpen}
+                      onClick={() => setAsksOpen((o) => !o)}
+                    >
+                      <span className={`arcaskc${asksOpen ? " on" : ""}`} aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg>
+                      </span>
+                      Ask Arc to…
+                    </button>
+                    {asksOpen ? (
+                      <div className="arcaskr">
+                        {ARC_ACTIONS.filter((a) => !("imageOnly" in a && a.imageOnly) || mode === "image").map((a) => (
+                          <button
+                            type="button"
+                            key={a.id}
+                            className="arcask"
+                            onClick={() => seedAsk(a.ask)}
+                            disabled={!live}
+                            title={a.ask}
+                            {...(!live ? { "data-soon": "Connect a workspace to chat with Arc" } : {})}
+                          >
+                            <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: a.d }} />
+                            {a.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                  {/* Three unexplained words was the whole control. */}
-                  <div className="modehint">{MODE_HINT[cmode]}</div>
                   <div className="cbox">
                     <textarea
+                      ref={composerRef}
                       rows={1}
                       value={msg}
                       onChange={(e) => setMsg(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askArc(); } }}
-                      placeholder={live ? "Ask Arc to change the words, the photo, or the size…" : "Connect a workspace to chat with Arc"}
+                      placeholder={live ? "Ask a question, or tell Arc what to make…" : "Connect a workspace to chat with Arc"}
                       disabled={!live || sending}
                     />
                     <button
                       className="csend"
-                      aria-label="Send to Arc"
+                      aria-label={awaitingReply ? "Arc is still replying" : "Send to Arc"}
                       onClick={askArc}
-                      disabled={!live || sending || !msg.trim()}
-                      title={live ? "Send to Arc" : "Arc chat needs a connected workspace"}
+                      // Blocked while a reply is in flight too: a second turn sent
+                      // into the same conversation mid-run interleaves with the
+                      // first, and the pane can only show one pending reply.
+                      disabled={!live || sending || awaitingReply || !msg.trim()}
+                      title={!live ? "Arc chat needs a connected workspace" : awaitingReply ? "Wait for Arc to finish this reply" : "Send to Arc — Enter"}
                       {...(!live ? { "data-soon": "Connect a workspace to chat with Arc" } : {})}
                     >
                       <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
