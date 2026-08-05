@@ -19,7 +19,26 @@ import { describe, expect, it } from "vitest";
  */
 
 const APP_DIR = new URL(".", import.meta.url).pathname;
-const CSS = readFileSync(new URL("./arc-app.css", import.meta.url), "utf8");
+/**
+ * EVERY stylesheet under (app), not just arc-app.css.
+ *
+ * The original scan read one file, and KPI grids numbered eight through eleven
+ * duly appeared in the per-route sheets it never opened: `.ukpis` in
+ * settings.css, `.egrid` and `.scards` in record.css, `.perfkpis` in
+ * campaign.css. "The next screen quietly hand-rolls number eight" is this
+ * file's own stated failure mode, and it happened in the blind spot.
+ */
+function allAppCss(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) allAppCss(full, out);
+    else if (full.endsWith(".css")) out.push(full);
+  }
+  return out;
+}
+const CSS = allAppCss(new URL(".", import.meta.url).pathname)
+  .map((f) => readFileSync(f, "utf8"))
+  .join("\n");
 
 function tsxFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -34,7 +53,21 @@ describe("the KPI strip is the only KPI strip", () => {
   it("has no equal-column KPI grid left in the stylesheet", () => {
     // Scoped to the KPI grids by name — plenty of other layouts legitimately use
     // repeat(), and this test is about the strip, not about banning grid.
-    const dead = ["\\.okpis", "\\.kpis", "\\.asum", "\\.pstats", "\\.bstats", "\\.jr-kpis", "\\.perfgrid", "\\.metrics"];
+    // `.ukpis` and `.egrid` join the list: both were equal 3-column rows in
+    // per-route sheets and both now route through KpiStrip.
+    //
+    // `.perfkpis` is deliberately NOT here. It is the same shape and the same
+    // mistake, but it has never rendered for anyone — no demo campaign carries
+    // results, and prod has 0 campaign_results and 0 dispatches — so it could
+    // not be verified after converting. A wrong mapping there would first
+    // appear the day real results land, which is the worst moment to discover
+    // it. Convert it against a workspace that actually has performance data.
+    //
+    // `.scards` is not here either, for a different reason: it carries a
+    // progress bar and caption the shared strip has no slot for, so it stays
+    // its own component. Its equal-column grid was the real defect and that is
+    // fixed — one score no longer leaves two dead columns.
+    const dead = ["\\.okpis", "\\.kpis", "\\.asum", "\\.pstats", "\\.bstats", "\\.jr-kpis", "\\.perfgrid", "\\.metrics", "\\.ukpis", "\\.egrid"];
     const offenders: string[] = [];
     for (const name of dead) {
       const re = new RegExp(`^[^\\n]*${name}[^\\n]*(?:display:\\s*grid|grid-template-columns)[^\\n]*$`, "gm");

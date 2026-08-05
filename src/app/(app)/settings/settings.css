@@ -127,10 +127,6 @@
 .arc-settings .tok .tkn { font-weight: 600; }
 .arc-settings .tok .tkp { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-.arc-settings .ukpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; margin-bottom: 6px; }
-.arc-settings .ukpi { border: 1px solid var(--line-2); border-radius: 11px; background: var(--inset); padding: 13px 14px; }
-.arc-settings .ukpi .uv { font-family: var(--serif); font-size: 23px; font-weight: 500; letter-spacing: -0.02em; }
-.arc-settings .ukpi .ul { font-size: 11px; color: var(--muted); margin-top: 4px; }
 .arc-settings .ubar { height: 6px; border-radius: 99px; background: var(--inset); overflow: hidden; margin-top: 10px; }
 .arc-settings .ubar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); }
 
