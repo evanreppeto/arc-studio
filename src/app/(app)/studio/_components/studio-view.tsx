@@ -1253,7 +1253,16 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       live would put another tenant's positioning on this canvas
                       and read as this workspace's own brief. */}
                   {live ? (
-                    <div className="brow">Attach this creative to a campaign to work from its angle and proof points.</div>
+                    // Says what is true. This line read "Attach this creative to a
+                    // campaign to work from its angle and proof points" DIRECTLY
+                    // UNDER the name of the campaign it was already attached to —
+                    // instructing the operator to do the thing they had done, on
+                    // every live workspace, always.
+                    <div className="brow">
+                      {campaignId
+                        ? "Anything you generate here lands on this campaign for approval."
+                        : "Pick a campaign above so what you make here has somewhere to land."}
+                    </div>
                   ) : (
                     <>
                       <div className="brow"><b>Angle:</b> Act before the next storm — protect the home you&rsquo;ve already invested in.</div>
@@ -1324,12 +1333,28 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     for four controls total. They are one decision — how it looks. */}
                 <Section id="sec-look" title="Look">
                   <div className="fieldl"><span>Accent colour</span></div>
-                  <div className="swatches">{swatches.map((c) => <span key={c} className={`sw${accent === c ? " on" : ""}`} style={{ background: c }} onClick={() => setAccent(c)} />)}</div>
+                  {/* Buttons, not tinted spans. These had no role, no tab stop and
+                      NO ACCESSIBLE NAME — a colour with nothing to read is invisible
+                      to anyone not using a mouse and a working pair of eyes. */}
+                  <div className="swatches" role="group" aria-label="Accent colour">
+                    {swatches.map((c, i) => (
+                      <button
+                        type="button"
+                        key={c}
+                        className={`sw${accent === c ? " on" : ""}`}
+                        style={{ background: c }}
+                        aria-pressed={accent === c}
+                        aria-label={`Accent ${i + 1} of ${swatches.length}, ${c}`}
+                        title={c}
+                        onClick={() => setAccent(c)}
+                      />
+                    ))}
+                  </div>
                   <div className="swnote">{brandPalette.length > 0 ? "From your Brand kit palette — the renderer uses this accent for the CTA." : "Default accents — set a palette in Brand and these become your own. The renderer uses this accent for the CTA."}</div>
                   <div className="fieldl" style={{ marginTop: 14 }}><span>Template</span></div>
                   <div className="tmpl">
                     {TEMPLATES.map((tm, i) => (
-                      <div key={tm.id} className={`tmplc${tmpl === i ? " on" : ""}`} onClick={() => setTmpl(i)}><div className="tmi" style={{ background: tm.bg }}><span style={{ fontFamily: tm.ff, color: tm.c, fontSize: tm.fs, fontStyle: tm.fst, fontWeight: 600 }}>Aa</span></div><div className="tmn">{tm.n}</div></div>
+                      <button type="button" key={tm.id} className={`tmplc${tmpl === i ? " on" : ""}`} aria-pressed={tmpl === i} onClick={() => setTmpl(i)}><div className="tmi" style={{ background: tm.bg }}><span style={{ fontFamily: tm.ff, color: tm.c, fontSize: tm.fs, fontStyle: tm.fst, fontWeight: 600 }}>Aa</span></div><div className="tmn">{tm.n}</div></button>
                     ))}
                   </div>
                 </Section>
@@ -1365,7 +1390,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <Section id="sec-export" title="Export" open={false}>
                   <a className="exrow" href="/library"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>Save to Library</a>
                   <Link className="exrow" href={campaignId ? `/campaigns/${campaignId}` : "/campaigns"}><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Open campaign</Link>
-                  <div className="exrow" onClick={downloadCurrent} style={bg?.url ? { cursor: "pointer" } : undefined} {...(!bg?.url ? { "data-soon": "Select an approved photo or video to download its file" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg>{bg?.url ? "Download asset" : "Download (PNG / MP4)"}</div>
+                  <button type="button" className="exrow" onClick={downloadCurrent} disabled={!bg?.url} title={!bg?.url ? "Select an approved photo or video to download its file" : undefined} {...(!bg?.url ? { "data-soon": "Select an approved photo or video to download its file" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg>{bg?.url ? "Download asset" : "Download (PNG / MP4)"}</button>
                 </Section>
               </div>
               </div>
@@ -1417,8 +1442,32 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                   </>
                 ) : (
                   <>
-                    <div className="exrow gold" onClick={() => runGenerate([FORMATS[fmt].r])} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>{gen ? "Generating…" : `Generate creative · ${FORMATS[fmt].r}`}</div>
-                    <div className="exrow" onClick={() => runGenerate(FORMATS.map((f) => f.r))} style={!genGate && !gen ? { cursor: "pointer" } : { opacity: 0.55 }} {...(genGate ? { "data-soon": genGate } : {})}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.6" /></svg>Resize for all platforms <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)" }}>1:1 4:5 9:16 16:9</span></div>
+                    {/* Real buttons. These were <div onClick> — the PRIMARY action on
+                        the screen was not in the tab order and announced as nothing.
+                        `aria-busy` while generating, and the gate reason is the
+                        accessible description rather than only a hover toast. */}
+                    <button
+                      type="button"
+                      className="exrow gold"
+                      onClick={() => runGenerate([FORMATS[fmt].r])}
+                      disabled={Boolean(genGate) || gen}
+                      aria-busy={gen}
+                      title={genGate ?? undefined}
+                      {...(genGate ? { "data-soon": genGate } : {})}
+                    >
+                      <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>
+                      {gen ? "Generating…" : `Generate creative · ${FORMATS[fmt].r}`}
+                    </button>
+                    <button
+                      type="button"
+                      className="exrow"
+                      onClick={() => runGenerate(FORMATS.map((f) => f.r))}
+                      disabled={Boolean(genGate) || gen}
+                      title={genGate ?? undefined}
+                      {...(genGate ? { "data-soon": genGate } : {})}
+                    >
+                      <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.6" /></svg>Resize for all platforms <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)" }}>1:1 4:5 9:16 16:9</span>
+                    </button>
                     {genGate ? <div className="scapt">{genGate}</div> : null}
                   </>
                 )}

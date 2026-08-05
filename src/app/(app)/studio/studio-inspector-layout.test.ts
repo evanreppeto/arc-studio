@@ -232,3 +232,44 @@ describe("arStyle", () => {
     }
   });
 });
+
+/**
+ * The Design pane's controls are real buttons.
+ *
+ * A live audit of prod (2026-08-05) hit-tested every element in the pane and
+ * found the opposite: the accent swatches, the three template tiles, and every
+ * `.exrow` — including **Generate creative**, the primary action on the
+ * screen — were `<div>`/`<span>` with an `onClick`. `tabIndex: -1`, no role, and
+ * in the swatches' case no accessible name at all: a colour with nothing to read.
+ * Keyboard and screen-reader users could not change the accent, the template, or
+ * generate anything.
+ *
+ * Source assertions because the repo has no jsdom. They catch the regression that
+ * actually happened — someone reaching for a `<div>` because it is one line
+ * shorter — which is how these got that way.
+ */
+describe("Design pane controls are focusable and named", () => {
+  const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+
+  it("uses buttons for the action rows, not clickable divs", () => {
+    expect(view).not.toMatch(/<div className="exrow/);
+    expect(view).toMatch(/<button[\s\S]{0,80}className="exrow gold"/);
+  });
+
+  it("gives every accent swatch a name — a colour has no text to announce", () => {
+    const swatches = view.match(/className=\{`sw\$\{[\s\S]*?\/>/)?.[0] ?? "";
+    expect(swatches).toMatch(/aria-label=/);
+    expect(swatches).toMatch(/aria-pressed=/);
+  });
+
+  it("makes the template tiles buttons that report which is chosen", () => {
+    const tmpl = view.match(/className=\{`tmplc\$\{[^}]*\}`\}[^>]*/)?.[0] ?? "";
+    expect(view).toMatch(/<button type="button" key=\{tm\.id\}/);
+    expect(tmpl).toMatch(/aria-pressed=/);
+  });
+
+  /** The gate reason was a hover-only toast; a disabled button has to say why. */
+  it("puts the generate gate reason on the button, not only in a toast", () => {
+    expect(view).toMatch(/title=\{genGate \?\? undefined\}/);
+  });
+});
