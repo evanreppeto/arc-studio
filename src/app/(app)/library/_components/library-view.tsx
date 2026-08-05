@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { formatByteSize, WORK_STATE_LABEL } from "@/domain";
 
-import { createLibraryFolder, decideLibraryAsset, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, moveLibraryAssets, renameLibraryAsset, renameLibraryFolder, setLibraryAssetArcAvailability, setLibraryAssetTags, uploadLibraryAsset } from "../actions";
+import { createLibraryFolder, decideLibraryAsset, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, moveLibraryAssets, moveLibraryFolder, renameLibraryAsset, renameLibraryFolder, setLibraryAssetArcAvailability, setLibraryAssetTags, uploadLibraryAsset } from "../actions";
 import { addLibraryAssetsToCampaign } from "../actions";
 import { ImportUrlModal } from "./import-url-modal";
 import { NewFolderModal } from "./new-folder-modal";
+import { DRAG_ASSETS, FolderTree, ROOT_FOLDER, type Folder } from "./folder-tree";
+import { RAIL_MAX, RAIL_MIN, TILE_SIZES, getLibraryPrefs, getServerLibraryPrefs, setLibraryPrefs, subscribeLibraryPrefs, type TileSize } from "./library-prefs";
 import { Define } from "../../_components/define";
 import { OverlayPortal } from "../../_components/overlay-portal";
 
@@ -48,7 +50,7 @@ export type Asset = {
   uses: number;
 };
 
-export type Folder = { f: string; name: string; color: string; icon: string; children?: Folder[] };
+export type { Folder } from "./folder-tree";
 
 // Inline SVG placeholders (verbatim from the mockup) — used when no CDN image is set.
 const SC: Record<string, string> = {
@@ -78,6 +80,11 @@ function shapeUse(dim: string): string | null {
 }
 
 const PVL: Record<Prov, string> = { real: "Real", ai: "AI", comp: "Photo + text", upload: "Imported", logo: "Logo", doc: "Doc" };
+const SORTS: readonly (readonly ["recent" | "name" | "used", string])[] = [
+  ["recent", "Recently added"],
+  ["name", "Name (A–Z)"],
+  ["used", "Most used"],
+] as const;
 const IMGBASE = "https://d8j0ntlcm91z4.cloudfront.net/user_3FaOq1cCR2Izxa2haYxVnIrhIBK/";
 const IMG = {
   team: IMGBASE + "hf_20260625_205928_522fa33a-3aa6-4e05-8a8b-db2bd83a688d_min.webp",
@@ -87,19 +94,6 @@ const IMG = {
   face: IMGBASE + "hf_20260625_205931_f15ef3f6-cbb7-40e4-a6d8-addb78e7ccb0_min.webp",
 };
 const SC2IMG: Record<string, string> = { photo: IMG.team, crew: IMG.team, ui: IMG.dash, ai: IMG.gold, ai2: IMG.net, comp: IMG.net, beforeafter: IMG.gold, video: IMG.dash };
-
-const ICONS: Record<string, string> = {
-  grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
-  shield: '<path d="M12 3l8 4v6c0 4-3.5 7-8 8-4.5-1-8-4-8-8V7z"/>',
-  mark: '<path d="M12 3l2.2 6L20 11l-5.8 2L12 19l-2.2-6L4 11l5.8-2z"/>',
-  photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 4"/>',
-  sparkle: '<path d="M11 3l1.6 4.4L17 9l-4.4 1.6L11 15l-1.6-4.4L5 9l4.4-1.6z"/><path d="M18.5 13l.6 1.8 1.9.7-1.9.7-.6 1.8-.6-1.8-1.9-.7 1.9-.7z"/>',
-  layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
-  import: '<path d="M12 3v11M8 10l4 4 4-4"/><path d="M5 20h14"/>',
-  video: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
-  folder: '<path d="M4 7h6l2 2h8v10H4z"/>',
-  chev: '<path d="M9 6l6 6-6 6"/>',
-};
 
 const TREE: Folder[] = [
   { f: "all", name: "All assets", color: "#c8a24a", icon: "grid" },
@@ -187,17 +181,55 @@ function Ico({ d }: { d: string }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} dangerouslySetInnerHTML={{ __html: d }} />;
 }
 
-function descKeys(key: string): string[] {
+/**
+ * A folder plus every folder inside it — what "show me this folder" means.
+ *
+ * Takes the tree it should search. It used to close over the demo constant, so
+ * on a live workspace (whose folders are uuids the constant has never heard of)
+ * every lookup missed and returned just the key: selecting a parent folder
+ * showed its own assets and hid everything filed in its children.
+ */
+function descKeys(tree: Folder[], key: string): string[] {
   const find = (k: string, arr: Folder[]): Folder | null => {
     for (const n of arr) { if (n.f === k) return n; if (n.children) { const r = find(k, n.children); if (r) return r; } }
     return null;
   };
-  const node = find(key, TREE);
+  const node = find(key, tree);
   if (!node) return [key];
   const out: string[] = [];
   const rec = (n: Folder) => { out.push(n.f); n.children?.forEach(rec); };
   rec(node);
   return out;
+}
+
+// Pure tree ops backing the rail's optimistic edits. At module scope because
+// none of them touch component state, and because a folder move is three of
+// them composed (find → remove → add) — inline copies drift.
+function renameInTree(nodes: Folder[], id: string, name: string): Folder[] {
+  return nodes.map((n) => (n.f === id ? { ...n, name } : n.children ? { ...n, children: renameInTree(n.children, id, name) } : n));
+}
+function removeFromTree(nodes: Folder[], id: string): Folder[] {
+  return nodes.filter((n) => n.f !== id).map((n) => (n.children ? { ...n, children: removeFromTree(n.children, id) } : n));
+}
+function addToTree(nodes: Folder[], parentId: string, node: Folder): Folder[] {
+  return nodes.map((n) =>
+    n.f === parentId
+      ? { ...n, children: [...(n.children ?? []), node] }
+      : n.children
+        ? { ...n, children: addToTree(n.children, parentId, node) }
+        : n,
+  );
+}
+function findInTree(nodes: Folder[], id: string): Folder | undefined {
+  for (const n of nodes) {
+    if (n.f === id) return n;
+    const found = n.children ? findInTree(n.children, id) : undefined;
+    if (found) return found;
+  }
+  return undefined;
+}
+function folderName(nodes: Folder[], id: string): string | undefined {
+  return findInTree(nodes, id)?.name;
 }
 
 // The campaigns board is the real create surface (New campaign opens a modal);
@@ -222,15 +254,29 @@ export function LibraryView({
   totalBytes,
   campaigns = [],
 }: { assets?: Asset[]; folders?: Folder[]; live?: boolean; totalBytes?: number; campaigns?: { id: string; name: string }[] } = {}) {
-  const [curFolder, setCurFolder] = useState("all");
+  const [curFolder, setCurFolder] = useState(ROOT_FOLDER);
   const [curKind, setCurKind] = useState("all");
   const [curColl, setCurColl] = useState("all");
-  const [sortBy, setSortBy] = useState<"recent" | "name" | "used">("recent");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  // View shape — how this operator likes the shelf arranged. Persisted per
+  // browser rather than held for the session: rearranging the Library every
+  // time you open it is the kind of small friction that makes a tool feel
+  // borrowed rather than yours.
+  const prefs = useSyncExternalStore(subscribeLibraryPrefs, getLibraryPrefs, getServerLibraryPrefs);
+  const { viewMode, tile, sortBy, expanded } = prefs;
+  const setViewMode = (value: "grid" | "list") => setLibraryPrefs({ viewMode: value });
+  const setSortBy = (value: "recent" | "name" | "used") => setLibraryPrefs({ sortBy: value });
+  const setTile = (value: TileSize) => setLibraryPrefs({ tile: value });
+  const toggleExpanded = (id: string) => setLibraryPrefs({ expanded: { ...expanded, [id]: !expanded[id] } });
+  // While the rail handle is held, the width is local: committing every
+  // pointermove would write localStorage sixty times a second.
+  const [liveRail, setLiveRail] = useState<number | null>(null);
+  const railWidth = liveRail ?? prefs.railWidth;
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Set<number>>(new Set());
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ brand: true, real: true });
   const [detail, setDetail] = useState<Asset | null>(null);
+  const [sortOpen, setSortOpen] = useState(false);
+  /** A drag is in flight, so every folder row can advertise itself as a target. */
+  const [assetDrag, setAssetDrag] = useState(false);
   const [arcState, setArcState] = useState<Record<number, boolean>>({});
   // Assets deleted this session — hidden optimistically before the refetch.
   const [deletedIds, setDeletedIds] = useState<Set<number>>(new Set());
@@ -250,9 +296,6 @@ export function LibraryView({
   const [edits, setEdits] = useState<Record<number, { nm?: string; tags?: string[]; folder?: string }>>({});
   const [renaming, setRenaming] = useState(false);
   const [tagEditing, setTagEditing] = useState(false);
-  // Folder management: which folder is being renamed / pending a delete confirm.
-  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
-  const [folderConfirmDelete, setFolderConfirmDelete] = useState<string | null>(null);
   const [suggDismissed, setSuggDismissed] = useState(false);
   // Folders + uploads created this session. Folders persist via createLibraryFolder;
   // uploads are held client-side (real media-store persistence lands with the
@@ -260,6 +303,8 @@ export function LibraryView({
   const [tree, setTree] = useState<Folder[]>(folders ?? TREE);
   const [uploaded, setUploaded] = useState<Asset[]>([]);
   const [folderOpen, setFolderOpen] = useState(false);
+  /** Which folder the next "New folder" lands in — null is the top level. */
+  const [newFolderParent, setNewFolderParent] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // "Add to campaign" picker. The control used to be a bare link to /campaigns,
@@ -269,6 +314,7 @@ export function LibraryView({
   const [movePickOpen, setMovePickOpen] = useState(false);
   const [moving, setMoving] = useState(false);
   const selbarRef = useRef<HTMLDivElement>(null);
+  const sortRef = useRef<HTMLSpanElement>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -318,7 +364,12 @@ export function LibraryView({
    * counted out and reported rather than silently dropped from the total.
    */
   const moveSelectionToFolder = async (folderId: string | null, folderName: string) => {
-    const chosen = allAssets.filter((a) => sel.has(a.id));
+    await moveAssetsToFolder([...sel], folderId, folderName);
+  };
+
+  const moveAssetsToFolder = async (assetKeys: number[], folderId: string | null, folderName: string) => {
+    const keys = new Set(assetKeys);
+    const chosen = allAssets.filter((a) => keys.has(a.id));
     const ids = chosen.map((a) => a.rid).filter(Boolean) as string[];
     setMovePickOpen(false);
     if (ids.length === 0) {
@@ -373,6 +424,24 @@ export function LibraryView({
     };
   }, [campaignPickOpen, movePickOpen]);
 
+  /** Same dismissal contract for the sort menu — outside click or Escape. */
+  useEffect(() => {
+    if (!sortOpen) return;
+    const close = () => setSortOpen(false);
+    function onDown(e: MouseEvent) {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [sortOpen]);
+
   /**
    * Folder choices for the move picker, flattened depth-first so nesting reads
    * as indentation rather than being lost. "All assets" is the root and maps to
@@ -393,8 +462,8 @@ export function LibraryView({
 
   // Folder counts over the live asset set (base assets + this session's uploads).
   const rcountLive = (f: string): number => {
-    if (f === "all") return allAssets.length;
-    const ks = descKeys(f);
+    if (f === ROOT_FOLDER) return allAssets.length;
+    const ks = descKeys(tree, f);
     return allAssets.filter((a) => ks.includes(a.folder) || a.folder === f).length;
   };
 
@@ -464,16 +533,47 @@ export function LibraryView({
   async function handleCreateFolder(name: string): Promise<{ ok: boolean; error?: string }> {
     const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "folder";
     const key = `${base}-${-(uidRef.current--)}`;
-    setTree((prev) => [...prev, { f: key, name, color: "#88b6d8", icon: "folder" }]);
+    const parent = newFolderParent;
+    const node: Folder = { f: key, name, color: "#88b6d8", icon: "folder" };
+    setTree((prev) => (parent ? addToTree(prev, parent, node) : [...prev, node]));
+    // A subfolder created into a collapsed parent would be invisible the moment
+    // it appeared, which reads as "nothing happened".
+    if (parent && !expanded[parent]) toggleExpanded(parent);
     setNotice(null);
-    const res = await createLibraryFolder(name);
+    const res = await createLibraryFolder(name, parent);
     if (!res.ok) {
-      setTree((prev) => prev.filter((t) => t.f !== key));
+      setTree((prev) => removeFromTree(prev, key));
       return { ok: false, error: res.error };
     }
     setCurFolder(key);
     return { ok: true };
   }
+
+  /**
+   * Re-parent a folder — the drop target in the rail, and its row menu.
+   *
+   * Optimistic like every other tree edit here, and restored from a snapshot on
+   * failure. The server's refusals are surfaced verbatim: "a folder can't be
+   * moved inside itself" is actionable, and a generic failure is not.
+   */
+  const handleMoveFolder = async (folderId: string, parentId: string | null) => {
+    const snapshot = tree;
+    const node = findInTree(tree, folderId);
+    if (!node) return;
+    const detached = removeFromTree(tree, folderId);
+    setTree(parentId ? addToTree(detached, parentId, node) : [...detached, node]);
+    if (parentId && !expanded[parentId]) toggleExpanded(parentId);
+    const res = await moveLibraryFolder({ folderId, parentId }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    if (!res.ok) {
+      setTree(snapshot);
+      setNotice(res.error);
+      return;
+    }
+    if (!res.persisted) setNotice("Connect a workspace to rearrange folders.");
+  };
 
   async function handleImportUrl(value: { url: string; name?: string }): Promise<{ ok: boolean; error?: string }> {
     const clean = value.url.trim();
@@ -531,7 +631,7 @@ export function LibraryView({
   };
 
   const list = useMemo(() => {
-    const dk = curFolder === "all" ? null : descKeys(curFolder);
+    const dk = curFolder === ROOT_FOLDER ? null : descKeys(tree, curFolder);
     let out = allAssets.filter((a) => (curFolder === "all" || dk!.includes(a.folder) || a.folder === curFolder) && (curKind === "all" || a.kind === curKind) && inColl(a));
     out = [...out].sort((x, y) => (sortBy === "name" ? (x.nm < y.nm ? -1 : 1) : sortBy === "used" ? y.uses - x.uses : x.id - y.id));
     const needle = q.trim().toLowerCase();
@@ -576,8 +676,7 @@ export function LibraryView({
       return next;
     });
 
-  const sortLabel = sortBy === "recent" ? "Recent" : sortBy === "name" ? "Name" : "Most used";
-  const cycleSort = () => setSortBy((s) => (s === "recent" ? "name" : s === "name" ? "used" : "recent"));
+  const sortLabel = SORTS.find(([key]) => key === sortBy)?.[1] ?? "Recent";
 
   // Every transient bit of the inspector resets here, so opening asset B never
   // shows a confirm step — or a half-typed risk acknowledgement — left over from A.
@@ -776,18 +875,7 @@ export function LibraryView({
 
   const CHECK = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M5 12l4 4 10-10" /></svg>;
 
-  // Pure tree ops for optimistic folder rename/delete (folders live in `tree`).
-  const renameInTree = (nodes: Folder[], id: string, name: string): Folder[] =>
-    nodes.map((n) => (n.f === id ? { ...n, name } : n.children ? { ...n, children: renameInTree(n.children, id, name) } : n));
-  const removeFromTree = (nodes: Folder[], id: string): Folder[] =>
-    nodes.filter((n) => n.f !== id).map((n) => (n.children ? { ...n, children: removeFromTree(n.children, id) } : n));
-  const folderName = (nodes: Folder[], id: string): string | undefined => {
-    for (const n of nodes) { if (n.f === id) return n.name; if (n.children) { const r = folderName(n.children, id); if (r) return r; } }
-    return undefined;
-  };
-
   const saveFolderRename = (id: string, value: string) => {
-    setRenamingFolder(null);
     const name = value.trim();
     const current = folderName(tree, id);
     if (!name || name === current) return;
@@ -795,70 +883,42 @@ export function LibraryView({
     renameLibraryFolder(id, name).then((res) => { if (!res.ok) { setTree((t) => renameInTree(t, id, current ?? name)); setNotice(res.error); } });
   };
   const handleFolderDelete = (id: string) => {
-    setFolderConfirmDelete(null);
     const snapshot = tree;
     // Assets fall back to "All assets" (FK ON DELETE SET NULL); remove the node here.
     setTree((t) => removeFromTree(t, id));
-    if (curFolder === id) setCurFolder("all");
+    if (curFolder === id) setCurFolder(ROOT_FOLDER);
     deleteLibraryFolder(id).then((res) => { if (!res.ok) { setTree(snapshot); setNotice(res.error); } });
   };
 
-  const renderFolder = (F: Folder, sub = false) => {
-    const hasKids = !!F.children?.length;
-    const open = !!expanded[F.f];
-    const rows = [
-      <div key={F.f} className={`folder${F.f === curFolder ? " on" : ""}`} onClick={() => setCurFolder(F.f)}>
-        <span
-          className={`tchev${hasKids ? (open ? " open" : "") : " leaf"}`}
-          onClick={(e) => { e.stopPropagation(); if (hasKids) setExpanded((p) => ({ ...p, [F.f]: !p[F.f] })); }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} dangerouslySetInnerHTML={{ __html: ICONS.chev }} />
-        </span>
-        <span className="ficon" style={{ background: `${F.color}22`, border: `1px solid ${F.color}55`, color: F.color }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} dangerouslySetInnerHTML={{ __html: ICONS[F.icon] }} />
-        </span>
-        {renamingFolder === F.f ? (
-          <input
-            className="fn-edit"
-            autoFocus
-            defaultValue={F.name}
-            aria-label="Folder name"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") saveFolderRename(F.f, e.currentTarget.value); if (e.key === "Escape") setRenamingFolder(null); }}
-            onBlur={(e) => saveFolderRename(F.f, e.currentTarget.value)}
-          />
-        ) : (
-          // `title` so a name too long even for the wider rail is still
-          // recoverable on hover, rather than being an unreadable dead end.
-          <span className="fn" title={F.name}>{F.name}</span>
-        )}
-        <span className="fc">{rcountLive(F.f)}</span>
-        {F.f !== "all" && renamingFolder !== F.f && (
-          folderConfirmDelete === F.f ? (
-            <span className="fmanage" onClick={(e) => e.stopPropagation()}>
-              <button type="button" className="ficonbtn danger" title="Delete — assets move to All assets" onClick={() => handleFolderDelete(F.f)}>
-                <svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6" /></svg>
-              </button>
-              <button type="button" className="ficonbtn" title="Cancel" onClick={() => setFolderConfirmDelete(null)}>
-                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
-              </button>
-            </span>
-          ) : (
-            <span className="fmanage" onClick={(e) => e.stopPropagation()}>
-              <button type="button" className="ficonbtn" title="Rename folder" onClick={() => { setRenamingFolder(F.f); setFolderConfirmDelete(null); }}>
-                <svg viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z" /></svg>
-              </button>
-              <button type="button" className="ficonbtn" title="Delete folder" onClick={() => setFolderConfirmDelete(F.f)}>
-                <svg viewBox="0 0 24 24"><path d="M4 7h16M6 7l1 13h10l1-13M10 7V4h4v3" /></svg>
-              </button>
-            </span>
-          )
-        )}
-      </div>,
-    ];
-    if (hasKids && open) rows.push(<div key={`${F.f}-kids`} className="tchildren">{F.children!.map((c) => renderFolder(c, true))}</div>);
-    return sub ? <div key={`${F.f}-w`}>{rows}</div> : <div key={`${F.f}-w`}>{rows}</div>;
+  const openNewFolder = (parentId: string | null) => {
+    setNewFolderParent(parentId);
+    setFolderOpen(true);
   };
+
+  /**
+   * The rail's drop handler. Assets dropped on a folder go through the same
+   * org-scoped move the selection bar uses — one path, so a drag can't quietly
+   * become a second way to file media that skips the workspace check.
+   */
+  const handleDropAssets = (assetIds: number[], folderId: string | null) => {
+    setAssetDrag(false);
+    void moveAssetsToFolder(assetIds, folderId, folderId ? folderName(tree, folderId) ?? "that folder" : "All assets");
+  };
+
+  /** Begin dragging an asset. A drag that starts on a selected item carries the
+   *  whole selection; one that starts elsewhere carries just that item — the
+   *  behaviour every file manager has, and the one people already expect. */
+  const assetDragProps = (a: Asset) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      const ids = sel.has(a.id) ? [...sel] : [a.id];
+      e.dataTransfer.setData(DRAG_ASSETS, JSON.stringify(ids));
+      e.dataTransfer.effectAllowed = "move";
+      setAssetDrag(true);
+    },
+    onDragEnd: () => setAssetDrag(false),
+  });
+
 
   // Arc-approved assets that have never been used in a campaign. Counted over the
   // live set (not the demo constant) so the nudge can't claim assets the library
@@ -921,16 +981,67 @@ export function LibraryView({
         {totalBytes != null ? <span className="ostat"><b>{formatByteSize(totalBytes)}</b> stored</span> : null}
       </div>
 
-      <div className={`lib${detail ? " detail" : ""}${selmode ? " selmode" : ""}`}>
+      <div
+        className={`lib${detail ? " detail" : ""}${selmode ? " selmode" : ""}${assetDrag ? " dragging" : ""}`}
+        style={{ ["--rail" as string]: `${railWidth}px` }}
+      >
         <aside className="tree">
-          <div className="treeh">Folders <span className="add" title="New folder" onClick={() => setFolderOpen(true)}>＋</span></div>
-          <div>
-            {renderFolder(tree[0])}
-            <div className="treesec" />
-            {tree.slice(1).map((F) => renderFolder(F))}
-            <div className="newfolder" onClick={() => setFolderOpen(true)}><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>New folder</div>
-          </div>
+          <FolderTree
+            tree={tree}
+            current={curFolder}
+            onSelect={setCurFolder}
+            countOf={rcountLive}
+            expanded={expanded}
+            onToggleExpanded={toggleExpanded}
+            onRename={saveFolderRename}
+            onDelete={handleFolderDelete}
+            onNewFolder={openNewFolder}
+            onMoveFolder={(id, parentId) => void handleMoveFolder(id, parentId)}
+            onDropAssets={handleDropAssets}
+            dragging={assetDrag}
+          />
         </aside>
+
+        {/* The rail's width is the thing standing between a folder called
+            "Before & After / Proof" and reading as "Before & After / Pr…", so
+            it is the operator's to set, not a constant someone picked once. */}
+        <div
+          className="railgrip"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the folder rail"
+          aria-valuenow={railWidth}
+          aria-valuemin={RAIL_MIN}
+          aria-valuemax={RAIL_MAX}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 32 : 8;
+            if (e.key === "ArrowLeft") { e.preventDefault(); setLibraryPrefs({ railWidth: railWidth - step }); }
+            if (e.key === "ArrowRight") { e.preventDefault(); setLibraryPrefs({ railWidth: railWidth + step }); }
+          }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            const el = e.currentTarget;
+            el.setPointerCapture(e.pointerId);
+            const startX = e.clientX;
+            const startWidth = railWidth;
+            let width = startWidth;
+            const onMove = (move: PointerEvent) => {
+              width = Math.min(RAIL_MAX, Math.max(RAIL_MIN, startWidth + (move.clientX - startX)));
+              setLiveRail(width);
+            };
+            const onUp = (up: PointerEvent) => {
+              el.releasePointerCapture(up.pointerId);
+              el.removeEventListener("pointermove", onMove);
+              el.removeEventListener("pointerup", onUp);
+              setLiveRail(null);
+              setLibraryPrefs({ railWidth: width });
+            };
+            el.addEventListener("pointermove", onMove);
+            el.addEventListener("pointerup", onUp);
+          }}
+          onDoubleClick={() => setLibraryPrefs({ railWidth: 276 })}
+        />
 
         <section className="gallery">
           <div className="gtoolbar">
@@ -964,8 +1075,56 @@ export function LibraryView({
               </span>
               {allShownSelected ? "Clear" : `Select all${list.length ? ` (${list.length})` : ""}`}
             </button>
-            <span className="sortbtn" onClick={cycleSort}><svg viewBox="0 0 24 24"><path d="M7 4v16M7 20l-3-3M7 4l3 3M17 20V4M17 4l3 3M17 20l-3-3" /></svg>{sortLabel}</span>
-            <span className="selwrap">
+            {/* Was a button that cycled Recent → Name → Most used with nothing
+                to say what came next, so finding a sort meant clicking until it
+                appeared. The options are simply listed. */}
+            <span className="fbtn-wrap" ref={sortRef}>
+              <button type="button" className="sortbtn" aria-haspopup="menu" aria-expanded={sortOpen} onClick={() => setSortOpen((o) => !o)}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 4l3 3M17 20V4M17 4l3 3M17 20l-3-3" /></svg>
+                {sortLabel}
+              </button>
+              {sortOpen && (
+                <div className="fmenu fmenu-right" role="menu">
+                  <span className="fmenu-hd">Sort by</span>
+                  {SORTS.map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={sortBy === key}
+                      className={`fmenu-item${sortBy === key ? " on" : ""}`}
+                      onClick={() => { setSortBy(key); setSortOpen(false); }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
+            {/* Tile size. A shelf of 400 assets and a shelf of 8 do not want the
+                same tile, and which one you are looking at changes hour to hour. */}
+            {viewMode === "grid" ? (
+              <span className="selwrap" role="group" aria-label="Tile size">
+                {(Object.keys(TILE_SIZES) as TileSize[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`sb${tile === key ? " on" : ""}`}
+                    aria-pressed={tile === key}
+                    aria-label={`${TILE_SIZES[key].label} tiles`}
+                    title={`${TILE_SIZES[key].label} tiles`}
+                    onClick={() => setTile(key)}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="4" width={key === "s" ? 5 : key === "m" ? 7 : 9} height={key === "s" ? 5 : key === "m" ? 7 : 9} rx="1.4" />
+                      <rect x={key === "s" ? 11 : key === "m" ? 13 : 15} y="4" width={key === "s" ? 5 : key === "m" ? 7 : 9} height={key === "s" ? 5 : key === "m" ? 7 : 9} rx="1.4" />
+                      <rect x="4" y={key === "s" ? 11 : key === "m" ? 13 : 15} width={key === "s" ? 5 : key === "m" ? 7 : 9} height={key === "s" ? 5 : key === "m" ? 7 : 9} rx="1.4" />
+                    </svg>
+                  </button>
+                ))}
+              </span>
+            ) : null}
+            <span className="selwrap" role="group" aria-label="View">
               <button type="button" className={`sb${viewMode === "grid" ? " on" : ""}`} aria-label="Grid view" aria-pressed={viewMode === "grid"} title="Grid" onClick={() => setViewMode("grid")}><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></button>
               <button type="button" className={`sb${viewMode === "list" ? " on" : ""}`} aria-label="List view" aria-pressed={viewMode === "list"} title="List" onClick={() => setViewMode("list")}><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg></button>
             </span>
@@ -1059,9 +1218,18 @@ export function LibraryView({
                 <div style={{ padding: "44px 16px", textAlign: "center", color: "var(--muted)", fontSize: "12.5px" }}>No assets match “{q}”</div>
               )
             ) : viewMode === "grid" ? (
-              <div className="agrid">
+              <div
+                className="agrid"
+                style={{ ["--tile" as string]: `${TILE_SIZES[tile].min}px`, ["--thumb" as string]: `${TILE_SIZES[tile].thumb}px` }}
+              >
                 {list.map((a) => (
-                  <div key={a.id} className={`acard${sel.has(a.id) ? " sel" : ""}`} onClick={() => openDetail(a)}>
+                  <div
+                    key={a.id}
+                    className={`acard${sel.has(a.id) ? " sel" : ""}`}
+                    title={a.nm}
+                    onClick={() => openDetail(a)}
+                    {...assetDragProps(a)}
+                  >
                     <div className="athumb">
                       <ThumbMedia a={a} />
                       {a.kind === "video" && <span className="vbadge"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></span>}
@@ -1104,25 +1272,38 @@ export function LibraryView({
                         </div>
                       </div>
                     </div>
-                    <div className="ainfo">
-                      <div className="an"><span className={`pdot pv-${a.pv}`} title={`${PVL[a.pv]} — where this came from`} />{a.nm}</div>
-                      <div className="am">
-                        <span>{PVL[a.pv]}</span>
-                        {shapeUse(a.dim.split(" · ")[0]) ? <><span>·</span><span title={a.dim.split(" · ")[0]}>{shapeUse(a.dim.split(" · ")[0])}</span></> : null}
-                        {isArc(a) ? <span className="arcok"><Ico d='<path d="M5 12l4 4 10-10"/>' /> Arc</span> : a.uses === 0 ? <span className="unused">unused</span> : null}
+                    {/* The info block is anchored to the bottom of a
+                        fixed-height well, so on hover the name can un-clamp and
+                        grow UP over the thumbnail without the card changing
+                        size or the grid reflowing. Two clipped lines were the
+                        whole story an operator got — "Before / after — storm r…"
+                        and "Insurance-claim one-pa…" are not names you can tell
+                        apart. */}
+                    <div className="ainfowell">
+                      <div className="ainfo">
+                        <div className="an"><span className={`pdot pv-${a.pv}`} title={`${PVL[a.pv]} — where this came from`} />{a.nm}</div>
+                        <div className="am">
+                          <span>{PVL[a.pv]}</span>
+                          {shapeUse(a.dim.split(" · ")[0]) ? <><span>·</span><span title={a.dim.split(" · ")[0]}>{shapeUse(a.dim.split(" · ")[0])}</span></> : null}
+                          {isArc(a) ? <span className="arcok"><Ico d='<path d="M5 12l4 4 10-10"/>' /> Arc</span> : a.uses === 0 ? <span className="unused">unused</span> : null}
+                        </div>
                       </div>
                     </div>
                   </div>
                 ))}
-                <div className="uptile"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><div className="ut">Upload assets</div><div className="ud">or drag files here</div></div>
+                <button type="button" className="uptile" onClick={() => fileRef.current?.click()}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg>
+                  <span className="ut">Upload assets</span>
+                  <span className="ud">{curFolder === ROOT_FOLDER ? "or drag files here" : `into ${folderName(tree, curFolder) ?? "this folder"}`}</span>
+                </button>
               </div>
             ) : (
               <table className="ltbl">
-                <thead><tr><th>Asset</th><th>Provenance</th><th>Kind</th><th>Dimensions</th><th>Arc</th><th>Used in</th><th>Added</th></tr></thead>
+                <thead><tr><th className="lcolname">Asset</th><th>Provenance</th><th>Kind</th><th>Dimensions</th><th>Size</th><th>Arc</th><th>Used in</th><th>Added</th><th className="lcolact"><span className="lvh">Actions</span></th></tr></thead>
                 <tbody>
                   {list.map((a) => (
-                    <tr key={a.id} className={sel.has(a.id) ? "sel" : ""} onClick={() => openDetail(a)}>
-                      <td>
+                    <tr key={a.id} className={sel.has(a.id) ? "sel" : ""} onClick={() => openDetail(a)} {...assetDragProps(a)}>
+                      <td className="lcolname">
                         <div className="lname">
                           <button
                             type="button"
@@ -1133,15 +1314,49 @@ export function LibraryView({
                             onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}
                           >{sel.has(a.id) ? CHECK : null}</button>
                           <span className="lthumb"><ThumbMedia a={a} /></span>
-                          <span className="ln">{a.nm}</span>
+                          {/* The list is where you go when the grid's tiles are
+                              too small to read a name — so this one wraps to
+                              two lines rather than running off the column. */}
+                          <span className="ln" title={a.nm}>{a.nm}</span>
                         </div>
                       </td>
                       <td><span className={`pvtag pvc-${a.pv}`}><span className={`pdot pv-${a.pv}`} />{PVL[a.pv]}</span></td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: "11px" }}>{a.kind}</td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: "11px" }}>{a.dim}</td>
+                      <td className="lmono">{a.kind}</td>
+                      <td className="lmono">{a.dim}</td>
+                      <td className="lmono">{a.size}</td>
                       <td>{isArc(a) ? <span className="arcok" style={{ color: "var(--ok-text)", fontSize: "11px" }}>✓ Arc</span> : a.risk ? <span style={{ color: "var(--warn-text)", fontSize: "11px" }}>review</span> : <span style={{ color: "var(--muted)", fontSize: "11px" }}>—</span>}</td>
-                      <td style={{ fontSize: "11px" }}>{a.uses ? `${a.used[0]}${a.uses > 1 ? ` +${a.uses - 1}` : ""}` : <span style={{ color: "var(--muted)" }}>unused</span>}</td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: "10.5px", color: "var(--muted)" }}>{a.added}</td>
+                      <td className="lcolused" title={a.used.join(", ")}>{a.uses ? `${a.used[0]}${a.uses > 1 ? ` +${a.uses - 1}` : ""}` : <span style={{ color: "var(--muted)" }}>unused</span>}</td>
+                      <td className="lmono" style={{ color: "var(--muted)" }}>{a.added}</td>
+                      {/* The same three actions the grid's tiles carry. The list
+                          used to offer none of them, so choosing the readable
+                          view meant giving up every per-asset control. */}
+                      <td className="lcolact">
+                        <span className="lacts">
+                          <button
+                            type="button"
+                            aria-label={`Add ${a.nm} to a campaign`}
+                            title="Add to campaign"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (campaigns.length === 0) { setNotice("Create a campaign first, then you can add media to it."); return; }
+                              setSel(new Set([a.id]));
+                              setCampaignPickOpen(true);
+                            }}
+                          ><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /></button>
+                          <button
+                            type="button"
+                            aria-label={`Edit ${a.nm} in Studio`}
+                            title="Edit in Studio"
+                            onClick={(e) => { e.stopPropagation(); router.push(a_studioHref(a)); }}
+                          ><Ico d='<path d="M4 5h16v14H4z"/><path d="M4 14l5-4 4 3 3-2 4 3"/>' /></button>
+                          <button
+                            type="button"
+                            aria-label={`Open ${a.nm}`}
+                            title="Open"
+                            onClick={(e) => { e.stopPropagation(); openDetail(a); }}
+                          ><Ico d='<path d="M7 17L17 7M9 7h8v8"/>' /></button>
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1318,10 +1533,11 @@ export function LibraryView({
       )}
 
       <NewFolderModal
-        key={folderOpen ? "open" : "closed"}
+        key={folderOpen ? `open-${newFolderParent ?? "root"}` : "closed"}
         open={folderOpen}
-        onClose={() => setFolderOpen(false)}
+        onClose={() => { setFolderOpen(false); setNewFolderParent(null); }}
         onSubmit={handleCreateFolder}
+        parentName={newFolderParent ? folderName(tree, newFolderParent) ?? null : null}
       />
 
       <ImportUrlModal

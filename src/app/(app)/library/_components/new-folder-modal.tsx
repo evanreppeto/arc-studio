@@ -8,10 +8,15 @@ export function NewFolderModal({
   open,
   onClose,
   onSubmit,
+  parentName = null,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (name: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Set when the folder is being created inside another one — the rail's
+   *  per-folder "New subfolder". Named so the dialog says where it will land
+   *  rather than making the operator find out afterwards. */
+  parentName?: string | null;
 }) {
   const [name, setName] = useState("");
   const [pending, setPending] = useState(false);
@@ -37,7 +42,7 @@ export function NewFolderModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="New folder"
+      title={parentName ? `New folder in ${parentName}` : "New folder"}
       description="Organize your media store. Folders are internal — nothing here goes outbound."
       width={420}
       footer={

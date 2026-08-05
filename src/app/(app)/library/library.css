@@ -32,42 +32,57 @@
 .arc-library .ospacer { margin-left: auto; }
 
 /* body split */
-/* 216px left folder names ~97px after the chevron, icon, gaps and count — which
-   truncated "Logos & marketing" to "Logos & mar…" and "Photo + text mockups" to
-   "Photo + text moc…". The names ARE the navigation; widening the rail is the
-   cheapest way to make them readable. */
-.arc-library .lib { flex: 1; min-height: 0; display: grid; grid-template-columns: 248px minmax(0, 1fr); overflow: hidden; transition: grid-template-columns 0.2s var(--ease); }
-.arc-library .lib.detail { grid-template-columns: 248px minmax(0, 1fr) 308px; }
+/* A fixed 216px left folder names ~97px after the chevron, icon, gaps and count,
+   which truncated "Logos & marketing" to "Logos & mar…". Widening the default
+   helped; letting the operator set it is the actual fix, because how long the
+   names are is a property of THEIR workspace, not of this stylesheet. `--rail`
+   is written by the resize handle and persisted per browser. */
+.arc-library .lib { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail, 276px) 0 minmax(0, 1fr); overflow: hidden; }
+.arc-library .lib.detail { grid-template-columns: var(--rail, 276px) 0 minmax(0, 1fr) 308px; }
 .arc-library .lib.detail .inspector { display: flex; }
 
-/* Phones: no room for the folder rail + inspector alongside the grid. Collapse
-   to a single page-scrolling column — the folder tree is hidden (folder nav
-   moves to the header controls), the grid takes the full width, and an open
-   inspector stacks beneath it. */
-@media (max-width: 820px) {
-  .arc-library { overflow: auto; }
-  .arc-library .lib,
-  .arc-library .lib.detail { display: block; overflow: visible; grid-template-columns: 1fr; }
-  .arc-library .tree { display: none; }
-  .arc-library .gallery { overflow: visible; }
-  .arc-library .gridscroll { overflow: visible; padding: 14px 16px 36px; }
-  .arc-library .inspector { border-left: 0; border-top: 1px solid var(--line-2); }
-  /* Suggestion banner: text keeps full-width lines; buttons wrap beneath. */
-  .arc-library .arcsugg { flex-wrap: wrap; align-items: flex-start; }
-  .arc-library .arcsugg .at { flex: 1 1 180px; }
-  .arc-library .arcsugg .ab { margin-left: 0; width: 100%; }
-}
+/* The rail's resize handle. Zero-width in the grid so dragging it never nudges
+   the layout; the hit area is drawn either side of the border it sits on. */
+.arc-library .railgrip { position: relative; width: 0; cursor: col-resize; z-index: 4; }
+.arc-library .railgrip::before { content: ""; position: absolute; top: 0; bottom: 0; left: -4px; width: 9px; }
+.arc-library .railgrip::after { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: transparent; transition: background 0.14s; }
+.arc-library .railgrip:hover::after, .arc-library .railgrip:active::after { background: var(--accent); }
+.arc-library .railgrip:focus-visible { outline: none; }
+.arc-library .railgrip:focus-visible::after { background: var(--accent); }
 
 /* folder tree */
-.arc-library .tree { border-right: 1px solid var(--line); min-height: 0; overflow: auto; padding: 14px 12px; }
-.arc-library .treeh { font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; padding: 0 8px 8px; display: flex; justify-content: space-between; align-items: center; }
-.arc-library .treeh .add { color: var(--muted); cursor: pointer; }
-.arc-library .treeh .add:hover { color: var(--text-2); }
-.arc-library .folder { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 8px; cursor: pointer; color: var(--text-2); font-size: 13px; transition: 0.14s; position: relative; }
+/* The rail is its own column: a pinned header, a scrolling tree, and a pinned
+   "New folder" at the foot — so the way to add one doesn't scroll out of reach
+   the moment a workspace has more than a screenful of folders. */
+.arc-library .tree { border-right: 1px solid var(--line); min-height: 0; min-width: 0; overflow: hidden; padding: 14px 12px 12px; display: flex; flex-direction: column; }
+.arc-library .treescroll { flex: 1; min-height: 0; overflow: auto; margin: 0 -4px; padding: 0 4px; }
+.arc-library .treeh { font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; padding: 0 4px 9px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.arc-library .treeadd { width: 22px; height: 22px; margin: -4px -4px -4px 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: 0.14s; }
+.arc-library .treeadd:hover { border-color: var(--accent-border); color: var(--accent-contrast); background: var(--accent-soft); }
+.arc-library .treeadd svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+.arc-library .folder { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 8px; cursor: pointer; color: var(--text-2); font-size: 13px; transition: background 0.14s, color 0.14s, box-shadow 0.14s; position: relative; user-select: none; }
 .arc-library .folder:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
+.arc-library .folder:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .arc-library .folder.on { background: var(--accent-soft); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+/* Dragged out of place — the row it came from stays visible but recedes, so the
+   tree doesn't appear to lose a folder mid-gesture. */
+.arc-library .folder.lifted { opacity: 0.45; }
+/* A live drop target. The dashed inset ring reads as "this will accept", and it
+   is drawn INSIDE the row so a nested row's ring can't be mistaken for its
+   parent's. */
+.arc-library .folder.dropinto { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-border); }
+.arc-library .folder.dropinto .ficon { border-color: var(--accent) !important; }
+/* Everything that could take the drop says so faintly while one is in flight —
+   otherwise the only way to learn a folder is a target is to guess. */
+.arc-library .treescroll.dragging .folder.droppable { background: rgba(255, 255, 255, 0.02); box-shadow: inset 0 0 0 1px var(--line-2); }
+.arc-library .treescroll.dragging .folder.droppable.dropinto { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-border); }
+/* And the rail as a whole reads as live while media is in the air, so it is
+   obvious the drag has somewhere to go. */
+.arc-library .lib.dragging .tree { background: color-mix(in srgb, var(--accent-soft) 32%, transparent); }
+
 /* 25 -> 22: three pixels back to the name, and the icon still reads at a glance. */
-.arc-library .folder .ficon { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; flex-shrink: 0; transition: transform 0.14s var(--ease); }
+.arc-library .folder .ficon { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; flex-shrink: 0; transition: transform 0.14s var(--ease), border-color 0.14s; }
 .arc-library .folder:hover .ficon { transform: scale(1.06); }
 .arc-library .folder .ficon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 /* The name gets every spare pixel and carries the weight — it is what you read
@@ -75,30 +90,58 @@
 .arc-library .folder .fn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; letter-spacing: -0.005em; }
 .arc-library .folder.on .fn { font-weight: 600; }
 /* Tabular so counts line up down the column, and `flex: none` so a 3-digit count
-   never steals width from the name. */
-.arc-library .folder .fc { margin-left: auto; flex: none; font-family: var(--mono); font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--muted); transition: color 0.14s; }
+   never steals width from the name. It STAYS on hover — the manage control has
+   its own reserved slot beside it, rather than swapping the number out from
+   under the pointer that is reading it. */
+.arc-library .folder .fc { flex: none; font-family: var(--mono); font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--muted); transition: color 0.14s; }
 .arc-library .folder:hover .fc, .arc-library .folder.on .fc { color: var(--text-2); }
-.arc-library .folder .fmanage { display: none; margin-left: auto; flex: none; gap: 1px; align-items: center; }
-.arc-library .folder:hover .fmanage { display: flex; }
-.arc-library .folder:hover .fc { display: none; }
-.arc-library .folder .ficonbtn { width: 22px; height: 22px; border-radius: 6px; border: none; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: 0.12s; }
-.arc-library .folder .ficonbtn:hover { background: var(--panel); color: var(--text); }
-.arc-library .folder .ficonbtn.danger:hover { color: var(--red-text); background: var(--red-soft); }
-.arc-library .folder .ficonbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+/* Deliberately NOT `.fmenu` — that class is the app's filter/sort popover
+   (arc-app.css), and naming a 20px row button after it made the button
+   `position: absolute; width: 200px` and drop out of its own row. */
+.arc-library .folder .frowbtn { flex: none; width: 20px; height: 20px; margin-right: -3px; padding: 0; border: none; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity 0.14s, background 0.12s, color 0.12s; }
+.arc-library .folder:hover .frowbtn, .arc-library .folder:focus-within .frowbtn, .arc-library .folder .frowbtn[aria-expanded="true"] { opacity: 1; }
+.arc-library .folder .frowbtn:hover, .arc-library .folder .frowbtn[aria-expanded="true"] { background: var(--panel); color: var(--text); }
+.arc-library .folder .frowbtn:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; }
+.arc-library .folder .frowbtn svg { width: 15px; height: 15px; fill: currentColor; stroke: none; }
 .arc-library .folder .fn-edit { flex: 1; min-width: 0; padding: 3px 7px; border: 1px solid var(--accent-border); border-radius: 6px; background: var(--inset); color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
-.arc-library .treesec { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.arc-library .treesec { margin: 6px 0 8px; border-top: 1px solid var(--line); }
 .arc-library .tchev { width: 15px; height: 15px; display: grid; place-items: center; color: var(--muted); flex-shrink: 0; cursor: pointer; border-radius: 4px; transition: transform 0.15s var(--ease), background 0.14s, color 0.14s; }
 .arc-library .tchev:hover { background: rgba(255, 255, 255, 0.07); color: var(--text-2); }
 .arc-library .tchev.open { transform: rotate(90deg); }
 .arc-library .tchev.leaf { visibility: hidden; cursor: default; }
 .arc-library .tchev svg { width: 9px; height: 9px; stroke: currentColor; fill: none; stroke-width: 2.4; }
-/* A child folder should be obviously a child. The old 1px --line-2 rule at this
-   indent was almost invisible against the rail, so nesting read as a flat list
-   with odd spacing. */
-.arc-library .tchildren { margin-left: 18px; padding-left: 10px; border-left: 1px solid var(--line-3, var(--line-2)); }
-.arc-library .newfolder { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border: 1px dashed var(--line-3); border-radius: 8px; color: var(--muted); font-size: 11.5px; cursor: pointer; margin-top: 10px; transition: 0.14s; }
+/* A child folder should be obviously a child. The guide line is drawn by the
+   group wrapper; the row's own left padding carries the indent, so a deeply
+   nested name still gets the rail's full width minus its depth. */
+.arc-library .tchildren { margin-left: 17px; border-left: 1px solid var(--line-3, var(--line-2)); }
+.arc-library .tchildren .folder { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+
+.arc-library .newfolder { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 8px 9px; border: 1px dashed var(--line-3); border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; margin-top: 10px; flex-shrink: 0; transition: 0.14s; }
 .arc-library .newfolder:hover { border-color: var(--accent-border); color: var(--text-2); background: var(--accent-soft); }
 .arc-library .newfolder svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+/* The per-folder row menu reuses the app's `.fmenu` popover (arc-app.css) —
+   same panel, radius, shadow and `.fmenu-item` rows the CRM toolbar menus use,
+   so there is one menu in this app rather than two that nearly match. Only its
+   position differs: it is portaled out of the rail (which scrolls and clips)
+   and placed against the trigger's own rect by an inline `position: fixed`,
+   which beats the stylesheet's `absolute`. These rules are the pieces the base
+   component doesn't have. Scoped to `.arc-app`, not `.arc-library`, because the
+   portal host is a child of the shell. */
+.arc-app .fmenu-hd { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-app .fmenu-item.danger { color: var(--red-text); }
+.arc-app .fmenu-item.danger:hover { background: var(--red-soft); }
+.arc-app .fmenu-item kbd { font-family: var(--mono); font-size: 9.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 4px; }
+/* The destination list scrolls inside the menu rather than making the whole
+   menu scroll — a workspace with a dozen folders would otherwise push Delete
+   below the fold, and an action you have to scroll to find reads as missing. */
+.arc-app .fmenu-sub { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 3px; max-height: 178px; overflow-y: auto; }
+.arc-app .fmenu-warn { display: block; font-size: 11.5px; line-height: 1.45; color: var(--red-text); padding: 8px 8px 10px; }
+.arc-app .fmenu-confirm { display: flex; gap: 7px; padding: 0 4px 3px; }
+.arc-app .fmenu-confirm .gbtn { flex: 1; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.arc-app .fmenu-confirm .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
+.arc-app .fmenu-confirm .gbtn.danger { border-color: #a5321f; background: linear-gradient(180deg, #d0503a, #b83b26 55%, #9c2f1d); color: #fff; }
+.arc-app .fmenu-confirm .gbtn.danger:hover { filter: brightness(1.05); }
 
 /* gallery */
 .arc-library .gallery { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
@@ -120,8 +163,8 @@
 .arc-library .selwrap .sb:hover { color: var(--text-2); }
 .arc-library .selwrap .sb.on { background: var(--panel); color: var(--accent-contrast); }
 .arc-library .selwrap .sb svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
-.arc-library .sortbtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text-2); font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.14s; }
-.arc-library .sortbtn:hover { border-color: var(--accent-border); color: var(--text); }
+.arc-library .sortbtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text-2); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.14s; white-space: nowrap; }
+.arc-library .sortbtn:hover, .arc-library .sortbtn[aria-expanded="true"] { border-color: var(--accent-border); color: var(--text); }
 .arc-library .sortbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; opacity: 0.8; }
 
 /* selection bar */
@@ -151,16 +194,17 @@
 .arc-library .miniabtn.ghost:hover { color: var(--text-2); }
 
 /* grid */
-.arc-library .agrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); gap: 14px; }
-.arc-library .uptile { border: 1px dashed var(--line-3); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 178px; cursor: pointer; color: var(--muted); transition: 0.15s; text-align: center; padding: 14px; }
+/* `--tile` and `--thumb` are set by the tile-size control in the toolbar. */
+.arc-library .agrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile, 172px), 1fr)); gap: 14px; align-items: start; }
+.arc-library .uptile { border: 1px dashed var(--line-3); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: calc(var(--thumb, 134px) + 50px); width: 100%; background: transparent; font: inherit; cursor: pointer; color: var(--muted); transition: 0.15s; text-align: center; padding: 14px; }
 .arc-library .uptile:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text-2); }
 .arc-library .uptile svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.6; }
 .arc-library .uptile .ut { font-size: 12px; font-weight: 600; }
-.arc-library .uptile .ud { font-size: 10px; line-height: 1.4; }
-.arc-library .acard { border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; background: var(--panel); cursor: pointer; transition: border-color 0.15s, transform 0.15s var(--ease), box-shadow 0.15s; }
+.arc-library .uptile .ud { font-size: 10px; line-height: 1.4; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.arc-library .acard { position: relative; border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; background: var(--panel); cursor: pointer; transition: border-color 0.15s; }
 .arc-library .acard:hover { border-color: var(--accent-border); }
 .arc-library .acard.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
-.arc-library .athumb { position: relative; height: 128px; background: #222a30; overflow: hidden; }
+.arc-library .athumb { position: relative; height: var(--thumb, 134px); background: #222a30; overflow: hidden; }
 .arc-library .athumb > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .arc-library .athumb .vbadge { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(16, 16, 19, 0.5); border: 1px solid rgba(255, 255, 255, 0.3); display: grid; place-items: center; backdrop-filter: blur(3px); transition: 0.16s; }
 .arc-library .athumb .vbadge svg { position: static; width: 16px; height: 16px; fill: #fff; }
@@ -177,12 +221,21 @@
 .arc-library .ov .qa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-library .athumb .risk { position: absolute; bottom: 8px; left: 8px; width: 18px; height: 18px; border-radius: 5px; background: var(--warn-soft); border: 1px solid var(--warn-border); display: grid; place-items: center; z-index: 2; }
 .arc-library .athumb .risk svg { position: static; width: 11px; height: 11px; stroke: var(--warn-text); fill: none; stroke-width: 2; }
-.arc-library .ainfo { padding: 9px 11px; }
-/* One hard-clipped line turned most names into "Before / after — storm r…" and
-   "Insurance-claim one-pa…" — you could not tell two assets apart without
-   opening them. Two lines fit nearly every real name; the dot stays on the
-   first line via float rather than flex, which can't wrap a clamped block. */
-.arc-library .ainfo .an { font-size: 12px; font-weight: 600; line-height: 1.35; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* The name well. Fixed height, and the info block is anchored to its BOTTOM —
+   so hovering can un-clamp the name and let it grow upward over the thumbnail
+   without the card resizing or the grid reflowing under the pointer. Two
+   clipped lines were all an operator ever got ("Before / after — storm r…",
+   "Insurance-claim one-pa…"), which is not enough to tell two assets apart. */
+/* 84px is the tallest the block gets naturally — a two-line name over a
+   two-line meta row, measured across the whole set. Pinning it means every card
+   in a row is the same height whatever its name does. */
+.arc-library .ainfowell { position: relative; height: 84px; }
+.arc-library .ainfo { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; overflow: hidden; padding: 9px 11px; background: var(--panel); }
+.arc-library .acard:hover .ainfo, .arc-library .acard:focus-within .ainfo { height: auto; min-height: 100%; z-index: 3; border-top: 1px solid var(--line-2); }
+.arc-library .ainfo .an { font-size: 12px; font-weight: 600; line-height: 1.35; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+/* Six lines holds every realistic file name, including the "IMG_20260731_…"
+   camera exports that are pure numbers and wrap badly. */
+.arc-library .acard:hover .ainfo .an, .arc-library .acard:focus-within .ainfo .an { -webkit-line-clamp: 6; }
 .arc-library .ainfo .an .pdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; float: left; margin: 5px 7px 0 0; }
 /* Fixed two-line box: the meta used to wrap to 1-3 lines depending on how many
    chips an asset had, so cards in the same row ended up different heights and
@@ -193,15 +246,39 @@
 
 /* list view */
 .arc-library .ltbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
-.arc-library .ltbl thead th { text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding: 9px 12px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
-.arc-library .ltbl tbody td { padding: 9px 12px; border-bottom: 1px solid var(--line); color: var(--text-2); vertical-align: middle; }
+/* 12px -> 9px of side padding. Nine columns each paid for it twice, which was
+   54px the asset-name column wanted more than the gutters did. */
+.arc-library .ltbl thead th { text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding: 9px 9px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.arc-library .ltbl tbody td { padding: 9px 9px; border-bottom: 1px solid var(--line); color: var(--text-2); vertical-align: middle; }
 .arc-library .ltbl tbody tr { cursor: pointer; transition: background 0.12s; }
 .arc-library .ltbl tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
 .arc-library .ltbl tbody tr.sel { background: var(--accent-soft); }
-.arc-library .lthumb { width: 40px; height: 30px; border-radius: 6px; overflow: hidden; position: relative; border: 1px solid var(--line-2); }
+.arc-library .lthumb { width: 40px; height: 30px; border-radius: 6px; overflow: hidden; position: relative; border: 1px solid var(--line-2); flex: none; }
 .arc-library .lthumb > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.arc-library .lname { display: flex; align-items: center; gap: 10px; }
-.arc-library .lname .ln { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.arc-library .lname { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* The list view is where you go BECAUSE the tiles were too small to read a
+   name, so this one is allowed the space: it takes the widest column and wraps
+   to two lines instead of running under the next cell. */
+.arc-library .lname .ln { font-size: 12.5px; font-weight: 600; color: var(--text); min-width: 0; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+/* An auto-layout table hands width to whichever column refuses to wrap, and
+   seven of the eight here are nowrap monospace. The percentage alone lost that
+   argument, so the name column — the one anybody is actually reading — states a
+   floor in pixels. */
+.arc-library .ltbl .lcolname { width: 36%; min-width: 224px; }
+/* Campaign names wrapped to three lines and took the width the asset name
+   needed. One line, elided, full text on hover. */
+.arc-library .ltbl .lcolused { font-size: 11px; max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-library .ltbl .lmono { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.arc-library .ltbl .lcolact { width: 96px; }
+.arc-library .lvh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* The per-row actions the list never had — choosing the readable view used to
+   mean giving up every per-asset control the tiles carry. */
+.arc-library .lacts { display: flex; gap: 4px; justify-content: flex-end; opacity: 0; transition: opacity 0.14s; }
+.arc-library .ltbl tbody tr:hover .lacts, .arc-library .ltbl tbody tr:focus-within .lacts { opacity: 1; }
+.arc-library .lacts button { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: 0.13s; }
+.arc-library .lacts button:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
+.arc-library .lacts button:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; }
+.arc-library .lacts svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-library .ck-l { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; }
 .arc-library .ck-l svg { width: 11px; height: 11px; stroke: var(--accent); fill: none; stroke-width: 3; }
 .arc-library .pvtag { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; }
@@ -391,3 +468,30 @@
 .arc-library .selall-box svg { width: 10px; height: 10px; stroke: #201808; fill: none; stroke-width: 3.2; }
 /* Indeterminate: some of what's shown is selected, but not all. */
 .arc-library .selall-dash { width: 8px; height: 2px; border-radius: 1px; background: #201808; }
+
+
+/* ---------------------------------------------------------------------------
+   Phone layout. LAST in the file on purpose: every rule it overrides
+   (`.tree`'s display, `.gridscroll`'s overflow) is declared below where this
+   block used to sit, and at equal specificity the later declaration wins — so
+   half of it was quietly inert. The rail reappeared on a 375px screen the
+   moment `.tree` grew a `display` of its own.
+   There is no room for the folder rail or the inspector beside the grid, so it
+   collapses to a single page-scrolling column and an open inspector stacks
+   beneath it.
+   --------------------------------------------------------------------------- */
+@media (max-width: 820px) {
+  .arc-library { overflow: auto; }
+  .arc-library .lib,
+  .arc-library .lib.detail { display: block; overflow: visible; grid-template-columns: 1fr; }
+  /* No room for a rail beside the grid, and no pointer to drag its handle with. */
+  .arc-library .tree,
+  .arc-library .railgrip { display: none; }
+  .arc-library .gallery { overflow: visible; }
+  .arc-library .gridscroll { overflow: visible; padding: 14px 16px 36px; }
+  .arc-library .inspector { border-left: 0; border-top: 1px solid var(--line-2); }
+  /* Suggestion banner: text keeps full-width lines; buttons wrap beneath. */
+  .arc-library .arcsugg { flex-wrap: wrap; align-items: flex-start; }
+  .arc-library .arcsugg .at { flex: 1 1 180px; }
+  .arc-library .arcsugg .ab { margin-left: 0; width: 100%; }
+}
