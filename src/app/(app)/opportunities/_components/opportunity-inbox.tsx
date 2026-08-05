@@ -273,7 +273,7 @@ export function OpportunityInbox({
     return (
       <div className="arc-opps" style={{ display: "block" }}>
         <div className="oempty">
-          <h2 className="pt">Opportunities</h2>
+          <h1 className="pt">Opportunities</h1>
           <div className="psub">
             No open opportunities yet. Arc scans your CRM for source-backed signals — quiet leads worth re-engaging,
             and more.
@@ -348,6 +348,11 @@ export function OpportunityInbox({
 
   return (
     <div className="arc-opps">
+      {/* The visible "Opportunities" title only renders in the empty state, so
+          with data this route had no h1. Hidden rather than visible: the screen
+          leads with the selected opportunity by design, and adding a second
+          visible title would fight it. */}
+      <h1 className="sr-only">Opportunities</h1>
       {/* A read that FAILED must not read as a quiet week. The inbox is Arc's
           proactive surface, so an empty one is a claim ("nothing for you") and
           a broken one is the absence of a claim — rendering them identically is

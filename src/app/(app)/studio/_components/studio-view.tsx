@@ -961,6 +961,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
 
   return (
     <div className="arc-studio">
+      <h1 className="sr-only">Studio</h1>
       <div className="studiobar">
         <div className="cxt" title="The campaign a generated draft attaches to">
           <span className="ci"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg></span>

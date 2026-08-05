@@ -229,7 +229,7 @@ export function OutboxBoard({
       <div className="ohead">
         <div className="otitle">
           <div>
-            <h2 className="pt">Outbox</h2>
+            <h1 className="pt">Outbox</h1>
             <div className="psub">Review approved sends, then confirm exactly what goes out.</div>
           </div>
           <div style={{ display: "flex", gap: 9 }}>

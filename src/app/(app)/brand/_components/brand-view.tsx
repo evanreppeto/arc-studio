@@ -186,7 +186,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             : <svg viewBox="0 0 24 24"><path d="M5 8l5 4-5 4M11 16h8" /></svg>}
         </div>
         <div className="bid">
-          <div className="bname"><span>{identity.name}</span> <span className="bstatus">{identity.published ? "Published" : "Draft"}</span></div>
+          <h1 className="bname"><span>{identity.name}</span> <span className="bstatus">{identity.published ? "Published" : "Draft"}</span></h1>
           {tagline && <div className="btag">{tagline}</div>}
           <div className="bmeta">
             {identity.segments.map((s, i) => (
