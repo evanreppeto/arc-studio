@@ -69,6 +69,10 @@ function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
   const { next, nextTone } = nextActionFor(tone, item.pendingCount, {
     approved: item.approvedCount,
     required: item.requiredCount,
+    // What the row will actually disclose. An archived campaign has zero
+    // *required* deliverables and can still hold several, and the row has to
+    // agree with its own "Show N assets" control.
+    held: item.contentPieces.length,
   });
   // Prefer the short persona label for the Audience chip; the fuller
   // audienceSummary sentence is too long for a chip.

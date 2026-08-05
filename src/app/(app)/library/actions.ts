@@ -6,7 +6,7 @@ import { type AssetDecision } from "@/domain";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { removeMediaRecordFromBrain, syncMediaRecordToBrain } from "@/lib/brain-ingestion/sync";
-import { createFolder, deleteAsset, deleteFolder, insertAssetWithUrl, moveAsset, renameAsset, renameFolder, setAssetTags, setAvailableToArc } from "@/lib/media-library/persistence";
+import { createFolder, deleteAsset, deleteFolder, insertAssetWithUrl, moveAsset, moveFolder, renameAsset, renameFolder, setAssetTags, setAvailableToArc } from "@/lib/media-library/persistence";
 import { decideAssetApproval } from "@/lib/media-library/approval";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { promoteAssetToCampaign } from "@/lib/campaigns/create";
@@ -27,7 +27,14 @@ export type CreateFolderResult =
   | { ok: true; persisted: boolean; id?: string }
   | { ok: false; error: string };
 
-export async function createLibraryFolder(name: string): Promise<CreateFolderResult> {
+/**
+ * `parentId` files the new folder INSIDE an existing one — the write behind the
+ * rail's per-folder "New subfolder". `media_folders.parent_id` and the read
+ * model's recursive walk have supported nesting since the table shipped; the
+ * only thing missing was a caller, so every folder an operator made landed at
+ * the root however deep they were standing.
+ */
+export async function createLibraryFolder(name: string, parentId?: string | null): Promise<CreateFolderResult> {
   await requireOperator();
 
   const trimmed = name?.trim();
@@ -37,11 +44,55 @@ export async function createLibraryFolder(name: string): Promise<CreateFolderRes
 
   try {
     const orgId = await getCurrentOrgId();
-    const id = await createFolder({ orgId, name: trimmed });
+    const parent = parentId?.trim() || null;
+    // Re-checked org-scoped: an id from the browser must not parent this
+    // workspace's folder into another tenant's tree.
+    if (parent) {
+      const { data: found } = await getSupabaseAdminClient()
+        .from("media_folders")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("id", parent)
+        .maybeSingle<{ id: string }>();
+      if (!found) return { ok: false, error: "That parent folder isn't in this workspace." };
+    }
+    const id = await createFolder({ orgId, name: trimmed, parentId: parent });
     revalidatePath("/library");
     return { ok: true, persisted: true, id };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not create the folder." };
+  }
+}
+
+/**
+ * Re-parent a folder — dragging one folder onto another in the rail, or picking
+ * a destination from its row menu.
+ *
+ * `parentId: null` is the root and a real destination: a folder that could only
+ * ever move deeper would make the tree a one-way trip, the same reason
+ * `moveLibraryAssets` accepts a null folder. The cycle refusal comes back as its
+ * own sentence rather than a generic failure, because "you can't put a folder
+ * inside itself" is something the operator can act on and "could not move that
+ * folder" is not. Internal organization — never outbound.
+ */
+export async function moveLibraryFolder(input: {
+  folderId: string;
+  parentId: string | null;
+}): Promise<FolderMutationResult> {
+  await requireOperator();
+  const folderId = input.folderId?.trim();
+  const parentId = input.parentId?.trim() || null;
+  if (!folderId) return { ok: false, error: "A folder id is required." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+  try {
+    const orgId = await getCurrentOrgId();
+    const result = await moveFolder(folderId, parentId, orgId);
+    if (result === "cycle") return { ok: false, error: "A folder can't be moved inside itself." };
+    if (result === "not_found") return { ok: false, error: "That folder isn't in this workspace." };
+    revalidatePath("/library");
+    return { ok: true, persisted: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not move the folder." };
   }
 }
 

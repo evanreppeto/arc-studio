@@ -9,6 +9,9 @@ type PasswordFieldProps = {
   required?: boolean;
   minLength?: number;
   placeholder?: string;
+  /** For forms where the password is the first field — puts focus in the form
+   *  on load so Enter submits without clicking in first. */
+  autoFocus?: boolean;
   /** The shared auth input class — the toggle adds its own right padding. */
   className: string;
 };
@@ -25,6 +28,7 @@ export function PasswordField({
   required,
   minLength,
   placeholder,
+  autoFocus,
   className,
 }: PasswordFieldProps) {
   const [show, setShow] = useState(false);
@@ -39,6 +43,7 @@ export function PasswordField({
         required={required}
         minLength={minLength}
         placeholder={placeholder}
+        autoFocus={autoFocus}
         className={`${className} pr-11`}
       />
       <button

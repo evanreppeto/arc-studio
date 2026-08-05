@@ -913,7 +913,7 @@ export async function getWorkspaceReviewQueue(
     // same way the detail read does: a missing critique must not take the queue
     // down with it — an un-reviewed deliverable still needs deciding.
     const [outputs, recommendations, findings] = await Promise.all([
-      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "approval_item_id", approvalIds, "created_at", orgId).catch(() => []),
+      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "approval_item_id", approvalIds, "created_at", orgId, workspaceId).catch(() => []),
       selectIn<ApprovalRecommendationRow>(supabase, "approval_recommendations", RECOMMENDATION_SELECT, "approval_item_id", approvalIds, "created_at", orgId, workspaceId)
         .then(groupByApprovalItem)
         .catch(() => new Map<string, ApprovalRecommendationRow[]>()),
@@ -997,6 +997,7 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
       approvals.map((approval) => approval.id),
       "created_at",
       resolvedOrgId,
+      workspaceId,
     );
     const mediaByCampaign = buildMediaByCampaign(campaigns, assets, approvals, approvalOutputs, agentName);
     const sourceCountByCampaign = buildSourceCountByCampaign(campaigns, approvals, approvalOutputs);
@@ -2377,7 +2378,7 @@ export async function getCampaignWorkspaceDetail(
       selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "approval_item_id", approvalIds, "created_at", resolvedOrgId, workspaceId),
     ]);
     const outputs = uniqueById([...assetOutputs, ...approvalOutputs]);
-    const decisions = await selectIn<ApprovalDecisionRow>(supabase, "approval_decisions", DECISION_SELECT, "approval_item_id", approvalIds, "decided_at", resolvedOrgId);
+    const decisions = await selectIn<ApprovalDecisionRow>(supabase, "approval_decisions", DECISION_SELECT, "approval_item_id", approvalIds, "decided_at", resolvedOrgId, workspaceId);
     // selectIn orders descending, so each group's head is the agent's latest word.
     // Advisory data only: if the table is missing or the read fails, the campaign
     // still renders without it — a recommendation must never take down the page.
@@ -2435,7 +2436,7 @@ export async function getCampaignWorkspaceDetail(
     // One lookup for the whole page, applied to both the per-deliverable tiles
     // and the campaign-wide creative list, so the same asset cannot report two
     // different review states in two places on one screen.
-    const mediaReviews = await resolveMediaReviews(supabase, mediaBeforeReview, resolvedOrgId);
+    const mediaReviews = await resolveMediaReviews(supabase, mediaBeforeReview, resolvedOrgId, workspaceId);
     const assetsView = assetsBeforeReview.map((asset) => ({
       ...asset,
       media: asset.media.map((item) => withMediaReview(item, mediaReviews)),
@@ -2773,8 +2774,12 @@ export async function getCampaignsForRecord(
     const campaignIds = campaigns.map((campaign) => campaign.id);
 
     const [assets, approvals] = await Promise.all([
-      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at"),
-      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at"),
+      // Scoped explicitly, not just by association. `campaignIds` already comes
+      // from a tenant-scoped query, so these rows were constrained in practice —
+      // but that is an argument about a caller, and the filter here is what the
+      // boundary actually rests on once the service role has bypassed RLS.
+      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at", orgId, workspaceId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at", orgId, workspaceId),
     ]);
     const approvalOutputs = await selectIn<AgentOutputRow>(
       supabase,
@@ -2783,6 +2788,8 @@ export async function getCampaignsForRecord(
       "approval_item_id",
       approvals.map((approval) => approval.id),
       "created_at",
+      orgId,
+      workspaceId,
     );
 
     return campaigns.map((campaign) => {
@@ -3494,6 +3501,10 @@ const WORKSPACE_SCOPED_TABLES = new Set([
   // Has had workspace_id NOT NULL since BSR-653; it was simply never added
   // here, so passing a workspace id for this table did nothing at all.
   "guardrail_findings",
+  // Same omission, found the same way: `resolveMediaReviews` joins campaign
+  // creative to its review through this table, and passing a workspace id did
+  // nothing until it was listed here.
+  "media_assets",
 ]);
 
 /**
@@ -3557,11 +3568,19 @@ type MediaApprovalRow = {
  * storage path) → `approval_items.media_asset_id`. An asset we cannot join, or
  * one with no approval row, stays `unreviewed`: this function never invents a
  * decision, and a failed lookup must not read as a clean review.
+ *
+ * Both tables are workspace-owned and both filters are required. The service
+ * role bypasses RLS, so on a server-side read the app-layer filter IS the
+ * boundary — org alone returns every workspace in the organisation. This read
+ * was org-only until now and, because it goes through `selectIn` rather than a
+ * literal `.from(…).eq("org_id", …)`, `workspace-readers.test.ts` could not see
+ * it to say so; the guard below closes that blind spot for this helper.
  */
 async function resolveMediaReviews(
   client: SupabaseClient,
   media: CampaignMediaAsset[],
   orgId?: string,
+  workspaceId?: string | null,
 ): Promise<Map<string, CampaignMediaReview>> {
   const reviews = new Map<string, CampaignMediaReview>();
   const ids = media.map((m) => m.libraryAssetId).filter((v): v is string => Boolean(v));
@@ -3569,8 +3588,8 @@ async function resolveMediaReviews(
   if (ids.length === 0 && paths.length === 0) return reviews;
 
   const [byId, byPath] = await Promise.all([
-    selectIn<MediaAssetIdRow>(client, "media_assets", "id,storage_path", "id", ids, undefined, orgId).catch(() => []),
-    selectIn<MediaAssetIdRow>(client, "media_assets", "id,storage_path", "storage_path", paths, undefined, orgId).catch(() => []),
+    selectIn<MediaAssetIdRow>(client, "media_assets", "id,storage_path", "id", ids, undefined, orgId, workspaceId).catch(() => []),
+    selectIn<MediaAssetIdRow>(client, "media_assets", "id,storage_path", "storage_path", paths, undefined, orgId, workspaceId).catch(() => []),
   ]);
 
   // asset id -> the media keys that resolve to it (a path and an id can both
@@ -3593,6 +3612,7 @@ async function resolveMediaReviews(
     [...keysByAssetId.keys()],
     "created_at",
     orgId,
+    workspaceId,
   ).catch(() => []);
 
   // Ordered newest-first by selectIn, so the first row per asset is current.

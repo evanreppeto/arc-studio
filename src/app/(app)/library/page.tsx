@@ -115,12 +115,23 @@ function mapAsset(v: MediaAssetView, i: number): Asset {
   };
 }
 
-/** Flat MediaFolderView[] → the view's nested Folder tree, with the "All assets" root prepended. */
+/**
+ * Flat MediaFolderView[] → the view's nested Folder tree, with the "All assets"
+ * root prepended.
+ *
+ * `buildFolderViews` puts a synthetic `{ id: "all", name: "All media" }` row at
+ * the head of its list, and this used to map it like any other folder — so live
+ * workspaces rendered the root TWICE (an "All media" row under the "All assets"
+ * one) with duplicate React keys, while the backend-less preview, which builds
+ * its tree from a constant, looked perfectly fine. It is dropped here, once, by
+ * the same id the view uses for the root.
+ */
 function mapFolders(views: MediaFolderView[]): Folder[] {
+  const real = views.filter((v) => v.id !== "all");
   const nodes = new Map<string, Folder>();
-  views.forEach((v, i) => nodes.set(v.id, { f: v.id, name: v.name, color: FOLDER_PALETTE[i % FOLDER_PALETTE.length], icon: "folder", children: [] }));
+  real.forEach((v, i) => nodes.set(v.id, { f: v.id, name: v.name, color: FOLDER_PALETTE[i % FOLDER_PALETTE.length], icon: "folder", description: v.description, children: [] }));
   const roots: Folder[] = [];
-  views.forEach((v) => {
+  real.forEach((v) => {
     const node = nodes.get(v.id);
     if (!node) return;
     const parent = v.parentId ? nodes.get(v.parentId) : null;
