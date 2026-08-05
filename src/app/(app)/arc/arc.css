@@ -17,8 +17,19 @@
   color: var(--text);
   /* The chat area is a size container: whether the workspace panel docks or
      overlays is decided by the chat area's own width, not the viewport, so the
-     nav rail (or an embedded preview) can't skew the breakpoint. */
+     nav rail (or an embedded preview) can't skew the breakpoint. The same now
+     goes for the pane's own layout breakpoints below — the rail eats ~240px, so
+     a `@media (max-width: 760px)` rule only fired once the pane was already
+     ~520px. `inline-size` only: the block axis still flows from content, which
+     the grid row sizing above depends on.
+
+     Named so the queries say which container they mean. Only rules targeting
+     elements INSIDE .arc-chat may use it: the drawer and the deliverable review
+     overlay render through OverlayPortal into #arc-overlay-root, outside this
+     subtree, where a container query would silently never match — see the note
+     on the 720px block. */
   container-type: inline-size;
+  container-name: arcpane;
 }
 
 .arc-chat button,
@@ -1469,6 +1480,11 @@
 }
 .arc-dlv-review-foot .arc-dlv-decide button { min-height: 36px; padding: 0 15px; font-size: 12px; }
 
+/* Deliberately still @media, not @container. `.arc-dlv-*` renders twice: inline
+   in the thread (inside the pane) and in the review overlay, which OverlayPortal
+   moves to #arc-overlay-root — outside `.arc-chat`. A container query would
+   apply to the first and silently never match the second, which is worse than
+   the window-based approximation both share today. */
 @media (max-width: 720px) {
   .arc-dlv-index { grid-template-columns: 1fr; padding: 14px; }
   .arc-dlv-review-head { flex-wrap: wrap; gap: 10px; padding: 11px 12px; }
@@ -1717,7 +1733,7 @@
 }
 .arc-launcher-grid b { color: var(--text-2); font-size: 11px; font-weight: 580; white-space: nowrap; }
 .arc-launcher-grid small { display: none; }
-@media (max-width: 640px) {
+@container arcpane (max-width: 640px) {
   .arc-launcher-grid { grid-template-columns: 1fr; }
   .arc-launcher-grid button { min-height: 44px; flex-direction: row; justify-content: flex-start; text-align: left; }
   .arc-launcher-status-item { min-height: 34px; }
@@ -3013,11 +3029,11 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
    instead of docking into it, so nothing takes width from the chat and there is
    no narrowed state left to compensate for. */
 
-@media (max-width: 1040px) {
+@container arcpane (max-width: 1040px) {
   .arc-conversation-column { width: min(820px, calc(100% - 36px)); }
 }
 
-@media (max-width: 760px) {
+@container arcpane (max-width: 760px) {
   .arc-chat { grid-template-rows: auto minmax(0, 1fr) auto; }
   .arc-conversation-header { min-height: 52px; padding: 4px 10px; gap: 9px; }
   .arc-history-button span,
