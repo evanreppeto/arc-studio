@@ -254,7 +254,11 @@ export function ReviewQueue({
               onApplyFix={(finding, value) => onApplyFix(asset, finding, value)}
               pending={pending}
               canEdit
+              placement="verdict"
             />
+            {/* The draft sits between the verdict and the argument: you get the
+                answer, then the thing itself, then why. It used to open with a
+                critique of a document the reader had not seen. */}
             <DeliverableCopy
               asset={asset}
               expanded={expandedCopy.has(asset.id)}
@@ -265,6 +269,18 @@ export function ReviewQueue({
                   return next;
                 })
               }
+            />
+            <ReviewBlock
+              asset={asset}
+              summary={summary}
+              awaitingReview={!asset.claimsReviewed && Boolean(asset.body.trim())}
+              openFindings={openFindings}
+              onFocusFinding={focusFinding}
+              onEditCopy={() => onEdit(asset)}
+              onApplyFix={(finding, value) => onApplyFix(asset, finding, value)}
+              pending={pending}
+              canEdit
+              placement="detail"
             />
           </div>
         </div>

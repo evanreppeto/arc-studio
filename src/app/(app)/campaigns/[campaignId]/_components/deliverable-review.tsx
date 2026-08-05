@@ -62,6 +62,7 @@ export function ReviewBlock({
   canEdit,
   onApplyFix,
   pending = false,
+  placement,
 }: {
   asset: CampaignWorkspaceAsset;
   summary: ReviewSummary;
@@ -75,6 +76,16 @@ export function ReviewBlock({
    *  a quiet way around the approval gate. */
   onApplyFix?: (finding: CampaignAssetFinding, value: string) => void;
   pending?: boolean;
+  /**
+   * Which half to render.
+   *
+   * "verdict" is the three-second answer — is anything blocking, can I approve —
+   * and belongs above the draft. "detail" is the finding-by-finding argument,
+   * and belongs BELOW it: the screen used to open with a critique of a document
+   * the reader had not seen yet, which is disorienting no matter how good the
+   * critique is. Omitted renders both, which the campaign page still does.
+   */
+  placement?: "verdict" | "detail";
 }) {
   const rec = asset.recommendation;
   const edits = splitSuggestedEdits(rec?.suggestedEdits ?? "");
@@ -88,11 +99,16 @@ export function ReviewBlock({
     .map((finding, index) => ({ finding, index }))
     .sort((a, a2) => Number(isBlocker(a2.finding)) - Number(isBlocker(a.finding)));
 
+  const showVerdict = placement !== "detail";
+  const showDetail = placement !== "verdict";
+  if (showVerdict && !showDetail && !summary.headline && !rec && asset.blockedPhrases.length === 0) return null;
+  if (showDetail && !showVerdict && ordered.length === 0 && edits.length === 0 && !rec?.rationale && !asset.complianceNotes && !awaitingReview) return null;
+
   return (
-    <div className={`review tone-${summary.tone}`}>
+    <div className={`review tone-${summary.tone}${placement ? ` rv-${placement}` : ""}`}>
       {/* Nothing to head the block with on a decided piece that carries only a
           guardrail note — better silent than captioned "Reviewed" when nothing was. */}
-      {summary.headline && (
+      {showVerdict && summary.headline && (
         <div className="rvhead">
           <span className="rvdot" aria-hidden="true" />
           <b className="rvline">{summary.headline}</b>
@@ -104,13 +120,13 @@ export function ReviewBlock({
         </div>
       )}
 
-      {asset.blockedPhrases.length > 0 && (
+      {showVerdict && asset.blockedPhrases.length > 0 && (
         <div className="rvbanned">
           Your Brand Kit bans {asset.blockedPhrases.map((p) => `“${p}”`).join(", ")} — rewrite before approving.
         </div>
       )}
 
-      {ordered.length > 0 && (
+      {showDetail && ordered.length > 0 && (
         <ul className="rvlist">
           {ordered.map(({ finding, index }) => {
             const open = openFindings.has(`${asset.id}:${index}`);
@@ -134,14 +150,14 @@ export function ReviewBlock({
         </ul>
       )}
 
-      {awaitingReview && (
+      {showDetail && awaitingReview && (
         <p className="rvpending">
           Nothing has checked these claims against your evidence yet. On a fresh draft that usually lands
           within a minute — until then, an empty review is not a clean one.
         </p>
       )}
 
-      {rec?.riskFlags && rec.riskFlags.length > 0 && (
+      {showDetail && rec?.riskFlags && rec.riskFlags.length > 0 && (
         <div className="flags rvflags">
           {rec.riskFlags.map((f) => (
             <span className="flag" key={f}>
@@ -151,7 +167,7 @@ export function ReviewBlock({
         </div>
       )}
 
-      {edits.length > 0 && (
+      {showDetail && edits.length > 0 && (
         <details className="rvfold">
           <summary>
             What to change <span className="rvcount">{edits.length}</span>
@@ -170,21 +186,20 @@ export function ReviewBlock({
         </details>
       )}
 
-      {rec?.rationale && (
+      {showDetail && rec?.rationale && (
         <details className="rvfold">
-          <summary>Why Arc says this</summary>
+          <summary>Why Arc flagged it</summary>
           <p className="rvbody">{rec.rationale}</p>
         </details>
       )}
 
-      {asset.complianceNotes && (
+      {showDetail && asset.complianceNotes && (
         <details className="rvfold">
-          <summary>Guardrail for this deliverable</summary>
+          <summary>Rules this has to follow</summary>
           <p className="rvbody">{asset.complianceNotes}</p>
         </details>
       )}
 
-      {rec && <p className="rvfoot">Advisory only — you decide.</p>}
     </div>
   );
 }
