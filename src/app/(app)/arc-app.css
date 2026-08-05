@@ -2134,6 +2134,19 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-opps .tlstep.done::before { background: var(--accent); }
 .arc-app .arc-opps .tlstep .ts { font-size: 12px; font-weight: 500; }
 .arc-app .arc-opps .tlstep .tr { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+/* The folded "Who signs off" card. The summary carries the label and the one
+   line that matters; the chain itself opens on demand. Marker removed and
+   replaced with a rotating chevron so the affordance matches the rest of the
+   app rather than inheriting the browser triangle. */
+.arc-app .arc-opps .signoff { padding: 0; }
+.arc-app .arc-opps .signoff > summary { list-style: none; cursor: pointer; padding: 16px; display: flex; flex-direction: column; gap: 10px; border-radius: 12px; }
+.arc-app .arc-opps .signoff > summary::-webkit-details-marker { display: none; }
+.arc-app .arc-opps .signoff > summary .cl { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0; }
+.arc-app .arc-opps .signoff > summary .cl::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg) translate(-2px, -2px); transition: transform 0.16s var(--ease); }
+.arc-app .arc-opps .signoff[open] > summary .cl::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.arc-app .arc-opps .signoff > summary:focus-visible { outline: 2px solid var(--accent-border); outline-offset: -2px; }
+.arc-app .arc-opps .signoff > summary .locknote { margin-top: 0; }
+.arc-app .arc-opps .signoff .tl { padding: 0 16px 16px; }
 .arc-app .arc-opps .locknote { margin-top: 12px; font-size: 10.5px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
 .arc-app .arc-opps .locknote i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 .arc-app .arc-opps .opp-notice { margin-top: 14px; font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 8px; border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 9px; padding: 9px 12px; }
