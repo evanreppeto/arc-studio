@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildLaunchState, type CampaignWorkspaceAsset } from "@/lib/campaigns/read-model";
 
-import { constantAudience, nextActionFor, signalTiming, type DeliverableCounts } from "./board-derivations";
+import { constantAudience, nextActionFor, pieceLabel, signalTiming, type DeliverableCounts } from "./board-derivations";
 
 function counts(approved: number, required: number): DeliverableCounts {
   return { approved, required };
@@ -153,5 +153,45 @@ describe("signalTiming", () => {
     expect(
       signalTiming({ urgency: "high", eventType: null, startsAtIso: null, endsAtIso: "not a date" }, now),
     ).toEqual({ label: "High urgency", tone: "warn" });
+  });
+});
+
+describe("pieceLabel", () => {
+  // Verbatim from the demo package: three cards that all opened with the same
+  // seven words and ellipsed away the channel that told them apart.
+  it("drops the campaign name the card already sits under", () => {
+    expect(pieceLabel("High-intent follow-up — Email", "High-intent follow-up", "Email")).toEqual({
+      label: "Email",
+      sub: "",
+    });
+  });
+
+  it("keeps a title that says something the kind does not", () => {
+    expect(pieceLabel("Chicago Flood — Storm hero image", "Chicago Flood", "Paid")).toEqual({
+      label: "Storm hero image",
+      sub: "Paid",
+    });
+  });
+
+  it.each(["—", "–", "-", ":", "·", "|"])("handles the %s separator", (sep) => {
+    expect(pieceLabel(`Spring push ${sep} Follow-up note`, "Spring push", "Email").label).toBe("Follow-up note");
+  });
+
+  it("leaves an unrelated title alone", () => {
+    expect(pieceLabel("Storm hero image", "Chicago Flood", "Paid")).toEqual({
+      label: "Storm hero image",
+      sub: "Paid",
+    });
+  });
+
+  it("matches the parent case-insensitively", () => {
+    expect(pieceLabel("HIGH-INTENT FOLLOW-UP — SMS", "High-intent follow-up", "SMS").label).toBe("SMS");
+  });
+
+  it("never renders an empty label", () => {
+    // Title identical to the campaign leaves nothing behind; the kind carries it.
+    expect(pieceLabel("Spring push", "Spring push", "Email")).toEqual({ label: "Email", sub: "" });
+    // And with no kind either, the original title is better than blank.
+    expect(pieceLabel("Spring push", "Spring push", "").label).toBe("Spring push");
   });
 });

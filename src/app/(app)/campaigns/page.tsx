@@ -4,7 +4,7 @@ import {
   CAMPAIGN_NOUN,
   countOf,
   WORK_STATE_LABEL, personaAccent,} from "@/domain";
-import { nextActionFor, signalTiming } from "./_components/board-derivations";
+import { nextActionFor, pieceLabel, signalTiming } from "./_components/board-derivations";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 
 // The review queue opens from this screen as well as from a campaign, and every
@@ -12,7 +12,7 @@ import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 // A route-scoped stylesheet stopped being right when the component stopped
 // belonging to one route: without this the queue renders as an unstyled block.
 import "./campaign.css";
-import { getCampaignWorkspaceList, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
+import { getCampaignWorkspaceList, humanizeChannel, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
@@ -103,6 +103,25 @@ function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
     // identically to an empty one.
     thumbnailUrl: item.thumbnailUrl,
     mediaCount: item.mediaCount,
+    // Through the same `toneFor`/`TONE_LABEL` pair the row's own status pill
+    // uses, so a piece and its campaign never label the same state differently.
+    pieces: item.contentPieces.map((piece) => {
+      const pieceTone = toneFor(piece.status);
+      const { label, sub } = pieceLabel(
+        piece.title,
+        item.name,
+        humanizeChannel(piece.kind || piece.channel) || "Deliverable",
+      );
+      return {
+        id: piece.id,
+        title: label,
+        kind: sub,
+        statusLabel: TONE_LABEL[pieceTone],
+        tone: pieceTone,
+        thumbnailUrl: piece.media[0]?.thumbnailUrl ?? piece.media[0]?.url ?? null,
+        needsReview: piece.needsReview,
+      };
+    }),
   };
 }
 

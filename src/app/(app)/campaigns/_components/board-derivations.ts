@@ -81,6 +81,33 @@ export function constantAudience(rows: { audience: string }[]): string | null {
   return rows.every((row) => row.audience.trim() === first) ? first : null;
 }
 
+/**
+ * What to call a deliverable inside its own campaign's opened row.
+ *
+ * Arc names pieces after the package they belong to — "High-intent follow-up —
+ * Email", "High-intent follow-up — Social Post" — which is right in a list that
+ * spans campaigns and wrong underneath the campaign's own name, where every card
+ * opens with the same words and then ellipses away the one part that tells them
+ * apart. The parent's name is already on the row above; strip it.
+ *
+ * When nothing distinguishing survives (the title WAS just the parent plus the
+ * channel), the kind becomes the label and the second line goes — a card reading
+ * "Email" over "Email" is the redundancy this function exists to remove.
+ */
+export function pieceLabel(
+  title: string,
+  campaignName: string,
+  kind: string,
+): { label: string; sub: string } {
+  const parent = campaignName.trim().toLowerCase();
+  let rest = title.trim();
+  if (parent && rest.toLowerCase().startsWith(parent)) {
+    rest = rest.slice(parent.length).replace(/^\s*[—–\-:·|]\s*/, "").trim();
+  }
+  if (!rest || rest.toLowerCase() === kind.trim().toLowerCase()) return { label: kind || title.trim(), sub: "" };
+  return { label: rest, sub: kind };
+}
+
 /** The timing facts Arc recorded on the signal that produced a campaign. */
 export type CampaignSignal = {
   urgency: string | null;
