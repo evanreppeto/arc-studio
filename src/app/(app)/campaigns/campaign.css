@@ -603,3 +603,35 @@
 .arc-campaign .rqcard .rv-detail .rvwhy { font-size: 11.5px; margin-top: 4px; }
 .arc-campaign .rqcard .rv-detail .rvfold { margin-top: 0; border-top: 1px solid var(--line-3); padding: 12px 0 0; }
 .arc-campaign .rqcard .rv-detail .rvfold + .rvfold { margin-top: 12px; }
+
+/* Click-to-edit the draft.
+   ---------------------------------------------------------------------------
+   A transparent textarea sits exactly on top of the highlighted copy. The
+   textarea owns the caret, the selection and the typing; the layer behind owns
+   the <mark>s for the spans Arc quoted. EVERY metric that affects line breaking
+   has to match between the two or the caret drifts from the glyphs — font,
+   size, line-height, letter-spacing, padding, white-space and word-break are
+   therefore set on the shared `.dbody` and never overridden on one layer. */
+.arc-campaign .rqcard .dcopy.live { padding: 18px 20px; }
+.arc-campaign .dlive { position: relative; }
+.arc-campaign .dlive > .dbody {
+  margin: 0; padding: 0; border: 0; background: transparent;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+  font-family: inherit; font-size: 13.5px; line-height: 1.72; letter-spacing: normal;
+}
+.arc-campaign .dlive-hl { color: var(--text); pointer-events: none; }
+.arc-campaign .dlive-ta {
+  position: absolute; inset: 0; width: 100%; height: 100%; resize: none; overflow: hidden;
+  color: transparent; caret-color: var(--accent); -webkit-text-fill-color: transparent;
+}
+.arc-campaign .dlive-ta::selection { background: var(--accent-soft); }
+.arc-campaign .dlive-ta:focus { outline: none; }
+/* The only hint that it is editable — the copy is the affordance, so the hint
+   stays out of the way until the pointer is on it. */
+.arc-campaign .dcopy.live:hover .dlive-hl,
+.arc-campaign .dcopy.live:focus-within .dlive-hl { box-shadow: none; }
+.arc-campaign .dcopy.live:focus-within { background: var(--surface-raised, #23232a); }
+.arc-campaign .dlive-ta:disabled { cursor: default; }
+
+.arc-campaign .deditbar { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line-2); flex-wrap: wrap; }
+.arc-campaign .deditnote { font-size: 11px; color: var(--muted); }
