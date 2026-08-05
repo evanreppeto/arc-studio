@@ -1183,7 +1183,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
               <span className="pp"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></span>
               <span className="tk"><span className="pl" /><span className="ph" /></span>
               <span className="tm">0:05 / 0:15</span>
-              <span className="sl" style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--muted)" }}>9:16 · MP4</span>
+              <span className="sl" style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--muted)" }}>9:16 · MP4</span>
             </div>
           )}
 
