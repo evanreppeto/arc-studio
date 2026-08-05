@@ -103,7 +103,7 @@
 /* Long copy is folded so the review above it stays on screen. The mask makes the
    fold legible as a fold — a hard cut reads as copy that simply ended. */
 .arc-campaign .dbody.clamped { max-height: 15em; overflow: hidden; mask-image: linear-gradient(180deg, #000 72%, transparent); }
-.arc-campaign .dmore { margin-top: 6px; padding: 0; border: 0; background: none; font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; color: var(--muted); cursor: pointer; }
+.arc-campaign .dmore { margin-top: 10px; padding: 0; border: 0; background: none; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; }
 .arc-campaign .dmore:hover { color: var(--accent-contrast); }
 /* The words a finding quotes, marked where they live. Underline rather than fill:
    a highlighter block over body copy fights the card for attention. */
@@ -134,7 +134,7 @@
 .arc-campaign .review.tone-amber .rvdot { background: var(--warn); }
 .arc-campaign .review.tone-ok .rvdot { background: var(--ok); }
 .arc-campaign .rvline { font-size: 12.5px; font-weight: 600; color: var(--text); }
-.arc-campaign .rvverdict { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--muted); background: var(--raised); border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 9px; white-space: nowrap; }
+.arc-campaign .rvverdict { margin-left: auto; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 .arc-campaign .rvbanned { font-size: 11.5px; color: var(--red-text); line-height: 1.5; margin-top: 8px; }
 
 /* Findings. One line each by default — the quoted words plus the first clause of
@@ -492,7 +492,7 @@
 .arc-campaign .rqbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line-2); flex: none; }
 .arc-campaign .rqcount { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .arc-campaign .rqcount b { color: var(--text); font-size: 13px; }
-.arc-campaign .rqname { margin-left: 12px; color: var(--text-2); }
+.arc-campaign .rqname { margin-left: 12px; font-family: var(--ff-body, inherit); font-size: 12.5px; color: var(--text-2); }
 .arc-campaign .rqtrack { flex: 1; height: 2px; background: var(--line-3); border-radius: 99px; overflow: hidden; }
 .arc-campaign .rqtrack i { display: block; height: 100%; background: var(--accent); transition: width 0.25s var(--ease); }
 .arc-campaign .rqclose { display: flex; padding: 6px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 7px; }
@@ -504,7 +504,7 @@
 .arc-campaign .rqcard { max-width: 720px; margin: 0 auto; }
 .arc-campaign .rqhead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 .arc-campaign .rqhead h2 { font-family: var(--serif); font-weight: 500; font-size: 20px; letter-spacing: -0.01em; color: var(--text); margin: 0; }
-.arc-campaign .rqchannel { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.arc-campaign .rqchannel { font-size: 11.5px; color: var(--muted); }
 .arc-campaign .rqhead .pill { margin-left: auto; }
 .arc-campaign .rqerr { max-width: 720px; margin: 0 auto; padding: 0 24px 8px; font-size: 12px; color: var(--red-text); }
 
@@ -555,3 +555,51 @@
 .arc-campaign .review.rv-verdict { margin-bottom: 0; }
 .arc-campaign .review.rv-detail { margin-top: 14px; border-left-color: var(--line-2); background: transparent; }
 .arc-campaign .review.rv-detail::before { content: "What Arc flagged"; display: block; margin-bottom: 10px; font-size: 10.5px; font-weight: 600; color: var(--muted); }
+
+/* ===========================================================================
+   The review overlay, flattened.
+   ---------------------------------------------------------------------------
+   It was boxes inside boxes: the card held a bordered verdict panel, which sat
+   above a bordered draft panel, above a bordered findings panel, whose rows had
+   their own rules and whose fix input had its own border again. Three levels
+   deep, against DESIGN.md's "don't nest cards" — and with every level carrying
+   a border, a radius and a background, structure was being done entirely by
+   containers instead of by type and space. That is the thing that reads cheap.
+   One surface earns a background here: the draft, because it is the artifact.
+   Everything else is spacing and one hairline.
+   =========================================================================== */
+.arc-campaign .rqcard { max-width: 680px; }
+
+/* Verdict — a line, not a panel. */
+.arc-campaign .rqcard .review.rv-verdict {
+  margin: 18px 0 0; padding: 0 0 18px; border: 0; border-bottom: 1px solid var(--line-2);
+  border-radius: 0; background: transparent;
+}
+.arc-campaign .rqcard .rv-verdict .rvline { font-size: 14px; }
+.arc-campaign .rqcard .rv-verdict .rvdot { width: 7px; height: 7px; }
+
+/* The draft — the one surface, because it is the thing being decided. */
+.arc-campaign .rqcard .dcopy {
+  margin-top: 22px; padding: 22px 24px; border: 0; border-radius: 12px;
+  background: var(--surface-soft, #1a1a1e);
+}
+.arc-campaign .rqcard .dcopy::before { margin-bottom: 14px; letter-spacing: .02em; }
+.arc-campaign .rqcard .dbody { font-size: 13.5px; line-height: 1.72; color: var(--text); }
+
+/* The argument — a caption and a list. No panel, no second edge. */
+.arc-campaign .rqcard .review.rv-detail {
+  margin-top: 26px; padding: 0; border: 0; border-radius: 0; background: transparent;
+}
+.arc-campaign .rqcard .rv-detail::before { margin-bottom: 12px; letter-spacing: .02em; }
+/* A blocker keeps a rule; a note does not need one. Every row having an edge
+   made the list read as a stack of cards rather than as a list. */
+.arc-campaign .rqcard .rv-detail .rvlist { gap: 0; }
+.arc-campaign .rqcard .rv-detail .rvrow { border-left: 0; border-top: 1px solid var(--line-3); }
+.arc-campaign .rqcard .rv-detail .rvrow:first-child { border-top: 0; }
+.arc-campaign .rqcard .rv-detail .rvbtn { padding: 12px 0; border-radius: 0; }
+.arc-campaign .rqcard .rv-detail .rvbtn:hover { background: transparent; }
+.arc-campaign .rqcard .rv-detail .rvbtn:hover .rvq { color: var(--accent-contrast); }
+.arc-campaign .rqcard .rv-detail .rvq { font-size: 12.5px; }
+.arc-campaign .rqcard .rv-detail .rvwhy { font-size: 11.5px; margin-top: 4px; }
+.arc-campaign .rqcard .rv-detail .rvfold { margin-top: 0; border-top: 1px solid var(--line-3); padding: 12px 0 0; }
+.arc-campaign .rqcard .rv-detail .rvfold + .rvfold { margin-top: 12px; }
