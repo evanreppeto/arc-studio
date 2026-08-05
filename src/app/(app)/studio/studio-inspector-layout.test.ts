@@ -80,6 +80,60 @@ describe("stage toolbar", () => {
     // it stopped wrapping; the strip has to own its overflow.
     expect(rule(".strip")).toMatch(/overflow-x:\s*auto/);
   });
+
+  /**
+   * The row fits now, and has to keep fitting. Not wrapping was the right call;
+   * thirteen labelled controls was the wrong number. Even compacted they needed
+   * 1455px of row inside the 636px stage a 1440×900 window leaves — Edit and
+   * half of Generate lived off the right edge, and `scrollbar-width: none` meant
+   * nothing on screen admitted it. The eight AI tools moved to the Arc pane,
+   * where they belong: every one of them only ever typed into its composer.
+   *
+   * Counting source entries is the only measurement available here (no jsdom, so
+   * no layout), but it is the number that actually regressed.
+   */
+  it("keeps the stage toolbar down to controls that fit without scrolling", () => {
+    const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+    const toolsBlock = view.match(/const TOOLS = \{[\s\S]*?\n\} as const;/)?.[0] ?? "";
+    expect(toolsBlock).not.toBe("");
+    // Each entry is one pill on the row.
+    expect(toolsBlock.match(/\{ t: "/g) ?? []).toHaveLength(5);
+    // The AI tools live in the Arc pane, and seed the composer rather than
+    // claiming to act on the canvas.
+    expect(toolsBlock).not.toMatch(/ask:/);
+    expect(toolsBlock).not.toMatch(/target: "arc"/);
+    expect(view).toMatch(/const ARC_ACTIONS = \[/);
+  });
+});
+
+/**
+ * The composer asks for the request, not for a stance on it.
+ *
+ * Ask / Act / Draft was three buttons that set one word in the message preamble.
+ * `sendArcMessageAction` was never passed a mode from Studio at all, so every
+ * message ran as `act` whichever button was lit — the control was decoration on
+ * a decision the backend had already made. The capability is inferred from what
+ * the operator wrote (resolveArcComposerMode, shared with the main chat
+ * composer) and actually sent.
+ */
+describe("Arc composer", () => {
+  const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+
+  it("has no Ask/Act/Draft picker", () => {
+    expect(view).not.toMatch(/setCmode|MODE_HINT|className="modes"/);
+    expect(CSS).not.toMatch(/\.arc-studio \.modehint\s*\{/);
+  });
+
+  it("infers the mode from the request and sends it", () => {
+    expect(view).toMatch(/mode: resolveArcComposerMode\(\{ request: text \}\)/);
+  });
+
+  it("renders what Arc made, not just what Arc said", () => {
+    // The pane's empty state promised the render would appear. ArcThreadMessage
+    // carried body + role only, so it never did.
+    expect(view).toMatch(/m\.media\.map/);
+    expect(CSS).toMatch(/\.arc-studio \.arcshot\s*\{/);
+  });
 });
 
 /**
