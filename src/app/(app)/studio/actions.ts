@@ -127,6 +127,10 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
     let media: StudioMedia;
     let objectPath: string;
     let assetType: string;
+    /** The text that produced this asset — the generation prompt for a generated
+     *  image, the rendered headline for a composite. Hoisted because both
+     *  branches must supply it: it is the only screenable text creative has. */
+    let screenableText: string;
 
     if (input.engine === "image") {
       const prompt = (input.prompt ?? "").trim();
@@ -175,6 +179,7 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
         riskFlags: deriveImageRiskFlags(prompt),
       };
       assetType = "image_prompt";
+      screenableText = prompt;
     } else {
       const backgroundUrl = (input.backgroundUrl ?? "").trim();
       if (!backgroundUrl) return { ok: false, code: "failed", error: "Select a background photo to compose over." };
@@ -208,6 +213,10 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const url = await storeGeneratedMedia(objectPath, bytes, contentType);
       media = { kind: "image", url, source: "composite", format, riskFlags: [COMPOSITE_RISK] };
       assetType = "social_ad";
+      // A composite carries real, operator-authored marketing copy — headline,
+      // kicker, subhead, CTA. That is exactly the text the banned-phrase screen
+      // exists for, and it was going through unscreened too.
+      screenableText = [copy.headline, copy.kicker, copy.subhead, copy.ctaLabel].filter(Boolean).join("\n");
     }
 
     // Land the approval-gated draft (pending_approval + dispatch_locked) on the
@@ -219,6 +228,10 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       assetType,
       title: input.title.trim() || "Studio creative",
       body: null,
+      // The prompt is the only text this asset has. Without it the copy screen
+      // has nothing to run on and the creative reaches the approval gate with
+      // no automated check of any kind.
+      promptInput: screenableText,
       mediaUrl: media.url,
       mediaPath: objectPath,
       media: {
