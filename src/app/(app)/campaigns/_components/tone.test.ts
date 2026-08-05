@@ -71,16 +71,20 @@ describe("needsOperatorAttention", () => {
 });
 
 /**
- * The footer is a summary of the tab it sits under. They disagreed in production —
- * tab "Needs approval 4" above "Arc has 9 packages awaiting your approval" — because
- * each derived the count its own way, and the footer's way was a regex over the
- * rendered next-action label.
+ * One claim gets one derivation.
  *
- * A behavioural test can't easily assert "these two numbers match" across a server
- * page and a client board, so this pins the structural fix instead: both read the
- * one predicate, and neither reconstructs the rule itself.
+ * In production a tab reading "Needs approval 4" sat above a footer reading "Arc
+ * has 9 packages awaiting your approval", because each counted its own way and
+ * the footer's way was a regex over the rendered next-action label.
+ *
+ * The tab row and the footer are both gone — the board groups into a "Needs you"
+ * section and the page states the asset count in its opening sentence — but the
+ * failure they enabled is structural, not cosmetic, so the guard follows the
+ * structure rather than retiring with it. What it pins is unchanged in spirit:
+ * the campaign-level split reads the one predicate, its count comes from the
+ * split itself, and nothing counts by matching a rendered string.
  */
-describe("the tab and its footer count the same thing", () => {
+describe("one claim, one derivation", () => {
   // Comments are stripped: these files discuss the old bug at length, and prose
   // about a bug must not satisfy an assertion looking for the bug's absence. My
   // first cut of these guards matched its own comment and passed against the
@@ -90,24 +94,32 @@ describe("the tab and its footer count the same thing", () => {
   const BOARD = read("campaigns-board.tsx");
   const PAGE = read("../page.tsx");
 
-  it("the board's tab filter uses the shared predicate", () => {
-    expect(BOARD).toMatch(/tab === "needs"\) return needsOperatorAttention\(row\)/);
+  it("the board's sections split on the shared predicate", () => {
+    expect(BOARD).toMatch(/waitingRows = useMemo\(\(\) => visible\.filter\(needsOperatorAttention\)/);
+    expect(BOARD).toMatch(/restRows = useMemo\(\(\) => visible\.filter\(\(r\) => !needsOperatorAttention\(r\)\)/);
   });
 
   /**
-   * Stronger than "both call the same function": every tab badge is counted by
-   * running `inTab` — the filter itself — over the rows. There is no separate
-   * counting expression that could disagree with what the table shows, for the
-   * "Needs you" tab or any other.
+   * Stronger than "it calls the same function": the heading's number IS the
+   * length of the list under it. There is no second expression that could count
+   * differently from what the section renders — which is precisely how a tab
+   * reading 0 came to sit above three rows asking to be approved.
    */
-  it("the board's tab counts are derived from the filter, not re-implemented", () => {
-    expect(BOARD).toMatch(/TABS\.map\(\(t\) => \[t\.key, allRows\.filter\(\(r\) => inTab\(r, t\.key\)\)\.length\]\)/);
-    // The old shape: a `by(...)` helper per tab, each free to drift from inTab.
+  it("the section counts are the rendered lists' own lengths", () => {
+    expect(BOARD).toMatch(/Needs you <span className="cmp-secn">\{waitingRows\.length\}/);
+    expect(BOARD).toMatch(/\{renderCards\(waitingRows\)\}/);
+    // Any separately-computed campaign tally is the drift starting over.
     expect(BOARD).not.toMatch(/needs:\s*by\(/);
   });
 
-  it("the page's footer uses the shared predicate", () => {
-    expect(PAGE).toMatch(/rows\.filter\(needsOperatorAttention\)/);
+  /**
+   * The page states the ASSET count; the board owns the campaign count. Two
+   * facts, two places, neither recomputing the other's. A campaign-level count
+   * here would be a second answer to the section heading's question.
+   */
+  it("the page does not re-derive the campaign-level count", () => {
+    expect(PAGE).not.toMatch(/rows\.filter\(needsOperatorAttention\)/);
+    expect(PAGE).not.toMatch(/needsOperatorAttention/);
   });
 
   it("neither counts approvals by matching a rendered label", () => {

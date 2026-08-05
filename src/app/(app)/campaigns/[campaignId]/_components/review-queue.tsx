@@ -7,6 +7,7 @@ import { type CampaignAssetFinding, type CampaignWorkspaceAsset, type ReviewQueu
 import { OverlayPortal } from "../../../_components/overlay-portal";
 
 import { DeliverableCopy, markId, ReviewBlock, statusMeta, svg } from "./deliverable-review";
+import { pieceLabel } from "../../_components/board-derivations";
 import { isTypingTarget, keyToQueueAction, stepQueueIndex } from "./queue-keys";
 import { summarizeReview } from "./review-summary";
 
@@ -234,8 +235,10 @@ export function ReviewQueue({
         <div className="rqbody">
           <div className="rqcard">
             <div className="rqhead">
-              <h2>{asset.title}</h2>
-              <span className="rqchannel">{asset.channel}</span>
+              {/* The bar above already names the campaign; repeating it here and
+                  then tagging the channel separately said one thing three times.
+                  `pieceLabel` strips the parent, exactly as on the board. */}
+              <h2>{pieceLabel(asset.title, entry.campaignName, asset.channel).label}</h2>
               {/* Without this, requesting a revision on the last deliverable in the
                   queue changes nothing on screen — there is nowhere to advance to,
                   and the state that did change was invisible. */}
@@ -254,7 +257,11 @@ export function ReviewQueue({
               onApplyFix={(finding, value) => onApplyFix(asset, finding, value)}
               pending={pending}
               canEdit
+              placement="verdict"
             />
+            {/* The draft sits between the verdict and the argument: you get the
+                answer, then the thing itself, then why. It used to open with a
+                critique of a document the reader had not seen. */}
             <DeliverableCopy
               asset={asset}
               expanded={expandedCopy.has(asset.id)}
@@ -265,6 +272,18 @@ export function ReviewQueue({
                   return next;
                 })
               }
+            />
+            <ReviewBlock
+              asset={asset}
+              summary={summary}
+              awaitingReview={!asset.claimsReviewed && Boolean(asset.body.trim())}
+              openFindings={openFindings}
+              onFocusFinding={focusFinding}
+              onEditCopy={() => onEdit(asset)}
+              onApplyFix={(finding, value) => onApplyFix(asset, finding, value)}
+              pending={pending}
+              canEdit
+              placement="detail"
             />
           </div>
         </div>
@@ -316,10 +335,6 @@ export function ReviewQueue({
                 >
                   {svg('<path d="M15 6l-6 6 6 6"/>')}
                 </button>
-                <span className="rqhint">
-                  <kbd>J</kbd>
-                  <kbd>K</kbd> move · <kbd>Esc</kbd> close
-                </span>
                 <button
                   type="button"
                   className="rqstep"

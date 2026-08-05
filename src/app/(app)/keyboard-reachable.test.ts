@@ -55,6 +55,11 @@ const BASELINE: Record<string, number> = {
   "_components/share-dialog.tsx": 1,
   "brand/_components/brand-view.tsx": 1,
   "campaigns/[campaignId]/_components/campaign-detail-view.tsx": 1,
+  // The card's `<article onClick>`, and honest at 1 for the same reason as
+  // crm-board above: it is a redundant convenience target over real controls —
+  // the name is a <Link> and the disclosure is a <button> — so keyboard users
+  // lose nothing, but the check cannot see that, and quietening it with a
+  // role= would mark the problem instead of fixing it.
   "campaigns/_components/campaigns-board.tsx": 1,
 };
 
@@ -67,16 +72,46 @@ function tsxFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** `<span onClick=…>` with neither `role` nor `tabIndex` — a control nobody can tab to. */
+/**
+ * `<span onClick=…>` with neither `role` nor `tabIndex` — a control nobody can
+ * tab to.
+ *
+ * `article` is on this list because the campaigns board grew a card with
+ * `<article onClick>` and this check reported the file CLEAN — the element was
+ * simply not in the list, so a real instance of the pattern read as zero. A
+ * blind spot in a ratchet is worse than a high number in it: the number at least
+ * tells the truth.
+ */
 function unreachableCount(source: string): number {
   let n = 0;
-  for (const m of source.matchAll(/<(span|div|li|td|tr)\b([^>]*?)>/g)) {
-    const attrs = m[2];
+  for (const m of source.matchAll(/<(span|div|li|td|tr|article|section)\b/g)) {
+    const attrs = openingTagAttrs(source, m.index + m[0].length);
     if (!/onClick=/.test(attrs)) continue;
     if (/role=|tabIndex=/.test(attrs)) continue;
     n += 1;
   }
   return n;
+}
+
+/**
+ * The opening tag's attribute text, from `start` to the `>` that actually ends
+ * the tag.
+ *
+ * Not a regex. `[^>]*?` stops at the first `>` in the source, and `onClick={(e)
+ * =>` contains one — so a handler written as an arrow function hid every
+ * attribute after it, and a multi-line `<article onClick={(e) => {…}}>` counted
+ * as ZERO. Braces are tracked so a `>` inside an expression does not end the
+ * tag.
+ */
+function openingTagAttrs(source: string, start: number): string {
+  let depth = 0;
+  for (let i = start; i < source.length; i += 1) {
+    const c = source[i];
+    if (c === "{") depth += 1;
+    else if (c === "}") depth -= 1;
+    else if (c === ">" && depth === 0) return source.slice(start, i);
+  }
+  return source.slice(start);
 }
 
 describe("controls are reachable from a keyboard", () => {
