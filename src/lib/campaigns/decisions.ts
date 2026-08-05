@@ -170,6 +170,50 @@ export async function decideAsset(
   return { assetId, decision, status: decision };
 }
 
+export type UndoAssetDecisionInput = {
+  assetId: string;
+  operator: string;
+  tenant?: AgentTaskTenantFields;
+};
+
+/**
+ * Undo the last decision on a deliverable by ASSET id — the unit operators act
+ * on, mirroring `decideAsset`'s lookup so the two are symmetric.
+ *
+ * `undoDecision` is keyed by approval item, which the chat has never held: a
+ * card carries `{ campaignId, assetId }`. Verified against prod before wiring —
+ * all 13 asset ids referenced by Arc chat cards have an approval_items row, so
+ * this reaches the real path rather than being another entry point onto nothing.
+ *
+ * The asset-only branch of `decideAsset` (no gate, status written straight onto
+ * campaign_assets) has no approval_decisions row to reverse, so it is refused
+ * explicitly rather than silently doing nothing. Outbound stays locked either
+ * way — undo restores a status, it never sends.
+ */
+export async function undoAssetDecision(
+  input: UndoAssetDecisionInput,
+  client: SupabaseClient = getSupabaseAdminClient(),
+) {
+  const { assetId, operator, tenant } = input;
+
+  const { data: approval, error: approvalError } = await applyOrgScope(
+    client
+      .from("approval_items")
+      .select("id")
+      .eq("campaign_asset_id", assetId)
+      .order("submitted_at", { ascending: false })
+      .limit(1),
+    tenant,
+  ).maybeSingle<{ id: string }>();
+  assertOk("approval_items (asset) lookup", approvalError);
+
+  if (!approval) {
+    throw new Error("This deliverable was decided without an approval record, so there is nothing to undo.");
+  }
+
+  return undoDecision({ approvalItemId: approval.id, operator, tenant }, client);
+}
+
 export type ReopenAssetInput = {
   assetId: string;
   campaignId: string;

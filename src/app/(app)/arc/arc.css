@@ -1010,6 +1010,16 @@
 .arc-dlv-more svg { transition: transform var(--arc-fast); }
 
 .arc-dlv-flags { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 0; }
+/* "No checks recorded" gets a colourless tone of its own. It must never borrow
+   the green of a recorded pass — that would render an absence of evidence as
+   evidence of absence, on the screen where copy gets approved. */
+.arc-dlv-unchecked {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  border: 1px dashed var(--line-3); border-radius: 999px;
+  color: var(--muted); font-size: 10px; font-weight: 600;
+}
+.arc-dlv-detail-side .arc-dlv-flags { padding: 0; }
 
 .arc-dlv-foot { margin-top: 12px; padding: 10px 12px 11px; border-top: 1px solid var(--line); }
 
@@ -1018,17 +1028,43 @@
 .arc-dlv-collapsed {
   width: 100%;
   min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0 8px 0 0;
+  border: 1px solid var(--line-2); border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 40%, transparent);
+  transition: border-color var(--arc-fast), background var(--arc-fast);
+}
+.arc-dlv-collapsed-open {
+  flex: 1; min-width: 0;
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr) auto 16px;
   align-items: center;
   gap: 10px;
-  margin: 8px 0 0;
-  padding: 7px 12px;
-  border: 1px solid var(--line-2); border-radius: 10px;
-  background: color-mix(in srgb, var(--panel) 40%, transparent);
+  padding: 7px 4px 7px 12px;
+  border: 0; background: transparent;
   text-align: left; cursor: pointer;
-  transition: border-color var(--arc-fast), background var(--arc-fast);
 }
+/* Undo is quiet until you want it — a decided row should read as settled, not
+   as a row still asking to be acted on. */
+.arc-dlv-undo {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 26px; padding: 0 9px;
+  border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--muted);
+  font-size: 10.5px; font-weight: 600; cursor: pointer;
+  opacity: 0; transition: opacity var(--arc-fast), color var(--arc-fast), border-color var(--arc-fast);
+}
+.arc-dlv-collapsed:hover .arc-dlv-undo,
+.arc-dlv-undo:focus-visible { opacity: 1; }
+.arc-dlv-undo:hover:not(:disabled) { color: var(--text); border-color: var(--line-2); }
+.arc-dlv-undo:disabled { opacity: 1; cursor: default; }
+.arc-dlv-undo-error { flex: none; color: var(--red-text); font-size: 10px; }
+/* Keyboard users never hover, so the control cannot be hover-only. */
+@media (hover: none) { .arc-dlv-undo { opacity: 1; } }
 .arc-dlv-collapsed:hover { border-color: var(--line-3); background: color-mix(in srgb, var(--panel) 62%, transparent); }
 .arc-dlv-collapsed[data-status="approved"] { border-color: color-mix(in srgb, var(--ok-border) 60%, transparent); }
 .arc-dlv-collapsed[data-status="rejected"] { border-color: color-mix(in srgb, var(--red-border) 60%, transparent); }
@@ -2007,10 +2043,13 @@
 .arc-composer-menu-empty { padding: 9px 10px; color: var(--muted); font-size: 9.5px; }
 
 /* ── Campaign artifact workspace ───────────────────────────────────────── */
-/* Was a 390px right rail that also shrank the chat to make room for itself.
-   Now it covers the content pane, positioned from a measured PaneBox like the
-   review overlay and the thread drawer — so opening it costs no chat width and
-   the content inside gets the whole pane instead of a sliver of it. */
+/* A right-hand sidebar that OVERLAYS rather than docks.
+   The original rail docked, so it paid for itself out of the conversation's
+   width and squeezed the reading column every time it opened. Anchored to the
+   pane's right edge and floated over it (position + width come from the
+   measured PaneBox in the component), the list costs the chat nothing — and
+   selecting something here opens the full-pane preview instead of trying to
+   render a deliverable in 400px. */
 .arc-artifact-workspace {
   position: fixed;
   z-index: 59;
@@ -2018,9 +2057,10 @@
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   border: 1px solid var(--line-3);
-  border-radius: 14px;
+  border-radius: 14px 0 0 14px;
+  border-right: 0;
   background: var(--canvas-deep);
-  box-shadow: 0 30px 80px -40px rgba(0, 0, 0, .96);
+  box-shadow: -30px 0 70px -38px rgba(0, 0, 0, .96);
 }
 .arc-artifact-header {
   min-height: 76px;

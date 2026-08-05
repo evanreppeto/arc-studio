@@ -16,6 +16,19 @@ import { needsOperatorAttention, type CampaignDeskState, type CampaignTone } fro
 
 export type { CampaignTone } from "./tone";
 
+/** One deliverable, as the board shows it in an opened row. */
+export type CampaignPiece = {
+  id: string;
+  title: string;
+  /** e.g. "Email", "SMS" — what kind of thing this is. */
+  kind: string;
+  statusLabel: string;
+  tone: CampaignTone;
+  thumbnailUrl: string | null;
+  /** No decision recorded — this is the work. */
+  needsReview: boolean;
+};
+
 export type CampaignRow = {
   id: string;
   name: string;
@@ -40,6 +53,14 @@ export type CampaignRow = {
   thumbnailUrl: string | null;
   /** How many media assets the package carries, thumbnail included. */
   mediaCount: number;
+  /**
+   * The campaign's deliverables, for the opened row.
+   *
+   * The read-model has always built these — title, kind, status, media — and the
+   * board rendered none of them, so the only way to find out what a campaign
+   * actually contained was to leave the page.
+   */
+  pieces: CampaignPiece[];
 };
 
 const CampIcon = (
@@ -105,6 +126,7 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
     updatedRel: "now",
     updatedAbs: "",
     timing: null,
+    pieces: [],
     href: `/campaigns/${id}`,
     // A package created seconds ago carries no creative yet, same reasoning as
     // pendingCount above.
@@ -140,6 +162,68 @@ function CampaignAvatar({ thumbnailUrl, mediaCount }: { thumbnailUrl: string | n
 
 const svgIcon = (d: string) => <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: d }} />;
 
+/**
+ * A campaign's deliverables, opened in place.
+ *
+ * Ordered undecided-first, because that is the order the operator works in — the
+ * pieces asking for something come before the ones that have already been
+ * settled. Decided pieces stay visible but recede: what a campaign already
+ * approved is context for the decision, not the decision.
+ */
+function DeliverableStrip({
+  pieces,
+  onReview,
+  reviewing,
+}: {
+  pieces: CampaignPiece[];
+  onReview: () => void;
+  reviewing: boolean;
+}) {
+  const ordered = useMemo(
+    () => [...pieces].sort((a, b) => Number(b.needsReview) - Number(a.needsReview)),
+    [pieces],
+  );
+  const waiting = ordered.filter((p) => p.needsReview).length;
+
+  return (
+    <div className="dstrip">
+      <div className="dgrid">
+        {ordered.map((piece) => (
+          <div key={piece.id} className={`dcard${piece.needsReview ? " waiting" : ""}`}>
+            <span className="dthumb">
+              {piece.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- user media URL; next/image would need per-host remotePatterns
+                <img src={piece.thumbnailUrl} alt="" loading="lazy" />
+              ) : (
+                svgIcon('<path d="M4 5h16v14H4z"/><path d="M4 10h16M9 10v9"/>')
+              )}
+            </span>
+            <div className="dmeta">
+              <div className="dtitle">{piece.title}</div>
+              {/* Absent when the title already IS the kind — see `pieceLabel`. */}
+              {piece.kind && <div className="dkind">{piece.kind}</div>}
+            </div>
+            <span className={`pill ${piece.tone}`}>
+              <span className="pd" />
+              {piece.statusLabel}
+            </span>
+          </div>
+        ))}
+      </div>
+      {/* `.gbtn`, not `.cbtn` — campaign.css scopes `.cbtn` under `.arc-campaign`
+          (the detail route). This board's root is `.arc-campaigns`, which that
+          selector does not match, so a `.cbtn` here renders as bare text with a
+          full-size raw SVG beside it. */}
+      {waiting > 0 && (
+        <button type="button" className="gbtn dreview" onClick={onReview} disabled={reviewing}>
+          {svgIcon('<path d="M20 6L9 17l-5-5"/>')}
+          {reviewing ? "Loading…" : `Review ${countOf(waiting, ASSET_NOUN)}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function CampaignsBoard({
   rows,
   arcNote,
@@ -163,6 +247,7 @@ export function CampaignsBoard({
   loadError?: string | null;
 }) {
   const [tab, setTab] = useState("all");
+  const [open, setOpen] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
   const [sortOpen, setSortOpen] = useState(false);
@@ -413,7 +498,11 @@ export function CampaignsBoard({
                       <strong>No campaigns yet.</strong> Arc drafts these from opportunities it finds in your records
                       — nothing is sent until you approve it.
                       <div style={{ marginTop: 8 }}>
-                        <Link className="cbtn" href="/opportunities">
+                        {/* Was `.cbtn`, which this route does not style (see the
+                            note in DeliverableStrip) — so the one call to action
+                            a brand-new workspace ever sees rendered as bare
+                            unstyled text. */}
+                        <Link className="gbtn" href="/opportunities">
                           See what Arc has found&nbsp;→
                         </Link>
                       </div>
@@ -424,12 +513,28 @@ export function CampaignsBoard({
                 </td>
               </tr>
             ) : (
-              visible.map((r) => (
+              visible.flatMap((r) => [
                 <tr
                   key={r.id}
-                  className={r.id.startsWith("local-") ? "freshrow" : undefined}
+                  className={`${r.id.startsWith("local-") ? "freshrow" : ""}${open === r.id ? " openrow" : ""}`.trim() || undefined}
                 >
                   <td>
+                    <div className="namecell">
+                    {/* Outside the Link, not inside it — a button nested in an
+                        anchor is invalid and neither control would work. Rows
+                        with nothing to show get no control rather than one that
+                        opens an empty drawer. */}
+                    {r.pieces.length > 0 && (
+                      <button
+                        type="button"
+                        className={`drev${open === r.id ? " on" : ""}`}
+                        aria-expanded={open === r.id}
+                        aria-label={open === r.id ? `Hide ${r.name}'s deliverables` : `Show ${r.name}'s deliverables`}
+                        onClick={() => setOpen((cur) => (cur === r.id ? null : r.id))}
+                      >
+                        <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg>
+                      </button>
+                    )}
                     {r.id.startsWith("local-") ? <div className="pcell">
                       <CampaignAvatar thumbnailUrl={r.thumbnailUrl} mediaCount={r.mediaCount} />
                       <div style={{ minWidth: 0 }}>
@@ -447,6 +552,7 @@ export function CampaignsBoard({
                         <div className="psub">{r.brief}</div>
                       </div>
                     </Link>}
+                    </div>
                   </td>
                   <td>
                     <span className={`pill ${r.tone}`}>
@@ -491,8 +597,19 @@ export function CampaignsBoard({
                       {r.updatedAbs && <span>{r.updatedAbs}</span>}
                     </span>
                   </td>
-                </tr>
-              ))
+                </tr>,
+                open === r.id ? (
+                  <tr key={`${r.id}-pieces`} className="exprow">
+                    <td colSpan={sharedAudience ? 5 : 6}>
+                      <DeliverableStrip
+                        pieces={r.pieces}
+                        reviewing={queueLoadingFor === r.id}
+                        onReview={() => openQueue({ id: r.id, name: r.name })}
+                      />
+                    </td>
+                  </tr>
+                ) : null,
+              ])
             )}
           </tbody>
         </table>

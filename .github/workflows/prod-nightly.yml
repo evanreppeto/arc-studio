@@ -223,10 +223,50 @@ jobs:
 
       # A skipped test is a hollow pass — it looks identical to success on the
       # checks UI. Surface the counts so "green" can be read honestly.
-      - name: Report skipped checks
+      #
+      # A warning alone was not enough, and 2026-08-05 is the proof: the golden
+      # questions had been skipping into a green run, the DB guards had been
+      # skipping since the runner image rolled, and prod backups had been failing
+      # since a repo rename — for two nights, unnoticed, because every one of
+      # those degraded to SILENCE and the annotation nobody opens was the only
+      # thing that said so.
+      #
+      # So the summary now leads with what this run did NOT verify. Deliberately
+      # does not fail: pinning the nightly red for a known-missing credential is
+      # the BSR-722 failure mode, where a permanently red check stops carrying
+      # signal. The goal is that a GREEN run cannot be misread as "everything
+      # was checked".
+      - name: State what this run did and did not verify
         if: ${{ always() }}
         run: |
           set -euo pipefail
+          {
+            echo "## What this run actually verified"
+            echo
+            echo "| capability | status |"
+            echo "| --- | --- |"
+
+            if [ "${{ vars.ARC_SMOKE_ENABLED }}" = "1" ]; then
+              echo "| Arc's reasoning (golden questions) | verified |"
+            else
+              echo "| Arc's reasoning (golden questions) | **NOT VERIFIED** — every question skipped (\`ARC_SMOKE_ENABLED\` is not 1) |"
+            fi
+
+            if [ "${{ steps.pg.outputs.ready }}" = "true" ]; then
+              echo "| Nothing is stranded in the LIVE tenant | verified |"
+            else
+              echo "| Nothing is stranded in the LIVE tenant | **NOT VERIFIED** — the database steps did not run |"
+            fi
+
+            # Measured, not assumed: a run against the reseeded fixture flipped
+            # the asset and created no `agent_tasks` row at all, because the
+            # smoke workspace holds no scoped token. The stranded-work guard
+            # only fires on a row that exists, so it cannot cover this.
+            echo "| The revision this run filed will actually RUN | **NOT VERIFIED** — the smoke workspace cannot queue Arc work, so no task row is created and the stranded-work guard has nothing to find |"
+            echo
+            echo "Prod backups are a separate workflow (\`backup-prod.yml\`) and are not covered by this run."
+          } >>"$GITHUB_STEP_SUMMARY"
+
           if [ "${{ vars.ARC_SMOKE_ENABLED }}" != "1" ]; then
             echo "::warning title=The golden questions are SKIPPED::The nightly smoke is not exercising Arc's reasoning at all — every golden question is skipping, which reports as a green run. Set the repo variable ARC_SMOKE_ENABLED=1 once the runner has a Secret Manager token scoped to the smoke workspace (BSR-478, BSR-507)."
           fi
