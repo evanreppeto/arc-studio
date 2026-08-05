@@ -30,11 +30,20 @@ describe("phone reflow for the data tables", () => {
     expect(positional.map((m) => m[0].trim())).toEqual([]);
   });
 
-  it("hides Channels on Campaigns only, and by its real position", () => {
-    expect(CSS).toContain(".arc-app .arc-campaigns .dt td:nth-child(5)");
-    // Position 5 must still BE Channels — reorder the header and this lies.
-    const headers = [...CAMPAIGNS.matchAll(/<th>([^<]+)<\/th>/g)].map((m) => m[1].trim());
-    expect(headers).toEqual(["Campaign", "Status", "Next action", "Audience", "Channels", "Updated"]);
+  /**
+   * Campaigns is no longer a table, so the positional rules this used to pin are
+   * gone with it. What replaced them is the thing worth guarding: a `.dt`
+   * selector scoped to `.arc-campaigns` now matches nothing at all, and a dead
+   * selector is indistinguishable from a working one until someone opens a
+   * phone. The board is a card list; it reflows because it is flex, not because
+   * six `nth-child` rules agree with a header order.
+   */
+  it("keeps no dead Campaigns table rules behind, now that the board is cards", () => {
+    expect(CAMPAIGNS).not.toContain("<table");
+    expect(CAMPAIGNS).toContain("cmp-card");
+    // `.dt` needs a boundary: without one it also matches `.dthumb` and
+    // `.dtitle`, which are live rules for the asset cards inside an opened card.
+    expect([...CSS.matchAll(/^\s*\.arc-app \.arc-campaigns \.dt(?![\w-])[^\n]*/gm)].map((m) => m[0].trim())).toEqual([]);
   });
 
   /**
