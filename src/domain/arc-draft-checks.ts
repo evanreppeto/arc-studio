@@ -66,16 +66,37 @@ export type ArcDraftCheckState =
   /** Looked, and no check was ever recorded. */
   | "unchecked"
   /** Haven't looked yet — say nothing. */
-  | "unknown";
+  | "unknown"
+  /** There is no copy here to check. See `hasCopy`. */
+  | "no_copy";
 
 export function arcDraftCheckState(input: {
   flags?: readonly ArcActionFlag[];
   /** `undefined` means the live findings have not loaded. An empty ARRAY means
    *  they loaded and there are none — a different claim entirely. */
   findings?: readonly ArcDraftFinding[];
+  /**
+   * Does this deliverable contain copy at all?
+   *
+   * The draft critic grounds CLAIMS IN TEXT. A generated image has none, so it
+   * correctly never runs — verified on prod, where the correlation is total:
+   * all 10 assets with a body were critiqued and all 4 without one
+   * (`asset_type: image_prompt`, channel `media`) were not.
+   *
+   * Without this, such an asset reports `unchecked` and the card says "No checks
+   * recorded", which reads as a gap in the review rather than a medium the
+   * review does not cover. Both are misleading in opposite directions, so the
+   * state is named rather than guessed at.
+   */
+  hasCopy?: boolean;
 }): ArcDraftCheckState {
   const flags = input.flags ?? [];
   const findings = input.findings;
+
+  // Checked first: a finding raised against creative still outranks everything,
+  // but with no copy and no findings there is simply nothing for a copy check
+  // to have said.
+  if (input.hasCopy === false && !findings?.some((f) => f.open) && flags.length === 0) return "no_copy";
 
   // Anything unresolved outranks everything: the reviewer needs the worst news.
   if (findings?.some((f) => f.open)) return "flagged";
@@ -96,4 +117,7 @@ export const ARC_CHECK_LABEL: Record<ArcDraftCheckState, string> = {
   flagged: "Needs a look",
   unchecked: "No checks recorded",
   unknown: "",
+  // Says both true things at once: the automated checks do not cover creative,
+  // and therefore the only review this got is the one the operator is doing now.
+  no_copy: "Creative — not automatically checked",
 };
