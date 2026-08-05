@@ -667,9 +667,57 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // counts as approved-source, AI/stock/imported explicitly do not.
   const provenance = useMemo(() => describeProvenance(bg), [bg]);
 
+  /** Editing needs a real stored picture to act ON, which is a different
+   *  requirement from generating one — say which is missing. */
+  const editGate = !mediaEnabled
+    ? mediaOffReason ?? "Image generation isn't switched on for this workspace yet."
+    : !live
+      ? "Connect a workspace to edit images"
+      : !campaignId
+        ? campaignGateText
+        : !bg?.url
+          ? "Pick a photo to change first"
+          : null;
+
   // Compose the current canvas (selected background + Brand Kit + copy) into one
   // approval-gated draft per format. The action lands pending_approval + dispatch_
   // locked — never outbound.
+  /**
+   * Change the picture that's on the canvas, instead of generating a new one.
+   *
+   * The distinction is the whole feature: "put our logo on the van door" and
+   * "warm the light" are edits to a photo already chosen, and regenerating from
+   * a prompt throws it away and rolls the dice again. Studio could only generate,
+   * which is why that request used to be answered with a rule.
+   *
+   * Lands as an approval-gated draft exactly like every other output.
+   */
+  const runEdit = () => {
+    if (!live || gen || !bg?.url || !campaignId) return;
+    const instruction = typeof window !== "undefined"
+      ? window.prompt("What should change about this image?\n\ne.g. put our logo on the van door, warm the morning light")?.trim()
+      : "";
+    if (!instruction) return;
+    setGenErr(null);
+    startGen(async () => {
+      const res = await generateStudioAsset({
+        engine: "edit",
+        sourceImageUrl: bg.url!,
+        instruction,
+        format: FORMATS[fmt].r,
+        title: instruction.slice(0, 60),
+        campaignId,
+      });
+      if (res.ok && res.assetId && res.media) {
+        const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: res.media.url, source: res.media.source, format: res.media.format, title: instruction.slice(0, 60), status: "pending_approval", at: Date.now(), origin: "studio" };
+        setDrafts((prev) => [draft, ...prev]);
+        setPreview(draft);
+      } else if (!res.ok) {
+        setGenErr(res.error);
+      }
+    });
+  };
+
   const runGenerate = (formats: string[]) => {
     if (genGate || gen) return;
     // genGate already blocks when there's no background, but narrow explicitly so
@@ -1466,6 +1514,19 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                         the screen was not in the tab order and announced as nothing.
                         `aria-busy` while generating, and the gate reason is the
                         accessible description rather than only a hover toast. */}
+                    {/* Editing the chosen photo, above generating a new creative
+                        from it — it acts on what is already on the canvas. */}
+                    <button
+                      type="button"
+                      className="exrow"
+                      onClick={runEdit}
+                      disabled={Boolean(editGate) || gen}
+                      title={editGate ?? undefined}
+                      {...(editGate ? { "data-soon": editGate } : {})}
+                    >
+                      <svg viewBox="0 0 24 24"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                      Change this image…
+                    </button>
                     <button
                       type="button"
                       className="exrow gold"

@@ -1,7 +1,8 @@
 import { GenerateVideosOperation, GoogleGenAI, PersonGeneration } from "@google/genai";
 import { randomUUID } from "node:crypto";
 
-import type { GeneratedMedia, ImageGenInput, MediaProvider, VideoGenInput, VideoStart, VideoPoll } from "./types";
+import { ImageEditUnsupportedError } from "./types";
+import type { GeneratedMedia, ImageEditInput, ImageGenInput, MediaProvider, VideoGenInput, VideoStart, VideoPoll } from "./types";
 
 // Default to gemini-2.5-flash-image (Nano Banana) for conversational editing
 // and reference-image augmentation. Override with GEMINI_IMAGE_MODEL — e.g.
@@ -111,6 +112,48 @@ export function createGeminiMediaProvider(
         }
       }
       throw new Error("Gemini returned no image data");
+    },
+    /**
+     * Edit an existing image. Same conversational endpoint as generation, with
+     * the picture sent alongside the instruction — which is exactly how the
+     * Gemini *-image models ("Nano Banana") take an edit.
+     *
+     * NO_TEXT_DIRECTIVE is deliberately NOT applied here, and that is the whole
+     * point of this method existing. That directive stops the MODEL inventing a
+     * garbled counterfeit of a brand mark when generating a scene from nothing.
+     * An edit is the opposite situation: the operator is pointing at a picture
+     * they already have and saying what to change about it — including putting
+     * their own real logo on the van door. Hardening the instruction here would
+     * strip the request and hand back the same image, silently.
+     */
+    async editImage(input: ImageEditInput): Promise<GeneratedMedia> {
+      const model = imageModel;
+      // Imagen has no edit endpoint; say which model and why, not "failed".
+      if (model.startsWith("imagen")) throw new ImageEditUnsupportedError(model);
+
+      const response = await ai.models.generateContent({
+        model,
+        contents: [
+          { inlineData: { data: input.bytes.toString("base64"), mimeType: input.contentType } },
+          { text: input.instruction },
+        ],
+      });
+      const parts = response.candidates?.[0]?.content?.parts ?? [];
+      for (const part of parts) {
+        const inline = part.inlineData;
+        if (inline?.data) {
+          return {
+            bytes: Buffer.from(inline.data, "base64"),
+            contentType: inline.mimeType ?? "image/png",
+            model,
+            jobId: randomUUID(),
+          };
+        }
+      }
+      // A refusal comes back as prose with no image part, so report the model's
+      // own words instead of a bare failure.
+      const said = parts.map((p) => p.text).filter(Boolean).join(" ").trim();
+      throw new Error(said ? `The model declined that edit: ${said}` : "Gemini returned no edited image");
     },
     async startVideo(input: VideoGenInput): Promise<VideoStart> {
       const model = videoModel;
