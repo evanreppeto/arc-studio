@@ -38,6 +38,7 @@ import {
   ChevronRight,
   Maximize2,
   PencilLine,
+  Image as ImageIcon,
   ShieldQuestion,
   Undo2,
   X,
@@ -253,8 +254,8 @@ export function DeliverableCanvas({ card, content }: { card: ArcActionCard; cont
  * whether copy reaches a customer. `unchecked` gets its own colourless tone and
  * never borrows the "passed" green.
  */
-function DraftChecks({ flags, findings, limit }: { flags: ArcActionCard["flags"]; findings?: ArcDraftFinding[]; limit?: number }) {
-  const state = arcDraftCheckState({ flags, findings });
+function DraftChecks({ flags, findings, hasCopy, limit }: { flags: ArcActionCard["flags"]; findings?: ArcDraftFinding[]; hasCopy: boolean; limit?: number }) {
+  const state = arcDraftCheckState({ flags, findings, hasCopy });
   // Nothing loaded yet: say nothing. Claiming "no checks recorded" here is the
   // bug this replaced — it was false for exactly the drafts that had findings.
   if (state === "unknown") return null;
@@ -267,6 +268,11 @@ function DraftChecks({ flags, findings, limit }: { flags: ArcActionCard["flags"]
       {state === "unchecked" ? (
         <span className="arc-dlv-unchecked" title="No guardrail result is recorded against this draft. Read it before approving.">
           <ShieldQuestion size={12} />{ARC_CHECK_LABEL.unchecked}
+        </span>
+      ) : null}
+      {state === "no_copy" ? (
+        <span className="arc-dlv-unchecked" title="The draft critic grounds claims in copy, so it does not run on creative. Nothing has reviewed this image but you.">
+          <ImageIcon size={12} />{ARC_CHECK_LABEL.no_copy}
         </span>
       ) : null}
       {shown.map((f) => (
@@ -380,6 +386,9 @@ export function InlineDeliverable({
   const decision = useDraftDecision({ approval: card.approval, status, onResolved: onStatus });
   const medium = arcDeliverableMedium({ channel: card.channel, format: card.format });
   const findings = checks[card.approval?.assetId ?? ""];
+  // A deliverable with neither body nor lead-in fields carries no copy, so a
+  // copy critic has nothing to say about it — see arcDraftCheckState.
+  const hasCopy = Boolean(content.body || content.fields.length);
   const collapsed = isDecidedAssetStatus(status) && !reopened;
 
   const [undoing, setUndoing] = useState(false);
@@ -457,7 +466,7 @@ export function InlineDeliverable({
       {/* Always rendered, including when there is nothing to report — an empty
           flag list used to render nothing at all, which made a draft nobody had
           checked look exactly like one that passed. */}
-      <DraftChecks flags={card.flags} findings={findings} limit={4} />
+      <DraftChecks flags={card.flags} findings={findings} hasCopy={hasCopy} limit={4} />
 
       <footer className="arc-dlv-foot">
         <DecisionBar card={card} decision={decision} status={status} />
@@ -717,7 +726,7 @@ export function DeliverableReview({
                   ) : null}
                   <section>
                     <h4>Checks</h4>
-                    <DraftChecks flags={card.flags} findings={findings} />
+                    <DraftChecks flags={card.flags} findings={findings} hasCopy={Boolean(content.body || content.fields.length)} />
                   </section>
                 </aside>
               </motion.div>
