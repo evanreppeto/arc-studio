@@ -145,9 +145,41 @@ describe("one claim, one derivation", () => {
   const BOARD = read("campaigns-board.tsx");
   const PAGE = read("../page.tsx");
 
+  /**
+   * The two outbound sections must be complements of ONE list, computed by the
+   * shared predicate — never by a second hand-rolled rule.
+   *
+   * This used to pin the source list's literal name (`visible`). That made it
+   * fail the moment a legitimate pre-filter was introduced, while still not
+   * checking the thing that actually matters: that both halves read the *same*
+   * list. It now captures the identifier and compares the two, which is both
+   * tolerant of renaming and stricter about drift.
+   */
   it("the board's sections split on the shared predicate", () => {
-    expect(BOARD).toMatch(/waitingRows = useMemo\(\(\) => visible\.filter\(needsOperatorAttention\)/);
-    expect(BOARD).toMatch(/restRows = useMemo\(\(\) => visible\.filter\(\(r\) => !needsOperatorAttention\(r\)\)/);
+    const waiting = BOARD.match(/waitingRows = useMemo\(\(\) => (\w+)\.filter\(needsOperatorAttention\)/);
+    const rest = BOARD.match(/restRows = useMemo\(\(\) => (\w+)\.filter\(\(r\) => !needsOperatorAttention\(r\)\)/);
+    expect(waiting, "waitingRows must filter on needsOperatorAttention").not.toBeNull();
+    expect(rest, "restRows must be its complement").not.toBeNull();
+    expect(waiting![1], "both sections must derive from the same list").toBe(rest![1]);
+  });
+
+  /**
+   * The creative split must not lose rows.
+   *
+   * "Creative from Studio" is a third heading, and the danger of a third
+   * heading is a row that belongs to none of them — a campaign that silently
+   * stops rendering. The two halves are complements of `visible` on the same
+   * flag, so every row lands in exactly one branch.
+   */
+  it("the creative split is a complement, so no row can vanish", () => {
+    const creative = BOARD.match(/creativeRows = useMemo\(\(\) => (\w+)\.filter\(\(r\) => r\.creativeOnly\)/);
+    const campaigns = BOARD.match(/campaignRows = useMemo\(\(\) => (\w+)\.filter\(\(r\) => !r\.creativeOnly\)/);
+    expect(creative, "creativeRows must filter on the creativeOnly flag").not.toBeNull();
+    expect(campaigns, "campaignRows must be its complement").not.toBeNull();
+    expect(creative![1], "both halves must derive from the same list").toBe(campaigns![1]);
+    // And the outbound sections must read the campaign half, not the raw list —
+    // otherwise the batches reappear in "Needs you", which is the bug.
+    expect(BOARD).toMatch(/waitingRows = useMemo\(\(\) => campaignRows\.filter/);
   });
 
   /**
