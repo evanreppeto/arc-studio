@@ -63,7 +63,41 @@ function partition(conversations: ArcRecentConversationVM[]): { groups: Group[];
   return { groups, loose };
 }
 
+type HoverCard = { conversation: ArcRecentConversationVM; top: number; left: number };
+
 export function RailRecents({ conversations, openConversationId, onNavigate }: Props) {
+  // ONE card, owned here rather than per row. Per-row state let two sit on
+  // screen at once the moment a row missed its mouseleave — and the card is
+  // pointer-events:none, so a stranded one cannot even be clicked away.
+  // Hovering another row replaces this; there is nowhere for a second to live.
+  const [card, setCard] = useState<HoverCard | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+
+  const showCard = (conversation: ArcRecentConversationVM, rect: DOMRect) => {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    // A beat's delay, so running the pointer down the rail does not strobe a
+    // card over every row on the way past.
+    hoverTimer.current = window.setTimeout(() => setCard({ conversation, top: rect.top, left: rect.right + 8 }), 320);
+  };
+  const hideCard = () => {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    setCard(null);
+  };
+
+  useEffect(() => {
+    // Scroll moves the row out from under a stationary pointer without firing
+    // mouseleave, and a blurred window never fires one at all. Both would leave
+    // the card behind.
+    const drop = () => hideCard();
+    window.addEventListener("scroll", drop, true);
+    window.addEventListener("blur", drop);
+    return () => {
+      window.removeEventListener("scroll", drop, true);
+      window.removeEventListener("blur", drop);
+      if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    };
+  }, []);
+
   // Removed rows disappear immediately. The server action revalidates, but the
   // rail is on every screen and waiting for a round-trip to un-render something
   // the operator just dismissed reads as a dead click.
@@ -93,6 +127,8 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
               open={conversation.id === openConversationId}
               onNavigate={onNavigate}
               onRemoved={remove}
+              onHover={showCard}
+              onUnhover={hideCard}
             />
           ))}
         </details>
@@ -105,9 +141,43 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
           open={conversation.id === openConversationId}
           onNavigate={onNavigate}
           onRemoved={remove}
+          onHover={showCard}
+          onUnhover={hideCard}
         />
       ))}
+      {card ? (
+        <div className="rail-recent-card" style={{ top: card.top, left: card.left }} role="tooltip">
+          <b>{card.conversation.title}</b>
+          {card.conversation.campaignName ? (
+            <span className="rail-recent-card-campaign">{card.conversation.campaignName}</span>
+          ) : null}
+          <span className="rail-recent-card-meta">
+            {card.conversation.running ? "Arc is working on this now" : `Last active ${card.conversation.when}`}
+          </span>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * Arc is working on this thread.
+ *
+ * A rotating arc rather than the breathing dot the rail used to carry: DESIGN.md
+ * allows one arcBreathe per view and the rail is on every screen, so it competed
+ * with whatever live dot the page itself had. Rotation is a different motion and does
+ * not compete. Under prefers-reduced-motion it stops turning and the label
+ * returns, because "working" still has to be legible without animation.
+ */
+function WorkingSpinner() {
+  return (
+    <>
+      <svg className="rail-working-spinner" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="6" className="rail-working-track" />
+        <path d="M8 2a6 6 0 0 1 6 6" className="rail-working-arc" />
+      </svg>
+      <span className="rail-working-word">Working</span>
+    </>
   );
 }
 
@@ -117,18 +187,21 @@ function RecentRow({
   open,
   onNavigate,
   onRemoved,
+  onHover,
+  onUnhover,
 }: {
   conversation: ArcRecentConversationVM;
   showCampaign: boolean;
   open: boolean;
   onNavigate: () => void;
   onRemoved: (id: string) => void;
+  onHover: (conversation: ArcRecentConversationVM, rect: DOMRect) => void;
+  onUnhover: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const ref = useRef<HTMLSpanElement>(null);
   const router = useRouter();
-
   useEffect(() => {
     if (!menuOpen) return;
     function onDown(event: MouseEvent) {
@@ -157,16 +230,20 @@ function RecentRow({
   };
 
   return (
-    <span className="rail-recent-wrap" ref={ref}>
+    <span
+      className="rail-recent-wrap"
+      ref={ref}
+      onMouseEnter={() => { const rect = ref.current?.getBoundingClientRect(); if (rect) onHover(conversation, rect); }}
+      onMouseLeave={onUnhover}
+    >
       <Link
         href={`/arc?c=${encodeURIComponent(conversation.id)}`}
         className={`rail-recent${open ? " on" : ""}${conversation.running ? " working" : ""}`}
         aria-current={open ? "page" : undefined}
-        // Rail titles ellipsize at this width; the tooltip is the only way to
-        // read a long one without opening the chat.
-        title={conversation.title}
         prefetch={false}
-        onClick={() => onNavigate()}
+        onClick={() => { onUnhover(); onNavigate(); }}
+        onFocus={() => { const rect = ref.current?.getBoundingClientRect(); if (rect) onHover(conversation, rect); }}
+        onBlur={onUnhover}
       >
         <span className="rail-recent-dot" aria-hidden="true" />
         <span className="rail-recent-body">
@@ -175,7 +252,13 @@ function RecentRow({
             <span className="rail-recent-campaign">{conversation.campaignName}</span>
           ) : null}
         </span>
-        {conversation.running ? <span className="rail-recent-working">Working</span> : <time>{conversation.when}</time>}
+        {conversation.running ? (
+          <span className="rail-recent-working" role="status" aria-label="Arc is working on this chat">
+            <WorkingSpinner />
+          </span>
+        ) : (
+          <time>{conversation.when}</time>
+        )}
       </Link>
       <button
         type="button"

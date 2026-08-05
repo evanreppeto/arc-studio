@@ -194,7 +194,14 @@
   & .indtag i { width: 5px; height: 5px; border-radius: 50%; background: var(--ws-accent, var(--accent)); animation: arcBreathe 3.4s var(--ease) infinite; }
   & .rail-divider { height: 1px; margin: 8px 8px 5px; background: linear-gradient(90deg, transparent, var(--line-2) 9%, var(--line-2) 91%, transparent); }
 
-  & .navwrap { flex: 1; min-height: 0; overflow: auto; padding-top: 4px; }
+  /* overflow-y, never `overflow: auto`. A vertical nav has no business scrolling
+     sideways, and `auto` gave it that: a recent-chat GROUP header could not
+     shrink its campaign label (flex items default to `min-width: auto`), so a
+     real campaign name — "Chicago Flood Response — Emergency Homeowner (Aug
+     2026)" — made a 377px summary inside a 200px rail and 182px of horizontal
+     scroll. The `min-width: 0` below is the actual fix; this is the backstop
+     that stops the next long string doing it again. */
+  & .navwrap { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 4px; }
   & .nav-primary { padding-bottom: 2px; }
   & .grp { font-size: 10.5px; font-weight: 600; letter-spacing: 0.11em; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); padding: 13px 10px 6px; }
   & .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; color: var(--text-2); font-size: 13px; font-weight: 500; position: relative; cursor: pointer; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
@@ -245,7 +252,10 @@
      without the button living inside the anchor. */
   & .rail-recent-wrap { position: relative; display: block; }
   & .rail-recent-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  & .rail-recent-campaign { color: var(--muted); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* `min-width: 0` so it can actually ellipsize: as a flex item its default
+     `min-width: auto` floors it at the text's intrinsic width, and the
+     overflow/text-overflow pair below then never gets a chance to fire. */
+  & .rail-recent-campaign { min-width: 0; color: var(--muted); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   & .rail-recent-more { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: var(--panel); color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
   & .rail-recent-wrap:hover .rail-recent-more, & .rail-recent-more[aria-expanded="true"] { display: inline-flex; }
   & .rail-recent-more:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
@@ -256,7 +266,7 @@
   /* A campaign that owns two or more chats. Collapsible, open by default —
      closing it is the operator tidying, not a state we choose for them. */
   & .rail-recent-group { display: grid; gap: 1px; }
-  & .rail-recent-group > summary { display: flex; align-items: center; gap: 6px; padding: 4px 5px; border-radius: 6px; color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; list-style: none; }
+  & .rail-recent-group > summary { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 5px; border-radius: 6px; color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; list-style: none; }
   & .rail-recent-group > summary::-webkit-details-marker { display: none; }
   & .rail-recent-group > summary::before { content: "\25B8"; font-size: 8px; transition: transform 0.15s var(--ease); }
   & .rail-recent-group[open] > summary::before { transform: rotate(90deg); }
@@ -2565,3 +2575,29 @@
    only thing needed here is the button. */
 .arc-app .arc-grid .gfoot .gqueue { margin-left: auto; height: 30px; font-size: 11.5px; }
 .arc-app .arc-grid .gfoot .gqueue svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+
+/* Recent-chat hover card, and the working indicator.
+   The card is position:fixed and anchored in viewport coordinates because the
+   rail clips horizontally — a card positioned inside it would be cut off at
+   exactly the width that makes a card worth having. The rail sits outside
+   .page-enter (it is a sibling of <main>), so nothing establishes a containing
+   block and `fixed` really means the viewport here. */
+.arc-app .rail-recent-card { position: fixed; z-index: 70; width: 232px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5); display: grid; gap: 3px; pointer-events: none; }
+.arc-app .rail-recent-card b { font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.35; }
+.arc-app .rail-recent-card .rail-recent-card-campaign { font-size: 10.5px; color: var(--accent-contrast); }
+.arc-app .rail-recent-card .rail-recent-card-meta { font: 500 9.5px/1.4 var(--mono); color: var(--muted); }
+
+.arc-app .rail-recent-working { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font: 600 9.5px/1 var(--mono); letter-spacing: 0.04em; }
+.arc-app .rail-working-spinner { width: 11px; height: 11px; flex: none; animation: railWorking 0.9s linear infinite; }
+.arc-app .rail-working-track { fill: none; stroke: var(--accent); stroke-opacity: 0.22; stroke-width: 2; }
+.arc-app .rail-working-arc { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
+@keyframes railWorking { to { transform: rotate(360deg); } }
+.arc-app .rail-working-spinner { transform-origin: 50% 50%; }
+/* The word is redundant beside a turning spinner, so it only appears when the
+   spinner cannot turn. Without this, reduced-motion users get a static ring and
+   no way to know what it means. */
+.arc-app .rail-working-word { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .arc-app .rail-working-spinner { animation: none; }
+  .arc-app .rail-working-word { display: inline; }
+}
