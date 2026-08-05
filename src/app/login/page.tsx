@@ -4,6 +4,7 @@ import { AuthBrandPanel } from "@/components/ui/auth-brand-panel";
 import { isSelfServeSignupOpen } from "@/lib/auth/auth-mode";
 import { FormValidityMessages } from "@/components/ui/form-validity";
 import { PasswordField } from "@/components/ui/password-field";
+import { SubmitOnEnter } from "@/components/ui/submit-on-enter";
 
 export const metadata = {
   title: "Sign in — Arc Studio",
@@ -79,6 +80,7 @@ export default async function LoginPage({
 
           <form action="/api/auth/sign-in" method="post" className="mt-7 space-y-4">
             <FormValidityMessages />
+            <SubmitOnEnter />
             <input type="hidden" name="from" value={from} />
 
             <div>
@@ -91,6 +93,9 @@ export default async function LoginPage({
                 type="email"
                 autoComplete="email"
                 required
+                // Focus starts in the form, so Enter submits from the moment the
+                // page loads instead of falling on <body> and doing nothing.
+                autoFocus
                 placeholder="you@company.com"
                 className={inputClass}
               />
