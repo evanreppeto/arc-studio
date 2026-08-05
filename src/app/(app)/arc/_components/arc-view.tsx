@@ -149,6 +149,7 @@ import {
 // org-scoped upsert Settings has always used to switch a connector.
 import { toggleConnectorEnabled } from "../../settings/connectors-actions";
 import { OverlayPortal } from "../../_components/overlay-portal";
+import { describeBlockedSend, isMidComposition } from "../composer-guard";
 import type { GeneratedSkillRecord } from "@/lib/exemplar-skills/persistence";
 import {
   getChatSharingStateAction,
@@ -1963,21 +1964,41 @@ export function ArcView({
     }
 
     setUploading(true);
-    const results = await Promise.all(files.map(async (file) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      return uploadArcAttachmentAction(formData);
-    }));
-    const uploaded = results.flatMap((result) => result.ok ? [result.attachment] : []);
-    const firstError = results.find((result) => !result.ok);
-    if (uploaded.length > 0) setAttachments((current) => [...current, ...uploaded]);
-    setComposerNotice(firstError && !firstError.ok ? firstError.error : `${uploaded.length} file${uploaded.length === 1 ? "" : "s"} attached`);
-    setUploading(false);
+    // `finally`, because `uploading` gates submitDraft. Without it a rejected
+    // upload — a network blip, an action that throws — leaves the flag true for
+    // the life of the page, and from then on every send returns silently at the
+    // guard below: no message, no error, no request. That is not hypothetical;
+    // it is a day of "I sent it and nothing happened".
+    try {
+      const results = await Promise.all(files.map(async (file) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        return uploadArcAttachmentAction(formData);
+      }));
+      const uploaded = results.flatMap((result) => result.ok ? [result.attachment] : []);
+      const firstError = results.find((result) => !result.ok);
+      if (uploaded.length > 0) setAttachments((current) => [...current, ...uploaded]);
+      setComposerNotice(firstError && !firstError.ok ? firstError.error : `${uploaded.length} file${uploaded.length === 1 ? "" : "s"} attached`);
+    } catch (error) {
+      setComposerNotice(error instanceof Error ? `Attachment failed: ${error.message}` : "That attachment could not be uploaded.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const submitDraft = () => {
     const body = draft.trim();
-    if (!body || /^\/[^\s]*$/.test(body) || /@$/.test(body) || isSending || demoPending || uploading) return;
+    // Silent: the composer is already showing why (empty box, open skill picker,
+    // open mention picker). See composer-guard.ts for the rule.
+    if (isMidComposition(body)) return;
+    // Never silent: these are flags the operator cannot see. A send that does
+    // nothing and says nothing is indistinguishable from a broken app — which is
+    // precisely how a stuck `uploading` went unnoticed for a day.
+    const blocked = describeBlockedSend({ isSending, demoPending, uploading });
+    if (blocked) {
+      setComposerNotice(blocked);
+      return;
+    }
     if (command === "add-skill") {
       setComposerMenu(null);
       setComposerNotice(null);
