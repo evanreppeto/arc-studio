@@ -61,3 +61,34 @@ export function needsOperatorApproval(tone: CampaignTone): boolean {
 export function needsOperatorAttention(row: CampaignDeskState): boolean {
   return needsOperatorApproval(row.tone) || row.pendingCount > 0;
 }
+
+/**
+ * The tone the row's STATUS PILL should wear.
+ *
+ * `needsOperatorAttention` decided which section a row files under, but the pill
+ * beside it kept rendering the raw campaign status — so on prod the live
+ * workspace showed a card sitting under "Needs you" wearing a green **Approved**
+ * pill, above a button reading "Review 6 assets", while the campaign's own
+ * detail page said "Needs you · 1 of 7 approved". One campaign, three answers.
+ *
+ * The cause is that a campaign carries two states — its own `campaign_status`
+ * and the state of the deliverables inside it — and the board printed the first
+ * while filing by the second. The pill now answers the question the operator is
+ * actually asking, which is "does this want something from me".
+ *
+ * Two deliberate exceptions:
+ *
+ *  - **`archived` is never promoted.** Something put away asks nothing, whatever
+ *    it still holds.
+ *  - **`review` and `revise` are left alone.** They already say "on your desk",
+ *    and `revise` says it *more precisely* — flattening "Needs changes" into
+ *    "Needs you" would lose which of the two it is.
+ *
+ * Section grouping is unaffected: a row promoted to `review` still satisfies
+ * `needsOperatorAttention`, which is how it got promoted.
+ */
+export function deskTone(tone: CampaignTone, pendingCount: number): CampaignTone {
+  if (tone === "archived") return tone;
+  if (needsOperatorApproval(tone)) return tone;
+  return pendingCount > 0 ? "review" : tone;
+}

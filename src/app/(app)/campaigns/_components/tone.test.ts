@@ -3,9 +3,60 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { needsOperatorApproval, needsOperatorAttention, type CampaignTone } from "./tone";
+import { deskTone, needsOperatorApproval, needsOperatorAttention, type CampaignTone } from "./tone";
 
 const ALL_TONES: CampaignTone[] = ["live", "review", "revise", "approved", "draft", "archived"];
+
+describe("deskTone", () => {
+  /**
+   * The prod symptom, in one assertion.
+   *
+   * "Chicago Flood Response" sat under the board's "Needs you" section wearing a
+   * green **Approved** pill, above a button reading "Review 6 assets", while its
+   * own detail page said "Needs you · 1 of 7 approved". The board filed by the
+   * deliverables and printed the campaign status.
+   */
+  it("says Needs you when the campaign holds undecided deliverables", () => {
+    expect(deskTone("approved", 6)).toBe("review");
+    expect(deskTone("draft", 3)).toBe("review");
+    expect(deskTone("live", 1)).toBe("review");
+  });
+
+  it("leaves a campaign alone when nothing is undecided", () => {
+    for (const tone of ["live", "approved", "draft"] as CampaignTone[]) {
+      expect(deskTone(tone, 0), tone).toBe(tone);
+    }
+  });
+
+  /** Something put away asks nothing, whatever it still holds. */
+  it("never promotes an archived campaign", () => {
+    expect(deskTone("archived", 0)).toBe("archived");
+    expect(deskTone("archived", 5)).toBe("archived");
+  });
+
+  /**
+   * "Needs changes" is the more precise of the two desk states — flattening it
+   * into "Needs you" would lose which one it is.
+   */
+  it("does not flatten a state that already says it is on your desk", () => {
+    expect(deskTone("revise", 4)).toBe("revise");
+    expect(deskTone("review", 4)).toBe("review");
+  });
+
+  /**
+   * Section grouping reads `needsOperatorAttention`. If promoting a row could
+   * change that answer, cards would move between sections as a side effect.
+   */
+  it("cannot move a row between board sections", () => {
+    for (const tone of ALL_TONES) {
+      for (const pending of [0, 1, 6]) {
+        const before = needsOperatorAttention({ tone, pendingCount: pending });
+        const after = needsOperatorAttention({ tone: deskTone(tone, pending), pendingCount: pending });
+        expect(after, `${tone}/${pending}`).toBe(before);
+      }
+    }
+  });
+});
 
 describe("needsOperatorApproval", () => {
   it("counts the campaigns whose STATUS sits on the operator's desk", () => {
