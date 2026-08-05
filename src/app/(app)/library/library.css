@@ -60,7 +60,7 @@
 
 /* folder tree */
 .arc-library .tree { border-right: 1px solid var(--line); min-height: 0; overflow: auto; padding: 14px 12px; }
-.arc-library .treeh { font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; padding: 0 8px 8px; display: flex; justify-content: space-between; align-items: center; }
+.arc-library .treeh { font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; padding: 0 8px 8px; display: flex; justify-content: space-between; align-items: center; }
 .arc-library .treeh .add { color: var(--muted); cursor: pointer; }
 .arc-library .treeh .add:hover { color: var(--text-2); }
 .arc-library .folder { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 8px; cursor: pointer; color: var(--text-2); font-size: 13px; transition: 0.14s; position: relative; }
@@ -237,7 +237,7 @@
 .arc-library .sw::after { content: ""; position: absolute; top: 1.5px; left: 1.5px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: 0.18s; }
 .arc-library .toggle.on .sw { background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-library .toggle.on .sw::after { left: 16px; background: var(--accent); }
-.arc-library .isec { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 18px 0 9px; }
+.arc-library .isec { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 18px 0 9px; }
 .arc-library .iprompt { font-size: 11.5px; line-height: 1.55; color: var(--text-2); background: var(--inset); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow-y: auto; }
 .arc-library .lineage { display: flex; flex-direction: column; gap: 0; position: relative; padding-left: 6px; }
 .arc-library .lstep { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; position: relative; }
