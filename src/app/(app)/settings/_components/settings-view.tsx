@@ -83,7 +83,7 @@ import { NewWorkspaceModal, type NewWorkspaceValue } from "./new-workspace-modal
 import { WorkspaceIdentityModal, type WorkspaceIdentityValue } from "./workspace-identity-modal";
 import { sendTestOpsAlert } from "../alert-actions";
 
-type SettingsWriteResult = { ok: true; persisted: boolean; message?: string } | { ok: false; error: string };
+import { toStatus, type SaveStatus, type SettingsWriteResult } from "./save-status";
 
 const ROLE_OPTIONS = ["Owner", "Admin", "Marketer", "Reviewer", "Member", "Viewer"];
 
@@ -177,14 +177,10 @@ function Seg({ opts, active, value, onChange }: { opts: string[]; active?: strin
 }
 
 // Small inline save-status line, styled like the other feedback spans in this file.
-type SaveStatus = { tone: "ok" | "err"; text: string } | null;
+
 function Status({ status }: { status: SaveStatus }) {
   if (!status) return null;
   return <span style={{ fontSize: 12, color: status.tone === "ok" ? "var(--ok-text)" : "var(--red-text)" }}>{status.text}</span>;
-}
-function toStatus(res: SettingsWriteResult, okText: string): SaveStatus {
-  if (!res.ok) return { tone: "err", text: res.error };
-  return { tone: "ok", text: res.persisted ? okText : `${okText} — connect your workspace to persist.` };
 }
 /**
  * Loop state → pill styling. `unknown` deliberately reads as a warning rather
