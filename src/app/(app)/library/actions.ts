@@ -6,7 +6,7 @@ import { type AssetDecision } from "@/domain";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { removeMediaRecordFromBrain, syncMediaRecordToBrain } from "@/lib/brain-ingestion/sync";
-import { createFolder, deleteAsset, deleteFolder, insertAssetWithUrl, moveAsset, moveFolder, renameAsset, renameFolder, setAssetTags, setAvailableToArc } from "@/lib/media-library/persistence";
+import { createFolder, deleteAsset, deleteFolder, insertAssetWithUrl, moveAsset, moveFolder, renameAsset, reorderFolders, setAssetTags, setAvailableToArc, updateFolder } from "@/lib/media-library/persistence";
 import { decideAssetApproval } from "@/lib/media-library/approval";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { promoteAssetToCampaign } from "@/lib/campaigns/create";
@@ -98,22 +98,74 @@ export async function moveLibraryFolder(input: {
 
 export type FolderMutationResult = { ok: true; persisted: boolean } | { ok: false; error: string };
 
-/** Rename a folder. Org-scoped (renameFolder returns false when the id isn't this
- *  workspace's row). Internal organization — never outbound. */
-export async function renameLibraryFolder(folderId: string, name: string): Promise<FolderMutationResult> {
+/**
+ * Edit a folder's name and/or its description. Org-scoped (`updateFolder`
+ * returns false when the id isn't this workspace's row).
+ *
+ * One action for both fields rather than a rename action beside a description
+ * action: they are the same row, the same gate and the same revalidation, and
+ * the inline rename in the rail simply omits `description`. An explicit empty
+ * description clears it; an omitted one is left alone. Internal organization —
+ * never outbound.
+ */
+export async function updateLibraryFolder(input: {
+  folderId: string;
+  name?: string;
+  description?: string | null;
+}): Promise<FolderMutationResult> {
   await requireOperator();
-  const trimmed = name?.trim();
-  if (!folderId?.trim()) return { ok: false, error: "A folder id is required." };
-  if (!trimmed) return { ok: false, error: "A folder name is required." };
+  const folderId = input.folderId?.trim();
+  if (!folderId) return { ok: false, error: "A folder id is required." };
+
+  const patch: { name?: string; description?: string | null } = {};
+  if (input.name !== undefined) {
+    const trimmed = input.name.trim();
+    if (!trimmed) return { ok: false, error: "A folder name is required." };
+    patch.name = trimmed;
+  }
+  if (input.description !== undefined) patch.description = input.description?.trim() || null;
+  if (patch.name === undefined && patch.description === undefined) return { ok: true, persisted: false };
+
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
   try {
     const orgId = await getCurrentOrgId();
-    const matched = await renameFolder(folderId, trimmed, orgId);
+    const matched = await updateFolder(folderId, patch, orgId);
     if (!matched) return { ok: false, error: "That folder isn't in this workspace." };
     revalidatePath("/library");
     return { ok: true, persisted: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not rename the folder." };
+    return { ok: false, error: error instanceof Error ? error.message : "Could not update the folder." };
+  }
+}
+
+/** The rail's inline rename (F2), which is just the name half of the above. */
+export async function renameLibraryFolder(folderId: string, name: string): Promise<FolderMutationResult> {
+  return updateLibraryFolder({ folderId, name });
+}
+
+/**
+ * Persist the order of one parent's children — dragging a folder between two
+ * others in the rail, or Move up / Move down from its menu.
+ *
+ * `parentId: null` is the top level. The caller sends the full ordered list it
+ * is showing rather than a delta, so what gets stored is what the operator
+ * sees; the server still decides membership (see `reorderFolders`).
+ */
+export async function reorderLibraryFolders(input: {
+  parentId: string | null;
+  orderedIds: string[];
+}): Promise<FolderMutationResult> {
+  await requireOperator();
+  const orderedIds = (input.orderedIds ?? []).map((id) => id?.trim()).filter(Boolean) as string[];
+  if (orderedIds.length === 0) return { ok: false, error: "Nothing to reorder." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+  try {
+    const orgId = await getCurrentOrgId();
+    await reorderFolders(orgId, input.parentId?.trim() || null, orderedIds);
+    revalidatePath("/library");
+    return { ok: true, persisted: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not reorder the folders." };
   }
 }
 

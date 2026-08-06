@@ -105,11 +105,60 @@ export type FolderTreeProps = {
   /** Open the new-folder modal, filed under `parentId` (null = root). */
   onNewFolder: (parentId: string | null) => void;
   onMoveFolder: (id: string, parentId: string | null) => void;
+  /**
+   * Re-order siblings. `parentId` is whose children these are (null = top
+   * level) and `orderedIds` is the full list in its new order — a whole list
+   * rather than "moved up", so what persists is exactly what was on screen.
+   */
+  onReorder: (parentId: string | null, orderedIds: string[]) => void;
+  /** Open the folder-details editor (name + description). */
+  onEditDetails: (id: string) => void;
   /** Assets were dropped on a folder row. `null` is the root. */
   onDropAssets: (assetIds: number[], folderId: string | null) => void;
   /** True while a drag is in flight, so every row can advertise itself as a target. */
   dragging: boolean;
 };
+
+/**
+ * Where a drop on a row would land.
+ *
+ * A file tree that only accepts drops INTO folders can nest but never order,
+ * so the rail's sequence is whatever the database happened to return. Splitting
+ * each row into three bands — the standard sidebar interaction — makes one
+ * gesture do both. The middle band is the widest because filing INTO a folder
+ * is the common intent and the one that should be easiest to hit.
+ */
+export type DropZone = "before" | "into" | "after";
+
+export function dropZoneFor(offsetY: number, height: number): DropZone {
+  if (height <= 0) return "into";
+  const ratio = offsetY / height;
+  if (ratio < 0.28) return "before";
+  if (ratio > 0.72) return "after";
+  return "into";
+}
+
+/** The parent of `id`, and that parent's children in order. */
+export function siblingsOf(nodes: Folder[], id: string): { parentId: string | null; siblings: Folder[] } | null {
+  const walk = (list: Folder[], parentId: string | null): { parentId: string | null; siblings: Folder[] } | null => {
+    if (list.some((n) => n.f === id)) return { parentId, siblings: list };
+    for (const node of list) {
+      const found = node.children ? walk(node.children, node.f) : null;
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(nodes.filter((n) => n.f !== ROOT_FOLDER), null);
+}
+
+/** `moved` lifted out of its slot and re-inserted next to `anchor`. */
+export function reorderIds(ids: string[], moved: string, anchor: string, side: "before" | "after"): string[] {
+  const without = ids.filter((id) => id !== moved);
+  const at = without.indexOf(anchor);
+  if (at < 0) return ids;
+  const index = side === "before" ? at : at + 1;
+  return [...without.slice(0, index), moved, ...without.slice(index)];
+}
 
 /**
  * The Library's folder rail.
@@ -135,13 +184,15 @@ export function FolderTree({
   onDelete,
   onNewFolder,
   onMoveFolder,
+  onReorder,
+  onEditDetails,
   onDropAssets,
   dragging,
 }: FolderTreeProps) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; zone: DropZone } | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   /** The folder being dragged, so its own subtree can refuse the drop on sight. */
   const [draggingFolder, setDraggingFolder] = useState<string | null>(null);
@@ -288,17 +339,52 @@ export function FolderTree({
     return false;
   };
 
+  /**
+   * The band the pointer is in, for a row that can take the drop.
+   *
+   * The root row and assets are always "into": assets have no order to sit
+   * between, and "before All assets" means nothing.
+   */
+  const zoneFor = (e: React.DragEvent, id: string): DropZone => {
+    if (id === ROOT_FOLDER || !e.dataTransfer.types.includes(DRAG_FOLDER)) return "into";
+    const rect = e.currentTarget.getBoundingClientRect();
+    return dropZoneFor(e.clientY - rect.top, rect.height);
+  };
+
   function handleDrop(e: React.DragEvent, id: string) {
     e.preventDefault();
     e.stopPropagation();
+    const zone = dropTarget?.id === id ? dropTarget.zone : zoneFor(e, id);
     setDropTarget(null);
     const destination = id === ROOT_FOLDER ? null : id;
+
     const folderId = e.dataTransfer.getData(DRAG_FOLDER);
     if (folderId) {
       setDraggingFolder(null);
-      if (folderId !== id && !subtreeIds(tree, folderId).has(id)) onMoveFolder(folderId, destination);
+      if (folderId === id || subtreeIds(tree, folderId).has(id)) return;
+      if (zone === "into") {
+        onMoveFolder(folderId, destination);
+        return;
+      }
+      // Dropped between two rows: the folder becomes a sibling of the row it
+      // landed against, in that row's parent, at that position. Re-parenting
+      // and ordering are one gesture, so the order is only sent once the
+      // folder is where it belongs.
+      const anchor = siblingsOf(tree, id);
+      if (!anchor) return;
+      const moving = siblingsOf(tree, folderId);
+      const sameParent = moving?.parentId === anchor.parentId;
+      const ids = reorderIds(
+        sameParent ? anchor.siblings.map((n) => n.f) : [...anchor.siblings.map((n) => n.f), folderId],
+        folderId,
+        id,
+        zone,
+      );
+      if (!sameParent) onMoveFolder(folderId, anchor.parentId);
+      onReorder(anchor.parentId, ids);
       return;
     }
+
     const raw = e.dataTransfer.getData(DRAG_ASSETS);
     if (!raw) return;
     try {
@@ -309,12 +395,33 @@ export function FolderTree({
     }
   }
 
+  /** Move a folder one slot within its own siblings — the menu's Up / Down. */
+  const nudge = (id: string, delta: -1 | 1) => {
+    const group = siblingsOf(tree, id);
+    if (!group) return;
+    const ids = group.siblings.map((n) => n.f);
+    const at = ids.indexOf(id);
+    const to = at + delta;
+    if (at < 0 || to < 0 || to >= ids.length) return;
+    const next = [...ids];
+    next.splice(at, 1);
+    next.splice(to, 0, id);
+    onReorder(group.parentId, next);
+  };
+
+  /** Whether Up / Down would do anything, so the menu can say so. */
+  const nudgeBounds = (id: string) => {
+    const group = siblingsOf(tree, id);
+    const at = group ? group.siblings.findIndex((n) => n.f === id) : -1;
+    return { first: at <= 0, last: at < 0 || at === (group?.siblings.length ?? 0) - 1 };
+  };
+
   const renderRow = (row: Row) => {
     const { node, depth, hasKids, open } = row;
     const isRoot = node.f === ROOT_FOLDER;
     const selected = node.f === current;
     const count = countOf(node.f);
-    const isDropTarget = dropTarget === node.f;
+    const zone = dropTarget?.id === node.f ? dropTarget.zone : null;
     // A folder drag deserves the same "these rows will take it" hint an asset
     // drag gets — minus the rows that would close a loop.
     const droppable = (dragging || !!draggingFolder) && !forbidden.has(node.f);
@@ -330,7 +437,7 @@ export function FolderTree({
         aria-label={node.name}
         tabIndex={focused === node.f ? 0 : -1}
         title={node.description || node.name}
-        className={`folder${selected ? " on" : ""}${isDropTarget ? " dropinto" : ""}${droppable ? " droppable" : ""}${draggingFolder === node.f ? " lifted" : ""}`}
+        className={`folder${selected ? " on" : ""}${zone ? ` drop-${zone}` : ""}${droppable ? " droppable" : ""}${draggingFolder === node.f ? " lifted" : ""}`}
         style={{ paddingLeft: 9 + depth * 14 }}
         draggable={!isRoot && !renaming}
         onClick={() => onSelect(node.f)}
@@ -351,12 +458,16 @@ export function FolderTree({
           if (!acceptsDrop(e.dataTransfer.types, node.f)) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
-          if (dropTarget !== node.f) setDropTarget(node.f);
+          const next = zoneFor(e, node.f);
+          // Compared before setting: dragover fires continuously, and a state
+          // write per pointer-pixel would re-render the whole rail while a
+          // drag is in flight.
+          setDropTarget((t) => (t?.id === node.f && t.zone === next ? t : { id: node.f, zone: next }));
         }}
         onDragLeave={(e) => {
           // Ignore the leave fired when the pointer crosses onto a child element.
           if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-          setDropTarget((t) => (t === node.f ? null : t));
+          setDropTarget((t) => (t?.id === node.f ? null : t));
         }}
         onDrop={(e) => handleDrop(e, node.f)}
       >
@@ -512,6 +623,20 @@ export function FolderTree({
                   Rename
                   <kbd>F2</kbd>
                 </button>
+                {/* Descriptions have been on `media_folders` since the baseline
+                    and every seeded folder carries one, but nothing could edit
+                    them — the column was write-once at seed time. */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="fmenu-item"
+                  onClick={() => {
+                    setMenu(null);
+                    onEditDetails(menu.id);
+                  }}
+                >
+                  Name &amp; description…
+                </button>
                 <button
                   type="button"
                   role="menuitem"
@@ -522,6 +647,28 @@ export function FolderTree({
                   }}
                 >
                   New subfolder
+                </button>
+                {/* Ordering by pointer is the drop-between gesture; these are
+                    the same move for anyone not using one. Disabled at the ends
+                    rather than hidden, so the rail doesn't appear to lose a
+                    control depending on where you are in the list. */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="fmenu-item"
+                  disabled={nudgeBounds(menu.id).first}
+                  onClick={() => { nudge(menu.id, -1); setMenu(null); }}
+                >
+                  Move up
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="fmenu-item"
+                  disabled={nudgeBounds(menu.id).last}
+                  onClick={() => { nudge(menu.id, 1); setMenu(null); }}
+                >
+                  Move down
                 </button>
                 {/* Every destination except the folder itself and its own
                     descendants — the same rule the server enforces, offered
