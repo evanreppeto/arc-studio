@@ -788,7 +788,10 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     setVideoBusy(true);
     setVideoNote("Starting the render…");
     try {
-      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId });
+      // Animate the photo on the canvas when there is one. Without it Veo
+      // invents a scene from the words and the picture the operator picked is
+      // silently ignored — which is what "Animate" has always done.
+      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId, sourceImageUrl: bg?.url });
       if (!started.ok) {
         setGenErr(started.error);
         return;
@@ -1502,7 +1505,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     <div className="scapt">
                       {videoNote
                         ? videoNote
-                        : `Veo renders a short clip from your description — it does not use the selected photo. Landscape and portrait only, so this renders at ${videoAspect}. Lands as a draft for your approval.`}
+                        : bg?.url
+                          ? `Veo animates the photo you picked, guided by your description. Landscape and portrait only, so this renders at ${videoAspect}. Lands as a draft for your approval.`
+                          : `Veo renders a short clip from your description. Pick a photo first and it will animate that instead. Landscape and portrait only, so this renders at ${videoAspect}. Lands as a draft for your approval.`}
                     </div>
                   </>
                 ) : (
