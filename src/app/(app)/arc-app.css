@@ -650,8 +650,33 @@
 .arc-app .define:hover,
 .arc-app .define:focus-visible { color: var(--accent-contrast); border-color: var(--accent-border); outline: none; }
 
-.arc-app .howworks { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 16px 18px; }
-.arc-app .howworks h2 { font-family: var(--serif); font-size: 15px; font-weight: 500; color: var(--text); margin: 0 0 8px; }
+/* The explainer folds (see `HowThisWorks`): closed it is one quiet row, open it
+   is the panel it always was. Closed is the resting state on every screen that
+   carries one, so the work is what's above the fold, not the prose about it. */
+.arc-app .howworks { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); }
+.arc-app .howworks > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--r-lg);
+  transition: color var(--dur-base);
+}
+/* Safari still paints its own triangle without this. */
+.arc-app .howworks > summary::-webkit-details-marker { display: none; }
+.arc-app .howworks > summary:hover { color: var(--text); }
+.arc-app .howworks > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arc-app .howworks .hw-chev { display: inline-flex; margin-left: auto; color: var(--muted); }
+.arc-app .howworks .hw-chev svg { width: 15px; height: 15px; transition: transform var(--dur-base) var(--ease); }
+.arc-app .howworks[open] > summary { color: var(--text); border-bottom: 1px solid var(--line); border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.arc-app .howworks[open] .hw-chev svg { transform: rotate(180deg); }
+.arc-app .howworks .hw-body { padding: 14px 16px 15px; }
 .arc-app .howworks p { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 0 0 8px; max-width: 68ch; }
 .arc-app .howworks p:last-child { margin-bottom: 0; }
 .arc-app .howworks b { color: var(--text); font-weight: 600; }
@@ -677,6 +702,14 @@
   border: 1px solid var(--line-2);
   border-radius: var(--r-lg);
   overflow: hidden;
+  /* The strip clips to its rounded corners, so it must never be shorter than
+     its own content — a clipped cell doesn't scroll, it just cuts the number
+     in half. Every column-flex page (`.arc-grid`, `.arc-outbox`, …) makes this
+     a flex item, and a flex item's default `flex-shrink: 1` squeezed CRM's
+     105px strip into 59px: "11", "8", "4" and "$82,200" all rendered sliced
+     through the middle. Outbox had already patched this locally on `.okpis`;
+     the shrink belongs off at the source, so no page has to rediscover it. */
+  flex-shrink: 0;
 }
 .arc-app .kpistrip[data-count="2"] { grid-template-columns: 1.5fr 1fr; }
 .arc-app .kpistrip[data-count="3"] { grid-template-columns: 1.5fr 1fr 1fr; }
@@ -1675,6 +1708,8 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-personas .sec { margin-top: 24px; }
 /* Signals radar + Performance duo (ported from build-personas.html) */
 .arc-app .arc-personas .dduo { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 14px; align-items: stretch; }
+/* The Performance card alone, full width — see the note in personas-view.tsx. */
+.arc-app .arc-personas .dsolo { display: grid; grid-template-columns: minmax(0, 1fr); }
 .arc-app .arc-personas .radarcard { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: radial-gradient(120% 100% at 50% 30%, rgba(200, 162, 74, .05), transparent 60%), var(--panel); padding: 12px; display: flex; flex-direction: column; align-items: center; }
 .arc-app .arc-personas .radarcard svg { display: block; }
 .arc-app .arc-personas .rdrivers { width: 100%; margin-top: 4px; display: flex; flex-direction: column; gap: 5px; }
@@ -1746,10 +1781,6 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-brain .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-brain .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
-.arc-app .arc-brain .covbanner { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--accent-soft); padding: 11px 14px; }
-.arc-app .arc-brain .covbanner svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 1.8; flex-shrink: 0; }
-.arc-app .arc-brain .covbanner .ct { font-size: 12.5px; color: var(--text-2); }
-.arc-app .arc-brain .covbanner .ct b { color: var(--text); font-weight: 600; }
 
 .arc-app .arc-brain .btabs { position: sticky; top: 0; z-index: 6; display: flex; gap: 2px; padding: 0 clamp(22px, 3vw, 38px); border-bottom: 1px solid var(--line-2); margin-top: 16px; flex-shrink: 0; overflow-x: auto; background: var(--canvas); }
 .arc-app .arc-brain .btab { position: relative; display: flex; align-items: center; gap: 8px; padding: 11px 13px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: color var(--dur-base); white-space: nowrap; background: none; border: none; font-family: inherit; }

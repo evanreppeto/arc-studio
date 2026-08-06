@@ -250,12 +250,24 @@ export async function countActiveApprovals(
  */
 export async function countApprovalsWaitingOnOperator(
   orgId?: string,
-  client: SupabaseClient = getSupabaseAdminClient(),
+  providedClient?: SupabaseClient,
 ): Promise<number> {
+  // The live path was fixed; the OFFLINE path still wore the bug this comment
+  // describes, and wore it at the very number it names. With no admin client,
+  // resolving one threw, every caller caught to `null`, and the fallback was
+  // `approvalsNeedingYou.length` — a list fetched with `limit: 5`. So the demo
+  // rail read "Campaigns 5" beside a Campaigns page that said "Arc wrote 6
+  // assets for you to check": not a data disagreement, a page size. Count the
+  // demo queue the same way the live one is counted — uncapped, same statuses.
+  if (!providedClient && !isSupabaseAdminConfigured()) {
+    if (!isDemoDataEnabled()) return 0;
+    const cards = buildDemoApprovalCards({ limit: Number.MAX_SAFE_INTEGER });
+    return cards.filter((card) => isWaitingOnOperator(card.status)).length;
+  }
   return countApprovalsByStatus(
     [...OPERATOR_BLOCKED_APPROVAL_STATUSES],
     orgId,
-    client,
+    providedClient ?? getSupabaseAdminClient(),
     "countApprovalsWaitingOnOperator",
   );
 }

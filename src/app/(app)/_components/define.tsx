@@ -31,12 +31,28 @@ export function Define({ term, className }: { term: DefinitionKey; className?: s
  * The plain-English explainer panel. `/journeys` had the only one in the app and
  * it is the single most useful thing on that screen, so the audit's
  * recommendation was to spread the pattern rather than invent a new one.
+ *
+ * Spread it did — Brain, Personas, Opportunities and Journeys all carry one —
+ * and on every one of them it was two paragraphs of prose pinned open above the
+ * work. On Brain it sat between the metrics and the tabs and pushed the facts
+ * themselves off a 900px viewport, so the screen's answer to "what does Arc
+ * know?" was a paragraph about what knowing means.
+ *
+ * So it folds. `<details>` and not state, for the reason `Define` is a `title`:
+ * it works on first paint, needs no JS, and a screen reader already understands
+ * it. The heading stays visible, which is the part that orients someone — the
+ * explanation is one click away instead of permanently in the way.
  */
 export function HowThisWorks({ children, title = "How this works" }: { children: React.ReactNode; title?: string }) {
   return (
-    <section className="howworks" aria-label={title}>
-      <h2>{title}</h2>
-      {children}
-    </section>
+    <details className="howworks">
+      <summary>
+        {title}
+        <span className="hw-chev" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M6 9l6 6 6-6" /></svg>
+        </span>
+      </summary>
+      <div className="hw-body">{children}</div>
+    </details>
   );
 }
