@@ -2,6 +2,19 @@ export const ARC_SKILL_IDS = {
   companyResearch: "company-research",
   opportunityDiscovery: "opportunity-discovery",
   approvalGatedDrafting: "approval-gated-drafting",
+  /**
+   * The runner's richest drafting playbook — it carries the actual campaign
+   * craft (email as a sequence, one CTA per asset, channel constraints).
+   *
+   * No catalog entry maps to it yet, deliberately. Remapping `/draft-campaign`
+   * here would also *remove* `generate_image`/`generate_video`, which that
+   * playbook withholds by design ("reference approved media; do not generate
+   * net-new media"). Cutting a capability from an existing command is an
+   * explicit product decision, not a side effect. Inferred routing reaches it
+   * safely because an inferred skill is advisory — it adds craft to the prompt
+   * without narrowing tools.
+   */
+  campaignPackageDrafting: "campaign-package-drafting",
   skillAuthoring: "skill-authoring",
 } as const;
 

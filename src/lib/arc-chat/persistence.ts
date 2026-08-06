@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type ArcActionCard, type ArcMedia, type ArcMention, type ArcMode, type ArcQuestion, type ArcRecall, type ArcRoute, type ArcStepKind, parseActions, parseMedia, parseMentions, parseQuestions, parseRecall } from "@/domain";
 import { type ArcSkillId } from "@/lib/arc-skills/catalog";
+import { type InferredArcSkill } from "@/lib/arc-skills/routing";
 
 import { getSupabaseAdminClient } from "../supabase/server";
 import { type ArcChatTaskScope } from "./inbox";
@@ -785,6 +786,16 @@ export async function insertOperatorMessage(
     route?: ArcRoute;
     command?: string | null;
     skillId?: ArcSkillId | null;
+    /**
+     * Shadow-mode only: what skill auto-selection *would* have picked for this
+     * turn. Recorded, never applied — `skillId` above is what actually ran.
+     *
+     * Kept as a separate key rather than folded into `skill_id` precisely so
+     * the two can never be confused by a later reader: a row with
+     * `inferred_skill` and no `skill_id` ran unskilled, exactly as it does
+     * today.
+     */
+    inferredSkill?: InferredArcSkill | null;
     contextScopes?: string[];
     author_user_id?: string | null;
   },
@@ -796,6 +807,7 @@ export async function insertOperatorMessage(
   if (input.route) metadata.route = input.route;
   if (input.command) metadata.command = input.command;
   if (input.skillId) metadata.skill_id = input.skillId;
+  if (input.inferredSkill) metadata.inferred_skill = input.inferredSkill;
   if (input.contextScopes && input.contextScopes.length > 0) metadata.context_scopes = input.contextScopes;
   const { data, error } = await client
     .from("arc_messages")

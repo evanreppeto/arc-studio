@@ -99,6 +99,48 @@ describe("insertOperatorMessage", () => {
     expect(message.skillId).toBe("opportunity-discovery");
   });
 
+  // REGRESSION GUARD: shadow mode must stay observational. If an inferred pick
+  // ever lands in `skill_id`, it stops being a measurement and starts silently
+  // steering turns — including narrowing the runner's tool set — which is the
+  // exact failure the shadow phase exists to rule out.
+  it("records an inferred skill without applying it as the turn's skill", async () => {
+    const supabase = createSupabaseQueryMock({
+      arc_conversations: { data: { org_id: "org-1" }, error: null },
+      arc_messages: {
+        data: {
+          id: "m1",
+          conversation_id: "c1",
+          role: "operator",
+          body: "make me an image of a service van",
+          status: "sent",
+          agent_task_id: null,
+          mentions: [],
+          metadata: {},
+          created_at: "2026-06-23T00:00:00.000Z",
+        },
+        error: null,
+      },
+    });
+
+    const message = await insertOperatorMessage(
+      {
+        conversationId: "c1",
+        body: "make me an image of a service van",
+        mentions: [],
+        skillId: null,
+        inferredSkill: { id: "approval-gated-drafting", score: 9, margin: 9, confidence: "high" },
+      },
+      supabase,
+    );
+
+    const insert = calls(supabase, "insert")[0];
+    const metadata = insert.metadata as Record<string, unknown>;
+    expect(metadata.inferred_skill).toMatchObject({ id: "approval-gated-drafting", confidence: "high" });
+    expect(metadata).not.toHaveProperty("skill_id");
+    // The turn still ran unskilled, exactly as it does today.
+    expect(message.skillId).toBeFalsy();
+  });
+
   // REGRESSION GUARD: arc_messages.org_id has a DEFAULT hardcoded to one org, so an
   // omitted org_id silently misfiles the message into that tenant rather than failing.
   // The org must be derived from the parent conversation and passed explicitly.
