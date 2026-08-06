@@ -71,12 +71,23 @@
 /* A live drop target. The dashed inset ring reads as "this will accept", and it
    is drawn INSIDE the row so a nested row's ring can't be mistaken for its
    parent's. */
-.arc-library .folder.dropinto { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-border); }
-.arc-library .folder.dropinto .ficon { border-color: var(--accent) !important; }
+.arc-library .folder.drop-into { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-border); }
+.arc-library .folder.drop-into .ficon { border-color: var(--accent) !important; }
+/* Dropped BETWEEN two rows — a re-order rather than a re-parent. A line where
+   the folder will land, not a filled row: the difference between "inside this"
+   and "above this" has to be visible before you let go, or the two gestures are
+   the same gesture with different outcomes. */
+.arc-library .folder.drop-before::before,
+.arc-library .folder.drop-after::before {
+  content: ""; position: absolute; left: 6px; right: 6px; height: 2px;
+  background: var(--accent); border-radius: 2px; pointer-events: none;
+}
+.arc-library .folder.drop-before::before { top: -1px; }
+.arc-library .folder.drop-after::before { bottom: -1px; }
 /* Everything that could take the drop says so faintly while one is in flight —
    otherwise the only way to learn a folder is a target is to guess. */
 .arc-library .treescroll.dragging .folder.droppable { background: rgba(255, 255, 255, 0.02); box-shadow: inset 0 0 0 1px var(--line-2); }
-.arc-library .treescroll.dragging .folder.droppable.dropinto { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-border); }
+.arc-library .treescroll.dragging .folder.droppable.drop-into { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-border); }
 /* And the rail as a whole reads as live while media is in the air, so it is
    obvious the drag has somewhere to go. */
 .arc-library .lib.dragging .tree { background: color-mix(in srgb, var(--accent-soft) 32%, transparent); }
@@ -129,6 +140,10 @@
    component doesn't have. Scoped to `.arc-app`, not `.arc-library`, because the
    portal host is a child of the shell. */
 .arc-app .fmenu-hd { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Move up / Move down at the ends of a list: shown, not hidden, so the menu
+   doesn't change shape depending on where you are in it. */
+.arc-app .fmenu-item:disabled { opacity: 0.4; cursor: default; }
+.arc-app .fmenu-item:disabled:hover { background: none; color: var(--text-2); }
 .arc-app .fmenu-item.danger { color: var(--red-text); }
 .arc-app .fmenu-item.danger:hover { background: var(--red-soft); }
 .arc-app .fmenu-item kbd { font-family: var(--mono); font-size: 9.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 1px 4px; }

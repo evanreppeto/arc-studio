@@ -54,10 +54,30 @@ export function defaultUploader(client: SupabaseClient): ImageUploader {
   };
 }
 
+/**
+ * The next free slot among a parent's children.
+ *
+ * `media_folders.sort_order` is `not null default 0`, and `createFolder` never
+ * set it — so every folder an operator or Arc made landed on 0, tying with
+ * whichever seeded folder also holds 0. A tie on the only ORDER BY column means
+ * Postgres may return those rows in either order, so the rail's folder order
+ * was not stable across reads. Verified on the live tenant: "AI-generated"
+ * (created 2026-07-31) and "Logos & Brand" (seeded) both sat at 0.
+ */
+async function nextSortOrder(client: SupabaseClient, orgId: string, parentId: string | null): Promise<number> {
+  let query = client.from("media_folders").select("sort_order").eq("org_id", orgId);
+  query = parentId ? query.eq("parent_id", parentId) : query.is("parent_id", null);
+  const { data, error } = await query;
+  if (error) throw new Error(`media_folders read failed: ${error.message}`);
+  const orders = (data ?? []).map((row) => (row as { sort_order: number | null }).sort_order ?? 0);
+  return orders.length ? Math.max(...orders) + 1 : 0;
+}
+
 export type CreateFolderInput = { orgId: string; name: string; parentId?: string | null; description?: string | null; client?: SupabaseClient };
 export async function createFolder({ orgId, name, parentId = null, description = null, client = getSupabaseAdminClient() }: CreateFolderInput): Promise<string> {
   const workspaceFields = await workspaceIdFields(client, orgId);
-  return insertGetId(client, "media_folders", { org_id: orgId, ...workspaceFields, name, parent_id: parentId, description });
+  const sortOrder = await nextSortOrder(client, orgId, parentId);
+  return insertGetId(client, "media_folders", { org_id: orgId, ...workspaceFields, name, parent_id: parentId, description, sort_order: sortOrder });
 }
 
 /** Generic starter folders seeded for a new workspace. Names/descriptions are
@@ -100,10 +120,64 @@ export async function seedDefaultMediaFolders(
 // so the org_id filter is the ONLY thing between an operator and another tenant's
 // row (same posture as setAvailableToArc). Each is org-scoped and returns whether
 // a row actually matched, so the caller can report "not in this workspace".
-export async function renameFolder(id: string, name: string, orgId: string, client: SupabaseClient = getSupabaseAdminClient()): Promise<boolean> {
-  const { data, error } = await client.from("media_folders").update({ name }).eq("id", id).eq("org_id", orgId).select("id");
+/**
+ * Edit a folder's own fields.
+ *
+ * Replaces the old rename-only write. `description` has been on the table since
+ * the baseline and every seeded folder on the live tenant carries one, but
+ * nothing could ever change it — the column was write-once at seed time. An
+ * explicit `null` clears it; omitting the key leaves it alone, which is why the
+ * patch is assembled rather than spread.
+ */
+export async function updateFolder(
+  id: string,
+  patch: { name?: string; description?: string | null },
+  orgId: string,
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<boolean> {
+  const values: Record<string, unknown> = {};
+  if (patch.name !== undefined) values.name = patch.name;
+  if (patch.description !== undefined) values.description = patch.description;
+  if (Object.keys(values).length === 0) return true;
+  const { data, error } = await client.from("media_folders").update(values).eq("id", id).eq("org_id", orgId).select("id");
   if (error) throw new Error(`media_folders update failed: ${error.message}`);
   return (data ?? []).length > 0;
+}
+
+/**
+ * Rewrite the sort order of one parent's children.
+ *
+ * Takes the full ordered list rather than a single "move this one up", so the
+ * result is whatever the caller displayed rather than an increment applied to a
+ * value nobody could see. Ids that are not this org's children of this parent
+ * are dropped rather than trusted — the browser supplies the order, so it does
+ * not get to decide membership.
+ */
+export async function reorderFolders(
+  orgId: string,
+  parentId: string | null,
+  orderedIds: string[],
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<number> {
+  let query = client.from("media_folders").select("id").eq("org_id", orgId);
+  query = parentId ? query.eq("parent_id", parentId) : query.is("parent_id", null);
+  const { data, error } = await query;
+  if (error) throw new Error(`media_folders read failed: ${error.message}`);
+  const allowed = new Set((data ?? []).map((row) => (row as { id: string }).id));
+
+  const ids = orderedIds.filter((id) => allowed.has(id));
+  let written = 0;
+  for (const [index, id] of ids.entries()) {
+    // eslint-disable-next-line no-await-in-loop -- a handful of siblings; sequential keeps the count honest
+    const { error: updateError } = await client
+      .from("media_folders")
+      .update({ sort_order: index })
+      .eq("id", id)
+      .eq("org_id", orgId);
+    if (updateError) throw new Error(`media_folders update failed: ${updateError.message}`);
+    written += 1;
+  }
+  return written;
 }
 
 export async function deleteFolder(id: string, orgId: string, client: SupabaseClient = getSupabaseAdminClient()): Promise<boolean> {

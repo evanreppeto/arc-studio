@@ -125,7 +125,15 @@ describe("POST /api/v1/arc/media", () => {
 
   it("creates a folder scoped to the token org", async () => {
     configure();
-    const supabase = createSupabaseQueryMock({ media_folders: { data: { id: "f-9" }, error: null } });
+    // Two round trips: `createFolder` reads its siblings' `sort_order` before
+    // inserting, rather than letting the column's `default 0` tie every new
+    // folder with whatever else holds 0.
+    const supabase = createSupabaseQueryMock({
+      media_folders: [
+        { data: [], error: null },
+        { data: { id: "f-9" }, error: null },
+      ],
+    });
     getSupabaseMock.mockReturnValue(supabase);
 
     const res = await POST(postRequest({ action: "create_folder", name: "Proof photos" }));
