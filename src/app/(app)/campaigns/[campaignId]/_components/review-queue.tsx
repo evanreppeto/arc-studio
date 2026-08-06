@@ -10,6 +10,7 @@ import { OverlayPortal } from "../../../_components/overlay-portal";
 import { DeliverableCopy, markId, ReviewBlock, statusMeta, svg } from "./deliverable-review";
 import { pieceLabel } from "../../_components/board-derivations";
 import { isTypingTarget, keyToQueueAction, stepQueueIndex } from "./queue-keys";
+import { isSubstantialSelection, placeSelectionAnchor, type AnchorPlacement } from "./selection-anchor";
 import { summarizeReview } from "./review-summary";
 
 /**
@@ -71,6 +72,10 @@ export function ReviewQueue({
   const [startedWith] = useState(queue.length);
   /** The passage the reviewer pointed at, carried into the revision request. */
   const [quote, setQuote] = useState<string | null>(null);
+  /** Where to float the bubble, in viewport coordinates. Null while hidden. */
+  const [anchor, setAnchor] = useState<AnchorPlacement | null>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   // The selection listener is bound once, so it reads the mode through a ref.
   // Written in an effect, not during render — a ref mutated while rendering is
   // a value React cannot see, and the lint rule that catches it is right.
@@ -143,55 +148,123 @@ export function ReviewQueue({
   }, [asset, onRevise, pending, queue.length, reviseText]);
 
   /**
-   * What the reviewer has selected in the draft, if anything.
+   * What the reviewer has selected in the draft, and where it is on screen.
    *
-   * Two selection models, because the draft is rendered two ways. An undecided
-   * deliverable is a transparent `<textarea>` laid over the highlight marks
-   * (see `DeliverableCopy`), where the selection lives in
-   * `selectionStart/selectionEnd` and `window.getSelection()` returns nothing.
-   * A decided one is ordinary text, where the opposite is true. Reading only
-   * one of them would make the feature work on exactly half the queue — and
-   * the half it would miss is the half you actually review.
+   * Two selection models, because the draft renders two ways. A read-only
+   * deliverable is ordinary text: `window.getSelection()` gives both the words
+   * and exact rects. An editable one is a transparent `<textarea>` over a
+   * highlight layer, where the selection lives in `selectionStart/selectionEnd`
+   * and has no geometry at all.
    *
-   * Scoped to the draft: selecting Arc's own finding text, or the title, is
-   * reading rather than pointing at something to change.
+   * The textarea case is rescued by the thing that makes that component work:
+   * the highlight layer behind it is laid out with identical metrics, character
+   * for character. So the same offsets, resolved as a Range in the layer,
+   * produce the rects the textarea cannot give. Both entry points are live —
+   * the board's queue is editable, the detail page's is not — so both matter.
+   *
+   * Measured on `mouseup` and `keyup` rather than on `selectionchange`: the
+   * bubble appearing mid-drag, and moving as the drag grows, is the "very
+   * unnatural" part. It settles once, where the selection ended.
    */
   useEffect(() => {
-    function read() {
+    function clear() {
+      setQuote(null);
+      setAnchor(null);
+    }
+
+    /** Rects for a textarea selection, borrowed from its highlight twin. */
+    function rectFromMirror(textarea: HTMLTextAreaElement): DOMRect | null {
+      const live = textarea.closest(".dlive");
+      const layer = live?.querySelector(".dlive-hl");
+      if (!layer) return null;
+      const start = textarea.selectionStart ?? 0;
+      const end = textarea.selectionEnd ?? 0;
+      const range = document.createRange();
+      let offset = 0;
+      let placedStart = false;
+      const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text;
+        const length = node.textContent?.length ?? 0;
+        if (!placedStart && offset + length >= start) {
+          range.setStart(node, Math.max(0, start - offset));
+          placedStart = true;
+        }
+        if (placedStart && offset + length >= end) {
+          range.setEnd(node, Math.max(0, end - offset));
+          const rect = range.getBoundingClientRect();
+          return rect.width || rect.height ? rect : null;
+        }
+        offset += length;
+      }
+      return null;
+    }
+
+    function settle() {
       const panel = wrapRef.current;
-      if (!panel) return;
+      const body = bodyRef.current;
+      if (!panel || !body) return;
       // Committed once the instruction is being written. Clicking into the
       // textarea collapses the selection, and the quote must survive that.
       if (revisingRef.current) return;
 
       const active = document.activeElement;
+      let picked = "";
+      let rect: DOMRect | null = null;
+
       if (active instanceof HTMLTextAreaElement && active.classList.contains("dlive-ta") && panel.contains(active)) {
         const { selectionStart, selectionEnd, value } = active;
-        const picked = selectionStart === selectionEnd ? "" : value.slice(selectionStart ?? 0, selectionEnd ?? 0);
-        setQuote(picked.trim() ? picked : null);
-        return;
+        picked = selectionStart === selectionEnd ? "" : value.slice(selectionStart ?? 0, selectionEnd ?? 0);
+        if (picked) rect = rectFromMirror(active);
+      } else {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) return clear();
+        const range = selection.getRangeAt(0);
+        const container =
+          range.commonAncestorContainer.nodeType === 1
+            ? (range.commonAncestorContainer as Element)
+            : range.commonAncestorContainer.parentElement;
+        // Scoped to the draft: selecting Arc's findings, or the title, is
+        // reading rather than pointing at something to change.
+        if (!container || !panel.contains(container) || !container.closest(".dcopy")) return clear();
+        picked = selection.toString();
+        rect = range.getBoundingClientRect();
       }
 
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-        setQuote(null);
-        return;
-      }
-      const range = selection.getRangeAt(0);
-      const container =
-        range.commonAncestorContainer.nodeType === 1
-          ? (range.commonAncestorContainer as Element)
-          : range.commonAncestorContainer.parentElement;
-      if (!container || !panel.contains(container) || !container.closest(".dcopy")) {
-        setQuote(null);
-        return;
-      }
-      const picked = selection.toString();
-      setQuote(picked.trim() ? picked : null);
+      if (!isSubstantialSelection(picked) || !rect) return clear();
+
+      const bubble = bubbleRef.current?.getBoundingClientRect();
+      const bounds = body.getBoundingClientRect();
+      const placed = placeSelectionAnchor(
+        { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+        { width: bubble?.width || 200, height: bubble?.height || 34 },
+        { top: bounds.top, left: bounds.left, width: bounds.width, height: bounds.height },
+      );
+
+      // `position: fixed` does NOT mean the viewport here. `.rqpanel` carries
+      // the `rqrise` entrance animation, and an animated transform — even the
+      // identity matrix it settles on — makes an element the containing block
+      // for its fixed descendants (CSS Transforms 1 §3). This is the same trap
+      // documented for `.page-enter` in overlay-portal.tsx, and it reads as a
+      // bubble that lands near the text and then sits ~80px down and ~180px
+      // right of it. Everything above is computed in viewport space, so the
+      // panel's own origin comes off at the end.
+      const origin = panel.getBoundingClientRect();
+      setQuote(picked);
+      setAnchor({ ...placed, top: placed.top - origin.top, left: placed.left - origin.left });
     }
 
-    document.addEventListener("selectionchange", read);
-    return () => document.removeEventListener("selectionchange", read);
+    document.addEventListener("mouseup", settle);
+    document.addEventListener("keyup", settle);
+    // Scrolling moves the text out from under a bubble pinned to the viewport.
+    const drop = () => { if (!revisingRef.current) clear(); };
+    bodyRef.current?.addEventListener("scroll", drop, { passive: true });
+    const body = bodyRef.current;
+    return () => {
+      document.removeEventListener("mouseup", settle);
+      document.removeEventListener("keyup", settle);
+      body?.removeEventListener("scroll", drop);
+    };
   }, []);
 
   // Focus moves in so the shortcuts work without clicking first, and the page
@@ -330,7 +403,7 @@ export function ReviewQueue({
           </button>
         </div>
 
-        <div className="rqbody">
+        <div className="rqbody" ref={bodyRef}>
           <div className="rqcard">
             <div className="rqhead">
               {/* The bar above already names the campaign; repeating it here and
@@ -395,32 +468,32 @@ export function ReviewQueue({
 
         {error && <p className="rqerr">{error}</p>}
 
-        {/* Select a passage and the ask becomes about that passage. It sits
-            above the actions rather than floating at the caret: the draft is a
-            transparent textarea over a highlight layer, so there are no
-            selection rects to anchor to, and a mirror-measured popover would be
-            a lot of geometry to get subtly wrong. This is always in the same
-            place, which is easier to learn and impossible to miss. */}
-        {quote && !revising && (
-          <div className="rqsel">
-            <span className="rqsel-q">“{truncateQuote(quote, 120)}”</span>
-            <button
-              type="button"
-              className="cbtn rqsel-go"
-              // Mousedown is what collapses the selection, and the collapse
-              // fires `selectionchange`, which cleared the quote before the
-              // click ever landed — the box opened with nothing attached.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => setRevising(true)}
-              disabled={pending}
-            >
-              Revise this part
-            </button>
-            <button type="button" className="cbtn ghost" onClick={() => setQuote(null)} disabled={pending}>
-              Clear
-            </button>
-          </div>
-        )}
+        {/* Floats at what you selected, not at the bottom of the panel.
+            The read-only draft gives exact rects; the editable one borrows them
+            from its highlight twin, which is laid out character for character
+            behind the transparent textarea. Placement is clamped to the
+            scrollable body so it never hangs off an edge. */}
+        <div
+          ref={bubbleRef}
+          className={`rqbubble${quote && anchor && !revising ? " on" : ""}${anchor?.side === "below" ? " below" : ""}`}
+          style={anchor ? { top: anchor.top, left: anchor.left } : undefined}
+          aria-hidden={!(quote && anchor && !revising)}
+        >
+          <button
+            type="button"
+            className="rqbubble-go"
+            // Mousedown is what collapses the selection, and the collapse used
+            // to clear the quote before the click ever landed — the box opened
+            // with nothing attached.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setRevising(true)}
+            disabled={pending}
+            tabIndex={quote && anchor && !revising ? 0 : -1}
+          >
+            {svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>')}
+            Revise this part
+          </button>
+        </div>
 
         <div className="rqfoot">
           {revising ? (
