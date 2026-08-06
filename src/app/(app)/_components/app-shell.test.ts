@@ -62,6 +62,57 @@ describe("app shell navigation contract", () => {
     expect(APP_SHELL_CSS).toContain("& .rail-recents");
   });
 
+  /**
+   * The rail's campaign grouping shipped in #921 and never rendered once on
+   * prod: it needed two chats sharing a campaign AND both inside the newest
+   * five, and every campaign-bearing chat is older than that. These pin the
+   * three things that make a folder a folder rather than a coincidence.
+   */
+  it("files chats under standing campaign folders, not a conditional grouping", () => {
+    // Reserved budget. Reverting to a flat top-5 read puts folders back out of
+    // reach no matter what this component does with them.
+    expect(RAIL_RECENTS).toContain("groupRailConversations");
+    expect(RAIL_RECENTS).not.toContain("items.length < 2");
+    // A folder is a control: a real button that says whether it is open.
+    expect(RAIL_RECENTS).toContain('className="rail-folder-head"');
+    expect(RAIL_RECENTS).toContain("aria-expanded={open}");
+    // ...and it opens where the work is, without overriding a deliberate collapse.
+    expect(RAIL_RECENTS).toContain("folderOpen[folder.campaignId] ?? (holdsOpen || running || index === 0)");
+    expect(RAIL_RECENTS).toContain("Show {folder.items.length - shown.length} more");
+    expect(APP_SHELL_CSS).toContain("& .rail-folder-head");
+    expect(APP_SHELL_CSS).toContain("& .rail-folder-body");
+  });
+
+  /**
+   * Third time for this exact failure. A grid/flex item's default
+   * `min-width: auto` floors it at its content's intrinsic width, so
+   * `text-overflow: ellipsis` on the label inside never fires and the row grows
+   * past the rail instead. #978 fixed it on the old group header; measured again
+   * here on the folder head with prod's longest campaign name — 386px inside a
+   * 252px rail, 175px clipped, taking the chat count with it. Demo names are
+   * short enough to hide it, which is why it needs a test and not an eyeball.
+   */
+  it("lets a long campaign name ellipsize instead of growing the rail", () => {
+    for (const rule of ["& .rail-folder {", "& .rail-folder-head {", "& .rail-folder-body {"]) {
+      const declarations = APP_SHELL_CSS.slice(APP_SHELL_CSS.indexOf(rule)).split("}")[0];
+      expect(declarations, `${rule} needs min-width: 0`).toContain("min-width: 0");
+    }
+    expect(APP_SHELL_CSS).toContain("& .rail-folder-name { min-width: 0;");
+    expect(APP_SHELL_CSS).toContain("& .rail-folder-body .rail-recent-wrap { min-width: 0; }");
+    // The backstop that turns a future miss into clipping rather than a rail
+    // that scrolls sideways.
+    expect(APP_SHELL_CSS).toContain("overflow-y: auto; overflow-x: hidden;");
+  });
+
+  it("gives nav destinations room to read as separate rows", () => {
+    // 13 destinations at 32px, flush, under headers 13px away read as one
+    // striped block. The rail had the height to spare.
+    expect(APP_SHELL).toContain('className="nav-group"');
+    expect(APP_SHELL_CSS).toContain("& .nav-primary, & .nav-group { display: grid; gap: 2px; }");
+    expect(APP_SHELL_CSS).toContain("min-height: 36px");
+    expect(APP_SHELL_CSS).toContain("& .grp { font-size: 10.5px; font-weight: 600; letter-spacing: 0.11em; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); padding: 16px 10px 6px; }");
+  });
+
   it("keeps mobile shell controls at a touch-friendly size", () => {
     expect(APP_SHELL_CSS).toContain("& .menubtn { display: inline-grid; width: 44px; height: 44px; }");
     expect(APP_SHELL_CSS).toContain("& .topav { width: 44px; height: 44px; }");

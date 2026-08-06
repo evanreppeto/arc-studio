@@ -5,22 +5,24 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { ArcRecentConversationVM } from "@/lib/arc-chat/read-model";
+import { RAIL_FOLDER_ROWS, groupRailConversations } from "@/lib/arc-chat/rail-sections";
 
 import { archiveArcConversationAction, deleteArcConversationAction } from "../arc/actions";
 
 /**
  * Recent chats in the rail.
  *
- * Was a flat list of five links with no affordances: no way to clear one, and no
- * sign of what a chat belonged to. The Arc Chat page has had all of this for a
- * while — a recent/campaign grouping toggle, campaign labels, and a per-thread
- * menu — so this is the rail catching up to the surface beside it rather than
- * anything new being invented.
+ * Campaign folders, the same treatment the /arc conversations drawer gives them
+ * (#987): a campaign is what an operator looks a chat up by, so it is a standing
+ * folder rather than a grouping that has to earn its place. Folders collapse,
+ * carry a count, and show a dot when Arc is running inside one.
  *
- * Grouping is conditional on purpose. The rail shows five chats and only 5 of
- * prod's 25 carry a campaign, so grouping unconditionally would wrap most rows
- * in a header of one. A group appears only where two or more chats share a
- * campaign, which is the case worth collapsing.
+ * This replaces a conditional grouping that had never once rendered on prod —
+ * two chats had to share a campaign AND both land in the newest five, and the
+ * campaign-bearing chats are older than that. The budget fix is in
+ * rail-sections.ts; this file is only the shape.
+ *
+ * Which chats travel is decided on the server. Everything here is display state.
  */
 
 type Props = {
@@ -30,38 +32,6 @@ type Props = {
   openConversationId: string | null;
   onNavigate: () => void;
 };
-
-type Group = { campaignId: string; campaignName: string; items: ArcRecentConversationVM[] };
-
-function partition(conversations: ArcRecentConversationVM[]): { groups: Group[]; loose: ArcRecentConversationVM[] } {
-  const byCampaign = new Map<string, ArcRecentConversationVM[]>();
-  const loose: ArcRecentConversationVM[] = [];
-
-  for (const conversation of conversations) {
-    if (!conversation.campaignId) {
-      loose.push(conversation);
-      continue;
-    }
-    const bucket = byCampaign.get(conversation.campaignId) ?? [];
-    bucket.push(conversation);
-    byCampaign.set(conversation.campaignId, bucket);
-  }
-
-  const groups: Group[] = [];
-  for (const [campaignId, items] of byCampaign) {
-    // One chat is not a group. It keeps its campaign label inline instead, so a
-    // single item never costs a header and a disclosure triangle.
-    if (items.length < 2) {
-      loose.push(...items);
-      continue;
-    }
-    groups.push({ campaignId, campaignName: items[0]?.campaignName || "Campaign", items });
-  }
-
-  // Recency order is what the list is sorted by; keep it after regrouping.
-  loose.sort((a, b) => conversations.indexOf(a) - conversations.indexOf(b));
-  return { groups, loose };
-}
 
 type HoverCard = { conversation: ArcRecentConversationVM; top: number; left: number };
 
@@ -102,46 +72,78 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
   // rail is on every screen and waiting for a round-trip to un-render something
   // the operator just dismissed reads as a dead click.
   const [removed, setRemoved] = useState<Set<string>>(new Set());
+  // Folders the operator has explicitly opened or closed. Anything untouched
+  // falls back to the heuristic below, so the rail opens where the work is
+  // without ever overriding a deliberate collapse.
+  const [folderOpen, setFolderOpen] = useState<Record<string, boolean>>({});
+  const [folderShowAll, setFolderShowAll] = useState<Record<string, boolean>>({});
   const visible = conversations.filter((conversation) => !removed.has(conversation.id));
 
   if (visible.length === 0) {
     return <p className="rail-recents-empty">Start a chat to keep active work close by.</p>;
   }
 
-  const { groups, loose } = partition(visible);
+  const { folders, loose } = groupRailConversations(visible);
   const remove = (id: string) => setRemoved((prev) => new Set(prev).add(id));
 
   return (
     <div className="rail-recents-list">
-      {groups.map((group) => (
-        <details key={group.campaignId} className="rail-recent-group" open>
-          <summary>
-            {/* Its own class, not the row subtitle's. Sharing `rail-recent-campaign`
-                made a folder name and a loose row's campaign caption render as the
-                same thing at the same size, which is most of why the two kinds of
-                row read as one list. */}
-            <span className="rail-recent-group-name">{group.campaignName}</span>
-            <span className="rail-recent-count">{group.items.length}</span>
-          </summary>
-          {group.items.map((conversation) => (
-            <RecentRow
-              key={conversation.id}
-              conversation={conversation}
-              showCampaign={false}
-              open={conversation.id === openConversationId}
-              onNavigate={onNavigate}
-              onRemoved={remove}
-              onHover={showCard}
-              onUnhover={hideCard}
-            />
-          ))}
-        </details>
-      ))}
+      {folders.map((folder, index) => {
+        /* Open where the work is: the campaign holding the chat you have open,
+           anything Arc is running, and the most recent folder. The rail is 252px
+           of persistent chrome — opening all three would push the unattached
+           chats out of sight to show work nobody asked about. */
+        const running = folder.items.some((conversation) => conversation.running);
+        const holdsOpen = folder.items.some((conversation) => conversation.id === openConversationId);
+        const open = folderOpen[folder.campaignId] ?? (holdsOpen || running || index === 0);
+        const capped = !folderShowAll[folder.campaignId] && folder.items.length > RAIL_FOLDER_ROWS;
+        const shown = capped ? folder.items.slice(0, RAIL_FOLDER_ROWS) : folder.items;
+        return (
+          <div className="rail-folder" key={folder.campaignId} data-open={open ? "true" : "false"}>
+            <button
+              type="button"
+              className="rail-folder-head"
+              aria-expanded={open}
+              onClick={() => setFolderOpen((current) => ({ ...current, [folder.campaignId]: !open }))}
+            >
+              <svg className="rail-folder-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+              <span className="rail-folder-name">{folder.campaignName}</span>
+              {/* Only while shut. Open, the row Arc is working in shows its own
+                  spinner, and two live marks for one run reads as two runs. */}
+              {running && !open ? <i className="rail-folder-dot" aria-label="Arc is working in this campaign" /> : null}
+              <span className="rail-folder-count">{folder.items.length}</span>
+            </button>
+            {open ? (
+              <div className="rail-folder-body">
+                {shown.map((conversation) => (
+                  <RecentRow
+                    key={conversation.id}
+                    conversation={conversation}
+                    open={conversation.id === openConversationId}
+                    onNavigate={onNavigate}
+                    onRemoved={remove}
+                    onHover={showCard}
+                    onUnhover={hideCard}
+                  />
+                ))}
+                {capped ? (
+                  <button
+                    type="button"
+                    className="rail-folder-more"
+                    onClick={() => setFolderShowAll((current) => ({ ...current, [folder.campaignId]: true }))}
+                  >
+                    Show {folder.items.length - shown.length} more
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
       {loose.map((conversation) => (
         <RecentRow
           key={conversation.id}
           conversation={conversation}
-          showCampaign
           open={conversation.id === openConversationId}
           onNavigate={onNavigate}
           onRemoved={remove}
@@ -185,9 +187,14 @@ function WorkingSpinner() {
   );
 }
 
+/**
+ * One chat. Single-line by design: a row inside a folder already knows its
+ * campaign from the folder it sits in, and a loose row has none to show — the
+ * campaign subtitle this used to carry could only ever render as a repeat or as
+ * nothing.
+ */
 function RecentRow({
   conversation,
-  showCampaign,
   open,
   onNavigate,
   onRemoved,
@@ -195,7 +202,6 @@ function RecentRow({
   onUnhover,
 }: {
   conversation: ArcRecentConversationVM;
-  showCampaign: boolean;
   open: boolean;
   onNavigate: () => void;
   onRemoved: (id: string) => void;
@@ -250,12 +256,7 @@ function RecentRow({
         onBlur={onUnhover}
       >
         <span className="rail-recent-dot" aria-hidden="true" />
-        <span className="rail-recent-body">
-          <span className="rail-recent-title">{conversation.title}</span>
-          {showCampaign && conversation.campaignName ? (
-            <span className="rail-recent-campaign">{conversation.campaignName}</span>
-          ) : null}
-        </span>
+        <span className="rail-recent-title">{conversation.title}</span>
         {conversation.running ? (
           <span className="rail-recent-working" role="status" aria-label="Arc is working on this chat">
             <WorkingSpinner />
