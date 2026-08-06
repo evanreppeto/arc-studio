@@ -2722,6 +2722,7 @@ export type Database = {
       }
       companies: {
         Row: {
+          archived_at: string | null
           created_at: string
           email: string | null
           id: string
@@ -2738,6 +2739,7 @@ export type Database = {
           website_url: string | null
         }
         Insert: {
+          archived_at?: string | null
           created_at?: string
           email?: string | null
           id?: string
@@ -2754,6 +2756,7 @@ export type Database = {
           website_url?: string | null
         }
         Update: {
+          archived_at?: string | null
           created_at?: string
           email?: string | null
           id?: string
@@ -3113,6 +3116,7 @@ export type Database = {
       contacts: {
         Row: {
           company_id: string | null
+          archived_at: string | null
           created_at: string
           email: string | null
           first_name: string | null
@@ -3132,6 +3136,7 @@ export type Database = {
         }
         Insert: {
           company_id?: string | null
+          archived_at?: string | null
           created_at?: string
           email?: string | null
           first_name?: string | null
@@ -3151,6 +3156,7 @@ export type Database = {
         }
         Update: {
           company_id?: string | null
+          archived_at?: string | null
           created_at?: string
           email?: string | null
           first_name?: string | null
@@ -3950,6 +3956,7 @@ export type Database = {
           company_id: string | null
           completed_at: string | null
           contact_id: string | null
+          archived_at: string | null
           created_at: string
           estimated_revenue_cents: number | null
           id: string
@@ -3967,6 +3974,7 @@ export type Database = {
           company_id?: string | null
           completed_at?: string | null
           contact_id?: string | null
+          archived_at?: string | null
           created_at?: string
           estimated_revenue_cents?: number | null
           id?: string
@@ -3984,6 +3992,7 @@ export type Database = {
           company_id?: string | null
           completed_at?: string | null
           contact_id?: string | null
+          archived_at?: string | null
           created_at?: string
           estimated_revenue_cents?: number | null
           id?: string
@@ -4314,6 +4323,7 @@ export type Database = {
           attribution_utm: Json
           company_id: string | null
           contact_id: string | null
+          archived_at: string | null
           created_at: string
           external_lead_id: string | null
           id: string
@@ -4343,6 +4353,7 @@ export type Database = {
           attribution_utm?: Json
           company_id?: string | null
           contact_id?: string | null
+          archived_at?: string | null
           created_at?: string
           external_lead_id?: string | null
           id?: string
@@ -4372,6 +4383,7 @@ export type Database = {
           attribution_utm?: Json
           company_id?: string | null
           contact_id?: string | null
+          archived_at?: string | null
           created_at?: string
           external_lead_id?: string | null
           id?: string
@@ -5073,6 +5085,7 @@ export type Database = {
           closed_at: string | null
           company_id: string | null
           contact_id: string | null
+          archived_at: string | null
           created_at: string
           gross_margin_cents: number | null
           gross_revenue_cents: number | null
@@ -5090,6 +5103,7 @@ export type Database = {
           closed_at?: string | null
           company_id?: string | null
           contact_id?: string | null
+          archived_at?: string | null
           created_at?: string
           gross_margin_cents?: number | null
           gross_revenue_cents?: number | null
@@ -5107,6 +5121,7 @@ export type Database = {
           closed_at?: string | null
           company_id?: string | null
           contact_id?: string | null
+          archived_at?: string | null
           created_at?: string
           gross_margin_cents?: number | null
           gross_revenue_cents?: number | null
@@ -5887,6 +5902,7 @@ export type Database = {
           city: string
           company_id: string | null
           contact_id: string | null
+          archived_at: string | null
           created_at: string
           id: string
           metadata: Json
@@ -5905,6 +5921,7 @@ export type Database = {
           city: string
           company_id?: string | null
           contact_id?: string | null
+          archived_at?: string | null
           created_at?: string
           id?: string
           metadata?: Json
@@ -5923,6 +5940,7 @@ export type Database = {
           city?: string
           company_id?: string | null
           contact_id?: string | null
+          archived_at?: string | null
           created_at?: string
           id?: string
           metadata?: Json

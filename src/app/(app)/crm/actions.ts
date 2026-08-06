@@ -11,7 +11,8 @@ import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { bulkUpdateCrmPersona, type CreateCrmInput, insertCrmRecord } from "@/lib/crm/create";
 import { insertTask } from "@/lib/interactions/persistence";
-import { searchCrmObjectRows, type CrmObjectKey } from "@/lib/crm/read-model";
+import { listArchivedCrmObjectRows, searchCrmObjectRows, type CrmObjectKey } from "@/lib/crm/read-model";
+import { archiveCrmRecords, restoreCrmRecords } from "@/lib/crm/archive";
 
 import { toRow } from "./_data/row-vm";
 import { type CrmRowVM } from "./_components/crm-board";
@@ -93,6 +94,69 @@ export async function bulkAssignPersona(objectKey: string, ids: string[], person
   if (!res.ok) return { ok: false, error: res.error };
   revalidatePath("/crm");
   return { ok: true, persisted: true, count: res.count };
+}
+
+export type ArchiveActionResult =
+  | { ok: true; persisted: boolean; count: number }
+  | { ok: false; error: string };
+
+/**
+ * Archive the selected records — this CRM's delete.
+ *
+ * There was no delete at all before this. The only way to remove a record was
+ * to open it, edit it, and set Status to "archived", which the form offered on
+ * three of the six objects; properties, jobs and outcomes had no route to it
+ * whatsoever. Archiving is now a column rather than a status, so all six behave
+ * the same and a tenant renaming a pipeline stage cannot change what archived
+ * means.
+ *
+ * Nothing is destroyed — `restoreCrmRecordsAction` puts them back.
+ */
+export async function archiveCrmRecordsAction(objectKey: string, ids: string[]): Promise<ArchiveActionResult> {
+  await requireOperator();
+  if (!VALID_KEYS.has(objectKey as CrmObjectKey)) return { ok: false, error: "Unknown record type." };
+  if (!ids?.length) return { ok: false, error: "Select at least one record." };
+  // Optimistic rows aren't saved yet, so there is nothing to archive: dropping
+  // them is the client's job, and passing a "local-" id to Postgres is a
+  // guaranteed uuid syntax error rather than a no-op.
+  const saved = ids.filter((id) => !id.startsWith("local-"));
+  if (!saved.length) return { ok: true, persisted: false, count: 0 };
+
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, count: 0 };
+
+  const orgId = await getCurrentOrgId();
+  const res = await archiveCrmRecords(objectKey as CrmObjectKey, saved, orgId);
+  if (!res.ok) return res;
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${objectKey}`);
+  return res;
+}
+
+/** Bring archived records back into every list and count. */
+export async function restoreCrmRecordsAction(objectKey: string, ids: string[]): Promise<ArchiveActionResult> {
+  await requireOperator();
+  if (!VALID_KEYS.has(objectKey as CrmObjectKey)) return { ok: false, error: "Unknown record type." };
+  if (!ids?.length) return { ok: false, error: "Select at least one record." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, count: 0 };
+
+  const orgId = await getCurrentOrgId();
+  const res = await restoreCrmRecords(objectKey as CrmObjectKey, ids, orgId);
+  if (!res.ok) return res;
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${objectKey}`);
+  return res;
+}
+
+/** The archived records for one object, so they can be reviewed and restored. */
+export async function listArchivedCrmRecords(objectKey: string): Promise<CrmSearchActionResult> {
+  await requireOperator();
+  if (!VALID_KEYS.has(objectKey as CrmObjectKey)) return { ok: false, error: "Unknown record type." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, rows: [], capped: false };
+
+  const orgId = await getCurrentOrgId();
+  const result = await listArchivedCrmObjectRows(objectKey as CrmObjectKey, orgId);
+  if (result.status !== "live") return { ok: false, error: result.message };
+  return { ok: true, rows: result.rows.map(toRow), capped: result.capped };
 }
 
 export type BulkTaskResult =

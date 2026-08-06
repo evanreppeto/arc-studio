@@ -7,7 +7,16 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, isPipelineObjectKey, personaAccent, statusTone } from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
-import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord, searchCrmRecords } from "../actions";
+import {
+  archiveCrmRecordsAction,
+  bulkAddContactsToCampaign,
+  bulkAddTask,
+  bulkAssignPersona,
+  createCrmRecord,
+  listArchivedCrmRecords,
+  restoreCrmRecordsAction,
+  searchCrmRecords,
+} from "../actions";
 import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-record-modal";
 import { pageRangeLabel, pageWindow } from "./pagination";
 import { createStoredPreference } from "./stored-preference";
@@ -539,10 +548,20 @@ function titleCase(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Archiving is this CRM's delete (there is no hard delete): an archived record
- *  drops out of the default list and the counts, and is reachable only by asking
- *  for it explicitly via Status → Archived. Matches the `archived` status titleCased. */
-const ARCHIVED_LABEL = "Archived";
+/**
+ * Archiving is this CRM's delete — there is no hard delete, by design: a record
+ * is referenced by campaigns, tasks, notes and the revenue ledger.
+ *
+ * It used to be a STATUS, matched here by its display label. That was wrong
+ * twice over. Three of the six objects have no room for such a status
+ * (properties has no status column; jobs and outcomes carry the tenant's own
+ * pipeline stages), so half the CRM had no way to remove a record at all. And
+ * matching on the label "Archived" is precisely what stops working when a
+ * tenant renames a stage — the record silently rejoins every list.
+ *
+ * It is now `archived_at`, a column, filtered in the read-model. The board no
+ * longer has to recognise archived rows: it never receives them unless it asks.
+ */
 function buildOptimisticRow(
   objectKey: CrmObjectKey,
   id: string,
@@ -649,6 +668,19 @@ export function CrmBoard({
   const [localByKey, setLocalByKey] = useState<Record<string, CrmRowVM[]>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Records archived this session, per object, so the row leaves at once.
+   *
+   * Kept as ids rather than by removing the row: `rowsByKey` is the server's
+   * render and revalidation replaces it wholesale, so an optimistic delete has
+   * to be an overlay that the next server render simply makes redundant. Reverts
+   * on failure, which is the whole reason the write's real count is returned.
+   */
+  const [archivedLocally, setArchivedLocally] = useState<Record<string, Set<string>>>({});
+  /** Viewing the archive instead of the live list. Its own fetch — these rows are in no window. */
+  const [viewArchived, setViewArchived] = useState(false);
+  const [archivedRows, setArchivedRows] = useState<CrmRowVM[] | null>(null);
+  const [archivedLoading, setArchivedLoading] = useState(false);
   const [personaF, setPersonaF] = useState("");
   const [statusF, setStatusF] = useState("");
   const [ownerF, setOwnerF] = useState("");
@@ -689,14 +721,12 @@ export function CrmBoard({
     delete merged[active.key];
     columnsPref.set(merged);
   };
-  // o.count is the server's row count for the object; archived rows are soft-deleted
-  // so they're netted out of the headline count and tab badges the same way they're
-  // hidden from the list. Subtracting (rather than recomputing) keeps the count intact
-  // if a route ever loads rows for only some objects.
+  // o.count is the server's row count, which already excludes archived records —
+  // the same `archived_at is null` predicate the list itself is fetched with, so
+  // the badge and the rows under it cannot disagree. Locally-added rows are added
+  // on; locally-archived ones are subtracted, both only until revalidation lands.
   const countFor = (o: CrmObjectVM) =>
-    o.count -
-    (rowsByKey[o.key] ?? []).filter((r) => r.statusLabel === ARCHIVED_LABEL).length +
-    (localByKey[o.key]?.length ?? 0);
+    o.count + (localByKey[o.key]?.length ?? 0) - (archivedLocally[o.key]?.size ?? 0);
 
   // True when the browser holds every record of the active object, so a local
   // filter can answer honestly. False once the 1,000-row window is exceeded.
@@ -811,6 +841,102 @@ export function CrmBoard({
       });
   };
 
+  /**
+   * Archive the selection — the delete this CRM never had.
+   *
+   * Optimistic: the rows leave immediately and the counts drop with them,
+   * because an operator who clicks Archive on 30 records should not watch a
+   * spinner to find out whether it worked. A failure puts every one of them
+   * back and says why.
+   */
+  const archiveSelected = () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setError(null);
+    setNotice(null);
+    const objectKey = active.key;
+    const prev = archivedLocally;
+    setArchivedLocally((cur) => {
+      const next = { ...cur };
+      next[objectKey] = new Set([...(cur[objectKey] ?? []), ...ids]);
+      return next;
+    });
+    setSelected(new Set());
+    archiveCrmRecordsAction(objectKey, ids)
+      .then((res) => {
+        if (!res.ok) {
+          setArchivedLocally(prev);
+          setError(res.error);
+          return;
+        }
+        setNotice(
+          `Archived ${ids.length} ${ids.length === 1 ? active.noun.replace(/s$/, "") : active.noun}. They're out of your lists — restore them from Archived.`,
+        );
+      })
+      .catch(() => {
+        setArchivedLocally(prev);
+        setError("Could not archive those records.");
+      });
+  };
+
+  /** Put archived records back. Only reachable from the archive view. */
+  const restoreSelected = () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setError(null);
+    setNotice(null);
+    const objectKey = active.key;
+    setArchivedRows((cur) => (cur ? cur.filter((r) => !ids.includes(r.id)) : cur));
+    setSelected(new Set());
+    restoreCrmRecordsAction(objectKey, ids)
+      .then((res) => {
+        if (!res.ok) {
+          setError(res.error);
+          void loadArchived(objectKey);
+          return;
+        }
+        // Drop them from the session's archived overlay too, or a restored row
+        // would stay hidden in the live list it just rejoined.
+        setArchivedLocally((cur) => {
+          const set = cur[objectKey];
+          if (!set) return cur;
+          const next = new Set(set);
+          for (const id of ids) next.delete(id);
+          return { ...cur, [objectKey]: next };
+        });
+        setNotice(`Restored ${ids.length} ${ids.length === 1 ? "record" : "records"}.`);
+        router.refresh();
+      })
+      .catch(() => {
+        setError("Could not restore those records.");
+        void loadArchived(objectKey);
+      });
+  };
+
+  const loadArchived = async (objectKey: string) => {
+    setArchivedLoading(true);
+    setArchivedRows(null);
+    try {
+      const res = await listArchivedCrmRecords(objectKey);
+      // A failed read is not an empty archive — saying "nothing archived" when
+      // the query broke is how an operator concludes their records are gone.
+      if (!res.ok) setError(res.error);
+      setArchivedRows(res.ok ? res.rows : []);
+    } catch {
+      setError("Could not load archived records.");
+      setArchivedRows([]);
+    } finally {
+      setArchivedLoading(false);
+    }
+  };
+
+  const toggleArchivedView = () => {
+    const next = !viewArchived;
+    setViewArchived(next);
+    setSelected(new Set());
+    if (next) void loadArchived(active.key);
+  };
+
   const addToCampaign = (campaign: { id: string; name: string }) => {
     const ids = [...selected];
     setCampaignMenuOpen(false);
@@ -857,10 +983,14 @@ export function CrmBoard({
     // When the server answered, IT is the match set — the local rows are only a
     // window and re-filtering them would drop the very records it went to find.
     // The other facets still apply, and the text term is already satisfied.
-    const source = serverRows ?? allActiveRows;
+    // Viewing the archive replaces the set outright: those rows exist in no
+    // other view, and the live window must not bleed into it.
+    const source = viewArchived ? archivedRows ?? [] : serverRows ?? allActiveRows;
     let filtered = source.filter((r) => {
-      // Soft-deleted records stay out of the default list; Status → Archived opts in.
-      if (r.statusLabel === ARCHIVED_LABEL && statusF !== ARCHIVED_LABEL) return false;
+      // Archived rows are excluded server-side now, so nothing is filtered here
+      // by archive state — except the ones archived in THIS session, which the
+      // server render hasn't caught up with yet.
+      if (!viewArchived && archivedLocally[active.key]?.has(r.id)) return false;
       // Custom field values are searchable too — a tenant that tracks a matter
       // number expects to find the record by typing it.
       const customHay = r.customFields ? Object.values(r.customFields).join(" ") : "";
@@ -873,14 +1003,14 @@ export function CrmBoard({
     if (sortBy === "name") filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
     else if (sortBy === "score") filtered = [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     return filtered;
-  }, [allActiveRows, serverRows, q, personaF, statusF, ownerF, sortBy]);
+  }, [allActiveRows, serverRows, q, personaF, statusF, ownerF, sortBy, viewArchived, archivedRows, archivedLocally, active.key]);
   // Any change to WHICH rows are in play sends the pager back to page 1, so the
   // operator never lands on a stale page 4 of a set that now has two pages. Done
   // as a render-phase adjustment rather than an effect (same pattern as the
   // Brain fact pager) — it applies before paint, so there is no flash of the
   // wrong page. `q` is in the key because the debounced search swaps the whole
   // set from under us; `pageSize` because 25→100 makes the old index meaningless.
-  const pageKey = `${active.key}|${q.trim()}|${personaF}|${statusF}|${ownerF}|${sortBy}|${pageSize}`;
+  const pageKey = `${active.key}|${q.trim()}|${personaF}|${statusF}|${ownerF}|${sortBy}|${pageSize}|${viewArchived ? "archived" : "live"}`;
   const [seenPageKey, setSeenPageKey] = useState(pageKey);
   if (pageKey !== seenPageKey) {
     setSeenPageKey(pageKey);
@@ -956,6 +1086,12 @@ export function CrmBoard({
     setActiveKey(key);
     setQ("");
     setSelected(new Set());
+    // Each object has its own archive. Landing on another tab still showing the
+    // previous object's archived rows would be a straight lie about the count.
+    if (viewArchived) {
+      setViewArchived(false);
+      setArchivedRows(null);
+    }
     setPersonaF("");
     setStatusF("");
     setOwnerF("");
@@ -1076,6 +1212,19 @@ export function CrmBoard({
           </button>
         )}
         <span className="gspacer" />
+        {/* The archive has to be reachable or it is a hard delete wearing a
+            softer word. Live rows and archived rows are two different fetches,
+            so this is a view switch, not a filter. */}
+        <button
+          type="button"
+          className={`fbtn${viewArchived ? " active" : ""}`}
+          onClick={toggleArchivedView}
+          aria-pressed={viewArchived}
+          title={viewArchived ? `Back to your ${active.noun}` : "Records you've archived"}
+        >
+          <svg viewBox="0 0 24 24"><path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1z" /><path d="M3 4h18v4H3z" /><path d="M10 12h4" /></svg>
+          {viewArchived ? `Back to ${active.noun}` : "Archived"}
+        </button>
         <SortMenu value={sortBy} onChange={setSortBy} />
         <ColumnsMenu
           cols={allCols}
@@ -1153,6 +1302,20 @@ export function CrmBoard({
             </>
           )}
         </div>
+        {viewArchived ? (
+          <button type="button" className="sa" onClick={restoreSelected}>
+            <svg viewBox="0 0 24 24"><path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1z" /><path d="M3 4h18v4H3z" /><path d="M12 17v-5M9 15l3-3 3 3" /></svg>
+            Restore
+          </button>
+        ) : (
+          // Destructive-shaped but reversible, so it reads as an ordinary action
+          // with a red tint rather than a red button — DESIGN.md §4.2 reserves
+          // full red for things that cannot be undone, and this can.
+          <button type="button" className="sa sa-danger" onClick={archiveSelected}>
+            <svg viewBox="0 0 24 24"><path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1z" /><path d="M3 4h18v4H3z" /><path d="M10 12h4" /></svg>
+            Archive
+          </button>
+        )}
         <button type="button" className="clr" onClick={() => setSelected(new Set())}>Clear</button>
       </div>
 
@@ -1183,7 +1346,18 @@ export function CrmBoard({
             {visible.length === 0 ? (
               <tr className="emptyrow">
                 <td colSpan={cols.length}>
-                  {totalRows === 0 ? (
+                  {viewArchived ? (
+                    // "No contacts yet — Arc works from these" would be a flat
+                    // untruth here: there are 243, none of them archived.
+                    archivedLoading ? (
+                      "Loading archived records…"
+                    ) : (
+                      <>
+                        <strong>Nothing archived.</strong> Records you archive drop out of your lists and counts,
+                        and show up here so you can put them back.
+                      </>
+                    )
+                  ) : totalRows === 0 ? (
                     // A brand-new workspace has no records at all, and every
                     // other screen stays empty until it does — so say where they
                     // come from and offer the action, rather than only stating
@@ -1266,7 +1440,12 @@ export function CrmBoard({
                 whatever happens to be on screen. The total stays the object's
                 own COUNT unless a server search replaced the set, in which case
                 the match count IS the total. */}
-            {pageRangeLabel(pageStart, visible.length, serverRows ? filteredAll.length : countFor(active))}
+            {/* The total has to describe the set being shown. The object's COUNT
+                is the live records, so while the archive is on screen — a
+                different fetch entirely — the match count is the only honest
+                total; otherwise the footer reads "0 of 5" over the archive of a
+                list that has 5 live rows. */}
+            {pageRangeLabel(pageStart, visible.length, viewArchived || serverRows ? filteredAll.length : countFor(active))}
             {searching ? " · searching…" : ""}
             {serverCapped && serverRows ? ` · first ${serverRows.length}, narrow to see more` : ""}
           </span>

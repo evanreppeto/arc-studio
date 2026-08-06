@@ -14,10 +14,15 @@ import { Modal } from "../../../../_components/modal";
 // they match DEFAULT_PIPELINE_STAGES, which is what every stage read falls back
 // to. Offering a stale hardcoded list to a tenant who has renamed their stages
 // would write a status that maps to nothing.
+// "archived" is deliberately absent. Archiving is its own action now (the
+// Archive button on this record, or the bulk action on the list) writing its own
+// column, so offering it here too would be a second mechanism that sets a
+// DIFFERENT thing: a record whose status read "Archived" while archived_at
+// stayed null would sit in every list looking deleted.
 const STATUS_OPTIONS: Record<string, string[]> = {
-  companies: ["active", "inactive", "archived"],
-  contacts: ["active", "inactive", "do_not_contact", "archived"],
-  leads: ["new", "validated", "needs_review", "qualified", "converted", "lost", "archived"],
+  companies: ["active", "inactive"],
+  contacts: ["active", "inactive", "do_not_contact"],
+  leads: ["new", "validated", "needs_review", "qualified", "converted", "lost"],
   jobs: ["pending", "scheduled", "in_progress", "completed", "canceled"],
   outcomes: ["pending", "won", "lost", "paid", "written_off"],
 };
