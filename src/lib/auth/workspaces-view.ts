@@ -98,14 +98,18 @@ function demoWorkspaces(): SettingsWorkspacesView {
       // The active row carries a logo and the others don't, so the offline
       // preview exercises BOTH branches of the menu's mark — an uploaded logo
       // and the initials fallback.
+      // Deliberately fictional. These rows named a real, live, paying tenant and
+      // its real neighbour to every prospect who opened the backend-less preview —
+      // in the same screen whose connector placeholders were already scrubbed of
+      // exactly that, for exactly that reason.
       demoWorkspace({
-        id: "demo-bsr",
-        name: "Big Shoulders Restoration",
+        id: "demo-meridian",
+        name: "Meridian Field Services",
         meta: "Owner · Restoration & home services",
         active: true,
         logoUrl: "/brand/demo/meridian-logo.png",
       }),
-      demoWorkspace({ id: "demo-summit", name: "Summit Restoration", meta: "Admin · Home services", active: false, accentKey: "emerald" }),
+      demoWorkspace({ id: "demo-northline", name: "Northline Home", meta: "Admin · Home services", active: false, accentKey: "emerald" }),
       demoWorkspace({ id: "demo-personal", name: "Personal", meta: "Owner · Sandbox", active: false, accentKey: "steel", subtitle: "Sandbox" }),
     ],
   };

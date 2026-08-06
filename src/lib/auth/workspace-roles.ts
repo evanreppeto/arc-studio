@@ -24,7 +24,14 @@ export const WORKSPACE_ROLES: WorkspaceRoleInfo[] = [
     label: "Owner",
     rank: 5,
     summary: "Full control of the workspace and everyone in it.",
-    capabilities: ["Everything an admin can do", "Transfer or delete the workspace", "Manage billing and the organization"],
+    // "Transfer or delete the workspace" was listed here and is not built: there
+    // is no transfer path (`ASSIGNABLE_WORKSPACE_ROLES` excludes owner, so the
+    // role cannot be handed over) and no delete path (tearing down an org means
+    // an ordered teardown across 16 RESTRICT foreign keys). Listing it made the
+    // Roles tab the only place in the product that claimed those controls
+    // existed, and sent people looking for a button that isn't there. Describe
+    // what an owner can actually do until they are built.
+    capabilities: ["Everything an admin can do", "Manage billing and the plan", "Rename the workspace and the organization"],
   },
   {
     role: "admin",

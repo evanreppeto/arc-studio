@@ -44,7 +44,9 @@ describe("semantic colour", () => {
     const offenders = sources
       .filter((f) => {
         // Third-party vendor logos legitimately use their own brand colour.
-        if (f.endsWith("settings-view.tsx") || f.endsWith("brand-badge.tsx")) return false;
+        // `connector-catalog.ts` holds the integration list (and its logo
+        // colours) that used to be a literal inside settings-view.tsx.
+        if (f.endsWith("settings-view.tsx") || f.endsWith("brand-badge.tsx") || f.endsWith("connector-catalog.ts")) return false;
         return PURPLE.test(readFileSync(f, "utf8"));
       })
       .map((f) => f.replace(APP_DIR, ""));
