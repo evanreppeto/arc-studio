@@ -34,6 +34,42 @@ import { getAppSettings } from "@/lib/settings/store";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
+/**
+ * Record the spend, at the moment it happens.
+ *
+ * The provider bills for an image the instant it returns one, so this belongs
+ * immediately after the provider call and nowhere later. It used to sit after the
+ * upload — and when the upload died on the function budget (#1034), the connector
+ * meter held a row for the call while this ledger held none. One spend, two
+ * books, one entry, and the usage total quietly understating reality.
+ *
+ * Degrades rather than throws: the money is already gone, and failing the
+ * generation over a bookkeeping write would lose the asset as well as the cash.
+ * It reports, because silent is how metering drifts from the invoice (BSR-502).
+ */
+async function recordSpend(
+  orgId: string,
+  workspaceId: string | null | undefined,
+  gen: { model: string; jobId: string },
+  route: string,
+  extra?: Record<string, unknown>,
+): Promise<void> {
+  await recordUsageEvent({
+    orgId,
+    workspaceId: workspaceId ?? null,
+    service: "gemini_image",
+    model: gen.model,
+    units: 1,
+    metadata: { route, job_id: gen.jobId, ...(extra ?? {}) },
+  }).catch((error) =>
+    reportDegraded(error, {
+      scope: "studio.recordUsageEvent",
+      surface: "primary",
+      detail: { service: "gemini_image", model: gen.model, jobId: gen.jobId, route },
+    }),
+  );
+}
+
 const EDITED_RISK =
   "AI-edited from an existing image — check the change did not alter anything the original was proof of.";
 
@@ -171,21 +207,17 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       );
       if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
       const gen = metered.result;
+      // Recorded HERE, before storage, because this is where the money was spent.
+      // It used to sit after the upload — and when the upload died (the function
+      // budget, #1034), the connector meter had a row for the call and this
+      // ledger had none. Same spend, two books, one entry. The provider bills for
+      // a returned image whether or not we manage to keep it.
+      await recordSpend(ctx.orgId, tenant.workspace_id, gen, "studio_edit");
       const ext = gen.contentType.includes("png") ? "png" : gen.contentType.includes("webp") ? "webp" : "jpg";
       objectPath = `arc-generated/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.${ext}`;
       const url = await storeGeneratedImage(objectPath, gen.bytes, gen.contentType);
       storedBytes = gen.bytes.byteLength;
       storedContentType = gen.contentType;
-      await recordUsageEvent({
-        orgId: ctx.orgId,
-        workspaceId: tenant.workspace_id,
-        service: "gemini_image",
-        model: gen.model,
-        units: 1,
-        metadata: { route: "studio_edit", job_id: gen.jobId },
-      }).catch((error) =>
-        reportDegraded(error, { scope: "studio.recordUsageEvent", surface: "primary", detail: { service: "gemini_image", model: gen.model, jobId: gen.jobId } }),
-      );
       media = {
         kind: "image",
         url,
@@ -214,31 +246,12 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       );
       if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
       const gen = metered.result;
+      await recordSpend(ctx.orgId, tenant.workspace_id, gen, "studio_generate", { aspect_ratio: aspectRatio });
       const ext = gen.contentType.includes("png") ? "png" : gen.contentType.includes("webp") ? "webp" : "jpg";
       objectPath = `arc-generated/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.${ext}`;
       const url = await storeGeneratedImage(objectPath, gen.bytes, gen.contentType);
       storedBytes = gen.bytes.byteLength;
       storedContentType = gen.contentType;
-      await recordUsageEvent({
-        orgId: ctx.orgId,
-        workspaceId: tenant.workspace_id,
-        service: "gemini_image",
-        model: gen.model,
-        units: 1,
-        metadata: { route: "studio_generate", aspect_ratio: aspectRatio, job_id: gen.jobId },
-      }).catch((error) =>
-        // The image was generated and the provider WILL bill for it. Losing this
-        // write means the spend happened and nothing counted it — the workspace's
-        // usage under-reports, and the cap it is measured against drifts from
-        // reality. Failing the generation here would be worse (the money is
-        // already spent), so it degrades — but silently was how metering could
-        // quietly stop matching the invoice (BSR-502).
-        reportDegraded(error, {
-          scope: "studio.recordUsageEvent",
-          surface: "primary",
-          detail: { service: "gemini_image", model: gen.model, jobId: gen.jobId },
-        }),
-      );
       media = {
         kind: "image",
         url,
@@ -487,7 +500,9 @@ export async function pollStudioVideo(input: PollStudioVideoInput): Promise<Poll
     if (result.status === "running") return { ok: true, status: "running" };
 
     const objectPath = `arc-generated/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.mp4`;
-    const url = await storeGeneratedMedia(objectPath, result.bytes, result.contentType);
+    // Before storage, for the same reason as the image paths: the render is
+    // already paid for by the time the poll returns bytes, so a storage failure
+    // must not take the ledger write with it.
     await recordUsageEvent({
       orgId: ctx.orgId,
       workspaceId: tenant.workspace_id,
@@ -504,6 +519,7 @@ export async function pollStudioVideo(input: PollStudioVideoInput): Promise<Poll
         detail: { service: "gemini_video", model: input.model },
       }),
     );
+    const url = await storeGeneratedMedia(objectPath, result.bytes, result.contentType);
 
     const media: StudioMedia = {
       kind: "video",
