@@ -21,11 +21,14 @@
    was invisible and its stretched box intercepted the stat filters' clicks. */
 .arc-library .obig .obigv { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -0.02em; color: var(--text); }
 .arc-library .obig .ol { font-size: 11.5px; color: var(--muted); }
-.arc-library .obars { display: flex; gap: 14px; flex-wrap: wrap; }
-.arc-library .obar { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-2); }
-.arc-library .obar i { width: 8px; height: 8px; border-radius: 2px; }
 .arc-library .ostat { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); cursor: pointer; padding: 5px 10px; border-radius: var(--r-md); border: 1px solid transparent; transition: var(--dur-base); }
 .arc-library .ostat:hover { border-color: var(--accent-border); background: rgba(255, 255, 255, 0.03); }
+/* The filters that used to live in this band are chips in the toolbar now.
+   What is left here is a plain fact, so it must not wear the affordance the
+   filters had — a hover border on something that does not respond is the
+   same lie in reverse. */
+.arc-library .ostat.is-fact { cursor: default; }
+.arc-library .ostat.is-fact:hover { border-color: transparent; background: none; }
 .arc-library .ostat b { font-family: var(--mono); font-weight: 600; }
 .arc-library .ostat.warn b { color: var(--warn-text); }
 .arc-library .ostat.ok b { color: var(--ok-text); }
@@ -160,7 +163,17 @@
 
 /* gallery */
 .arc-library .gallery { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.arc-library .gtoolbar { display: flex; align-items: center; gap: 8px; padding: 11px clamp(14px, 1.8vw, 20px); flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+/* Two rows by structure (see the note in library-view.tsx): filters, then
+   controls. The bar itself stacks them; each row lays its own contents out and
+   may still wrap internally on a narrow pane. */
+.arc-library .gtoolbar { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 11px clamp(14px, 1.8vw, 20px); border-bottom: 1px solid var(--line); }
+.arc-library .gtrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+/* A filter group stays whole. It may wrap internally when it alone is wider
+   than the pane, but the row prefers to break between groups first. */
+.arc-library .chipgrp { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+/* The search field leads the controls row and takes the slack, so the
+   select-all / sort / view cluster stays pinned right at any width. */
+.arc-library .gtrow-controls .lsearch { flex: 1 1 200px; min-width: 160px; max-width: 340px; }
 .arc-library .lsearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); min-width: 150px; }
 .arc-library .lsearch svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.7; }
 .arc-library .lsearch input { border: none; background: transparent; color: var(--text); font-size: 12.5px; outline: none; width: 100%; font-family: inherit; }
@@ -451,8 +464,6 @@
 /* The three readiness counts belong to one axis and sum to the total; usage is a
    separate question and sits past a divider so nobody tries to add it in
    (BSR-667). */
-.arc-library .ostatgrp { display: inline-flex; align-items: center; gap: 14px; }
-.arc-library .ostatsep { width: 1px; height: 14px; background: var(--line-2); margin: 0 4px; }
 .arc-library .ostat:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--r-sm); }
 
 /* The selection checkbox used to ride the hover overlay's opacity, so the only
