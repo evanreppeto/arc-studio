@@ -1091,21 +1091,31 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     ) : null,
     overview: (
       <>
-        <Head t="Overview" d="Your workspace at a glance — health, what needs you, and quick links." />
-        <div className="ovgrid">
-          {[
-            ["connections", "connections", String(activeConnections), "Connections active"],
-            ["team", "team", String(memberCount), "Team members"],
-            ["general", "agent", runnerValue, "Arc"],
-            ["usage", "usage", `${usageView.pctOfCap}%`, "Of this month’s budget"],
-          ].map(([route, icon, value, label]) => (
-            <button type="button" className="ovcard" key={label} onClick={() => navTo(route, route === "general" ? "Agent" : undefined)}><div className="ovi"><Ic d={ICON[icon]} /></div><div className="ovv">{value}</div><div className="ovl">{label}</div></button>
-          ))}
-        </div>
+        <Head t="Overview" d="Where this workspace stands, and where to change it." />
+        {/* ONE list, not a tile row above a table saying the same things.
+            There used to be four equal `ovcard` tiles here — Connections
+            active, Team members, Arc, "Of this month’s budget" — sitting
+            directly on top of a Workspace panel that listed Plan, Business type
+            and Team again. So "Team" appeared twice, forty pixels apart, and the
+            tile was the WORSE of the two: it read "4" where the row read
+            "4 members · 1 pending". Every tile was a button to a settings
+            section, which is exactly what the rows already are.
+
+            The tiles also broke two rules to say it: an equal N-column grid
+            (DESIGN.md §5), and a 20px serif number treatment wrapped around
+            "Waiting for work", which is a sentence. Folding them in loses no
+            fact and no destination — every row still carries the button that
+            tile was. */}
         <Panel title="Workspace">
           <Row label="Plan"><span className="pillrow"><Pill kind="ok">{billing?.planLabel ?? "—"}</Pill><button className="btn sm" onClick={() => navTo("usage")}>Manage plan</button></span></Row>
           <Row label="Business type"><span className="pillrow"><span className="ptxt">{businessTypeLabel}</span><button className="btn sm" onClick={() => navTo("general")}>Change</button></span></Row>
           <Row label="Team"><span className="pillrow"><span className="ptxt">{memberCount} {memberCount === 1 ? "member" : "members"}{pendingCount > 0 ? ` · ${pendingCount} pending` : ""}</span><button className="btn sm" onClick={() => navTo("team")}>Manage</button></span></Row>
+          <Row label="Arc" desc="Whether the agent is picking up work right now."><span className="pillrow"><span className="ptxt">{runnerValue}</span><button className="btn sm" onClick={() => navTo("general", "Agent")}>Open</button></span></Row>
+          <Row label="Connections" desc="Tools Arc can use on your behalf."><span className="pillrow"><span className="ptxt">{activeConnections === 0 ? "None yet" : `${activeConnections} on`}</span><button className="btn sm" onClick={() => navTo("connections")}>Manage</button></span></Row>
+          {/* "Of this month’s budget" was billing-system vocabulary in the
+              primary UI (§4.2). Say what it is: how much of the month’s
+              allowance Arc has used. */}
+          <Row label="Usage this month" desc="How much of your monthly allowance Arc has used."><span className="pillrow"><span className="ptxt">{usageView.pctOfCap}% used</span><button className="btn sm" onClick={() => navTo("usage")}>See usage</button></span></Row>
         </Panel>
       </>
     ),
@@ -1133,7 +1143,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     ),
     team: (
       <>
-        <Head t="Team" d="Who’s in this workspace, what they can do, and what’s changed. Invites send a branded email via Resend." />
+        <Head t="Team" d="Who’s in this workspace, what they can do, and what’s changed. An invite goes out as a branded email from your workspace." />
         {subBar}
         {activeSub === "Invites" ? (
           <TeamInvites workspaceId={team.workspaceId} seedInvites={team.invites} />

@@ -469,20 +469,15 @@ function PersonaDetail({ p, onEdit, onArchive }: { p: PersonaVM; onEdit: () => v
             (leads / jobs / revenue) is in the Performance card below. */}
       </div>
 
-      <div className="sec dduo">
-        {/* The Signals radar was tagged "wired · snapshots" but plotted
-            persona.signals — written as {engagement:60, fit:60, intent:60} and never
-            updated — so every persona rendered an identical triangle. Its driver lines
-            ("Room to lift opens & replies", "Partial ICP match", "Few recent buying
-            signals") were a fallback keyed off that same constant, so every workspace
-            got the same three invented diagnoses. Nothing computes these yet. */}
-        <div className="radarcard">
-          <h3 className="sh" style={{ alignSelf: "flex-start", marginBottom: 4 }}>Signals</h3>
-          <p style={{ margin: "4px 2px 0", fontSize: "12px", lineHeight: 1.6, color: "var(--muted)" }}>
-            Engagement, fit and intent scoring isn&rsquo;t computed yet — Arc doesn&rsquo;t score personas from
-            your CRM activity today. Real attributed performance is in the Performance card.
-          </p>
-        </div>
+      {/* One card, full width. There was a "Signals" card beside this one whose
+          entire content was a paragraph explaining that signals are not computed
+          yet and pointing at this card — a titled panel, holding a third of the
+          row, whose only message was that it had nothing to say. (Its history:
+          it plotted persona.signals, a hardcoded {engagement:60, fit:60,
+          intent:60}, so every persona drew an identical triangle with the same
+          three invented diagnoses.) When the scoring exists it earns a card
+          again; until then the screen doesn't narrate its own gaps. */}
+      <div className="sec dsolo">
         <div className="perfcard">
           <h3 className="sh">Performance {p.perfUnavailable ? <span className="tg est">not available yet</span> : null}</h3>
           {/* A failed CRM read is not a persona with no conversions. */}

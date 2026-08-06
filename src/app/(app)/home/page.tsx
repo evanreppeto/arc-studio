@@ -110,17 +110,18 @@ export default async function HomePage() {
   const approvals = summary.approvalsNeedingYou.slice(0, 3);
   const campaigns = summary.campaigns.slice(0, 4);
   const openOppCount = summary.opportunities.length;
-  const opps = summary.opportunities.slice(0, 3);
-  const focal = opps[0] ?? null;
-
-  // Right column: source-backed signals (top opportunities) + Arc activity feed.
-  const signalLabel: Record<string, string> = { high: "Urgent · watched by Arc", medium: "Watched by Arc", low: "Background signal" };
-  const signals = opps.slice(0, 3).map((o) => ({
-    id: o.id,
-    title: o.title,
-    source: signalLabel[o.urgency] ?? "Source-backed signal",
-    time: relativeTime(o.evidence?.lastActivityAt ?? ""),
-  }));
+  // One opportunity, one place on this page. The top one is the focal card; the
+  // list below it is what's LEFT, not the same three again.
+  //
+  // This screen used to render `opportunities.slice(0, 3)` into three separate
+  // surfaces — the "Top opportunity" hero, the "Open opportunities" grid, and a
+  // "Signals" rail — so the first opportunity appeared three times and the next
+  // two appeared twice, on one viewport, under three different headings. Nine
+  // cards for three facts. The rail was the purest copy: same rows, same links,
+  // relabelled "Source-backed, watched by Arc", which is what the inbox already
+  // says about all of them. It's gone; the grid now starts after the focal card.
+  const focal = summary.opportunities[0] ?? null;
+  const opps = summary.opportunities.slice(1, 4);
   // This feed renders `<b>{actor}</b> {text}`, so `text` has to be a PREDICATE —
   // handed the entry's title it read "You Approval Revision Requested" four
   // times down the front page (BSR-734).
@@ -249,8 +250,15 @@ export default async function HomePage() {
           }))}
         />
 
+        {/* Heading says "also", because the one above it is an open opportunity
+            too — the reader has just looked at it. With a single opportunity
+            open, the focal card has already said everything and the section
+            doesn't render at all rather than printing "no opportunities"
+            directly beneath one. */}
+        {(opps.length > 0 || !focal) && (
+          <>
         <div className="sech">
-          <h3>Open opportunities</h3>
+          <h3>{focal ? "Also open" : "Open opportunities"}</h3>
           <Link className="more" href="/opportunities">All opportunities →</Link>
         </div>
         {opps.length === 0 ? (
@@ -275,6 +283,8 @@ export default async function HomePage() {
               </Link>
             ))}
           </div>
+        )}
+          </>
         )}
 
         <div className="sech">
@@ -304,24 +314,14 @@ export default async function HomePage() {
         )}
       </section>
 
+      {/* Two blocks, and neither repeats the main column: what you can start,
+          and what Arc has already done. The "Signals" block that used to sit on
+          top was the third rendering of the same three opportunities the focal
+          card and the grid to its left already showed. */}
       <aside className="col-r">
-        <h3 className="rh">Signals</h3>
-        <div className="rsub">Source-backed, watched by Arc</div>
-        <div>
-          {signals.length === 0 ? (
-            <p className="empty-note">No signals yet. Arc lists the ones it can back up with evidence here.</p>
-          ) : (
-            signals.map((s) => (
-              <Link className="sig" href={`/opportunities?selected=${encodeURIComponent(s.id)}`} key={s.id}>
-                <div className="st">{s.title}</div>
-                <div className="sm">
-                  <span className="src">{s.source}</span>
-                  <span className="sa">{s.time}</span>
-                </div>
-              </Link>
-            ))
-          )}
-        </div>
+        <h3 className="rh">Quick actions</h3>
+        <div className="rsub">Start something with Arc</div>
+        <QuickActions />
 
         <div className="rsec">
           <h3 className="rh">Arc activity</h3>
@@ -340,12 +340,6 @@ export default async function HomePage() {
               ))
             )}
           </div>
-        </div>
-
-        <div className="rsec">
-          <h3 className="rh">Quick actions</h3>
-          <div className="rsub">Start something with Arc</div>
-          <QuickActions />
         </div>
       </aside>
     </div>

@@ -145,10 +145,18 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
   const DEMO_BOOKED_TO_WON = 0.84;
   const curWon = Math.round(curJobs * DEMO_BOOKED_TO_WON);
 
+  // The sublabel names the BASELINE, not just a number (DESIGN.md §4.3). These
+  // read "580 prev" — a bare figure with no period attached, so "+22.4%" beside
+  // it was a percentage of something the reader had to guess at. Home already
+  // says "vs previous 30 days" for the same three metrics; this says the same
+  // thing and keeps the figure, so the two screens agree and neither drops the
+  // baseline. The window is whatever the range picker is set to, so it is read
+  // from `windowDays` rather than spelled "30".
+  const baseline = (value: string) => `${value} in the previous ${windowDays} days`;
   const kpis: OverviewKpi[] = [
-    { label: "Leads", value: curLeads.toLocaleString(), ...pct(curLeads, prevLeads), prevLabel: `${prevLeads} prev` },
-    { label: "Booked jobs", value: curJobs.toLocaleString(), ...pct(curJobs, prevJobs), prevLabel: `${prevJobs} prev` },
-    { label: "Won revenue", value: money(curRev), ...pct(curRev, prevRev), prevLabel: `${money(prevRev)} prev` },
+    { label: "Leads", value: curLeads.toLocaleString(), ...pct(curLeads, prevLeads), prevLabel: baseline(prevLeads.toLocaleString()) },
+    { label: "Booked jobs", value: curJobs.toLocaleString(), ...pct(curJobs, prevJobs), prevLabel: baseline(prevJobs.toLocaleString()) },
+    { label: "Won revenue", value: money(curRev), ...pct(curRev, prevRev), prevLabel: baseline(money(prevRev)) },
     { label: "Reply rate", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Starts once you send your first campaign" },
     { label: "Cost / job", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Connect an ad account to see this" },
   ];
@@ -311,10 +319,18 @@ export async function getAnalyticsOverview(
   const jobsDelta = pct(curJobs, prevJobs);
   const revDelta = pct(curRev, prevRev);
 
+  // The sublabel names the BASELINE, not just a number (DESIGN.md §4.3). These
+  // read "580 prev" — a bare figure with no period attached, so "+22.4%" beside
+  // it was a percentage of something the reader had to guess at. Home already
+  // says "vs previous 30 days" for the same three metrics; this says the same
+  // thing and keeps the figure, so the two screens agree and neither drops the
+  // baseline. The window is whatever the range picker is set to, so it is read
+  // from `windowDays` rather than spelled "30".
+  const baseline = (value: string) => `${value} in the previous ${windowDays} days`;
   const kpis: OverviewKpi[] = [
-    { label: "Leads", value: curLeads.toLocaleString(), ...leadsDelta, prevLabel: `${prevLeads} prev` },
-    { label: "Booked jobs", value: curJobs.toLocaleString(), ...jobsDelta, prevLabel: `${prevJobs} prev` },
-    { label: "Won revenue", value: money(curRev), ...revDelta, prevLabel: `${money(prevRev)} prev` },
+    { label: "Leads", value: curLeads.toLocaleString(), ...leadsDelta, prevLabel: baseline(prevLeads.toLocaleString()) },
+    { label: "Booked jobs", value: curJobs.toLocaleString(), ...jobsDelta, prevLabel: baseline(prevJobs.toLocaleString()) },
+    { label: "Won revenue", value: money(curRev), ...revDelta, prevLabel: baseline(money(prevRev)) },
     { label: "Reply rate", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Starts once you send your first campaign" },
     { label: "Cost / job", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Connect an ad account to see this" },
   ];
