@@ -184,7 +184,8 @@ export function ReviewQueue({
     return (
       <OverlayPortal>
         <div className="arc-campaign rq-scope">
-        <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${title}`}>
+        <div className="rqwrap">
+        <div className="rqpanel is-done" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${title}`}>
           <div className="rqdone">
             <span className="rqtick" aria-hidden="true">
               {svg('<path d="M5 12l4 4L19 6"/>')}
@@ -201,6 +202,7 @@ export function ReviewQueue({
           </div>
         </div>
         </div>
+        </div>
       </OverlayPortal>
     );
   }
@@ -214,7 +216,28 @@ export function ReviewQueue({
   return (
     <OverlayPortal>
       <div className="arc-campaign rq-scope">
-      <div className="rqwrap" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${title}`}>
+      {/* Backdrop and panel are separate elements: the backdrop dims and blurs
+          the page behind, the panel is the dialog. Putting `role="dialog"` on a
+          full-bleed backdrop would tell a screen reader the dialog is the whole
+          screen, which is also what it used to look like.
+
+          Clicking the backdrop closes, on the SAME rule Escape already uses:
+          back out one layer at a time, and never over half-written revision
+          text. There was no backdrop to click when this was a full takeover, so
+          the affordance is new — leaving it inert would read as broken. */}
+      <div
+        className="rqwrap"
+        onClick={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (revising) {
+            setRevising(false);
+            setReviseText("");
+            return;
+          }
+          onClose();
+        }}
+      >
+      <div className="rqpanel" ref={wrapRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Review ${title}`}>
         <div className="rqbar">
           <div className="rqcount">
             <b>{clamped + 1}</b> of {queue.length}
@@ -320,19 +343,24 @@ export function ReviewQueue({
             </div>
           ) : (
             <>
+              {/* The shortcuts still work — A / E / R / D — they are just not
+                  printed on the buttons any more. A badge on every control put
+                  four pieces of chrome in front of the one row that asks for a
+                  decision, and taught the shortcut to people who were never
+                  going to use it at the cost of everyone reading the label. */}
               <div className="rqacts">
-                <button className="cbtn gold" onClick={() => onDecide(asset, "approved")} disabled={pending}>
+                <button className="cbtn gold" onClick={() => onDecide(asset, "approved")} disabled={pending} title="Approve (A)">
                   {svg('<path d="M5 12l4 4L19 6"/>')}
-                  Approve <kbd>A</kbd>
+                  Approve
                 </button>
-                <button className="cbtn ghost" onClick={() => onEdit(asset)} disabled={pending}>
-                  Edit <kbd>E</kbd>
+                <button className="cbtn ghost" onClick={() => onEdit(asset)} disabled={pending} title="Edit (E)">
+                  Edit
                 </button>
-                <button className="cbtn ghost" onClick={() => setRevising(true)} disabled={pending}>
-                  Request revision <kbd>R</kbd>
+                <button className="cbtn ghost" onClick={() => setRevising(true)} disabled={pending} title="Request revision (R)">
+                  Request revision
                 </button>
-                <button className="cbtn danger" onClick={() => onDecide(asset, "declined")} disabled={pending}>
-                  Decline <kbd>D</kbd>
+                <button className="cbtn danger" onClick={() => onDecide(asset, "declined")} disabled={pending} title="Decline (D)">
+                  Decline
                 </button>
               </div>
               <div className="rqnav">
@@ -358,6 +386,7 @@ export function ReviewQueue({
             </>
           )}
         </div>
+      </div>
       </div>
       </div>
     </OverlayPortal>
