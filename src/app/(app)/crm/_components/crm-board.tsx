@@ -191,11 +191,15 @@ function ColumnsMenu({
   hidden,
   onToggle,
   onShowAll,
+  fieldsHref,
 }: {
   cols: Col[];
   hidden: readonly string[];
   onToggle: (key: string) => void;
   onShowAll: () => void;
+  /** Where this object's fields are DEFINED — the columns here are only which
+   *  of them show. Same footer idea as the Status menu's "Edit stages". */
+  fieldsHref?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -253,6 +257,15 @@ function ColumnsMenu({
             <button type="button" className="fmenu-foot" onClick={onShowAll}>
               Show all columns
             </button>
+          )}
+          {/* Reading the column list is when you notice the thing you track
+              isn't one of them. This menu can only hide and show what already
+              exists; adding or removing a field happens on the fields editor,
+              and nothing else on this screen said where that is. */}
+          {fieldsHref && (
+            <Link className="fmenu-foot" href={fieldsHref}>
+              Add or remove fields
+            </Link>
           )}
         </div>
       )}
@@ -1062,7 +1075,13 @@ export function CrmBoard({
         )}
         <span className="gspacer" />
         <SortMenu value={sortBy} onChange={setSortBy} />
-        <ColumnsMenu cols={allCols} hidden={hiddenHere} onToggle={toggleColumn} onShowAll={showAllColumns} />
+        <ColumnsMenu
+          cols={allCols}
+          hidden={hiddenHere}
+          onToggle={toggleColumn}
+          onShowAll={showAllColumns}
+          fieldsHref={`/settings?s=records&t=Fields&o=${encodeURIComponent(active.key)}`}
+        />
         <DensityMenu value={density} onChange={densityPref.set} />
       </div>
 

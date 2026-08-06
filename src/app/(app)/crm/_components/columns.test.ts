@@ -124,6 +124,22 @@ describe("the control is wired, not decorative", () => {
   it("offers the full column set in the menu, not the filtered one", () => {
     // Passing `cols` would make a hidden column vanish from its own menu —
     // unhideable, with no way back short of clearing localStorage.
-    expect(SOURCE).toMatch(/<ColumnsMenu cols=\{allCols\}/);
+    //
+    // Matched over the whole element rather than as one line: this test used to
+    // pin `<ColumnsMenu cols={allCols}` verbatim and failed the day the element
+    // gained a prop and wrapped, which says nothing about the prop it guards.
+    const menu = SOURCE.match(/<ColumnsMenu[\s\S]*?\/>/);
+    expect(menu, "no <ColumnsMenu> is rendered").toBeTruthy();
+    expect(menu![0]).toMatch(/cols=\{allCols\}/);
+  });
+
+  /**
+   * The menu chooses which fields SHOW; it cannot add or remove one. Without
+   * this link the CRM never named the screen that can — the record page linked
+   * to it, so the only way to reach the field editor was to open a record.
+   */
+  it("points at where fields are actually defined", () => {
+    const menu = SOURCE.match(/<ColumnsMenu[\s\S]*?\/>/);
+    expect(menu![0]).toMatch(/fieldsHref=\{`\/settings\?s=records&t=Fields&o=\$\{encodeURIComponent\(active\.key\)\}`\}/);
   });
 });
