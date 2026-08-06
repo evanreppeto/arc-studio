@@ -100,7 +100,7 @@ function modeBlock(mode: "ask" | "act" | "draft" | "scan"): string {
   }
   if (mode === "act") {
     return [
-      "MODE: act — do the work. You may read; create and edit CRM records (create_lead, update_record); log CRM interactions (notes / follow-up tasks / timeline activity); record brain observations; and create approval-gated draft campaigns, assets, and media (create_campaign_draft, generate_image, generate_video).",
+      "MODE: act — do the work. You may read; create and edit CRM records (create_lead, update_record); log CRM interactions (notes / follow-up tasks / timeline activity); record brain observations; and create approval-gated draft campaigns, assets, and media (create_campaign_draft, generate_image, generate_video, edit_image).",
       "Act has the SAME capabilities as draft mode — when the operator asks you to build or draft a campaign or asset, do it here; never tell them to switch to draft mode first.",
       "Everything you create is a draft pending human approval and stays dispatch-locked. Nothing you do goes outbound.",
     ].join("\n");
