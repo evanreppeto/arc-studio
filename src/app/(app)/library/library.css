@@ -7,12 +7,12 @@
 .arc-library h2.pt { font-family: var(--serif); font-weight: 500; font-size: 26px; letter-spacing: -0.02em; margin: 0; }
 .arc-library .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 .arc-library .lhead .acts { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
-.arc-library .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); }
+.arc-library .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); }
 .arc-library .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-library .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-library .gbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
 .arc-library .gbtn.gold:hover { transform: translateY(-1px); filter: brightness(1.04); }
-.arc-library .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; white-space: nowrap; }
+.arc-library .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.02em; border-radius: var(--r-sm); padding: 1px 6px; font-weight: 600; white-space: nowrap; }
 .arc-library .tg.est { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); }
 .arc-library .oband { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 14px clamp(20px, 2.6vw, 30px); margin-top: 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line-2); background: color-mix(in srgb, var(--canvas-deep) 24%, transparent); flex-shrink: 0; }
 .arc-library .obig { display: flex; align-items: baseline; gap: 9px; }
@@ -24,7 +24,7 @@
 .arc-library .obars { display: flex; gap: 14px; flex-wrap: wrap; }
 .arc-library .obar { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-2); }
 .arc-library .obar i { width: 8px; height: 8px; border-radius: 2px; }
-.arc-library .ostat { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); cursor: pointer; padding: 5px 10px; border-radius: 8px; border: 1px solid transparent; transition: var(--dur-base); }
+.arc-library .ostat { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); cursor: pointer; padding: 5px 10px; border-radius: var(--r-md); border: 1px solid transparent; transition: var(--dur-base); }
 .arc-library .ostat:hover { border-color: var(--accent-border); background: rgba(255, 255, 255, 0.03); }
 .arc-library .ostat b { font-family: var(--mono); font-weight: 600; }
 .arc-library .ostat.warn b { color: var(--warn-text); }
@@ -57,11 +57,11 @@
 .arc-library .tree { border-right: 1px solid var(--line); min-height: 0; min-width: 0; overflow: hidden; padding: 14px 12px 12px; display: flex; flex-direction: column; }
 .arc-library .treescroll { flex: 1; min-height: 0; overflow: auto; margin: 0 -4px; padding: 0 4px; }
 .arc-library .treeh { font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; padding: 0 4px 9px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-.arc-library .treeadd { width: 22px; height: 22px; margin: -4px -4px -4px 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: var(--dur-base); }
+.arc-library .treeadd { width: 22px; height: 22px; margin: -4px -4px -4px 0; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: var(--dur-base); }
 .arc-library .treeadd:hover { border-color: var(--accent-border); color: var(--accent-contrast); background: var(--accent-soft); }
 .arc-library .treeadd svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
 
-.arc-library .folder { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 8px; cursor: pointer; color: var(--text-2); font-size: 13px; transition: background var(--dur-base), color var(--dur-base), box-shadow var(--dur-base); position: relative; user-select: none; }
+.arc-library .folder { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: var(--r-md); cursor: pointer; color: var(--text-2); font-size: 13px; transition: background var(--dur-base), color var(--dur-base), box-shadow var(--dur-base); position: relative; user-select: none; }
 .arc-library .folder:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
 .arc-library .folder:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .arc-library .folder.on { background: var(--accent-soft); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
@@ -82,7 +82,7 @@
 .arc-library .lib.dragging .tree { background: color-mix(in srgb, var(--accent-soft) 32%, transparent); }
 
 /* 25 -> 22: three pixels back to the name, and the icon still reads at a glance. */
-.arc-library .folder .ficon { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; flex-shrink: 0; transition: transform var(--dur-base) var(--ease), border-color var(--dur-base); }
+.arc-library .folder .ficon { width: 22px; height: 22px; border-radius: var(--r-sm); display: grid; place-items: center; flex-shrink: 0; transition: transform var(--dur-base) var(--ease), border-color var(--dur-base); }
 .arc-library .folder:hover .ficon { transform: scale(1.06); }
 .arc-library .folder .ficon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 /* The name gets every spare pixel and carries the weight — it is what you read
@@ -98,14 +98,14 @@
 /* Deliberately NOT `.fmenu` — that class is the app's filter/sort popover
    (arc-app.css), and naming a 20px row button after it made the button
    `position: absolute; width: 200px` and drop out of its own row. */
-.arc-library .folder .frowbtn { flex: none; width: 20px; height: 20px; margin-right: -3px; padding: 0; border: none; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity var(--dur-base), background var(--dur-fast), color var(--dur-fast); }
+.arc-library .folder .frowbtn { flex: none; width: 20px; height: 20px; margin-right: -3px; padding: 0; border: none; border-radius: var(--r-sm); background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity var(--dur-base), background var(--dur-fast), color var(--dur-fast); }
 .arc-library .folder:hover .frowbtn, .arc-library .folder:focus-within .frowbtn, .arc-library .folder .frowbtn[aria-expanded="true"] { opacity: 1; }
 .arc-library .folder .frowbtn:hover, .arc-library .folder .frowbtn[aria-expanded="true"] { background: var(--panel); color: var(--text); }
 .arc-library .folder .frowbtn:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; }
 .arc-library .folder .frowbtn svg { width: 15px; height: 15px; fill: currentColor; stroke: none; }
-.arc-library .folder .fn-edit { flex: 1; min-width: 0; padding: 3px 7px; border: 1px solid var(--accent-border); border-radius: 6px; background: var(--inset); color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
+.arc-library .folder .fn-edit { flex: 1; min-width: 0; padding: 3px 7px; border: 1px solid var(--accent-border); border-radius: var(--r-sm); background: var(--inset); color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
 .arc-library .treesec { margin: 6px 0 8px; border-top: 1px solid var(--line); }
-.arc-library .tchev { width: 15px; height: 15px; display: grid; place-items: center; color: var(--muted); flex-shrink: 0; cursor: pointer; border-radius: 4px; transition: transform var(--dur-base) var(--ease), background var(--dur-base), color var(--dur-base); }
+.arc-library .tchev { width: 15px; height: 15px; display: grid; place-items: center; color: var(--muted); flex-shrink: 0; cursor: pointer; border-radius: var(--r-sm); transition: transform var(--dur-base) var(--ease), background var(--dur-base), color var(--dur-base); }
 .arc-library .tchev:hover { background: rgba(255, 255, 255, 0.07); color: var(--text-2); }
 .arc-library .tchev.open { transform: rotate(90deg); }
 .arc-library .tchev.leaf { visibility: hidden; cursor: default; }
@@ -116,7 +116,7 @@
 .arc-library .tchildren { margin-left: 17px; border-left: 1px solid var(--line-3, var(--line-2)); }
 .arc-library .tchildren .folder { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
 
-.arc-library .newfolder { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 8px 9px; border: 1px dashed var(--line-3); border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; margin-top: 10px; flex-shrink: 0; transition: var(--dur-base); }
+.arc-library .newfolder { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 8px 9px; border: 1px dashed var(--line-3); border-radius: var(--r-md); background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; margin-top: 10px; flex-shrink: 0; transition: var(--dur-base); }
 .arc-library .newfolder:hover { border-color: var(--accent-border); color: var(--text-2); background: var(--accent-soft); }
 .arc-library .newfolder svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
@@ -131,14 +131,14 @@
 .arc-app .fmenu-hd { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arc-app .fmenu-item.danger { color: var(--red-text); }
 .arc-app .fmenu-item.danger:hover { background: var(--red-soft); }
-.arc-app .fmenu-item kbd { font-family: var(--mono); font-size: 9.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 4px; }
+.arc-app .fmenu-item kbd { font-family: var(--mono); font-size: 9.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 1px 4px; }
 /* The destination list scrolls inside the menu rather than making the whole
    menu scroll — a workspace with a dozen folders would otherwise push Delete
    below the fold, and an action you have to scroll to find reads as missing. */
 .arc-app .fmenu-sub { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 3px; max-height: 178px; overflow-y: auto; }
 .arc-app .fmenu-warn { display: block; font-size: 11.5px; line-height: 1.45; color: var(--red-text); padding: 8px 8px 10px; }
 .arc-app .fmenu-confirm { display: flex; gap: 7px; padding: 0 4px 3px; }
-.arc-app .fmenu-confirm .gbtn { flex: 1; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.arc-app .fmenu-confirm .gbtn { flex: 1; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .arc-app .fmenu-confirm .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .fmenu-confirm .gbtn.danger { border-color: #a5321f; background: linear-gradient(180deg, #d0503a, #b83b26 55%, #9c2f1d); color: #fff; }
 .arc-app .fmenu-confirm .gbtn.danger:hover { filter: brightness(1.05); }
@@ -146,24 +146,24 @@
 /* gallery */
 .arc-library .gallery { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .arc-library .gtoolbar { display: flex; align-items: center; gap: 8px; padding: 11px clamp(14px, 1.8vw, 20px); flex-wrap: wrap; border-bottom: 1px solid var(--line); }
-.arc-library .lsearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); min-width: 150px; }
+.arc-library .lsearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); min-width: 150px; }
 .arc-library .lsearch svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.7; }
 .arc-library .lsearch input { border: none; background: transparent; color: var(--text); font-size: 12.5px; outline: none; width: 100%; font-family: inherit; }
 .arc-library .lsearch input::placeholder { color: var(--muted); }
-.arc-library .chip { font-size: 11.5px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); background: transparent; border-radius: 7px; padding: 6px 10px; cursor: pointer; transition: var(--dur-base); white-space: nowrap; }
+.arc-library .chip { font-size: 11.5px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); background: transparent; border-radius: var(--r-md); padding: 6px 10px; cursor: pointer; transition: var(--dur-base); white-space: nowrap; }
 .arc-library .chip:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-library .chip.on { color: var(--accent-contrast); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-library .chip .cn { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-left: 4px; }
 .arc-library .chip.on .cn { color: var(--accent); }
 .arc-library .cdiv { width: 1px; height: 20px; background: var(--line-2); margin: 0 3px; }
 .arc-library .gspacer { margin-left: auto; }
-.arc-library .selwrap { display: flex; align-items: center; gap: 6px; height: 32px; padding: 2px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); }
-.arc-library .selwrap .sb { width: 28px; height: 26px; padding: 0; border: 0; background: transparent; font: inherit; border-radius: 6px; display: grid; place-items: center; color: var(--muted); cursor: pointer; transition: var(--dur-base); }
+.arc-library .selwrap { display: flex; align-items: center; gap: 6px; height: 32px; padding: 2px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); }
+.arc-library .selwrap .sb { width: 28px; height: 26px; padding: 0; border: 0; background: transparent; font: inherit; border-radius: var(--r-sm); display: grid; place-items: center; color: var(--muted); cursor: pointer; transition: var(--dur-base); }
 .arc-library .selwrap .sb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-library .selwrap .sb:hover { color: var(--text-2); }
 .arc-library .selwrap .sb.on { background: var(--panel); color: var(--accent-contrast); }
 .arc-library .selwrap .sb svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
-.arc-library .sortbtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text-2); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; transition: var(--dur-base); white-space: nowrap; }
+.arc-library .sortbtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); color: var(--text-2); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; transition: var(--dur-base); white-space: nowrap; }
 .arc-library .sortbtn:hover, .arc-library .sortbtn[aria-expanded="true"] { border-color: var(--accent-border); color: var(--text); }
 .arc-library .sortbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; opacity: 0.8; }
 
@@ -173,7 +173,7 @@
 .arc-library .selbar .sc { font-size: 12.5px; font-weight: 600; color: var(--accent-contrast); }
 /* `.sa` is used on both <span>s and <button>s here — Download is a real button
    now (BSR-687), so the reset keeps it visually identical to its siblings. */
-.arc-library .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 6px 10px; border: none; background: transparent; font-family: inherit; border-radius: 7px; transition: var(--dur-base); }
+.arc-library .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 6px 10px; border: none; background: transparent; font-family: inherit; border-radius: var(--r-md); transition: var(--dur-base); }
 .arc-library .selbar .sa:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .arc-library .selbar .sa:disabled { opacity: 0.5; cursor: default; }
 .arc-library .selbar .sa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
@@ -183,12 +183,12 @@
 .arc-library .gridscroll { flex: 1; min-height: 0; overflow: auto; padding: 14px clamp(14px, 1.8vw, 20px) 36px; }
 
 /* Arc suggestion */
-.arc-library .arcsugg { display: flex; align-items: center; gap: 12px; border: 1px solid var(--accent-border); border-radius: 12px; background: linear-gradient(90deg, var(--accent-soft), transparent 75%); padding: 12px 15px; margin-bottom: 16px; }
-.arc-library .arcsugg .am { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); color: var(--accent); font-size: 14px; flex-shrink: 0; }
+.arc-library .arcsugg { display: flex; align-items: center; gap: 12px; border: 1px solid var(--accent-border); border-radius: var(--r-lg); background: linear-gradient(90deg, var(--accent-soft), transparent 75%); padding: 12px 15px; margin-bottom: 16px; }
+.arc-library .arcsugg .am { width: 28px; height: 28px; border-radius: var(--r-md); border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); color: var(--accent); font-size: 14px; flex-shrink: 0; }
 .arc-library .arcsugg .at { font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
 .arc-library .arcsugg .at b { color: var(--text); font-weight: 600; }
 .arc-library .arcsugg .ab { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
-.arc-library .miniabtn { font-size: 11.5px; font-weight: 600; color: var(--accent-contrast); border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 7px; padding: 6px 11px; cursor: pointer; transition: var(--dur-base); white-space: nowrap; }
+.arc-library .miniabtn { font-size: 11.5px; font-weight: 600; color: var(--accent-contrast); border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: var(--r-md); padding: 6px 11px; cursor: pointer; transition: var(--dur-base); white-space: nowrap; }
 .arc-library .miniabtn:hover { background: rgba(200, 162, 74, 0.2); }
 .arc-library .miniabtn.ghost { color: var(--muted); border-color: var(--line-2); background: transparent; }
 .arc-library .miniabtn.ghost:hover { color: var(--text-2); }
@@ -196,12 +196,12 @@
 /* grid */
 /* `--tile` and `--thumb` are set by the tile-size control in the toolbar. */
 .arc-library .agrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile, 172px), 1fr)); gap: 14px; align-items: start; }
-.arc-library .uptile { border: 1px dashed var(--line-3); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: calc(var(--thumb, 134px) + 50px); width: 100%; background: transparent; font: inherit; cursor: pointer; color: var(--muted); transition: var(--dur-base); text-align: center; padding: 14px; }
+.arc-library .uptile { border: 1px dashed var(--line-3); border-radius: var(--r-lg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: calc(var(--thumb, 134px) + 50px); width: 100%; background: transparent; font: inherit; cursor: pointer; color: var(--muted); transition: var(--dur-base); text-align: center; padding: 14px; }
 .arc-library .uptile:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text-2); }
 .arc-library .uptile svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.6; }
 .arc-library .uptile .ut { font-size: 12px; font-weight: 600; }
 .arc-library .uptile .ud { font-size: 10px; line-height: 1.4; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.arc-library .acard { position: relative; border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; background: var(--panel); cursor: pointer; transition: border-color var(--dur-base); }
+.arc-library .acard { position: relative; border: 1px solid var(--line-2); border-radius: var(--r-lg); overflow: hidden; background: var(--panel); cursor: pointer; transition: border-color var(--dur-base); }
 .arc-library .acard:hover { border-color: var(--accent-border); }
 .arc-library .acard.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
 .arc-library .athumb { position: relative; height: var(--thumb, 134px); background: #222a30; overflow: hidden; }
@@ -211,15 +211,15 @@
 .arc-library .acard:hover .vbadge { transform: translate(-50%, -50%) scale(1.08); }
 .arc-library .ov { position: absolute; inset: 0; opacity: 0; transition: opacity var(--dur-base); background: linear-gradient(180deg, rgba(16, 16, 19, 0.55), transparent 38%, transparent 64%, rgba(16, 16, 19, 0.72)); }
 .arc-library .acard:hover .ov, .arc-library .acard.sel .ov, .arc-library .lib.selmode .ov { opacity: 1; }
-.arc-library .ov .ck { position: absolute; top: 8px; left: 8px; width: 18px; height: 18px; border-radius: 5px; border: 1.6px solid rgba(255, 255, 255, 0.6); background: rgba(16, 16, 19, 0.5); display: grid; place-items: center; cursor: pointer; transition: var(--dur-fast); }
+.arc-library .ov .ck { position: absolute; top: 8px; left: 8px; width: 18px; height: 18px; border-radius: var(--r-sm); border: 1.6px solid rgba(255, 255, 255, 0.6); background: rgba(16, 16, 19, 0.5); display: grid; place-items: center; cursor: pointer; transition: var(--dur-fast); }
 .arc-library .ov .ck.on { background: var(--accent); border-color: var(--accent); }
 .arc-library .ov .ck svg { width: 12px; height: 12px; stroke: #201808; fill: none; stroke-width: 3; opacity: 0; }
 .arc-library .ov .ck.on svg { opacity: 1; }
 .arc-library .ov .qa { position: absolute; bottom: 8px; right: 8px; display: flex; gap: 5px; }
-.arc-library .ov .qa button { width: 27px; height: 27px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(16, 16, 19, 0.6); backdrop-filter: blur(4px); color: #f1ede2; cursor: pointer; display: grid; place-items: center; transition: var(--dur-fast); }
+.arc-library .ov .qa button { width: 27px; height: 27px; border-radius: var(--r-md); border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(16, 16, 19, 0.6); backdrop-filter: blur(4px); color: #f1ede2; cursor: pointer; display: grid; place-items: center; transition: var(--dur-fast); }
 .arc-library .ov .qa button:hover { background: var(--accent); color: #201808; border-color: var(--accent); }
 .arc-library .ov .qa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.9; }
-.arc-library .athumb .risk { position: absolute; bottom: 8px; left: 8px; width: 18px; height: 18px; border-radius: 5px; background: var(--warn-soft); border: 1px solid var(--warn-border); display: grid; place-items: center; z-index: 2; }
+.arc-library .athumb .risk { position: absolute; bottom: 8px; left: 8px; width: 18px; height: 18px; border-radius: var(--r-sm); background: var(--warn-soft); border: 1px solid var(--warn-border); display: grid; place-items: center; z-index: 2; }
 .arc-library .athumb .risk svg { position: static; width: 11px; height: 11px; stroke: var(--warn-text); fill: none; stroke-width: 2; }
 /* The name well. Fixed height, and the info block is anchored to its BOTTOM —
    so hovering can un-clamp the name and let it grow upward over the thumbnail
@@ -253,7 +253,7 @@
 .arc-library .ltbl tbody tr { cursor: pointer; transition: background var(--dur-fast); }
 .arc-library .ltbl tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
 .arc-library .ltbl tbody tr.sel { background: var(--accent-soft); }
-.arc-library .lthumb { width: 40px; height: 30px; border-radius: 6px; overflow: hidden; position: relative; border: 1px solid var(--line-2); flex: none; }
+.arc-library .lthumb { width: 40px; height: 30px; border-radius: var(--r-sm); overflow: hidden; position: relative; border: 1px solid var(--line-2); flex: none; }
 .arc-library .lthumb > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .arc-library .lname { display: flex; align-items: center; gap: 10px; min-width: 0; }
 /* The list view is where you go BECAUSE the tiles were too small to read a
@@ -275,11 +275,11 @@
    mean giving up every per-asset control the tiles carry. */
 .arc-library .lacts { display: flex; gap: 4px; justify-content: flex-end; opacity: 0; transition: opacity var(--dur-base); }
 .arc-library .ltbl tbody tr:hover .lacts, .arc-library .ltbl tbody tr:focus-within .lacts { opacity: 1; }
-.arc-library .lacts button { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: var(--dur-fast); }
+.arc-library .lacts button { width: 26px; height: 26px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: var(--dur-fast); }
 .arc-library .lacts button:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
 .arc-library .lacts button:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; }
 .arc-library .lacts svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
-.arc-library .ck-l { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; }
+.arc-library .ck-l { width: 16px; height: 16px; border-radius: var(--r-sm); border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; }
 .arc-library .ck-l svg { width: 11px; height: 11px; stroke: var(--accent); fill: none; stroke-width: 3; }
 .arc-library .pvtag { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; }
 .arc-library .pvtag .pdot { width: 7px; height: 7px; border-radius: 50%; }
@@ -288,34 +288,34 @@
 .arc-library .inspector { display: none; border-left: 1px solid var(--line); min-height: 0; overflow: auto; flex-direction: column; background: color-mix(in srgb, var(--canvas-deep) 18%, transparent); }
 .arc-library .ihero { position: relative; height: 196px; background: #222a30; border-bottom: 1px solid var(--line); }
 .arc-library .ihero > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.arc-library .ihero .iclose { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; border-radius: 7px; background: rgba(16, 16, 19, 0.7); border: 1px solid var(--line-2); display: grid; place-items: center; cursor: pointer; color: var(--text-2); }
+.arc-library .ihero .iclose { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; border-radius: var(--r-md); background: rgba(16, 16, 19, 0.7); border: 1px solid var(--line-2); display: grid; place-items: center; cursor: pointer; color: var(--text-2); }
 .arc-library .ihero .iclose svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
-.arc-library .ihero .ipv { position: absolute; bottom: 10px; left: 12px; font-size: 9.5px; font-weight: 600; padding: 2px 8px; border-radius: 6px; backdrop-filter: blur(3px); }
+.arc-library .ihero .ipv { position: absolute; bottom: 10px; left: 12px; font-size: 9.5px; font-weight: 600; padding: 2px 8px; border-radius: var(--r-sm); backdrop-filter: blur(3px); }
 .arc-library .ibody { padding: 16px 18px 30px; }
 .arc-library .iname { display: flex; align-items: flex-start; gap: 7px; width: 100%; text-align: left; border: none; background: transparent; cursor: pointer; padding: 3px 0; font-family: var(--serif); font-weight: 500; font-size: 17px; letter-spacing: -0.01em; line-height: 1.25; color: var(--text); }
 .arc-library .iname svg { flex: none; width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.7; margin-top: 4px; opacity: 0; transition: opacity var(--dur-base); }
 .arc-library .iname:hover svg, .arc-library .iname:focus-visible svg { opacity: 1; }
 .arc-library .iname:hover { color: var(--accent-contrast); }
-.arc-library .iname-edit { width: 100%; margin: 2px 0; padding: 5px 9px; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--inset); color: var(--text); font-family: var(--serif); font-weight: 500; font-size: 16px; outline: none; }
+.arc-library .iname-edit { width: 100%; margin: 2px 0; padding: 5px 9px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--inset); color: var(--text); font-family: var(--serif); font-weight: 500; font-size: 16px; outline: none; }
 .arc-library .irow .itag-view { display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; cursor: pointer; color: var(--text-2); font-weight: 500; font-family: var(--mono); font-size: 11px; text-align: right; padding: 0; }
 .arc-library .irow .itag-view svg { width: 12px; height: 12px; stroke: var(--muted); fill: none; stroke-width: 1.7; opacity: 0; transition: opacity var(--dur-base); }
 .arc-library .irow .itag-view:hover { color: var(--text); }
 .arc-library .irow .itag-view:hover svg, .arc-library .irow .itag-view:focus-visible svg { opacity: 1; }
-.arc-library .itag-edit { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid var(--accent-border); border-radius: 7px; background: var(--inset); color: var(--text); font-family: var(--mono); font-size: 11px; outline: none; }
+.arc-library .itag-edit { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--inset); color: var(--text); font-family: var(--mono); font-size: 11px; outline: none; }
 .arc-library .irow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .arc-library .irow:first-of-type { border-top: 1px solid var(--line); margin-top: 13px; }
 .arc-library .irow .il { color: var(--muted); }
 .arc-library .irow .iv { color: var(--text); font-weight: 500; font-family: var(--mono); font-size: 11px; text-align: right; }
-.arc-library .arctoggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); margin-top: 14px; }
+.arc-library .arctoggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); margin-top: 14px; }
 .arc-library .arctoggle .at { font-size: 12px; font-weight: 600; }
 .arc-library .arctoggle .ad { font-size: 10px; color: var(--muted); margin-top: 1px; }
 .arc-library .toggle { display: inline-flex; align-items: center; cursor: pointer; }
-.arc-library .sw { width: 34px; height: 19px; border-radius: 99px; background: var(--inset); border: 1px solid var(--line-2); position: relative; transition: var(--dur-slow); }
+.arc-library .sw { width: 34px; height: 19px; border-radius: var(--r-full); background: var(--inset); border: 1px solid var(--line-2); position: relative; transition: var(--dur-slow); }
 .arc-library .sw::after { content: ""; position: absolute; top: 1.5px; left: 1.5px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: var(--dur-slow); }
 .arc-library .toggle.on .sw { background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-library .toggle.on .sw::after { left: 16px; background: var(--accent); }
 .arc-library .isec { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 18px 0 9px; }
-.arc-library .iprompt { font-size: 11.5px; line-height: 1.55; color: var(--text-2); background: var(--inset); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow-y: auto; }
+.arc-library .iprompt { font-size: 11.5px; line-height: 1.55; color: var(--text-2); background: var(--inset); border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow-y: auto; }
 .arc-library .lineage { display: flex; flex-direction: column; gap: 0; position: relative; padding-left: 6px; }
 .arc-library .lstep { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; position: relative; }
 .arc-library .lstep .ld { width: 9px; height: 9px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; z-index: 1; }
@@ -323,7 +323,7 @@
 .arc-library .lstep:last-child .ld::after { display: none; }
 .arc-library .lstep .lt { font-size: 11.5px; color: var(--text-2); line-height: 1.4; }
 .arc-library .lstep .lt b { color: var(--text); font-weight: 600; }
-.arc-library .riskbox { border: 1px solid var(--warn-border); border-radius: 10px; background: var(--warn-soft); padding: 11px 13px; margin-top: 8px; }
+.arc-library .riskbox { border: 1px solid var(--warn-border); border-radius: var(--r-md); background: var(--warn-soft); padding: 11px 13px; margin-top: 8px; }
 .arc-library .riskbox .rt { font-size: 11.5px; color: var(--warn-text); font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .arc-library .riskbox .rt svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
 .arc-library .riskbox .rd { font-size: 11px; color: var(--text-2); margin-top: 5px; line-height: 1.45; }
@@ -334,7 +334,7 @@
    confirm below it so the two read as the same kind of deliberate step. */
 .arc-library .riskbox .rack { margin-top: 9px; display: flex; flex-direction: column; gap: 7px; }
 .arc-library .riskbox .rackl { font-size: 11px; font-weight: 600; color: var(--warn-text); }
-.arc-library .riskbox .racki { width: 100%; resize: vertical; padding: 7px 9px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 11.5px; line-height: 1.45; }
+.arc-library .riskbox .racki { width: 100%; resize: vertical; padding: 7px 9px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-family: inherit; font-size: 11.5px; line-height: 1.45; }
 .arc-library .riskbox .racki:focus { outline: none; border-color: var(--accent-border); }
 .arc-library .riskbox .racki::placeholder { color: var(--muted); }
 .arc-library .riskbox .rackb { display: flex; gap: 7px; justify-content: flex-end; }
@@ -342,7 +342,7 @@
 /* Reviewed state. Deliberately not celebratory and deliberately still inside the
    warn-toned box: the flag is acknowledged, not gone. */
 .arc-library .riskbox .rdone { margin-top: 9px; font-size: 11px; color: var(--ok-text); line-height: 1.45; }
-.arc-library .usedrow { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); margin-bottom: 7px; cursor: pointer; font-size: 12px; transition: border-color var(--dur-base); }
+.arc-library .usedrow { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); margin-bottom: 7px; cursor: pointer; font-size: 12px; transition: border-color var(--dur-base); }
 .arc-library .usedrow:hover { border-color: var(--accent-border); }
 .arc-library .usedrow svg { width: 14px; height: 14px; stroke: var(--accent); fill: none; stroke-width: 1.7; flex-shrink: 0; }
 .arc-library .usedrow .go { margin-left: auto; color: var(--muted); }
@@ -351,7 +351,7 @@
 .arc-library .iacts .gbtn.full { grid-column: 1 / -1; }
 .arc-library .gbtn.danger { border-color: var(--red-border); color: var(--red-text); }
 .arc-library .gbtn.danger:hover { background: var(--red-soft); border-color: var(--red-text); color: var(--red-text); }
-.arc-library .idelconfirm { grid-column: 1 / -1; margin-top: 4px; border: 1px solid var(--red-border); background: var(--red-soft); border-radius: 9px; padding: 10px 11px; }
+.arc-library .idelconfirm { grid-column: 1 / -1; margin-top: 4px; border: 1px solid var(--red-border); background: var(--red-soft); border-radius: var(--r-md); padding: 10px 11px; }
 .arc-library .idelwarn { display: block; font-size: 11.5px; line-height: 1.45; color: var(--red-text); margin-bottom: 9px; }
 .arc-library .idelbtns { display: flex; gap: 8px; }
 .arc-library .idelbtns .gbtn { flex: 1; height: 30px; }
@@ -405,13 +405,13 @@
   position: absolute; top: calc(100% + 8px); left: 0; z-index: 31;
   min-width: 220px; max-height: 260px; overflow: auto;
   display: flex; flex-direction: column; padding: 5px;
-  border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel);
+  border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel);
   box-shadow: 0 18px 40px -20px rgba(0, 0, 0, .85);
 }
 .arc-library .pickhd { font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 5px; }
 /* Used on both <span> (the campaign picker) and <button> (the folder picker,
    BSR-707) — the reset keeps them identical while the newer one stays tabbable. */
-.arc-library .pickopt { display: block; width: 100%; text-align: left; border: none; background: none; font-family: inherit; padding: 7px 9px; border-radius: 7px; font-size: 12.5px; color: var(--text-2); cursor: pointer; transition: var(--dur-fast); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-library .pickopt { display: block; width: 100%; text-align: left; border: none; background: none; font-family: inherit; padding: 7px 9px; border-radius: var(--r-md); font-size: 12.5px; color: var(--text-2); cursor: pointer; transition: var(--dur-fast); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The folder picker's trigger is a real button inside the .sa chrome. */
 .arc-library .selbar .sa-pick-trigger { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 0; margin: 0; color: inherit; font: inherit; cursor: pointer; }
 .arc-library .selbar .sa-pick-trigger:disabled { cursor: default; opacity: 0.6; }
@@ -424,7 +424,7 @@
    phone. Coarse pointers only; the desktop hover overlay is unchanged. */
 @media (pointer: coarse) {
   .arc-library .ov .qa { gap: 8px; bottom: 10px; right: 10px; }
-  .arc-library .ov .qa button { width: 44px; height: 44px; border-radius: 11px; }
+  .arc-library .ov .qa button { width: 44px; height: 44px; border-radius: var(--r-md); }
   .arc-library .ov .qa svg { width: 18px; height: 18px; }
 }
 
@@ -438,7 +438,7 @@
    (BSR-667). */
 .arc-library .ostatgrp { display: inline-flex; align-items: center; gap: 14px; }
 .arc-library .ostatsep { width: 1px; height: 14px; background: var(--line-2); margin: 0 4px; }
-.arc-library .ostat:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.arc-library .ostat:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--r-sm); }
 
 /* The selection checkbox used to ride the hover overlay's opacity, so the only
    route into multi-select was invisible until you happened to hover a card —
@@ -459,11 +459,11 @@
 .arc-library .ck-l { padding: 0; background: none; }
 
 /* Select all — states the capability instead of leaving it to be discovered. */
-.arc-library .selall { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); font: inherit; font-size: 11.5px; cursor: pointer; transition: border-color var(--dur-base) var(--ease), color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
+.arc-library .selall { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--text-2); font: inherit; font-size: 11.5px; cursor: pointer; transition: border-color var(--dur-base) var(--ease), color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
 .arc-library .selall:hover:not(:disabled) { border-color: var(--line-3); color: var(--text); }
 .arc-library .selall:disabled { opacity: 0.45; cursor: default; }
 .arc-library .selall.on { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
-.arc-library .selall-box { width: 15px; height: 15px; flex: 0 0 15px; border: 1.5px solid var(--line-3); border-radius: 4px; display: grid; place-items: center; transition: var(--dur-fast); }
+.arc-library .selall-box { width: 15px; height: 15px; flex: 0 0 15px; border: 1.5px solid var(--line-3); border-radius: var(--r-sm); display: grid; place-items: center; transition: var(--dur-fast); }
 .arc-library .selall-box.on, .arc-library .selall-box.some { background: var(--accent); border-color: var(--accent); }
 .arc-library .selall-box svg { width: 10px; height: 10px; stroke: #201808; fill: none; stroke-width: 3.2; }
 /* Indeterminate: some of what's shown is selected, but not all. */

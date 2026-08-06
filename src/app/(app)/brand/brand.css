@@ -3,29 +3,29 @@
 .arc-brand { --bbrand: #3b6ef5; --bactive: #3b6ef5; flex: 1; min-height: 0; overflow: auto; display: block; }
 
 /* buttons + tags */
-.arc-brand .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
+.arc-brand .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
 .arc-brand .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-brand .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-brand .gbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
 .arc-brand .gbtn.gold:hover { transform: translateY(-1px); filter: brightness(1.04); }
-.arc-brand .gbtn.sm { height: 28px; padding: 0 10px; font-size: 11.5px; border-radius: 7px; }
-.arc-brand .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+.arc-brand .gbtn.sm { height: 28px; padding: 0 10px; font-size: 11.5px; border-radius: var(--r-md); }
+.arc-brand .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.02em; border-radius: var(--r-sm); padding: 1px 6px; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
 .arc-brand .tg.ok { color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); }
 .arc-brand .tg.est { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); }
 
 /* hero */
 .arc-brand .brandhero { display: flex; align-items: center; gap: 18px; padding: 22px clamp(20px, 2.6vw, 30px); border-bottom: 1px solid var(--line-2); background: linear-gradient(180deg, color-mix(in srgb, var(--bbrand) 9%, transparent), transparent 90%); }
-.arc-brand .mk2 { width: 62px; height: 62px; border-radius: 16px; background: linear-gradient(150deg, #6c93ff, var(--bbrand) 58%, #2f57d6); display: grid; place-items: center; flex-shrink: 0; box-shadow: 0 14px 34px -12px color-mix(in srgb, var(--bbrand) 75%, transparent); }
+.arc-brand .mk2 { width: 62px; height: 62px; border-radius: var(--r-lg); background: linear-gradient(150deg, #6c93ff, var(--bbrand) 58%, #2f57d6); display: grid; place-items: center; flex-shrink: 0; box-shadow: 0 14px 34px -12px color-mix(in srgb, var(--bbrand) 75%, transparent); }
 .arc-brand .mk2 svg { width: 32px; height: 32px; stroke: #fff; fill: none; stroke-width: 2.3; }
 /* An uploaded mark replaces the gradient tile entirely — a logo carries its own
    background, and tinting it would misrepresent what lands on the creative. */
 .arc-brand .mk2:has(img) { background: var(--inset); border: 1px solid var(--line-2); box-shadow: none; }
-.arc-brand .mk2 img { width: 100%; height: 100%; object-fit: contain; border-radius: 15px; padding: 7px; }
+.arc-brand .mk2 img { width: 100%; height: 100%; object-fit: contain; border-radius: var(--r-lg); padding: 7px; }
 .arc-brand .blogoerr { font-size: 11px; color: #e0a3a3; max-width: 210px; }
 .arc-brand .blogohint { font-size: 10.5px; color: var(--muted); max-width: 130px; line-height: 1.35; }
 .arc-brand .bid { min-width: 0; }
 .arc-brand .bname { font-family: var(--serif); font-weight: 600; font-size: 29px; letter-spacing: -0.02em; line-height: 1; display: flex; align-items: center; gap: 12px; }
-.arc-brand .bstatus { font-family: var(--sans); font-weight: 600; font-size: 10.5px; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); border-radius: 99px; padding: 3px 9px; letter-spacing: 0.01em; }
+.arc-brand .bstatus { font-family: var(--sans); font-weight: 600; font-size: 10.5px; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); border-radius: var(--r-full); padding: 3px 9px; letter-spacing: 0.01em; }
 .arc-brand .bstatus::before { content: "●"; font-size: 7px; margin-right: 5px; vertical-align: 1.5px; }
 .arc-brand .btag { font-family: var(--serif); font-style: italic; font-size: 15.5px; color: var(--text-2); margin-top: 9px; }
 .arc-brand .bmeta { display: flex; align-items: center; gap: 9px; margin-top: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
@@ -46,7 +46,7 @@
 @media (max-width: 1080px) { .arc-brand .bbody { grid-template-columns: 1fr; } }
 .arc-brand .bcol { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .arc-brand .brail { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 0; }
-.arc-brand .bsec { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.arc-brand .bsec { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
 .arc-brand .bsh { display: flex; align-items: center; gap: 9px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .arc-brand .bsh h3 { font-size: 13.5px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
 .arc-brand .bsh .sx { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -62,7 +62,7 @@
 /* palette */
 .arc-brand .swrow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
 @media (max-width: 520px) { .arc-brand .swrow { grid-template-columns: repeat(2, 1fr); } }
-.arc-brand .sw { border: 1px solid var(--line-2); border-radius: 11px; overflow: hidden; cursor: pointer; transition: var(--dur-base) var(--ease); background: var(--inset); }
+.arc-brand .sw { border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden; cursor: pointer; transition: var(--dur-base) var(--ease); background: var(--inset); }
 .arc-brand .sw:hover { border-color: var(--line-3); }
 .arc-brand .sw.on { border-color: #fff; box-shadow: 0 0 0 1px #fff, 0 10px 26px -14px rgba(0, 0, 0, 0.8); }
 /* display/width/padding are set explicitly to defeat the broadly-scoped
@@ -76,7 +76,7 @@
 
 /* typography */
 .arc-brand .typ { display: flex; flex-direction: column; gap: 12px; }
-.arc-brand .tspec { display: flex; align-items: center; gap: 14px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 11px; background: var(--inset); }
+.arc-brand .tspec { display: flex; align-items: center; gap: 14px; padding: 13px 15px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--inset); }
 .arc-brand .tspec .glyph { font-size: 34px; line-height: 1; width: 54px; text-align: center; flex-shrink: 0; color: var(--text); }
 .arc-brand .tspec .ti { min-width: 0; }
 .arc-brand .tspec .role { font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
@@ -88,7 +88,7 @@
 
 /* voice */
 .arc-brand .tone { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 13px; }
-.arc-brand .tchip { font-size: 11.5px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--bbrand) 16%, transparent); border: 1px solid color-mix(in srgb, var(--bbrand) 40%, transparent); border-radius: 99px; padding: 4px 11px; }
+.arc-brand .tchip { font-size: 11.5px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--bbrand) 16%, transparent); border: 1px solid color-mix(in srgb, var(--bbrand) 40%, transparent); border-radius: var(--r-full); padding: 4px 11px; }
 /* 1px, not 2px — §8 bans side-stripe borders wider than a hairline. The stripe
    is the tenant's own brand colour, which is theirs to use; the width was ours. */
 .arc-brand .guide { font-size: 13px; color: var(--text-2); line-height: 1.6; border-left: 1px solid var(--bbrand); padding: 2px 0 2px 13px; margin: 0 0 14px; }
@@ -98,11 +98,11 @@
 .arc-brand .phr .pl.ban { color: var(--red-text); }
 .arc-brand .phr .pl svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.4; flex-shrink: 0; }
 .arc-brand .words { display: flex; flex-wrap: wrap; gap: 6px; }
-.arc-brand .word { font-family: var(--mono); font-size: 11px; border-radius: 6px; padding: 3px 8px; background: var(--ok-soft); border: 1px solid var(--ok-border); color: var(--ok-text); }
+.arc-brand .word { font-family: var(--mono); font-size: 11px; border-radius: var(--r-sm); padding: 3px 8px; background: var(--ok-soft); border: 1px solid var(--ok-border); color: var(--ok-text); }
 .arc-brand .word.ban { background: var(--red-soft); border: 1px solid rgba(204, 106, 106, 0.4); color: var(--red-text); text-decoration: line-through; text-decoration-color: rgba(226, 154, 154, 0.55); }
-.arc-brand .vpreview { margin-top: 15px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--inset); padding: 13px 14px; }
+.arc-brand .vpreview { margin-top: 15px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); padding: 13px 14px; }
 .arc-brand .vp-head { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--text-2); margin-bottom: 9px; }
-.arc-brand .vp-spark { width: 19px; height: 19px; border-radius: 6px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; }
+.arc-brand .vp-spark { width: 19px; height: 19px; border-radius: var(--r-sm); background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; }
 .arc-brand .vp-spark svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-brand .vp-regen { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--accent-contrast); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 .arc-brand .vp-regen:hover { color: var(--accent); }
@@ -116,7 +116,7 @@
 .arc-brand .flist { display: flex; flex-direction: column; gap: 1px; }
 .arc-brand .fitem { display: flex; align-items: flex-start; gap: 10px; padding: 9px 4px; font-size: 12.5px; color: var(--text-2); border-bottom: 1px solid var(--line); }
 .arc-brand .fitem:last-child { border-bottom: 0; }
-.arc-brand .fitem .fi { width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; flex-shrink: 0; margin-top: 1px; }
+.arc-brand .fitem .fi { width: 18px; height: 18px; border-radius: var(--r-sm); display: grid; place-items: center; flex-shrink: 0; margin-top: 1px; }
 .arc-brand .fitem .fi svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.2; }
 .arc-brand .fi.ok { background: var(--ok-soft); color: var(--ok-text); }
 .arc-brand .fi.gd { background: var(--red-soft); color: var(--red-text); }
@@ -126,7 +126,7 @@
 @media (max-width: 560px) { .arc-brand .twocol { grid-template-columns: 1fr; } }
 
 /* live preview */
-.arc-brand .preview { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.arc-brand .preview { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
 .arc-brand .pvhead { display: flex; align-items: center; gap: 9px; padding: 12px 15px; border-bottom: 1px solid var(--line); }
 .arc-brand .pvhead h3 { font-size: 12.5px; font-weight: 600; margin: 0; }
 .arc-brand .pvframe { position: relative; aspect-ratio: 1 / 1; overflow: hidden; transition: aspect-ratio var(--dur-slower) var(--ease); background: #0c0c0f; }
@@ -134,13 +134,13 @@
 .arc-brand .pvgrad { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 10, 16, 0.15) 0%, rgba(8, 10, 16, 0.55) 55%, rgba(8, 10, 16, 0.92) 100%); }
 .arc-brand .pvcontent { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 18px 18px 20px; gap: 9px; }
 .arc-brand .pvlogo { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-weight: 600; font-size: 16px; color: #fff; opacity: 0.96; }
-.arc-brand .pvlogo i { width: 22px; height: 22px; border-radius: 6px; background: var(--bactive); display: grid; place-items: center; transition: background var(--dur-slow); }
+.arc-brand .pvlogo i { width: 22px; height: 22px; border-radius: var(--r-sm); background: var(--bactive); display: grid; place-items: center; transition: background var(--dur-slow); }
 .arc-brand .pvlogo i svg { width: 13px; height: 13px; stroke: #fff; fill: none; stroke-width: 2.4; }
 .arc-brand .pvh { font-family: var(--serif); font-weight: 600; font-size: 25px; line-height: 1.08; letter-spacing: -0.02em; color: #fff; max-width: 15ch; }
 .arc-brand .pvs { font-size: 12px; color: rgba(255, 255, 255, 0.82); max-width: 32ch; }
-.arc-brand .pvcta { align-self: flex-start; margin-top: 5px; font-size: 12.5px; font-weight: 700; color: #fff; background: var(--bactive); border-radius: 8px; padding: 8px 15px; transition: background var(--dur-slow); box-shadow: 0 8px 22px -10px var(--bactive); }
+.arc-brand .pvcta { align-self: flex-start; margin-top: 5px; font-size: 12.5px; font-weight: 700; color: #fff; background: var(--bactive); border-radius: var(--r-md); padding: 8px 15px; transition: background var(--dur-slow); box-shadow: 0 8px 22px -10px var(--bactive); }
 .arc-brand .pvbar { display: flex; align-items: center; gap: 7px; padding: 11px 15px; border-top: 1px solid var(--line); flex-wrap: wrap; }
-.arc-brand .arat { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; cursor: pointer; transition: var(--dur-base); }
+.arc-brand .arat { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 4px 9px; cursor: pointer; transition: var(--dur-base); }
 .arc-brand .arat:hover { color: var(--text-2); border-color: var(--line-3); }
 .arc-brand .arat.on { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-brand .pvcap { font-size: 11px; color: var(--muted); padding: 0 15px 14px; display: flex; align-items: center; gap: 8px; line-height: 1.5; }
@@ -149,7 +149,7 @@
 .arc-brand .src { display: flex; align-items: center; gap: 11px; padding: 10px 4px; border-bottom: 1px solid var(--line); cursor: pointer; transition: var(--dur-base); }
 .arc-brand .src:last-child { border-bottom: 0; }
 .arc-brand .src:hover { background: rgba(255, 255, 255, 0.025); }
-.arc-brand .src .di { width: 32px; height: 38px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; flex-shrink: 0; position: relative; }
+.arc-brand .src .di { width: 32px; height: 38px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; flex-shrink: 0; position: relative; }
 .arc-brand .src .di svg { width: 15px; height: 15px; stroke: var(--text-2); fill: none; stroke-width: 1.7; }
 .arc-brand .src .di .ext { position: absolute; bottom: -1px; right: -3px; font-family: var(--mono); font-size: 7px; font-weight: 700; color: #fff; background: var(--bbrand); border-radius: 3px; padding: 1px 3px; }
 .arc-brand .src .si { min-width: 0; flex: 1; }
@@ -158,36 +158,36 @@
 .arc-brand .src .sm b { color: var(--ok-text); font-weight: 600; }
 .arc-brand .src .sgo { color: var(--muted); font-size: 12px; flex-shrink: 0; opacity: 0; transition: var(--dur-base); }
 .arc-brand .src:hover .sgo { opacity: 1; color: var(--accent-contrast); }
-.arc-brand .stale { margin-left: 7px; font-size: 8.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 4px; padding: 1px 5px; vertical-align: 1px; }
-.arc-brand .resyncall { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; cursor: pointer; transition: var(--dur-base); }
+.arc-brand .stale { margin-left: 7px; font-size: 8.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: var(--r-sm); padding: 1px 5px; vertical-align: 1px; }
+.arc-brand .resyncall { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 4px 9px; cursor: pointer; transition: var(--dur-base); }
 .arc-brand .resyncall:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-brand .resyncall svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.9; }
-.arc-brand .resync { flex-shrink: 0; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; transition: var(--dur-base); }
+.arc-brand .resync { flex-shrink: 0; width: 24px; height: 24px; display: grid; place-items: center; border-radius: var(--r-sm); color: var(--muted); cursor: pointer; opacity: 0; transition: var(--dur-base); }
 .arc-brand .resync svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-brand .src:hover .resync { opacity: 0.7; }
 .arc-brand .resync:hover { opacity: 1 !important; color: var(--text); background: rgba(255, 255, 255, 0.06); }
 
 /* arc-note */
-.arc-brand .arcnote { display: flex; gap: 11px; align-items: flex-start; border: 1px solid var(--accent-border); border-radius: 13px; background: linear-gradient(180deg, var(--accent-soft), transparent); padding: 14px 15px; }
-.arc-brand .arcnote .am { width: 26px; height: 26px; border-radius: 8px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; flex-shrink: 0; }
+.arc-brand .arcnote { display: flex; gap: 11px; align-items: flex-start; border: 1px solid var(--accent-border); border-radius: var(--r-lg); background: linear-gradient(180deg, var(--accent-soft), transparent); padding: 14px 15px; }
+.arc-brand .arcnote .am { width: 26px; height: 26px; border-radius: var(--r-md); background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; flex-shrink: 0; }
 .arc-brand .arcnote .an { font-size: 12px; color: var(--text-2); line-height: 1.55; }
 .arc-brand .arcnote .an b { color: var(--text); font-weight: 600; }
 
 /* intake */
-.arc-brand .intake { margin: 18px clamp(20px, 2.6vw, 30px) 0; border: 1px solid var(--accent-border); border-radius: 16px; background: linear-gradient(180deg, var(--accent-soft), transparent 72%); overflow: hidden; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 30px 70px -50px rgba(0, 0, 0, 0.9); }
+.arc-brand .intake { margin: 18px clamp(20px, 2.6vw, 30px) 0; border: 1px solid var(--accent-border); border-radius: var(--r-lg); background: linear-gradient(180deg, var(--accent-soft), transparent 72%); overflow: hidden; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 30px 70px -50px rgba(0, 0, 0, 0.9); }
 .arc-brand .intakehead { display: flex; align-items: center; gap: 14px; padding: 15px 18px 2px; }
 .arc-brand .ih-title { font-family: var(--serif); font-weight: 600; font-size: 17px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 9px; }
-.arc-brand .ih-title .sp { width: 24px; height: 24px; border-radius: 8px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; color: var(--accent); transition: transform var(--dur-slower) var(--ease), box-shadow var(--dur-slower); }
+.arc-brand .ih-title .sp { width: 24px; height: 24px; border-radius: var(--r-md); background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; color: var(--accent); transition: transform var(--dur-slower) var(--ease), box-shadow var(--dur-slower); }
 .arc-brand .ih-title .sp svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-brand .intakehead:hover .sp { transform: rotate(8deg) scale(1.06); box-shadow: 0 0 16px -2px var(--accent-border); }
 .arc-brand .ih-sub { font-size: 12px; color: var(--text-2); margin-top: 4px; max-width: 62ch; line-height: 1.5; }
 .arc-brand .ih-sub b { color: var(--text); }
-.arc-brand .ih-prog { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 7px; padding: 6px 11px; white-space: nowrap; }
+.arc-brand .ih-prog { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 6px 11px; white-space: nowrap; }
 .arc-brand .bcomplete { display: flex; align-items: center; gap: 12px; padding: 10px 18px 2px; flex-wrap: wrap; }
 .arc-brand .bc-l { font-size: 11.5px; font-weight: 600; color: var(--text-2); white-space: nowrap; display: flex; align-items: center; gap: 7px; }
 .arc-brand .bc-l svg { width: 13px; height: 13px; stroke: var(--accent); fill: none; stroke-width: 1.8; }
-.arc-brand .bc-bar { flex: 1; min-width: 130px; height: 7px; border-radius: 99px; background: var(--inset); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4); }
-.arc-brand .bc-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); box-shadow: 0 0 12px -1px var(--accent-border); transform-origin: left; }
+.arc-brand .bc-bar { flex: 1; min-width: 130px; height: 7px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4); }
+.arc-brand .bc-bar i { display: block; height: 100%; border-radius: var(--r-full); background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); box-shadow: 0 0 12px -1px var(--accent-border); transform-origin: left; }
 .arc-brand .bc-pct { font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--accent-contrast); white-space: nowrap; }
 .arc-brand .bc-miss { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .arc-brand .bc-miss a { color: var(--blue-text); cursor: pointer; transition: var(--dur-fast); }
@@ -199,10 +199,10 @@
   .arc-brand .ih-prog { margin-left: 0; }
   .arc-brand .sources { grid-template-columns: 1fr; }
 }
-.arc-brand .isrc { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 13px; display: flex; flex-direction: column; gap: 10px; min-height: 128px; transition: var(--dur-base) var(--ease); position: relative; }
+.arc-brand .isrc { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 13px; display: flex; flex-direction: column; gap: 10px; min-height: 128px; transition: var(--dur-base) var(--ease); position: relative; }
 .arc-brand .isrc:hover { border-color: var(--accent-border); }
 .arc-brand .isrc .si { display: flex; align-items: flex-start; gap: 10px; }
-.arc-brand .isrc .ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; transition: transform var(--dur-base) var(--ease), background var(--dur-base); }
+.arc-brand .isrc .ic { width: 32px; height: 32px; border-radius: var(--r-md); display: grid; place-items: center; flex-shrink: 0; transition: transform var(--dur-base) var(--ease), background var(--dur-base); }
 .arc-brand .isrc:hover .ic { transform: scale(1.07); }
 .arc-brand .isrc .ic svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-brand .ic.bl { background: rgba(136, 182, 216, 0.14); color: var(--blue-text); }
@@ -217,27 +217,27 @@
    the title at full width — no collision at any tag length, and no squeezed
    description from sharing the line. */
 .arc-brand .isrc .tg { align-self: flex-end; }
-.arc-brand .isrc .ucta { font-size: 11px; color: var(--muted); border: 1px dashed var(--line-3); border-radius: 9px; padding: 10px; text-align: center; cursor: pointer; transition: var(--dur-base); margin-top: auto; }
+.arc-brand .isrc .ucta { font-size: 11px; color: var(--muted); border: 1px dashed var(--line-3); border-radius: var(--r-md); padding: 10px; text-align: center; cursor: pointer; transition: var(--dur-base); margin-top: auto; }
 .arc-brand .isrc .ucta:hover { border-color: var(--accent-border); color: var(--text); background: rgba(255, 255, 255, 0.025); }
 .arc-brand .isrc .ucta b { color: var(--text-2); font-weight: 600; }
 .arc-brand .ucta.drop { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 13px 10px; }
 .arc-brand .ucta.drop .upi { width: 22px; height: 22px; stroke: var(--muted); fill: none; stroke-width: 1.5; transition: var(--dur-base) var(--ease); }
 .arc-brand .ucta.drop:hover .upi { stroke: var(--accent); transform: translateY(-2px); }
 .arc-brand .urow { display: flex; gap: 7px; margin-top: auto; }
-.arc-brand .urow input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font-family: inherit; font-size: 11.5px; padding: 8px 9px; outline: none; }
+.arc-brand .urow input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-md); color: var(--text); font-family: inherit; font-size: 11.5px; padding: 8px 9px; outline: none; }
 .arc-brand .urow input:focus { border-color: var(--accent-border); }
-.arc-brand .ibtn { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #201808; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); border: 1px solid #b8974a; border-radius: 8px; padding: 0 15px; cursor: pointer; white-space: nowrap; box-shadow: 0 6px 16px -9px rgba(200, 162, 74, 0.7); transition: var(--dur-base) var(--ease); }
+.arc-brand .ibtn { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #201808; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); border: 1px solid #b8974a; border-radius: var(--r-md); padding: 0 15px; cursor: pointer; white-space: nowrap; box-shadow: 0 6px 16px -9px rgba(200, 162, 74, 0.7); transition: var(--dur-base) var(--ease); }
 .arc-brand .ibtn:hover { filter: brightness(1.05); transform: translateY(-1px); }
 .arc-brand .ibtn:disabled { opacity: 0.6; cursor: default; transform: none; filter: none; }
 
 /* Website analysis result — what the fetch actually read back, shown in place. */
-.arc-brand .wsresult { margin-top: 9px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 9px 10px; display: grid; gap: 6px; }
+.arc-brand .wsresult { margin-top: 9px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); padding: 9px 10px; display: grid; gap: 6px; }
 .arc-brand .wsrow { display: flex; gap: 9px; align-items: baseline; font-size: 11.5px; }
 .arc-brand .wsl { flex: none; width: 74px; color: var(--muted); }
 .arc-brand .wsv { min-width: 0; color: var(--text); overflow-wrap: anywhere; }
 .arc-brand .wsexcerpt { max-height: 132px; overflow-y: auto; font-size: 11px; line-height: 1.55; color: var(--text-2); white-space: pre-wrap; border-top: 1px solid var(--line-2); padding-top: 7px; }
 .arc-brand .wsnote { font-size: 10.5px; color: var(--muted); }
-.arc-brand .wserror { margin-top: 9px; border: 1px solid rgba(204, 102, 102, 0.35); background: rgba(204, 102, 102, 0.1); color: #e0a3a3; border-radius: 9px; padding: 8px 10px; font-size: 11.5px; }
+.arc-brand .wserror { margin-top: 9px; border: 1px solid rgba(204, 102, 102, 0.35); background: rgba(204, 102, 102, 0.1); color: #e0a3a3; border-radius: var(--r-md); padding: 8px 10px; font-size: 11.5px; }
 
 /* Document intake — the drop card and re-sync controls are real <button>s now,
    so reset the browser chrome and match the prior span/div layout. */
@@ -261,7 +261,7 @@
 
 /* "Brand updated from N files" result banner. Tone follows the summary: ok when
    clean, warn when some files need another try, err on a hard failure. */
-.arc-brand .bsync { margin: 4px 16px 0; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--inset); font-size: 11.5px; }
+.arc-brand .bsync { margin: 4px 16px 0; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--inset); font-size: 11.5px; }
 .arc-brand .bsync.ok { border-color: var(--ok-border); background: var(--ok-soft); }
 .arc-brand .bsync.warn { border-color: var(--warn-border); background: var(--warn-soft); }
 .arc-brand .bsync.err { border-color: var(--red-border); background: var(--red-soft); }
@@ -282,7 +282,7 @@
 
 /* Empty-state call to action — a real button, because "no palette yet" is the
    one moment the operator most needs a way in, and a paragraph offers none. */
-.arc-brand .bsempty { display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); margin: 0 16px 4px; padding: 14px 16px; border: 1px dashed var(--line-2); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; line-height: 1.5; text-align: left; cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+.arc-brand .bsempty { display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); margin: 0 16px 4px; padding: 14px 16px; border: 1px dashed var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--muted); font: inherit; font-size: 12px; line-height: 1.5; text-align: left; cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
 .arc-brand .bsempty:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text-2); }
 .arc-brand .bsempty b { color: var(--text); }
 .arc-brand .bsempty svg { width: 16px; height: 16px; flex: 0 0 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
@@ -294,9 +294,9 @@
 .palform .palhint { font-size: 11px; line-height: 1.45; color: var(--muted); }
 .palform .palctl { display: grid; grid-template-columns: 34px 108px minmax(0, 1fr); gap: 8px; align-items: center; }
 /* Strip the native color input's chrome so it reads as a swatch, not a widget. */
-.palform .palswatch { width: 34px; height: 34px; padding: 0; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; cursor: pointer; }
+.palform .palswatch { width: 34px; height: 34px; padding: 0; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; cursor: pointer; }
 .palform .palswatch::-webkit-color-swatch-wrapper { padding: 2px; }
-.palform .palswatch::-webkit-color-swatch { border: 0; border-radius: 6px; }
+.palform .palswatch::-webkit-color-swatch { border: 0; border-radius: var(--r-sm); }
 .palform .palhex { font-family: var(--mono); text-transform: lowercase; }
 .palform .palhex.bad { border-color: var(--red-border, rgba(204, 102, 102, 0.5)); }
 .palform .palbad { font-size: 11px; color: var(--red-text); }
@@ -308,7 +308,7 @@
 
 /* Typeface picker (edit-typography-modal.tsx) */
 .typform .typtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.typform .typtab { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 9px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+.typform .typtab { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
 .typform .typtab:hover { border-color: var(--line-3); color: var(--text); }
 .typform .typtab.on { border-color: var(--accent-border); background: var(--accent-soft); color: var(--text); }
 .typform .typtab-t { font-size: 12px; font-weight: 600; }
@@ -316,7 +316,7 @@
 .typform .typtab.on .typtab-v { color: var(--accent); }
 .typform .typhint { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
 .typform .fontlist { display: grid; gap: 7px; }
-.typform .fontopt { display: flex; flex-direction: column; gap: 5px; padding: 11px 13px; border: 1px solid var(--line-2); border-radius: 10px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
+.typform .fontopt { display: flex; flex-direction: column; gap: 5px; padding: 11px 13px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
 .typform .fontopt:hover { border-color: var(--line-3); background: rgba(255, 255, 255, 0.02); }
 .typform .fontopt.on { border-color: var(--accent-border); background: var(--accent-soft); }
 .typform .fontopt-h { display: flex; align-items: baseline; gap: 8px; }
@@ -331,10 +331,10 @@
 .arc-brand .logoset-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .arc-brand .logoset-t { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .arc-brand .logoset-s { margin-top: 2px; max-width: 52ch; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
-.arc-brand .logoset-err { padding: 8px 11px; border: 1px solid var(--red-border, rgba(204, 102, 102, 0.4)); border-radius: 8px; color: var(--red-text); font-size: 11.5px; line-height: 1.45; }
+.arc-brand .logoset-err { padding: 8px 11px; border: 1px solid var(--red-border, rgba(204, 102, 102, 0.4)); border-radius: var(--r-md); color: var(--red-text); font-size: 11.5px; line-height: 1.45; }
 .arc-brand .logogrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
 .arc-brand .logotile { display: flex; flex-direction: column; gap: 7px; }
-.arc-brand .logodrop { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 10; padding: 12px; border: 1px dashed var(--line-2); border-radius: 10px; background: var(--inset); cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
+.arc-brand .logodrop { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 10; padding: 12px; border: 1px dashed var(--line-2); border-radius: var(--r-md); background: var(--inset); cursor: pointer; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
 .arc-brand .logodrop:hover:not(:disabled) { border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-brand .logotile.over .logodrop { border-color: var(--accent); background: var(--accent-soft); }
 .arc-brand .logotile.filled .logodrop { border-style: solid; }

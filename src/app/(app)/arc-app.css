@@ -152,11 +152,11 @@
 
   /* sidebar */
   & .rail { position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--sidebar); border-right: 1px solid var(--line-2); padding: 14px 12px; }
-  & .ws { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; }
+  & .ws { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--r-md); }
   /* --ws-accent is set inline per workspace and falls back to the org-wide
      --accent when a workspace hasn't picked a color, so an un-customized
      workspace looks exactly as it always did. */
-  & .ws .mk { width: 30px; height: 30px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--ws-accent, var(--accent)) 32%, transparent); background: color-mix(in srgb, var(--ws-accent, var(--accent)) 16%, transparent); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--ws-accent, var(--accent)); font-size: 15px; overflow: hidden; }
+  & .ws .mk { width: 30px; height: 30px; border-radius: var(--r-md); border: 1px solid color-mix(in srgb, var(--ws-accent, var(--accent)) 32%, transparent); background: color-mix(in srgb, var(--ws-accent, var(--accent)) 16%, transparent); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--ws-accent, var(--accent)); font-size: 15px; overflow: hidden; }
   & .ws .mk.has-image { padding: 2px; border-color: var(--line-2); background: transparent; }
   & .ws-copy { min-width: 0; }
   & .ws .nm { overflow: hidden; font-weight: 600; font-size: 13px; letter-spacing: -0.01em; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
@@ -173,13 +173,13 @@
   & .ws .wschev svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
   & .wsbtn:hover .wschev { color: var(--text-2); }
   & .wswrap[data-open="true"] .wschev { color: var(--text); transform: rotate(180deg); }
-  & .wsmenu { position: absolute; left: 4px; right: 4px; top: calc(100% + 6px); z-index: 40; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 6px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5); animation: acctIn 0.16s var(--ease); transform-origin: top center; }
+  & .wsmenu { position: absolute; left: 4px; right: 4px; top: calc(100% + 6px); z-index: 40; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-lg); padding: 6px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5); animation: acctIn 0.16s var(--ease); transform-origin: top center; }
   & .wsmenu-h { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 5px; }
-  & .ws-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; background: none; color: var(--text-2); font: inherit; text-align: left; border-radius: 8px; cursor: pointer; text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+  & .ws-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; background: none; color: var(--text-2); font: inherit; text-align: left; border-radius: var(--r-md); cursor: pointer; text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .ws-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   & .ws-item:disabled { opacity: 0.55; cursor: default; }
   & .ws-item.on { background: rgba(255, 255, 255, 0.03); }
-  & .ws-item-mk { width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px; border: 1px solid color-mix(in srgb, var(--ws-accent, var(--accent)) 32%, transparent); background: color-mix(in srgb, var(--ws-accent, var(--accent)) 16%, transparent); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--ws-accent, var(--accent)); font-size: 12px; overflow: hidden; }
+  & .ws-item-mk { width: 28px; height: 28px; flex-shrink: 0; border-radius: var(--r-md); border: 1px solid color-mix(in srgb, var(--ws-accent, var(--accent)) 32%, transparent); background: color-mix(in srgb, var(--ws-accent, var(--accent)) 16%, transparent); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--ws-accent, var(--accent)); font-size: 12px; overflow: hidden; }
   & .ws-item-mk.has-image { padding: 2px; border-color: var(--line-2); background: transparent; }
   & .ws-item-mk img { width: 100%; height: 100%; object-fit: contain; }
   & .ws-item-mk-ghost { border-color: var(--line-2); background: var(--inset); color: var(--muted); }
@@ -190,7 +190,7 @@
   & .ws-check { width: 16px; height: 16px; margin-left: auto; flex-shrink: 0; stroke: var(--ws-accent, var(--accent)); fill: none; stroke-width: 2; }
   & .wsmenu-sep { height: 1px; background: var(--line); margin: 4px; }
 
-  & .indtag { margin: 8px 8px 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--muted); border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 8px; display: flex; align-items: center; gap: 6px; }
+  & .indtag { margin: 8px 8px 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 4px 8px; display: flex; align-items: center; gap: 6px; }
   & .indtag i { width: 5px; height: 5px; border-radius: 50%; background: var(--ws-accent, var(--accent)); animation: arcBreathe 3.4s var(--ease) infinite; }
   & .rail-divider { height: 1px; margin: 8px 8px 5px; background: linear-gradient(90deg, transparent, var(--line-2) 9%, var(--line-2) 91%, transparent); }
 
@@ -204,7 +204,7 @@
   & .navwrap { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 4px; }
   & .nav-primary { padding-bottom: 2px; }
   & .grp { font-size: 10.5px; font-weight: 600; letter-spacing: 0.11em; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); padding: 13px 10px 6px; }
-  & .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; color: var(--text-2); font-size: 13px; font-weight: 500; position: relative; cursor: pointer; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+  & .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r-md); color: var(--text-2); font-size: 13px; font-weight: 500; position: relative; cursor: pointer; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .nav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; opacity: 0.85; }
   & .nav .nav-image-icon { width: 16px; height: 16px; flex: 0 0 16px; color: currentColor; background: currentColor; opacity: 0.85; -webkit-mask: var(--nav-icon) center / contain no-repeat; mask: var(--nav-icon) center / contain no-repeat; }
   & .nav:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
@@ -213,7 +213,7 @@
   & .nav.on .nav-image-icon { color: var(--accent); opacity: 1; }
   & .nav .tick { position: absolute; left: -12px; top: 50%; transform: translateY(-50%); width: 2px; height: 18px; border-radius: 2px; background: var(--accent); }
   /* attention count — quiet by default, warms to the accent when the item is active/hovered */
-  & .nav .navbadge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.07); transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease); }
+  & .nav .navbadge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-md); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.07); transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease); }
   & .nav:hover .navbadge { color: var(--text); }
   & .nav.on .navbadge { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
   /* Recent Arc work gives the tall rail a useful second rhythm without turning
@@ -225,7 +225,7 @@
   & .rail-recents-head a:hover { color: var(--accent); }
   /* "New" reads as an action, not a caption: a bordered chip with a plus, sized
      to stay quieter than the nav rows above it. */
-  & .rail-recents-new { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border: 1px solid var(--line-2); border-radius: 6px; transition: color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
+  & .rail-recents-new { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border: 1px solid var(--line-2); border-radius: var(--r-sm); transition: color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
   & .rail-recents-new svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.1; stroke-linecap: round; }
   & .rail-recents-head a.rail-recents-new:hover { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
   /* Blocks, not one undifferentiated column. At a 1px rhythm a campaign folder's
@@ -234,7 +234,7 @@
      indent — and the eye read five equal rows. Rows inside a block stay tight;
      the space goes BETWEEN blocks (see .rail-recent-group's margin). */
   & .rail-recents-list { display: grid; gap: 2px; }
-  & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: 7px; color: var(--text-2); text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+  & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: var(--r-md); color: var(--text-2); text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .rail-recent:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
   /* The chat you're reading, marked the same way the rail marks the page you're
      on — otherwise /arc is the one destination that never says where you are. */
@@ -261,17 +261,17 @@
      `min-width: auto` floors it at the text's intrinsic width, and the
      overflow/text-overflow pair below then never gets a chance to fire. */
   & .rail-recent-campaign { min-width: 0; color: var(--muted); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  & .rail-recent-more { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: var(--panel); color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
+  & .rail-recent-more { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: var(--r-sm); background: var(--panel); color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
   & .rail-recent-wrap:hover .rail-recent-more, & .rail-recent-more[aria-expanded="true"] { display: inline-flex; }
   & .rail-recent-more:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
-  & .rail-recent-menu { position: absolute; top: calc(100% - 2px); right: 4px; z-index: 60; min-width: 152px; padding: 4px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); display: grid; gap: 1px; }
-  & .rail-recent-menu button { width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
+  & .rail-recent-menu { position: absolute; top: calc(100% - 2px); right: 4px; z-index: 60; min-width: 152px; padding: 4px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); display: grid; gap: 1px; }
+  & .rail-recent-menu button { width: 100%; padding: 6px 8px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
   & .rail-recent-menu button:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   & .rail-recent-menu button.danger:hover { color: var(--red-text); background: var(--red-soft); }
   /* A campaign that owns two or more chats. Collapsible, open by default —
      closing it is the operator tidying, not a state we choose for them. */
   & .rail-recent-group { display: grid; gap: 1px; }
-  & .rail-recent-group > summary { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 5px; border-radius: 6px; color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; list-style: none; }
+  & .rail-recent-group > summary { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 5px; border-radius: var(--r-sm); color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; list-style: none; }
   & .rail-recent-group > summary::-webkit-details-marker { display: none; }
   /* A folder is a control, so the triangle reads as one: full-strength accent-ish
      text against the label's muted grey, rather than one more grey glyph. */
@@ -296,16 +296,16 @@
   /* help link — pinned above the account control. Quieter than a nav item (it's
      not a workspace destination) but always visible, because the moment someone
      needs it is the moment the rest of the app isn't working. */
-  & .railhelp { display: flex; align-items: center; gap: 9px; margin-top: 8px; padding: 8px 10px; border-radius: 8px; color: var(--muted); font-size: 12px; font-weight: 500; text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+  & .railhelp { display: flex; align-items: center; gap: 9px; margin-top: 8px; padding: 8px 10px; border-radius: var(--r-md); color: var(--muted); font-size: 12px; font-weight: 500; text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .railhelp svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; opacity: 0.9; }
   & .railhelp:hover { background: rgba(255, 255, 255, 0.035); color: var(--text-2); }
   & .railhelp.on { color: var(--text); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); }
   & .railhelp.on svg { color: var(--accent); opacity: 1; }
   /* account control — pinned to the bottom of the rail; toggles the menu below */
   & .acct { position: relative; margin-top: 8px; border-top: 1px solid var(--line); }
-  & .user { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 8px; transition: background var(--dur-base) var(--ease); }
+  & .user { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: var(--r-md); transition: background var(--dur-base) var(--ease); }
   & .user:hover { background: rgba(255, 255, 255, 0.035); }
-  & .user .av { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
+  & .user .av { width: 30px; height: 30px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
   & .user .nm { font-size: 12.5px; font-weight: 600; }
   & .user .cog { margin-left: auto; display: grid; place-items: center; color: var(--muted); transition: color var(--dur-base), transform var(--dur-slower) var(--ease); }
   & .user .cog svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
@@ -314,15 +314,15 @@
   & .acct[data-open="true"] .user .cog { color: var(--text); transform: rotate(180deg); }
 
   /* account menu popover — opens upward from the avatar */
-  & .acct-menu { position: absolute; left: 4px; right: 4px; bottom: calc(100% + 8px); z-index: 40; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 6px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5); animation: acctIn 0.16s var(--ease); transform-origin: bottom center; }
+  & .acct-menu { position: absolute; left: 4px; right: 4px; bottom: calc(100% + 8px); z-index: 40; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-lg); padding: 6px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5); animation: acctIn 0.16s var(--ease); transform-origin: bottom center; }
   & .acct-id { display: flex; align-items: center; gap: 10px; padding: 8px 8px 10px; min-width: 0; }
-  & .acct-id .av { width: 32px; height: 32px; flex-shrink: 0; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
+  & .acct-id .av { width: 32px; height: 32px; flex-shrink: 0; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
   & .acct-id-t { min-width: 0; }
   & .acct-id-t .nm { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   & .acct-id-t .em { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   & .acct-sep { height: 1px; background: var(--line); margin: 2px 4px 4px; }
   & .acct-menu form { margin: 0; }
-  & .acct-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 500; text-align: left; border-radius: 8px; cursor: pointer; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+  & .acct-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 500; text-align: left; border-radius: var(--r-md); cursor: pointer; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .acct-item svg { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.6; opacity: 0.9; }
   & .acct-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   & .acct-item.danger { color: var(--red-text); }
@@ -340,15 +340,15 @@
   /* Mobile nav affordances — inert on desktop (the rail is docked). The
      hamburger and backdrop only become visible/active inside the shell
      breakpoint media query below. */
-  & .menubtn { display: none; width: 34px; height: 34px; flex-shrink: 0; margin-left: -4px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); place-items: center; cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
+  & .menubtn { display: none; width: 34px; height: 34px; flex-shrink: 0; margin-left: -4px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--text-2); place-items: center; cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
   & .menubtn:hover { border-color: var(--accent-border); color: var(--text); }
   & .menubtn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; }
   & .rail-scrim { display: none; }
-  & .search { margin: 0 auto; display: flex; align-items: center; gap: 9px; width: 340px; max-width: 38vw; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: color-mix(in srgb, var(--inset) 70%, transparent); color: var(--muted); font-size: 12.5px; cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
+  & .search { margin: 0 auto; display: flex; align-items: center; gap: 9px; width: 340px; max-width: 38vw; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: color-mix(in srgb, var(--inset) 70%, transparent); color: var(--muted); font-size: 12.5px; cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
   & .search:hover { border-color: var(--accent-border); color: var(--text-2); }
   & .search svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.7; }
-  & .search .k { margin-left: auto; font-family: var(--mono); font-size: 10px; border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 6px; }
-  & .topav { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 12px; overflow: hidden; }
+  & .search .k { margin-left: auto; font-family: var(--mono); font-size: 10px; border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 1px 6px; }
+  & .topav { width: 30px; height: 30px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 12px; overflow: hidden; }
   & .topavbtn { flex-shrink: 0; padding: 0; cursor: pointer; transition: border-color var(--dur-base), background var(--dur-base); }
   & .topavbtn:hover { border-color: var(--accent-border); background: var(--raised); }
 
@@ -360,7 +360,7 @@
     left: 8px;
     z-index: 200;
     border: 1px solid var(--accent-border);
-    border-radius: 8px;
+    border-radius: var(--r-md);
     background: var(--panel);
     color: var(--text);
     padding: 9px 14px;
@@ -436,7 +436,7 @@
 
   /* first-run setup checklist — shown only until the workspace has records
      and the owner finishes or dismisses it */
-  & .setup { margin-top: 22px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 38%, var(--panel)), var(--panel)); padding: 18px 20px; }
+  & .setup { margin-top: 22px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 38%, var(--panel)), var(--panel)); padding: 18px 20px; }
   & .setup-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
   & .setup-sub { margin: 7px 0 0; font-size: 13px; color: var(--text-2); max-width: 56ch; }
   & .setup-meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
@@ -451,12 +451,12 @@
   & .setup-step.done .setup-title { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-3); }
   & .setup-body { flex: 1; min-width: 0; }
   & .setup-title { font-size: 13.5px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
-  & .setup-req { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 999px; padding: 1px 6px; }
+  & .setup-req { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent-border); border-radius: var(--r-full); padding: 1px 6px; }
   & .setup-why { margin: 5px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text-2); max-width: 62ch; }
   & .setup-step .btn { flex-shrink: 0; align-self: center; }
 
   /* focal */
-  & .focal { margin-top: 22px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 50%, var(--panel)), var(--panel)); padding: 18px 20px; box-shadow: 0 18px 50px -34px rgba(0, 0, 0, 0.9); }
+  & .focal { margin-top: 22px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 50%, var(--panel)), var(--panel)); padding: 18px 20px; box-shadow: 0 18px 50px -34px rgba(0, 0, 0, 0.9); }
   & .focal .row1 { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
   /* h4, not h2: the card now sits under an h3 "Top opportunity" section
      heading, and an h2 inside an h3's section outranks the heading that
@@ -464,16 +464,16 @@
   & .focal h4 { font-family: var(--serif); font-weight: 500; font-size: 19px; letter-spacing: -0.01em; margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   & .focal .cites { display: inline-flex; align-items: center; gap: 5px; }
   & .focal .cites-label { font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; color: var(--muted); text-transform: uppercase; }
-  & .focal .cite { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line-2); background: var(--inset); font-family: var(--mono); font-size: 10px; color: var(--accent); cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
+  & .focal .cite { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--inset); font-family: var(--mono); font-size: 10px; color: var(--accent); cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
   & .focal .cite:hover { border-color: var(--accent-border); color: var(--accent-contrast); }
   & .focal .conf { margin-left: auto; display: flex; align-items: center; gap: 9px; }
   & .focal .conf .cl { font-size: 10.5px; color: var(--muted); }
-  & .focal .conf .track { width: 128px; height: 5px; border-radius: 99px; background: var(--inset); overflow: hidden; }
-  & .focal .conf .fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); }
+  & .focal .conf .track { width: 128px; height: 5px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; }
+  & .focal .conf .fill { height: 100%; border-radius: var(--r-full); background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); }
   & .focal .conf .val { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
   & .focal p.d { font-size: 12.5px; color: var(--text-2); margin: 11px 0 0; max-width: 64ch; line-height: 1.6; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
   & .focal .fcta { display: flex; align-items: center; gap: 11px; margin-top: 15px; }
-  & .btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 15px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent) 66%, #fff 8%); cursor: pointer; background: linear-gradient(180deg, #e1c074, var(--accent) 58%, #a9842f); color: #1a1505; font-weight: 600; font-size: 12.5px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); transition: transform var(--dur-base) var(--ease), filter var(--dur-base); text-decoration: none; }
+  & .btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 15px; border-radius: var(--r-md); border: 1px solid color-mix(in srgb, var(--accent) 66%, #fff 8%); cursor: pointer; background: linear-gradient(180deg, #e1c074, var(--accent) 58%, #a9842f); color: #1a1505; font-weight: 600; font-size: 12.5px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); transition: transform var(--dur-base) var(--ease), filter var(--dur-base); text-decoration: none; }
   & .btn:hover { transform: translateY(-1px); filter: brightness(1.03); }
   & .btn.ghost { background: transparent; border: 1px solid var(--line-2); color: var(--text-2); box-shadow: none; }
   & .btn.ghost:hover { border-color: var(--accent-border); color: var(--text); filter: none; }
@@ -486,16 +486,16 @@
   & .rule { height: 1px; background: linear-gradient(90deg, var(--accent-border), var(--line) 36%, transparent); margin: 12px 0 2px; }
 
   /* tasks */
-  & .task { display: flex; align-items: center; gap: 13px; padding: 13px 8px 13px 6px; margin: 0 -6px; border-bottom: 1px solid var(--line); border-radius: 8px; cursor: pointer; transition: background var(--dur-base) var(--ease), padding-left var(--dur-slow) var(--ease); text-decoration: none; }
+  & .task { display: flex; align-items: center; gap: 13px; padding: 13px 8px 13px 6px; margin: 0 -6px; border-bottom: 1px solid var(--line); border-radius: var(--r-md); cursor: pointer; transition: background var(--dur-base) var(--ease), padding-left var(--dur-slow) var(--ease); text-decoration: none; }
   & .task:hover { background: rgba(255, 255, 255, 0.025); padding-left: 12px; }
-  & .pill { display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+  & .pill { display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: var(--r-sm); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
   & .pill.warn { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); }
   & .pill.ok { color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); }
   & .pill.red { color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); }
   & .task .tt { font-size: 13.5px; font-weight: 500; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text); }
   & .task .meta { margin-left: auto; display: flex; align-items: center; gap: 13px; min-width: 0; }
   & .queue-more { display: inline-flex; margin-top: 10px; }
-  & .chip { display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); font-size: 10.5px; color: var(--text-2); max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  & .chip { display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--inset); font-size: 10.5px; color: var(--text-2); max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   & .ago { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 46px; text-align: right; }
 
   /* The KPI strip moved out of Home's block and is now app-wide — see the
@@ -503,21 +503,21 @@
 
   /* opportunities */
   & .opps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-  & .opp { border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); padding: 15px 16px; display: flex; flex-direction: column; cursor: pointer; transition: border-color var(--dur-base) var(--ease), transform var(--dur-base) var(--ease); text-decoration: none; }
+  & .opp { border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); padding: 15px 16px; display: flex; flex-direction: column; cursor: pointer; transition: border-color var(--dur-base) var(--ease), transform var(--dur-base) var(--ease); text-decoration: none; }
   & .opp:hover { border-color: var(--accent-border); }
   & .opp .ot { font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; color: var(--text); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   & .opp .od { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-  & .miniconf { height: 4px; border-radius: 99px; background: var(--inset); overflow: hidden; margin-top: 12px; }
+  & .miniconf { height: 4px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; margin-top: 12px; }
   & .miniconf b { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); }
   & .opp .orow { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
-  & .opp .otype { font-size: 10.5px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--inset); border-radius: 6px; padding: 3px 8px; }
+  & .opp .otype { font-size: 10.5px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--inset); border-radius: var(--r-sm); padding: 3px 8px; }
   & .opp .oconf { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--accent); }
   & .opp .oact { display: flex; align-items: center; gap: 10px; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); }
   & .opp .oaud { font-size: 11px; color: var(--muted); }
   & .opp .odraft { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--accent); white-space: nowrap; }
 
   /* campaigns worklist */
-  & .ctable { margin-top: 14px; border: 1px solid var(--line-2); border-radius: 11px; overflow: hidden; }
+  & .ctable { margin-top: 14px; border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden; }
   & .ctable .ch, & .ctable .cr { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) 110px; gap: 12px; align-items: center; padding: 12px 16px; }
   & .ctable .ch { background: color-mix(in srgb, var(--inset) 40%, transparent); border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; }
   & .ctable .cr { border-bottom: 1px solid var(--line); font-size: 12.5px; cursor: pointer; transition: background var(--dur-base); text-decoration: none; }
@@ -531,7 +531,7 @@
   & .rsub { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
   & .rsec { margin-top: 26px; }
   & .qa { display: grid; gap: 8px; margin-top: 4px; }
-  & .qbtn { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base), transform var(--dur-base) var(--ease); text-decoration: none; }
+  & .qbtn { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base), transform var(--dur-base) var(--ease); text-decoration: none; }
   & .qbtn:hover { border-color: var(--accent-border); color: var(--text); transform: translateY(-1px); }
   & .qbtn svg { width: 15px; height: 15px; stroke: var(--accent); fill: none; stroke-width: 1.7; }
   & .qbtn .kk { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
@@ -560,7 +560,7 @@
     }
     & .railclose {
       display: grid; width: 44px; height: 44px; padding: 0; place-items: center;
-      border: 0; border-radius: 9px; background: transparent; color: var(--text-2);
+      border: 0; border-radius: var(--r-md); background: transparent; color: var(--text-2);
       cursor: pointer; transition: background var(--dur-base), color var(--dur-base);
     }
     & .railclose:hover { background: rgba(255, 255, 255, 0.045); color: var(--text); }
@@ -645,7 +645,7 @@
 .arc-app .define:hover,
 .arc-app .define:focus-visible { color: var(--accent-contrast); border-color: var(--accent-border); outline: none; }
 
-.arc-app .howworks { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); padding: 16px 18px; }
+.arc-app .howworks { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 16px 18px; }
 .arc-app .howworks h2 { font-family: var(--serif); font-size: 15px; font-weight: 500; color: var(--text); margin: 0 0 8px; }
 .arc-app .howworks p { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 0 0 8px; max-width: 68ch; }
 .arc-app .howworks p:last-child { margin-bottom: 0; }
@@ -670,7 +670,7 @@
   gap: 1px;
   background: var(--line-2);
   border: 1px solid var(--line-2);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 .arc-app .kpistrip[data-count="2"] { grid-template-columns: 1.5fr 1fr; }
@@ -774,7 +774,7 @@
 /* The one fact a whole column was spending ~210px repeating on every row. */
 .arc-app .arc-grid .csub .csub-em { color: var(--text-2); font-weight: 500; }
 .arc-app .arc-grid .chrow .sp { margin-left: auto; display: flex; gap: 9px; align-items: center; }
-.arc-app .arc-grid .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); text-decoration: none; }
+.arc-app .arc-grid .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); text-decoration: none; }
 .arc-app .arc-grid .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-grid .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-grid .gbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
@@ -785,7 +785,7 @@
 .arc-app .arc-grid .subtab:hover { color: var(--text); }
 .arc-app .arc-grid .subtab.on { color: var(--text); }
 .arc-app .arc-grid .subtab.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
-.arc-app .arc-grid .subtab .cnt { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); border-radius: 5px; padding: 0 6px; line-height: 16px; }
+.arc-app .arc-grid .subtab .cnt { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 0 6px; line-height: 16px; }
 .arc-app .arc-grid .subtab.on .cnt { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
 
 /* z-index/position: the page-entry `arcRise` animation below runs with
@@ -794,19 +794,19 @@
    (.tablewrap) painted over the toolbar and swallowed its open filter menus.
    Ranking the toolbar above the table lets its popovers escape. */
 .arc-app .arc-grid .gtoolbar { display: flex; align-items: center; gap: 9px; padding: 12px 0; flex-wrap: wrap; position: relative; z-index: 5; }
-.arc-app .arc-grid .tsearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); min-width: 210px; }
+.arc-app .arc-grid .tsearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); min-width: 210px; }
 .arc-app .arc-grid .tsearch svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.7; }
 .arc-app .arc-grid .tsearch input { border: none; background: transparent; color: var(--text); font-family: inherit; font-size: 12.5px; outline: none; width: 100%; }
 .arc-app .arc-grid .tsearch input::placeholder { color: var(--muted); }
-.arc-app .arc-grid .fbtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 500; cursor: pointer; transition: var(--dur-base); }
+.arc-app .arc-grid .fbtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 500; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-grid .fbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-grid .fbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; opacity: .85; }
 .arc-app .arc-grid .fbtn .cv { color: var(--muted); font-size: 10px; }
 .arc-app .arc-grid .gspacer { margin-left: auto; }
 .arc-app .arc-grid .sortwrap { position: relative; }
 .arc-app .arc-grid .sortscrim { position: fixed; inset: 0; z-index: 20; }
-.arc-app .arc-grid .sortmenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 21; min-width: 168px; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .9); }
-.arc-app .arc-grid .sortopt { text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: var(--dur-fast); }
+.arc-app .arc-grid .sortmenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 21; min-width: 168px; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .9); }
+.arc-app .arc-grid .sortopt { text-align: left; padding: 7px 10px; border: none; border-radius: var(--r-md); background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: var(--dur-fast); }
 .arc-app .arc-grid .sortopt:hover { background: var(--inset); color: var(--text); }
 .arc-app .arc-grid .sortopt.on { color: var(--accent-contrast); background: var(--accent-soft); }
 
@@ -816,7 +816,7 @@
    there. Basing the size on content and keeping `shrink` + `min-height: 0`
    preserves the behaviour that mattered: a long table still shrinks to the
    space available and scrolls inside itself rather than growing the page. */
-.arc-app .arc-grid .tablewrap { flex: 0 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); }
+.arc-app .arc-grid .tablewrap { flex: 0 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); }
 .arc-app .arc-grid .dt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .arc-app .arc-grid .dt thead th { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--panel) 96%, #000); text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 11px 14px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 .arc-app .arc-grid .dt tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--text-2); }
@@ -832,21 +832,21 @@
 .arc-app .arc-grid .emptyrow td { text-align: center; color: var(--muted); padding: 34px 14px; cursor: default; }
 .arc-app .arc-grid .emptyrow:hover { background: transparent; }
 .arc-app .arc-grid .pcell { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.arc-app .arc-grid .campaign-link { color: inherit; text-decoration: none; border-radius: 7px; }
+.arc-app .arc-grid .campaign-link { color: inherit; text-decoration: none; border-radius: var(--r-md); }
 .arc-app .arc-grid .campaign-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.arc-app .arc-grid .pav { width: 32px; height: 32px; border-radius: 8px; background: var(--inset); border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; font-family: var(--serif); font-weight: 600; font-size: 12.5px; }
+.arc-app .arc-grid .pav { width: 32px; height: 32px; border-radius: var(--r-md); background: var(--inset); border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; font-family: var(--serif); font-weight: 600; font-size: 12.5px; }
 .arc-app .arc-grid .pav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-app .arc-grid .pav.co { font-size: 11px; color: var(--text-2); }
 /* Campaign rows carry the package's own creative in the avatar slot. Scoped to
    this board on purpose — the other .arc-grid tables have no media to show. */
-.arc-app .arc-campaigns .pav { position: relative; width: 56px; height: 56px; border-radius: 10px; overflow: visible; }
+.arc-app .arc-campaigns .pav { position: relative; width: 56px; height: 56px; border-radius: var(--r-md); overflow: visible; }
 .arc-app .arc-campaigns .pav.hasthumb { background: var(--canvas-deep, #101013); }
-.arc-app .arc-campaigns .pavimg { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; }
+.arc-app .arc-campaigns .pavimg { width: 100%; height: 100%; object-fit: cover; border-radius: var(--r-md); }
 /* Not a notification count — it says "this package has more creative than the
    one frame you can see". */
 .arc-app .arc-campaigns .pavn {
   position: absolute; right: -5px; bottom: -5px; min-width: 16px; height: 16px; padding: 0 4px;
-  display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line-2);
+  display: grid; place-items: center; border-radius: var(--r-md); border: 1px solid var(--line-2);
   background: var(--panel); color: var(--text-2); font-family: var(--mono); font-size: 9.5px; font-weight: 600;
 }
 .arc-app .arc-grid .pnm { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; max-width: 210px; }
@@ -859,7 +859,7 @@
 .arc-app .arc-campaigns .cmp-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 9px; padding: 2px; }
 
 .arc-app .arc-campaigns .cmp-card {
-  position: relative; border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel);
+  position: relative; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel);
   padding: 15px 17px; transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease);
 }
 .arc-app .arc-campaigns .cmp-card:hover { border-color: color-mix(in srgb, var(--accent) 26%, var(--line-2)); }
@@ -878,7 +878,7 @@
    The old table set everything within 2px of everything else. */
 .arc-app .arc-campaigns .cmp-name {
   display: inline-block; font-size: 15.5px; font-weight: 600; line-height: 1.25; color: var(--text);
-  text-decoration: none; border-radius: 5px; letter-spacing: -.006em;
+  text-decoration: none; border-radius: var(--r-sm); letter-spacing: -.006em;
 }
 a.cmp-name:hover { color: var(--accent-contrast); }
 a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -906,7 +906,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 .arc-app .arc-campaigns .cmp-more {
   display: inline-flex; align-items: center; gap: 5px; margin-top: 11px; padding: 0; border: none; background: none;
-  font-family: inherit; font-size: 11.5px; font-weight: 500; color: var(--muted); cursor: pointer; border-radius: 5px;
+  font-family: inherit; font-size: 11.5px; font-weight: 500; color: var(--muted); cursor: pointer; border-radius: var(--r-sm);
 }
 .arc-app .arc-campaigns .cmp-more svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; transition: transform var(--dur-slow) var(--ease); }
 .arc-app .arc-campaigns .cmp-more:hover { color: var(--text-2); }
@@ -920,7 +920,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   .arc-app .arc-campaigns .cmp-state { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
 }
 
-.arc-app .arc-campaigns .cmp-empty { padding: 46px 20px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.6; border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); }
+.arc-app .arc-campaigns .cmp-empty { padding: 46px 20px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.6; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); }
 .arc-app .arc-campaigns .cmp-empty strong { color: var(--text); }
 .arc-app .arc-campaigns .cmp-empty-detail { margin-top: 8px; opacity: .75; font-family: var(--mono); font-size: 11px; }
 
@@ -976,7 +976,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-campaigns .dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 7px; width: 100%; }
 .arc-app .arc-campaigns .dcard {
   display: flex; align-items: center; gap: 9px; min-width: 0; width: 100%; padding: 7px 9px;
-  border: 1px solid var(--line); border-radius: 9px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel);
   font-family: inherit; text-align: left; color: inherit;
   transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
 }
@@ -988,7 +988,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-campaigns .dcard.waiting:disabled { cursor: default; opacity: .6; }
 .arc-app .arc-campaigns .dcard:not(.waiting) { opacity: .72; }
 .arc-app .arc-campaigns .dthumb {
-  flex: none; width: 34px; height: 34px; border-radius: 7px; overflow: hidden; display: grid; place-items: center;
+  flex: none; width: 34px; height: 34px; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center;
   background: var(--canvas-deep, #101013); border: 1px solid var(--line-2); color: var(--muted);
 }
 .arc-app .arc-campaigns .dthumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -1009,11 +1009,11 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    reserved so cards in a row keep the same height. */
 .arc-app .arc-grid .psub { font-size: 11px; color: var(--muted); margin-top: 1px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; min-height: 2.9em; }
 .arc-app .arc-grid .dt td:first-child { width: 34%; }
-.arc-app .arc-grid .chip { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.arc-app .arc-grid .chip { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: var(--r-sm); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .arc-app .arc-grid .chip.persona { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-app .arc-grid .chip.persona .pgd { width: 5px; height: 5px; border-radius: 50%; }
 .arc-app .arc-grid .chan { font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: nowrap; }
-.arc-app .arc-grid .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; border: 1px solid transparent; }
+.arc-app .arc-grid .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: var(--r-sm); font-size: 10.5px; font-weight: 600; white-space: nowrap; border: 1px solid transparent; }
 .arc-app .arc-grid .pill .pd { width: 5px; height: 5px; border-radius: 50%; }
 .arc-app .arc-grid .pill.live { color: var(--ok-text); background: var(--ok-soft); border-color: var(--ok-border); }
 .arc-app .arc-grid .pill.live .pd { background: var(--ok); }
@@ -1047,8 +1047,8 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 /* CRM score bar + dashed "add filter" button */
 .arc-app .arc-grid .scorecell { display: flex; align-items: center; gap: 9px; }
 .arc-app .arc-grid .scorecell b { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; width: 22px; text-align: right; color: var(--text); }
-.arc-app .arc-grid .sbar { width: 42px; height: 5px; border-radius: 99px; background: var(--inset); overflow: hidden; }
-.arc-app .arc-grid .sbar i { display: block; height: 100%; border-radius: 99px; }
+.arc-app .arc-grid .sbar { width: 42px; height: 5px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; }
+.arc-app .arc-grid .sbar i { display: block; height: 100%; border-radius: var(--r-full); }
 .arc-app .arc-grid .fbtn.dashed { border-style: dashed; color: var(--muted); }
 .arc-app .arc-grid .fbtn.dashed:hover { color: var(--text-2); border-color: var(--accent-border); }
 .arc-app .arc-grid .nx { font-size: 12px; color: var(--text-2); }
@@ -1181,7 +1181,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .otitle { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .arc-app .arc-outbox .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-outbox .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; max-width: 60ch; }
-.arc-app .arc-outbox .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; font-family: inherit; cursor: pointer; transition: var(--dur-base); }
+.arc-app .arc-outbox .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; font-family: inherit; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-outbox .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-outbox .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
@@ -1194,10 +1194,10 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .vtab:hover { color: var(--text-2); }
 .arc-app .arc-outbox .vtab.on { color: var(--text); border-bottom-color: var(--accent); }
 .arc-app .arc-outbox .vtab svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
-.arc-app .arc-outbox .vtab .ct { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: 5px; padding: 1px 6px; }
+.arc-app .arc-outbox .vtab .ct { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: var(--r-sm); padding: 1px 6px; }
 .arc-app .arc-outbox .vtab.on .ct { color: var(--accent-contrast); }
 .arc-app .arc-outbox .ofilters { display: flex; align-items: center; gap: 7px; margin-left: auto; padding-bottom: 7px; flex-wrap: wrap; }
-.arc-app .arc-outbox .fchip { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 99px; padding: 4px 11px; cursor: pointer; transition: var(--dur-base); display: inline-flex; align-items: center; gap: 6px; background: none; font-family: inherit; }
+.arc-app .arc-outbox .fchip { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-full); padding: 4px 11px; cursor: pointer; transition: var(--dur-base); display: inline-flex; align-items: center; gap: 6px; background: none; font-family: inherit; }
 .arc-app .arc-outbox .fchip:hover { color: var(--text-2); }
 .arc-app .arc-outbox .fchip.on { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-app .arc-outbox .fchip .fct { font-family: var(--mono); font-size: 9.5px; opacity: .75; }
@@ -1208,9 +1208,9 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .laneh { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px; flex-shrink: 0; }
 .arc-app .arc-outbox .laneh .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .arc-app .arc-outbox .laneh .ln { font-size: 12px; font-weight: 600; letter-spacing: .01em; color: var(--text); }
-.arc-app .arc-outbox .laneh .lc { font-family: var(--mono); font-size: 10.5px; color: var(--muted); background: var(--inset); border-radius: 6px; padding: 1px 7px; margin-left: auto; }
+.arc-app .arc-outbox .laneh .lc { font-family: var(--mono); font-size: 10.5px; color: var(--muted); background: var(--inset); border-radius: var(--r-sm); padding: 1px 7px; margin-left: auto; }
 .arc-app .arc-outbox .lanecards { display: flex; flex-direction: column; gap: 9px; overflow-y: auto; padding: 2px; min-height: 40px; }
-.arc-app .arc-outbox .lane.empty .lanecards { border: 1px dashed var(--line-2); border-radius: 11px; align-items: center; justify-content: center; padding: 18px 10px; }
+.arc-app .arc-outbox .lane.empty .lanecards { border: 1px dashed var(--line-2); border-radius: var(--r-md); align-items: center; justify-content: center; padding: 18px 10px; }
 .arc-app .arc-outbox .lane.empty .lanecards .en { font-size: 10.5px; color: var(--muted); text-align: center; }
 /* Phones: stack the lanes into one page-scrolling column instead of a cramped
    horizontal-scroll strip below a tall header. */
@@ -1222,11 +1222,11 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 }
 
 /* cards */
-.arc-app .arc-outbox .card { border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); padding: 11px 12px; transition: var(--dur-base) var(--ease); }
+.arc-app .arc-outbox .card { border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); padding: 11px 12px; transition: var(--dur-base) var(--ease); }
 .arc-app .arc-outbox .card.link { cursor: pointer; text-decoration: none; display: block; }
 .arc-app .arc-outbox .card.link:hover { border-color: var(--accent-border); }
 .arc-app .arc-outbox .card .crow { display: flex; align-items: center; gap: 8px; }
-.arc-app .arc-outbox .chip-ch { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
+.arc-app .arc-outbox .chip-ch { width: 24px; height: 24px; border-radius: var(--r-md); display: grid; place-items: center; flex-shrink: 0; }
 .arc-app .arc-outbox .chip-ch svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-app .arc-outbox .ch-email { background: var(--accent-soft); color: var(--accent); }
 .arc-app .arc-outbox .ch-sms { background: var(--blue-soft); color: var(--blue-text); }
@@ -1240,18 +1240,18 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .card .caudience { margin-top: 7px; font-size: 10.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arc-app .arc-outbox .card .caudience span { margin-right: 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .arc-app .arc-outbox .card .cmeta .mi { display: inline-flex; align-items: center; gap: 4px; }
-.arc-app .arc-outbox .card .cnote { font-size: 10.5px; margin-top: 8px; padding: 6px 8px; border-radius: 7px; background: var(--inset); color: var(--text-2); line-height: 1.4; }
+.arc-app .arc-outbox .card .cnote { font-size: 10.5px; margin-top: 8px; padding: 6px 8px; border-radius: var(--r-md); background: var(--inset); color: var(--text-2); line-height: 1.4; }
 .arc-app .arc-outbox .card .cnote.warn { background: var(--warn-soft); color: var(--warn-text); }
 .arc-app .arc-outbox .card .cnote.red { background: var(--red-soft); color: var(--red-text); }
 .arc-app .arc-outbox .card .clink { display: block; text-decoration: none; color: inherit; }
 .arc-app .arc-outbox .lanecards .card:hover { border-color: var(--accent-border); }
-.arc-app .arc-outbox .card .caction { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 14px; margin-top: 10px; border-radius: 8px; border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; font-size: 11.5px; font-weight: 600; }
+.arc-app .arc-outbox .card .caction { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 14px; margin-top: 10px; border-radius: var(--r-md); border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; font-size: 11.5px; font-weight: 600; }
 .arc-app .arc-outbox .card button.caction { width: 100%; cursor: pointer; font-family: inherit; }
 .arc-app .arc-outbox .card button.caction:disabled { opacity: .55; cursor: default; }
 .arc-app .arc-outbox .card button.caction.danger { border-color: #a5321f; background: linear-gradient(180deg, #d0503a, #b83b26 55%, #9c2f1d); color: #fff; }
 .arc-app .arc-outbox .card .caconfirm { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
 .arc-app .arc-outbox .card .caconfirm .cctext { font-size: 11px; line-height: 1.35; color: #a6624f; font-weight: 600; }
-.arc-app .arc-outbox .card .send-preview { border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px; }
+.arc-app .arc-outbox .card .send-preview { border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); padding: 10px; }
 .arc-app .arc-outbox .card .send-preview dl { display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .arc-app .arc-outbox .card .send-preview dl div { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; font-size: 10.5px; line-height: 1.35; }
 .arc-app .arc-outbox .card .send-preview dt { color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
@@ -1262,9 +1262,9 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .card .send-preview a:hover { text-decoration: underline; }
 .arc-app .arc-outbox .card .caconfirm .ccbtns { display: flex; gap: 7px; }
 .arc-app .arc-outbox .card .caconfirm .ccbtns .caction { margin-top: 0; flex: 1; }
-.arc-app .arc-outbox .card button.cccancel { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line, #d8d4cb); background: transparent; color: var(--muted, #6b6b74); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; }
+.arc-app .arc-outbox .card button.cccancel { height: 30px; padding: 0 12px; border-radius: var(--r-md); border: 1px solid var(--line, #d8d4cb); background: transparent; color: var(--muted, #6b6b74); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; }
 .arc-app .arc-outbox .card button.cccancel:disabled { opacity: .55; cursor: default; }
-.arc-app .arc-outbox .ownb { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; margin-left: auto; flex-shrink: 0; }
+.arc-app .arc-outbox .ownb { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; border-radius: var(--r-sm); padding: 2px 6px; margin-left: auto; flex-shrink: 0; }
 .arc-app .arc-outbox .ownb.agent { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-app .arc-outbox .ownb.human { color: var(--blue-text); background: var(--blue-soft); border: 1px solid rgba(136, 182, 216, .4); }
 .arc-app .arc-outbox .ownb.system { color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
@@ -1274,7 +1274,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .oq-section { display: flex; flex-direction: column; gap: 11px; }
 .arc-app .arc-outbox .oq-head { display: flex; align-items: center; gap: 9px; }
 .arc-app .arc-outbox .oq-label { font-size: 12px; font-weight: 600; letter-spacing: .01em; color: var(--text); }
-.arc-app .arc-outbox .oq-count { font-family: var(--mono); font-size: 10.5px; color: var(--muted); background: var(--inset); border-radius: 6px; padding: 1px 7px; }
+.arc-app .arc-outbox .oq-count { font-family: var(--mono); font-size: 10.5px; color: var(--muted); background: var(--inset); border-radius: var(--r-sm); padding: 1px 7px; }
 .arc-app .arc-outbox .oq-section.tone-red .oq-label { color: var(--red-text); }
 .arc-app .arc-outbox .oq-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 11px; }
 /* Border step only. DESIGN.md §6: `.btn` is the one element that lifts, and
@@ -1295,13 +1295,13 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .oq-hero .oq-label { font-weight: 600; font-size: 13px; letter-spacing: .01em; color: var(--accent-contrast); }
 .arc-app .arc-outbox .oq-hero .oq-count { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-app .arc-outbox .oq-empty { display: flex; align-items: center; gap: 12px; padding: 6px 2px 2px; }
-.arc-app .arc-outbox .oq-empty-ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--ok-soft); color: var(--ok-text); border: 1px solid var(--ok-border); flex-shrink: 0; }
+.arc-app .arc-outbox .oq-empty-ic { width: 30px; height: 30px; border-radius: var(--r-md); display: grid; place-items: center; background: var(--ok-soft); color: var(--ok-text); border: 1px solid var(--ok-border); flex-shrink: 0; }
 .arc-app .arc-outbox .oq-empty-ic svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.2; }
 .arc-app .arc-outbox .oq-empty b { display: block; font-size: 13px; color: var(--text); }
 .arc-app .arc-outbox .oq-empty span { display: block; font-size: 11.5px; color: var(--muted); margin-top: 1px; }
 
 /* delivered badge + failed accent */
-.arc-app .arc-outbox .card .cbadge { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; flex-shrink: 0; margin-left: auto; }
+.arc-app .arc-outbox .card .cbadge { width: 20px; height: 20px; border-radius: var(--r-sm); display: grid; place-items: center; flex-shrink: 0; margin-left: auto; }
 .arc-app .arc-outbox .card .cbadge.ok { background: var(--ok-soft); color: var(--ok-text); border: 1px solid var(--ok-border); }
 .arc-app .arc-outbox .card .cbadge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.4; }
 .arc-app .arc-outbox .card.is-failed { border-color: color-mix(in srgb, var(--red-text) 34%, var(--line-2)); }
@@ -1314,7 +1314,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-outbox .card .ccancelconfirm > span:first-child { flex: 1 1 100%; }
 .arc-app .arc-outbox .card .ccancel.is-confirm { border-color: var(--priority); color: var(--priority); }
 .arc-app .arc-outbox .card .cactions .caction { margin-top: 0; flex: 1; }
-.arc-app .arc-outbox .card button.ccancel { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; transition: var(--dur-base); }
+.arc-app .arc-outbox .card button.ccancel { height: 30px; padding: 0 12px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; transition: var(--dur-base); }
 .arc-app .arc-outbox .card button.ccancel:hover { color: var(--text-2); border-color: var(--line-3); }
 .arc-app .arc-outbox .card button.ccancel:disabled { opacity: .55; cursor: default; }
 .arc-app .arc-outbox .card button.caction.ghost { border: 1px solid var(--line-2); background: transparent; color: var(--text-2); }
@@ -1351,19 +1351,19 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
 .arc-app .arc-analytics .ctrlbar { display: flex; align-items: center; gap: 10px; padding: 13px clamp(22px, 3vw, 38px); border-bottom: 1px solid var(--line-2); flex-wrap: wrap; flex-shrink: 0; }
 .arc-app .arc-analytics .vtabs { display: flex; gap: 2px; }
-.arc-app .arc-analytics .vtab { position: relative; padding: 7px 12px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; border-radius: 8px; transition: var(--dur-base); background: none; border: 1px solid transparent; font-family: inherit; }
+.arc-app .arc-analytics .vtab { position: relative; padding: 7px 12px; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; border-radius: var(--r-md); transition: var(--dur-base); background: none; border: 1px solid transparent; font-family: inherit; }
 .arc-app .arc-analytics .vtab:hover { color: var(--text); background: rgba(255, 255, 255, .035); }
 .arc-app .arc-analytics .vtab.on { color: var(--text); background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-app .arc-analytics .cspacer { margin-left: auto; }
-.arc-app .arc-analytics .ctl { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text-2); font-size: 12px; font-weight: 500; font-family: inherit; }
+.arc-app .arc-analytics .ctl { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); color: var(--text-2); font-size: 12px; font-weight: 500; font-family: inherit; }
 .arc-app .arc-analytics .ctl svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; opacity: .85; }
 .arc-app .arc-analytics .ctl .cv { color: var(--muted); font-size: 10px; }
 .arc-app .arc-analytics .rangectl { position: relative; }
 .arc-app .arc-analytics .rangectl .ctl { cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base); }
 .arc-app .arc-analytics .rangectl .ctl:hover, .arc-app .arc-analytics .rangectl .ctl[aria-expanded="true"] { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-analytics .ctl-backdrop { position: fixed; inset: 0; z-index: 40; background: none; border: none; cursor: default; }
-.arc-app .arc-analytics .ctl-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 41; min-width: 160px; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 30px rgba(0,0,0,.34); display: flex; flex-direction: column; gap: 2px; }
-.arc-app .arc-analytics .ctl-opt { display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 10px; border: none; border-radius: 7px; background: none; color: var(--text-2); font-size: 12px; font-weight: 500; font-family: inherit; cursor: pointer; text-align: left; transition: background var(--dur-fast), color var(--dur-fast); }
+.arc-app .arc-analytics .ctl-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 41; min-width: 160px; padding: 5px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 12px 30px rgba(0,0,0,.34); display: flex; flex-direction: column; gap: 2px; }
+.arc-app .arc-analytics .ctl-opt { display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 10px; border: none; border-radius: var(--r-md); background: none; color: var(--text-2); font-size: 12px; font-weight: 500; font-family: inherit; cursor: pointer; text-align: left; transition: background var(--dur-fast), color var(--dur-fast); }
 .arc-app .arc-analytics .ctl-opt:hover { background: var(--inset); color: var(--text); }
 .arc-app .arc-analytics .ctl-opt.on { color: var(--text); background: var(--accent-soft); }
 .arc-app .arc-analytics .ctl-opt.on::after { content: "✓"; color: var(--accent); font-size: 11px; }
@@ -1373,17 +1373,17 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics .vhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
 .arc-app .arc-analytics .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-analytics .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
-.arc-app .arc-analytics .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; white-space: nowrap; }
+.arc-app .arc-analytics .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: var(--r-sm); padding: 1px 6px; font-weight: 600; white-space: nowrap; }
 .arc-app .arc-analytics .tg.wired { color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); }
 .arc-app .arc-analytics .tg.sync { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); }
 
 
 /* trend panel + metric toggle + legend */
-.arc-app .arc-analytics .panel { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); margin-top: 20px; overflow: hidden; }
+.arc-app .arc-analytics .panel { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); margin-top: 20px; overflow: hidden; }
 .arc-app .arc-analytics .ph { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .arc-app .arc-analytics .ph h2 { font-size: 13px; font-weight: 600; margin: 0; color: var(--text); }
-.arc-app .arc-analytics .seg { display: flex; gap: 2px; background: var(--inset); border: 1px solid var(--line-2); border-radius: 8px; padding: 2px; margin-left: auto; }
-.arc-app .arc-analytics .seg button { font: inherit; font-size: 11px; font-weight: 600; color: var(--muted); padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 0; background: transparent; transition: var(--dur-base); }
+.arc-app .arc-analytics .seg { display: flex; gap: 2px; background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 2px; margin-left: auto; }
+.arc-app .arc-analytics .seg button { font: inherit; font-size: 11px; font-weight: 600; color: var(--muted); padding: 4px 10px; border-radius: var(--r-sm); cursor: pointer; border: 0; background: transparent; transition: var(--dur-base); }
 .arc-app .arc-analytics .seg button:hover { color: var(--text-2); }
 .arc-app .arc-analytics .seg button.on { background: var(--panel); color: var(--text); }
 .arc-app .arc-analytics .legend { display: flex; gap: 13px; font-size: 11px; color: var(--text-2); }
@@ -1417,11 +1417,11 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    §4/§5 ban nesting one card in another. Dropping the border leaves a tinted
    band rather than a card-in-a-card — the warn tint still carries the "needs
    you" meaning §4.4 assigns it, which a plain hairline would have thrown away. */
-.arc-app .arc-analytics .recbox { border-radius: 9px; background: var(--warn-soft); padding: 11px 12px; margin-bottom: 12px; }
+.arc-app .arc-analytics .recbox { border-radius: var(--r-md); background: var(--warn-soft); padding: 11px 12px; margin-bottom: 12px; }
 .arc-app .arc-analytics .recbox .rl { font-size: 9px; font-weight: 600; letter-spacing: .1em; color: var(--warn-text); text-transform: uppercase; margin-bottom: 5px; }
 .arc-app .arc-analytics .recbox .rt { font-size: 12px; color: var(--text); line-height: 1.5; }
 .arc-app .arc-analytics .abtns { display: flex; gap: 8px; flex-wrap: wrap; }
-.arc-app .arc-analytics .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 33px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; transition: var(--dur-base); }
+.arc-app .arc-analytics .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 33px; padding: 0 13px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-analytics .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-analytics .gbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-analytics .gbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
@@ -1429,18 +1429,18 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 .arc-app .arc-analytics .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; margin-top: 20px; align-items: start; }
 .arc-app .arc-analytics .col { display: flex; flex-direction: column; gap: 18px; }
-.arc-app .arc-analytics .blk { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); padding: 16px 18px; }
+.arc-app .arc-analytics .blk { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 16px 18px; }
 .arc-app .arc-analytics .blk h2 { font-size: 13px; font-weight: 600; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; color: var(--text); }
 
 .arc-app .arc-analytics .funnel { display: flex; flex-direction: column; gap: 9px; }
 .arc-app .arc-analytics .fstage { display: grid; grid-template-columns: 116px 1fr auto; gap: 12px; align-items: center; }
 .arc-app .arc-analytics .fstage .fl { font-size: 12px; color: var(--text-2); }
-.arc-app .arc-analytics .ftrack { height: 30px; border-radius: 8px; background: var(--inset); overflow: hidden; position: relative; }
+.arc-app .arc-analytics .ftrack { height: 30px; border-radius: var(--r-md); background: var(--inset); overflow: hidden; position: relative; }
 /* Solid, not a gradient. §4.4's "vary lightness, not hue" is about varying it
    ACROSS stages; a fade inside a single bar adds a visual variable that encodes
    nothing, and it made the long Leads bar look like it was trailing off. Width
    already carries the magnitude, and this now matches the Leads-by-source bars. */
-.arc-app .arc-analytics .ftrack i { display: block; height: 100%; border-radius: 8px; background: var(--text-2); min-width: 3px; }
+.arc-app .arc-analytics .ftrack i { display: block; height: 100%; border-radius: var(--r-md); background: var(--text-2); min-width: 3px; }
 .arc-app .arc-analytics .fstage .fv { font-family: var(--mono); font-size: 13px; color: var(--text); min-width: 92px; text-align: right; }
 .arc-app .arc-analytics .fstage .fv span { color: var(--muted); font-size: 10px; }
 
@@ -1449,8 +1449,8 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics .bdrow:last-child { border-bottom: 0; }
 .arc-app .arc-analytics .bdrow .bn { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 8px; }
 .arc-app .arc-analytics .bdrow .bn .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.arc-app .arc-analytics .bb { height: 6px; border-radius: 99px; background: var(--inset); overflow: hidden; }
-.arc-app .arc-analytics .bb i { display: block; height: 100%; border-radius: 99px; }
+.arc-app .arc-analytics .bb { height: 6px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; }
+.arc-app .arc-analytics .bb i { display: block; height: 100%; border-radius: var(--r-full); }
 .arc-app .arc-analytics .bdrow .bv { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); text-align: right; }
 
 /* Campaign performance table — drill-down into each campaign's Performance tab */
@@ -1462,7 +1462,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics .cthead, .arc-app .arc-analytics .ctrow { display: grid; grid-template-columns: minmax(0, 2.4fr) 0.8fr 0.8fr 1.1fr 0.8fr 0.5fr; gap: 12px; align-items: center; }
 .arc-app .arc-analytics .cthead { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 0 6px 9px; border-bottom: 1px solid var(--line-2); }
 .arc-app .arc-analytics .cthead span:not(:first-child) { text-align: right; }
-.arc-app .arc-analytics .ctrow { padding: 11px 6px; border-bottom: 1px solid var(--line); border-radius: 8px; text-decoration: none; transition: background var(--dur-base); }
+.arc-app .arc-analytics .ctrow { padding: 11px 6px; border-bottom: 1px solid var(--line); border-radius: var(--r-md); text-decoration: none; transition: background var(--dur-base); }
 .arc-app .arc-analytics .ctrow:last-child { border-bottom: 0; }
 .arc-app .arc-analytics .ctrow:hover { background: rgba(255, 255, 255, .035); }
 .arc-app .arc-analytics .ctname { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -1495,33 +1495,33 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-analytics .sig .sdot.amber { background: var(--warn); }
 .arc-app .arc-analytics .sig .sdot.red { background: var(--red); }
 .arc-app .arc-analytics .stitle { font-size: 12.5px; font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.arc-app .arc-analytics .smetric { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--ok-text); background: var(--ok-soft); border-radius: 5px; padding: 1px 6px; }
+.arc-app .arc-analytics .smetric { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--ok-text); background: var(--ok-soft); border-radius: var(--r-sm); padding: 1px 6px; }
 .arc-app .arc-analytics .sdetail { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 4px; }
 .arc-app .arc-analytics .moves { display: flex; flex-direction: column; gap: 9px; }
-.arc-app .arc-analytics .move { display: block; border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); padding: 11px 13px; text-decoration: none; transition: border-color var(--dur-base); }
+.arc-app .arc-analytics .move { display: block; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); padding: 11px 13px; text-decoration: none; transition: border-color var(--dur-base); }
 .arc-app .arc-analytics .move:hover { border-color: var(--accent-border); }
 .arc-app .arc-analytics .mtitle { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .arc-app .arc-analytics .mdetail { font-size: 11px; color: var(--muted); line-height: 1.5; margin: 5px 0 7px; }
 .arc-app .arc-analytics .mcta { font-size: 11px; font-weight: 600; color: var(--accent-contrast); }
 
-.arc-app .arc-analytics .airead { border: 1px solid var(--accent-border); border-radius: 13px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 42%, var(--panel)), var(--panel)); padding: 17px 19px; position: sticky; top: 0; }
+.arc-app .arc-analytics .airead { border: 1px solid var(--accent-border); border-radius: var(--r-lg); background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 42%, var(--panel)), var(--panel)); padding: 17px 19px; position: sticky; top: 0; }
 .arc-app .arc-analytics .airead .al { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
-.arc-app .arc-analytics .airead .am { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
+.arc-app .arc-analytics .airead .am { width: 26px; height: 26px; border-radius: var(--r-md); border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; color: var(--accent); font-size: 13px; }
 .arc-app .arc-analytics .airead .at { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--accent); text-transform: uppercase; }
 .arc-app .arc-analytics .airead p { font-size: 12.5px; color: var(--text-2); line-height: 1.6; margin: 0 0 11px; }
 .arc-app .arc-analytics .airead p b { color: var(--text); font-weight: 600; }
 .arc-app .arc-analytics .cited { display: flex; flex-wrap: wrap; gap: 6px; }
-.arc-app .arc-analytics .cit { font-family: var(--mono); font-size: 9.5px; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: 5px; padding: 2px 7px; }
+.arc-app .arc-analytics .cit { font-family: var(--mono); font-size: 9.5px; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 2px 7px; }
 .arc-app .arc-analytics .cit b { color: var(--accent-contrast); }
 
 /* activity feed */
 .arc-app .arc-analytics .aday { font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 16px 2px 8px; }
-.arc-app .arc-analytics .arow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 14px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); margin-bottom: 8px; }
+.arc-app .arc-analytics .arow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 14px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); margin-bottom: 8px; }
 .arc-app .arc-analytics .arow .adot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .arc-app .arc-analytics .arow .atitle { font-size: 12.5px; font-weight: 600; color: var(--text); line-height: 1.3; }
 .arc-app .arc-analytics .arow .adetail { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
 .arc-app .arc-analytics .arow .ameta { font-size: 10.5px; color: var(--text-2); margin-top: 5px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.arc-app .arc-analytics .arow .achip { border: 1px solid var(--line-2); background: var(--inset); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; }
+.arc-app .arc-analytics .arow .achip { border: 1px solid var(--line-2); background: var(--inset); border-radius: var(--r-sm); padding: 1px 6px; font-size: 9.5px; }
 .arc-app .arc-analytics .arow .atime { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; }
 
 @media (max-width: 900px) {
@@ -1540,16 +1540,16 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-personas .ph1row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .arc-app .arc-personas h1.pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-personas .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; max-width: 60ch; white-space: normal; }
-.arc-app .arc-personas .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); }
+.arc-app .arc-personas .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-personas .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-personas .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
-.arc-app .arc-personas .phead .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; white-space: nowrap; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
-.arc-app .arc-personas .arcalert { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(90deg, var(--accent-soft), transparent 70%); padding: 11px 14px; animation: personasHeaderIn .5s cubic-bezier(.16, 1, .3, 1) .08s both; }
-.arc-app .arc-personas .arcalert .am { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); color: var(--accent); font-size: 13px; flex-shrink: 0; }
+.arc-app .arc-personas .phead .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: var(--r-sm); padding: 1px 6px; font-weight: 600; white-space: nowrap; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
+.arc-app .arc-personas .arcalert { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: linear-gradient(90deg, var(--accent-soft), transparent 70%); padding: 11px 14px; animation: personasHeaderIn .5s cubic-bezier(.16, 1, .3, 1) .08s both; }
+.arc-app .arc-personas .arcalert .am { width: 26px; height: 26px; border-radius: var(--r-md); border: 1px solid var(--accent-border); background: var(--accent-soft); display: grid; place-items: center; font-family: var(--serif); color: var(--accent); font-size: 13px; flex-shrink: 0; }
 .arc-app .arc-personas .arcalert .at { font-size: 12.5px; color: var(--text-2); }
 .arc-app .arc-personas .arcalert .at b { color: var(--text); font-weight: 600; }
 .arc-app .arc-personas .arcalert .ab { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
-.arc-app .arc-personas .miniabtn { font-size: 11.5px; font-weight: 600; color: var(--accent-contrast); border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 7px; padding: 6px 11px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
+.arc-app .arc-personas .miniabtn { font-size: 11.5px; font-weight: 600; color: var(--accent-contrast); border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: var(--r-md); padding: 6px 11px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
 .arc-app .arc-personas .miniabtn:hover { background: rgba(200, 162, 74, .2); }
 .arc-app .arc-personas .miniabtn.ghost { color: var(--muted); border-color: var(--line-2); background: transparent; }
 .arc-app .arc-personas .miniabtn.ghost:hover { color: var(--text-2); }
@@ -1562,19 +1562,19 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   .arc-app .arc-personas .arcalert .ab { margin-left: 0; width: 100%; }
 }
 .arc-app .arc-personas .segbar { display: flex; align-items: center; gap: 12px; padding: 14px clamp(20px, 2.6vw, 30px); border-bottom: 1px solid var(--line-2); flex-shrink: 0; flex-wrap: wrap; }
-.arc-app .arc-personas .vtog { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); }
-.arc-app .arc-personas .vtog button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--muted); background: none; border: none; border-radius: 7px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
+.arc-app .arc-personas .vtog { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); }
+.arc-app .arc-personas .vtog button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--muted); background: none; border: none; border-radius: var(--r-md); cursor: pointer; transition: var(--dur-base); font-family: inherit; }
 .arc-app .arc-personas .vtog button:hover { color: var(--text-2); }
 .arc-app .arc-personas .vtog button.on { color: var(--text); background: var(--panel); box-shadow: 0 1px 0 rgba(0, 0, 0, .3); }
 .arc-app .arc-personas .vtog svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-personas .barsep { width: 1px; height: 22px; background: var(--line-2); }
-.arc-app .arc-personas .segpill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-2); padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: var(--dur-base); border: 1px solid transparent; background: none; font-family: inherit; }
+.arc-app .arc-personas .segpill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-2); padding: 6px 12px; border-radius: var(--r-md); cursor: pointer; transition: var(--dur-base); border: 1px solid transparent; background: none; font-family: inherit; }
 .arc-app .arc-personas .segpill:hover { color: var(--text); background: rgba(255, 255, 255, .035); }
 .arc-app .arc-personas .segpill.on { color: var(--text); background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-app .arc-personas .segpill .sc { font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
 .arc-app .arc-personas .segpill.on .sc { color: var(--accent); }
 .arc-app .arc-personas .segspacer { margin-left: auto; }
-.arc-app .arc-personas .ssearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); min-width: 170px; }
+.arc-app .arc-personas .ssearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); min-width: 170px; }
 .arc-app .arc-personas .ssearch svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.7; }
 .arc-app .arc-personas .ssearch input { border: none; background: transparent; color: var(--text); font-family: inherit; font-size: 12px; outline: none; width: 100%; }
 .arc-app .arc-personas .ssearch input::placeholder { color: var(--muted); }
@@ -1583,27 +1583,27 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-personas .pbody.cmp { grid-template-columns: 1fr; }
 .arc-app .arc-personas .roster { border-right: 1px solid var(--line); min-width: 0; overflow: auto; padding: 6px 14px 30px; }
 .arc-app .arc-personas .seglabel { font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; padding: 14px 6px 8px; }
-.arc-app .arc-personas .prow { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); margin-bottom: 9px; cursor: pointer; transition: border-color var(--dur-base), transform var(--dur-base) var(--ease); width: 100%; text-align: left; font-family: inherit; }
+.arc-app .arc-personas .prow { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); margin-bottom: 9px; cursor: pointer; transition: border-color var(--dur-base), transform var(--dur-base) var(--ease); width: 100%; text-align: left; font-family: inherit; }
 .arc-app .arc-personas .prow:hover { border-color: var(--accent-border); }
 .arc-app .arc-personas .prow.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft), 0 16px 40px -30px rgba(0, 0, 0, .9); }
-.arc-app .arc-personas .pav { width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 15px; flex-shrink: 0; }
+.arc-app .arc-personas .pav { width: 42px; height: 42px; border-radius: var(--r-md); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 15px; flex-shrink: 0; }
 .arc-app .arc-personas .pmid { min-width: 0; flex: 1; }
 .arc-app .arc-personas .pn { font-size: 13.5px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .arc-app .arc-personas .pmeta { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
-.arc-app .arc-personas .stagep { font-size: 9.5px; font-weight: 600; padding: 1px 7px; border-radius: 5px; white-space: nowrap; }
+.arc-app .arc-personas .stagep { font-size: 9.5px; font-weight: 600; padding: 1px 7px; border-radius: var(--r-sm); white-space: nowrap; }
 .arc-app .arc-personas .pshare { font-family: var(--mono); font-size: 10px; color: var(--muted); }
 .arc-app .arc-personas .pright { text-align: right; flex-shrink: 0; }
 .arc-app .arc-personas .pscore { font-family: var(--mono); font-size: 15px; font-weight: 600; }
-.arc-app .arc-personas .pbar { width: 46px; height: 4px; border-radius: 99px; background: var(--inset); overflow: hidden; margin-top: 5px; margin-left: auto; }
-.arc-app .arc-personas .pbar i { display: block; height: 100%; border-radius: 99px; }
+.arc-app .arc-personas .pbar { width: 46px; height: 4px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; margin-top: 5px; margin-left: auto; }
+.arc-app .arc-personas .pbar i { display: block; height: 100%; border-radius: var(--r-full); }
 
 .arc-app .arc-personas .detail { min-width: 0; overflow: auto; padding: 24px clamp(20px, 2.4vw, 32px) 46px; }
 .arc-app .arc-personas .dhead { display: flex; align-items: flex-start; gap: 16px; }
-.arc-app .arc-personas .dav { width: 58px; height: 58px; border-radius: 14px; display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 23px; flex-shrink: 0; }
+.arc-app .arc-personas .dav { width: 58px; height: 58px; border-radius: var(--r-lg); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 23px; flex-shrink: 0; }
 .arc-app .arc-personas .dh-main { min-width: 0; flex: 1; }
 .arc-app .arc-personas .dname { font-family: var(--serif); font-weight: 500; font-size: clamp(1.5rem, 2.3vw, 1.95rem); line-height: 1.05; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-personas .dmeta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: center; }
-.arc-app .arc-personas .chip { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 10px; border-radius: 7px; font-size: 10.5px; font-weight: 600; }
+.arc-app .arc-personas .chip { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 10px; border-radius: var(--r-md); font-size: 10.5px; font-weight: 600; }
 .arc-app .arc-personas .chip.seg { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-app .arc-personas .chip.org { color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); }
 .arc-app .arc-personas .dprofile { font-size: 13px; color: var(--text-2); margin-top: 11px; line-height: 1.55; max-width: 70ch; }
@@ -1618,25 +1618,25 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-personas .sec { margin-top: 24px; }
 /* Signals radar + Performance duo (ported from build-personas.html) */
 .arc-app .arc-personas .dduo { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 14px; align-items: stretch; }
-.arc-app .arc-personas .radarcard { border: 1px solid var(--line-2); border-radius: 13px; background: radial-gradient(120% 100% at 50% 30%, rgba(200, 162, 74, .05), transparent 60%), var(--panel); padding: 12px; display: flex; flex-direction: column; align-items: center; }
+.arc-app .arc-personas .radarcard { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: radial-gradient(120% 100% at 50% 30%, rgba(200, 162, 74, .05), transparent 60%), var(--panel); padding: 12px; display: flex; flex-direction: column; align-items: center; }
 .arc-app .arc-personas .radarcard svg { display: block; }
 .arc-app .arc-personas .rdrivers { width: 100%; margin-top: 4px; display: flex; flex-direction: column; gap: 5px; }
 .arc-app .arc-personas .rdr { display: flex; gap: 8px; font-size: 10.5px; color: var(--text-2); line-height: 1.4; }
 .arc-app .arc-personas .rdr b { color: var(--text); font-weight: 600; width: 66px; flex-shrink: 0; }
-.arc-app .arc-personas .perfcard { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); padding: 14px 16px; display: flex; flex-direction: column; }
+.arc-app .arc-personas .perfcard { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 14px 16px; display: flex; flex-direction: column; }
 @media (max-width: 900px) { .arc-app .arc-personas .dduo { grid-template-columns: 1fr; } }
-.arc-app .arc-personas .pbk { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; border: 1px solid var(--line-2); border-radius: 13px; overflow: hidden; background: var(--line-2); }
+.arc-app .arc-personas .pbk { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; border: 1px solid var(--line-2); border-radius: var(--r-lg); overflow: hidden; background: var(--line-2); }
 .arc-app .arc-personas .pbi { background: var(--panel); padding: 14px 16px; }
 .arc-app .arc-personas .pbi.full { grid-column: 1 / -1; }
 .arc-app .arc-personas .pbi .pl { font-size: 10px; font-weight: 600; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
 .arc-app .arc-personas .pbi .pv { font-size: 13px; color: var(--text); margin-top: 7px; line-height: 1.55; }
 .arc-app .arc-personas .pbi .pv.angle { font-family: var(--serif); font-size: 14.5px; }
 .arc-app .arc-personas .ppchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-.arc-app .arc-personas .ppchip { font-size: 11px; font-weight: 500; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 9px; }
+.arc-app .arc-personas .ppchip { font-size: 11px; font-weight: 500; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 4px 9px; }
 .arc-app .arc-personas .ctaval { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; color: var(--accent-contrast); }
-.arc-app .arc-personas .msg { border: 1px solid var(--line-2); border-radius: 12px; background: var(--inset); overflow: hidden; }
+.arc-app .arc-personas .msg { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--inset); overflow: hidden; }
 .arc-app .arc-personas .msg .mh { display: flex; align-items: center; gap: 9px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
-.arc-app .arc-personas .msg .mfrom { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; font-family: var(--serif); color: var(--accent); font-size: 12px; }
+.arc-app .arc-personas .msg .mfrom { width: 26px; height: 26px; border-radius: var(--r-md); background: var(--accent-soft); border: 1px solid var(--accent-border); display: grid; place-items: center; font-family: var(--serif); color: var(--accent); font-size: 12px; }
 .arc-app .arc-personas .msg .msub { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .arc-app .arc-personas .msg .mfl { font-size: 10px; color: var(--muted); }
 .arc-app .arc-personas .msg .mpv { padding: 12px 14px; font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
@@ -1646,19 +1646,19 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-personas .cmphead { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
 .arc-app .arc-personas .cmphead h2 { font-family: var(--serif); font-weight: 500; font-size: 21px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-personas .cmphead .csb { font-size: 12px; color: var(--muted); margin-top: 3px; }
-.arc-app .arc-personas .cmptable { border: 1px solid var(--line-2); border-radius: 13px; overflow: auto; background: var(--panel); }
+.arc-app .arc-personas .cmptable { border: 1px solid var(--line-2); border-radius: var(--r-lg); overflow: auto; background: var(--panel); }
 .arc-app .arc-personas .ctbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
 .arc-app .arc-personas .ctbl thead th { text-align: right; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 11px 14px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 .arc-app .arc-personas .ctbl thead th:first-child, .arc-app .arc-personas .ctbl tbody td:first-child { text-align: left; }
 .arc-app .arc-personas .ctbl tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: right; font-family: var(--mono); font-size: 12px; color: var(--text-2); vertical-align: middle; }
 .arc-app .arc-personas .ctbl tbody tr:last-child td { border-bottom: none; }
 .arc-app .arc-personas .cpn { display: flex; align-items: center; gap: 10px; text-align: left; font-family: var(--sans); }
-.arc-app .arc-personas .cpn .cav { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 12px; flex-shrink: 0; }
+.arc-app .arc-personas .cpn .cav { width: 30px; height: 30px; border-radius: var(--r-md); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 12px; flex-shrink: 0; }
 .arc-app .arc-personas .cpn .cnm { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .arc-app .arc-personas .cpn .cseg { font-size: 10px; color: var(--muted); }
 .arc-app .arc-personas .scellbar { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
-.arc-app .arc-personas .scellbar .mb { width: 40px; height: 5px; border-radius: 99px; background: var(--inset); overflow: hidden; }
-.arc-app .arc-personas .scellbar .mb i { display: block; height: 100%; border-radius: 99px; }
+.arc-app .arc-personas .scellbar .mb { width: 40px; height: 5px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; }
+.arc-app .arc-personas .scellbar .mb i { display: block; height: 100%; border-radius: var(--r-full); }
 .arc-app .arc-personas .empty { display: grid; place-items: center; height: 100%; padding: 40px; text-align: center; color: var(--muted); font-size: 13px; }
 .arc-app .arc-personas .pbody > .pfilter-empty { grid-column: 1 / -1; }
 
@@ -1686,10 +1686,10 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-library .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-brain .pt { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -.02em; margin: 0; color: var(--text); }
 .arc-app .arc-brain .psub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
-.arc-app .arc-brain .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); }
+.arc-app .arc-brain .gbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-brain .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-brain .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
-.arc-app .arc-brain .covbanner { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: 11px; background: var(--accent-soft); padding: 11px 14px; }
+.arc-app .arc-brain .covbanner { display: flex; align-items: center; gap: 11px; margin-top: 14px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--accent-soft); padding: 11px 14px; }
 .arc-app .arc-brain .covbanner svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 1.8; flex-shrink: 0; }
 .arc-app .arc-brain .covbanner .ct { font-size: 12.5px; color: var(--text-2); }
 .arc-app .arc-brain .covbanner .ct b { color: var(--text); font-weight: 600; }
@@ -1701,7 +1701,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .btab.on { color: var(--text); }
 .arc-app .arc-brain .btab.on svg { color: var(--accent); opacity: 1; }
 .arc-app .arc-brain .btab.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
-.arc-app .arc-brain .btab .cnt { font-family: var(--mono); font-size: 9px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 5px; padding: 0 5px; line-height: 15px; }
+.arc-app .arc-brain .btab .cnt { font-family: var(--mono); font-size: 9px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: var(--r-sm); padding: 0 5px; line-height: 15px; }
 
 .arc-app .arc-brain .bbody { min-width: 0; }
 .arc-app .arc-brain.graph .bbody { flex: 1; min-height: 0; overflow: hidden; }
@@ -1709,25 +1709,25 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain.graph .scroll { height: 100%; overflow: auto; }
 .arc-app .arc-brain .inner { max-width: 1080px; }
 .arc-app .arc-brain .sh { font-size: 10px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
-.arc-app .arc-brain .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: 4px; padding: 1px 6px; font-weight: 600; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); text-transform: none; letter-spacing: 0; }
+.arc-app .arc-brain .tg { font-family: var(--mono); font-size: 8.5px; letter-spacing: .02em; border-radius: var(--r-sm); padding: 1px 6px; font-weight: 600; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); text-transform: none; letter-spacing: 0; }
 .arc-app .arc-brain .lead { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; line-height: 1.6; }
 .arc-app .arc-brain .lead b { color: var(--text-2); }
 
 .arc-app .arc-brain .factbar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.arc-app .arc-brain .fchip { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: 99px; padding: 4px 11px; cursor: pointer; transition: var(--dur-base); background: none; font-family: inherit; }
+.arc-app .arc-brain .fchip { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-full); padding: 4px 11px; cursor: pointer; transition: var(--dur-base); background: none; font-family: inherit; }
 .arc-app .arc-brain .fchip:hover { color: var(--text-2); }
 .arc-app .arc-brain .fchip.on { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-app .arc-brain .facttools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.arc-app .arc-brain .factsearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); min-width: 240px; flex: 1 1 240px; max-width: 360px; transition: border-color var(--dur-base); }
+.arc-app .arc-brain .factsearch { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); min-width: 240px; flex: 1 1 240px; max-width: 360px; transition: border-color var(--dur-base); }
 .arc-app .arc-brain .factsearch:focus-within { border-color: var(--accent-border); }
 .arc-app .arc-brain .factsearch svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.7; flex: none; }
 .arc-app .arc-brain .factsearch input { border: none; background: transparent; color: var(--text); font-size: 12.5px; outline: none; width: 100%; font-family: inherit; }
 .arc-app .arc-brain .factsearch input::placeholder { color: var(--muted); }
-.arc-app .arc-brain .fs-clear { display: grid; place-items: center; width: 18px; height: 18px; border: none; background: none; color: var(--muted); cursor: pointer; flex: none; padding: 0; border-radius: 5px; }
+.arc-app .arc-brain .fs-clear { display: grid; place-items: center; width: 18px; height: 18px; border: none; background: none; color: var(--muted); cursor: pointer; flex: none; padding: 0; border-radius: var(--r-sm); }
 .arc-app .arc-brain .fs-clear:hover { color: var(--text); background: var(--inset); }
 .arc-app .arc-brain .fs-clear svg { width: 12px; height: 12px; stroke: currentColor; }
 .arc-app .arc-brain .factnote { font-size: 11.5px; color: var(--muted); margin-bottom: 12px; font-family: var(--mono); }
-.arc-app .arc-brain .ftwrap { border: 1px solid var(--line-2); border-radius: 12px; overflow: auto; background: var(--panel); }
+.arc-app .arc-brain .ftwrap { border: 1px solid var(--line-2); border-radius: var(--r-lg); overflow: auto; background: var(--panel); }
 .arc-app .arc-brain .ft { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
 .arc-app .arc-brain .ft thead th { text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 .arc-app .arc-brain .ft tbody td { padding: 11px 12px; border-bottom: 1px solid var(--line); color: var(--text-2); vertical-align: middle; }
@@ -1735,7 +1735,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .ft tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 /* per-fact archive control — revealed on row hover, sits in a trailing cell */
 .arc-app .arc-brain .ft td.factact { width: 34px; text-align: right; padding-left: 0; }
-.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: opacity var(--dur-base), color var(--dur-base), border-color var(--dur-base); }
+.arc-app .arc-brain .ft .farch { width: 26px; height: 26px; border-radius: var(--r-md); border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: opacity var(--dur-base), color var(--dur-base), border-color var(--dur-base); }
 /* Reveal-on-hover, but only where hovering exists. A touch screen never hovers,
    so hiding it there left an invisible control that still accepted taps — worse
    than a visible one. Guarding the *hide* (rather than overriding it back to 1
@@ -1752,7 +1752,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
 .arc-app .arc-brain .pager .prange { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .arc-app .arc-brain .pager .pnav { display: flex; align-items: center; gap: 6px; }
-.arc-app .arc-brain .pager .pbtn { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: var(--dur-base); }
+.arc-app .arc-brain .pager .pbtn { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-brain .pager .pbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-brain .pager .pbtn:disabled { opacity: 0.4; cursor: default; }
 .arc-app .arc-brain .pager .pbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
@@ -1761,7 +1761,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .fact-sum { color: var(--muted); font-size: 11px; margin-top: 2px; max-width: 52ch; }
 .arc-app .arc-brain .kindchip { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
 .arc-app .arc-brain .kindchip .d { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.arc-app .arc-brain .tier { display: inline-flex; align-items: center; gap: 6px; height: 21px; padding: 0 9px; border-radius: 6px; font-size: 10px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.arc-app .arc-brain .tier { display: inline-flex; align-items: center; gap: 6px; height: 21px; padding: 0 9px; border-radius: var(--r-sm); font-size: 10px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
 .arc-app .arc-brain .tier .td { width: 5px; height: 5px; border-radius: 50%; }
 .arc-app .arc-brain .tier.trusted { color: var(--ok-text); background: var(--ok-soft); border-color: var(--ok-border); }
 .arc-app .arc-brain .tier.trusted .td { background: var(--ok); }
@@ -1772,13 +1772,13 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .tier.core { color: var(--accent-contrast); background: var(--accent-soft); border-color: var(--accent-border); }
 .arc-app .arc-brain .tier.core .td { background: var(--accent); }
 .arc-app .arc-brain .conf { display: inline-flex; align-items: center; gap: 7px; }
-.arc-app .arc-brain .conf .cbar { width: 54px; height: 5px; border-radius: 99px; background: var(--inset); overflow: hidden; }
-.arc-app .arc-brain .conf .cbar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); }
+.arc-app .arc-brain .conf .cbar { width: 54px; height: 5px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; }
+.arc-app .arc-brain .conf .cbar i { display: block; height: 100%; border-radius: var(--r-full); background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); }
 .arc-app .arc-brain .conf .cn { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
 .arc-app .arc-brain .src { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
 
 /* Needs-review cards */
-.arc-app .arc-brain .qcard { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 14px 16px; margin-bottom: 10px; }
+.arc-app .arc-brain .qcard { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 14px 16px; margin-bottom: 10px; }
 .arc-app .arc-brain .qcard .qtop { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .arc-app .arc-brain .qcard .qlabel { font-size: 13.5px; font-weight: 600; color: var(--text); margin-top: 9px; }
 .arc-app .arc-brain .qcard .qbody { font-size: 12px; color: var(--text-2); margin-top: 5px; line-height: 1.55; }
@@ -1802,20 +1802,20 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .graphwrap { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: radial-gradient(120% 90% at 50% 36%, rgba(200, 162, 74, .055), transparent 52%), radial-gradient(150% 135% at 50% 50%, transparent 56%, rgba(0, 0, 0, .32)); }
 .arc-app .arc-brain .graphtools { position: absolute; top: 14px; left: clamp(18px, 2.4vw, 28px); right: 18px; z-index: 3; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; pointer-events: none; }
 .arc-app .arc-brain .graphtools > * { pointer-events: auto; }
-.arc-app .arc-brain .gsearch { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(6px); min-width: 160px; }
+.arc-app .arc-brain .gsearch { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(6px); min-width: 160px; }
 .arc-app .arc-brain .gsearch svg { width: 13px; height: 13px; stroke: var(--muted); fill: none; stroke-width: 1.7; }
 .arc-app .arc-brain .gsearch input { border: none; background: transparent; color: var(--text); font-size: 12px; outline: none; width: 100%; font-family: inherit; }
 .arc-app .arc-brain .gsearch input::placeholder { color: var(--muted); }
-.arc-app .arc-brain .gchip { font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(6px); border-radius: 7px; padding: 5px 10px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
+.arc-app .arc-brain .gchip { font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(6px); border-radius: var(--r-md); padding: 5px 10px; cursor: pointer; transition: var(--dur-base); font-family: inherit; }
 .arc-app .arc-brain .gchip:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-brain .gchip.on { color: var(--accent-contrast); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-app .arc-brain .gsvg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .arc-app .arc-brain .gsvg.panning { cursor: grabbing; }
-.arc-app .arc-brain .gzoom { position: absolute; bottom: 14px; right: 16px; z-index: 4; display: flex; flex-direction: column; border: 1px solid var(--line-2); border-radius: 9px; overflow: hidden; background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(6px); }
+.arc-app .arc-brain .gzoom { position: absolute; bottom: 14px; right: 16px; z-index: 4; display: flex; flex-direction: column; border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden; background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(6px); }
 .arc-app .arc-brain .gzoom button { width: 30px; height: 30px; border: none; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; font-size: 15px; line-height: 1; }
 .arc-app .arc-brain .gzoom button:hover { background: rgba(255, 255, 255, .06); color: var(--text); }
 .arc-app .arc-brain .gzoom button + button { border-top: 1px solid var(--line-2); }
-.arc-app .arc-brain .ghint { position: absolute; bottom: 18px; right: 56px; z-index: 4; font-family: var(--mono); font-size: 9.5px; color: var(--muted); pointer-events: none; background: color-mix(in srgb, var(--panel) 70%, transparent); padding: 3px 8px; border-radius: 6px; }
+.arc-app .arc-brain .ghint { position: absolute; bottom: 18px; right: 56px; z-index: 4; font-family: var(--mono); font-size: 9.5px; color: var(--muted); pointer-events: none; background: color-mix(in srgb, var(--panel) 70%, transparent); padding: 3px 8px; border-radius: var(--r-sm); }
 .arc-app .arc-brain .gedge { stroke: rgba(232, 224, 205, .16); stroke-width: 1.2; transition: opacity var(--dur-slow), stroke var(--dur-slow); }
 .arc-app .arc-brain .gedge.hot { stroke: var(--accent); stroke-width: 1.8; opacity: 1 !important; filter: drop-shadow(0 0 3px rgba(200, 162, 74, .45)); }
 .arc-app .arc-brain .gedge.dim { opacity: .05; }
@@ -1835,12 +1835,12 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .gnode.dim .nlbl { opacity: 0; }
 .arc-app .arc-brain .gnode.sel circle { stroke-width: 3; transform: scale(1.1); filter: drop-shadow(0 0 7px rgba(200, 162, 74, .6)); }
 .arc-app .arc-brain .hublbl { font-family: var(--mono); }
-.arc-app .arc-brain .glegend { position: absolute; bottom: 14px; left: clamp(18px, 2.4vw, 28px); z-index: 3; display: flex; flex-wrap: wrap; gap: 5px 10px; max-width: 62%; background: color-mix(in srgb, var(--panel) 80%, transparent); backdrop-filter: blur(6px); border: 1px solid var(--line-2); border-radius: 9px; padding: 8px 11px; pointer-events: none; }
+.arc-app .arc-brain .glegend { position: absolute; bottom: 14px; left: clamp(18px, 2.4vw, 28px); z-index: 3; display: flex; flex-wrap: wrap; gap: 5px 10px; max-width: 62%; background: color-mix(in srgb, var(--panel) 80%, transparent); backdrop-filter: blur(6px); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 8px 11px; pointer-events: none; }
 .arc-app .arc-brain .glegend .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 9.5px; color: var(--text-2); }
 .arc-app .arc-brain .glegend .lg i { width: 8px; height: 8px; border-radius: 50%; }
 .arc-app .arc-brain .inspector { border-left: 1px solid var(--line); min-height: 0; overflow: auto; padding: 20px; background: color-mix(in srgb, var(--canvas-deep) 18%, transparent); }
 .arc-app .arc-brain .inempty { color: var(--muted); font-size: 12.5px; line-height: 1.6; }
-.arc-app .arc-brain .inh { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 11px; border-radius: 7px; background: var(--inset); border: 1px solid var(--line-2); }
+.arc-app .arc-brain .inh { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 11px; border-radius: var(--r-md); background: var(--inset); border: 1px solid var(--line-2); }
 .arc-app .arc-brain .inh .ik { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .arc-app .arc-brain .inh .ikl { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
 .arc-app .arc-brain .innm { font-family: var(--serif); font-weight: 500; font-size: 18px; letter-spacing: -.01em; margin: 10px 0 6px; line-height: 1.2; color: var(--text); }
@@ -1850,7 +1850,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-brain .inrow .il { color: var(--muted); width: 96px; flex-shrink: 0; }
 .arc-app .arc-brain .inrow .iv { color: var(--text); font-weight: 500; display: flex; align-items: center; gap: 7px; }
 .arc-app .arc-brain .insec { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 20px 0 10px; }
-.arc-app .arc-brain .conn { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); margin-bottom: 7px; cursor: pointer; transition: border-color var(--dur-base); width: 100%; text-align: left; font: inherit; }
+.arc-app .arc-brain .conn { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); margin-bottom: 7px; cursor: pointer; transition: border-color var(--dur-base); width: 100%; text-align: left; font: inherit; }
 .arc-app .arc-brain .conn:hover { border-color: var(--accent-border); }
 .arc-app .arc-brain .conn .cd { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .arc-app .arc-brain .conn .crel { font-family: var(--mono); font-size: 9px; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
@@ -1863,7 +1863,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 }
 
 /* Home right-column: Signals + Arc activity feed (ported verbatim from build-home.html). */
-.arc-app .sig { display: block; padding: 12px 8px; margin: 0 -8px; border-top: 1px solid var(--line); border-radius: 8px; color: inherit; text-decoration: none; transition: background var(--dur-base) var(--ease); }
+.arc-app .sig { display: block; padding: 12px 8px; margin: 0 -8px; border-top: 1px solid var(--line); border-radius: var(--r-md); color: inherit; text-decoration: none; transition: background var(--dur-base) var(--ease); }
 .arc-app .sig:first-of-type { border-top: 0; }
 .arc-app .sig:hover { background: rgba(255, 255, 255, 0.025); }
 .arc-app .sig:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1879,7 +1879,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .act .ad b { color: var(--text); font-weight: 500; }
 
 /* CRM screen: classes ported verbatim from build-crm.html that the port was missing. */
-.arc-app .iconf { width: 32px; height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: var(--dur-base); }
+.arc-app .iconf { width: 32px; height: 32px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: var(--dur-base); }
 .arc-app .iconf:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .iconf svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
@@ -1899,7 +1899,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   padding: 6px;
   background: var(--panel);
   border: 1px solid var(--line-2);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
   animation: acctIn 0.16s var(--ease);
   transform-origin: top left;
@@ -1921,7 +1921,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   cursor: pointer;
   transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
@@ -1945,13 +1945,13 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .fmenu-foot:hover { color: var(--accent); background: rgba(255, 255, 255, 0.035); }
 .arc-app .fmenu-foot:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.arc-app .selbar { display: none; align-items: center; gap: 12px; height: 0; overflow: hidden; border: 1px solid var(--accent-border); border-radius: 9px; background: linear-gradient(180deg, var(--accent-soft), transparent); padding: 0 14px; margin-bottom: 0; transition: var(--dur-slow) var(--ease); }
+.arc-app .selbar { display: none; align-items: center; gap: 12px; height: 0; overflow: hidden; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: linear-gradient(180deg, var(--accent-soft), transparent); padding: 0 14px; margin-bottom: 0; transition: var(--dur-slow) var(--ease); }
 .arc-app .selbar.show { display: flex; height: 46px; margin-bottom: 11px; }
 /* Lift the collapse clip only while a menu is open (the bar is already expanded),
    so the persona picker can drop below without a grow-animation glitch. */
 .arc-app .selbar.menuopen { overflow: visible; }
 .arc-app .selbar .sc { font-size: 12.5px; font-weight: 600; color: var(--accent-contrast); }
-.arc-app .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 5px 9px; border-radius: 7px; transition: var(--dur-base); border: none; background: none; font-family: inherit; }
+.arc-app .selbar .sa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; padding: 5px 9px; border-radius: var(--r-md); transition: var(--dur-base); border: none; background: none; font-family: inherit; }
 .arc-app .selbar .sa:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .arc-app .selbar .sa svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 /* Not "coming soon" — "not applicable to what you have selected". This used
@@ -1961,21 +1961,21 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .selbar .sa.is-inapplicable { opacity: 0.45; cursor: default; }
 .arc-app .selbar .sa-wrap { position: relative; display: inline-flex; }
 .arc-app .selbar .sa-backdrop { position: fixed; inset: 0; z-index: 40; background: none; border: none; cursor: default; }
-.arc-app .selbar .sa-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; min-width: 200px; max-height: 300px; overflow-y: auto; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; gap: 1px; }
-.arc-app .selbar .sa-opt { display: block; width: 100%; text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: none; color: var(--text-2); font-size: 12.5px; font-family: inherit; cursor: pointer; transition: var(--dur-fast); }
+.arc-app .selbar .sa-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; min-width: 200px; max-height: 300px; overflow-y: auto; padding: 5px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; gap: 1px; }
+.arc-app .selbar .sa-opt { display: block; width: 100%; text-align: left; padding: 7px 10px; border: none; border-radius: var(--r-md); background: none; color: var(--text-2); font-size: 12.5px; font-family: inherit; cursor: pointer; transition: var(--dur-fast); }
 .arc-app .selbar .sa-opt:hover { background: var(--inset); color: var(--text); }
 .arc-app .selbar .sa-taskmenu { flex-direction: row; align-items: center; gap: 6px; min-width: 300px; padding: 7px; }
-.arc-app .selbar .sa-taskinput { flex: 1; min-width: 0; height: 30px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--inset); color: var(--text); font-size: 12.5px; font-family: inherit; outline: none; }
+.arc-app .selbar .sa-taskinput { flex: 1; min-width: 0; height: 30px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); color: var(--text); font-size: 12.5px; font-family: inherit; outline: none; }
 .arc-app .selbar .sa-taskinput:focus { border-color: var(--accent-border); }
 .arc-app .selbar .sa-taskinput::placeholder { color: var(--muted); }
-.arc-app .selbar .sa-taskbtn { flex: none; height: 30px; padding: 0 12px; border: none; border-radius: 7px; background: var(--accent-soft); color: var(--accent-contrast); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: var(--dur-fast); }
+.arc-app .selbar .sa-taskbtn { flex: none; height: 30px; padding: 0 12px; border: none; border-radius: var(--r-md); background: var(--accent-soft); color: var(--accent-contrast); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: var(--dur-fast); }
 .arc-app .selbar .sa-taskbtn:hover:not(:disabled) { filter: brightness(1.08); }
 .arc-app .selbar .sa-taskbtn:disabled { opacity: 0.5; cursor: default; }
 .arc-app .selbar .clr { margin-left: auto; color: var(--muted); font-size: 11.5px; cursor: pointer; }
 .arc-app .selbar .clr:hover { color: var(--text); }
 .arc-app .pager .rpp { display: flex; align-items: center; gap: 7px; }
-.arc-app .pager select { background: var(--inset); border: 1px solid var(--line-2); border-radius: 7px; color: var(--text-2); font-family: inherit; font-size: 12px; padding: 4px 7px; cursor: pointer; }
-.arc-app .pager .pgbtn { width: 28px; height: 28px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: var(--dur-base); }
+.arc-app .pager select { background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-md); color: var(--text-2); font-family: inherit; font-size: 12px; padding: 4px 7px; cursor: pointer; }
+.arc-app .pager .pgbtn { width: 28px; height: 28px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; transition: var(--dur-base); }
 .arc-app .pager .pgbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
 /* First/last page. Matches the Brain pager's disabled treatment so the two
    pagers in the app read the same. */
@@ -1986,7 +1986,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-grid .dt tbody td.ccompany { white-space: normal; overflow: hidden; max-width: 170px; line-height: 1.25; }
 .arc-app .arc-grid .rowact { color: var(--muted); font-size: 15px; }
 /* Selection checkbox — verbatim from build-crm.html .ck */
-.arc-app .arc-grid .ck { width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; transition: var(--dur-fast); flex-shrink: 0; }
+.arc-app .arc-grid .ck { width: 16px; height: 16px; border-radius: var(--r-sm); border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; transition: var(--dur-fast); flex-shrink: 0; }
 .arc-app .arc-grid .ck:hover { border-color: var(--accent-border); }
 .arc-app .arc-grid .ck.on { background: var(--accent); border-color: var(--accent); }
 .arc-app .arc-grid .ck svg { width: 11px; height: 11px; stroke: #201808; fill: none; stroke-width: 3; opacity: 0; }
@@ -2019,7 +2019,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-opps .olisthd { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 12px; }
 .arc-app .arc-opps .olisthd .h { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
 .arc-app .arc-opps .olisthd .c { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-.arc-app .arc-opps .scanmsg { margin: 8px 4px 0; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--inset); font-size: 10.5px; line-height: 1.45; color: var(--text-2); }
+.arc-app .arc-opps .scanmsg { margin: 8px 4px 0; padding: 7px 9px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--inset); font-size: 10.5px; line-height: 1.45; color: var(--text-2); }
 .arc-app .arc-opps .scanmsg.bad { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
 /* What Arc's own background scan last did. Quiet by default — this is ambient
    reassurance, not a call to action — and only takes a border when something
@@ -2029,25 +2029,25 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-opps .scanstat .l i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .55; flex: none; transform: translateY(-1px); }
 .arc-app .arc-opps .scanstat .d { display: block; margin-top: 4px; padding-left: 11px; color: var(--text-2); opacity: .85; }
 .arc-app .arc-opps .scanstat.ok { color: var(--ok); }
-.arc-app .arc-opps .scanstat.warn { padding: 7px 9px; border-radius: 7px; border: 1px solid var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
+.arc-app .arc-opps .scanstat.warn { padding: 7px 9px; border-radius: var(--r-md); border: 1px solid var(--warn-border); background: var(--warn-soft); color: var(--warn-text); }
 .arc-app .arc-opps .scanstat.warn .l i { opacity: 1; }
 .arc-app .arc-opps .ofilter { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 4px 10px; }
-.arc-app .arc-opps .ochip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); font: inherit; font-size: 10.5px; cursor: pointer; transition: background var(--dur-base) var(--ease), border-color var(--dur-base), color var(--dur-base); }
+.arc-app .arc-opps .ochip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); font: inherit; font-size: 10.5px; cursor: pointer; transition: background var(--dur-base) var(--ease), border-color var(--dur-base), color var(--dur-base); }
 .arc-app .arc-opps .ochip:hover { background: rgba(255, 255, 255, .04); }
 .arc-app .arc-opps .ochip.on { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-contrast); }
 .arc-app .arc-opps .ochip .n { font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
 .arc-app .arc-opps .ochip.on .n { color: var(--accent-contrast); }
 .arc-app .arc-opps .osort { display: flex; align-items: center; gap: 6px; padding: 0 8px 10px; }
 .arc-app .arc-opps .osort .l { font-size: 10px; letter-spacing: .04em; color: var(--muted); margin-right: 2px; }
-.arc-app .arc-opps .osortb { height: 22px; padding: 0 8px; border-radius: 5px; border: 1px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; cursor: pointer; transition: color var(--dur-base), background var(--dur-base); }
+.arc-app .arc-opps .osortb { height: 22px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; cursor: pointer; transition: color var(--dur-base), background var(--dur-base); }
 .arc-app .arc-opps .osortb:hover { color: var(--text-2); }
 .arc-app .arc-opps .osortb.on { color: var(--accent-contrast); background: var(--accent-soft); border-color: var(--accent-border); font-weight: 600; }
-.arc-app .arc-opps .omore { width: 100%; margin-top: 6px; height: 32px; border-radius: 8px; border: 1px dashed var(--line-2); background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; transition: color var(--dur-base), border-color var(--dur-base); }
+.arc-app .arc-opps .omore { width: 100%; margin-top: 6px; height: 32px; border-radius: var(--r-md); border: 1px dashed var(--line-2); background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; transition: color var(--dur-base), border-color var(--dur-base); }
 .arc-app .arc-opps .omore:hover { color: var(--text-2); border-color: var(--line); }
-.arc-app .arc-opps .orow { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; align-items: center; padding: 12px 12px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; transition: background var(--dur-base) var(--ease), border-color var(--dur-base); width: 100%; text-align: left; background: transparent; font: inherit; color: inherit; }
+.arc-app .arc-opps .orow { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; align-items: center; padding: 12px 12px; border-radius: var(--r-md); cursor: pointer; border: 1px solid transparent; transition: background var(--dur-base) var(--ease), border-color var(--dur-base); width: 100%; text-align: left; background: transparent; font: inherit; color: inherit; }
 .arc-app .arc-opps .orow:hover { background: rgba(255, 255, 255, .03); }
 .arc-app .arc-opps .orow.on { background: var(--accent-soft); border-color: var(--accent-border); }
-.arc-app .arc-opps .orow .ic { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; color: var(--accent); }
+.arc-app .arc-opps .orow .ic { width: 30px; height: 30px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--inset); display: grid; place-items: center; color: var(--accent); }
 .arc-app .arc-opps .orow .ic svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-app .arc-opps .orow .ot { font-size: 13px; font-weight: 600; letter-spacing: -.005em; display: flex; align-items: baseline; gap: 7px; }
 /* The opportunity's headline is the thing you scan this page for, and a single
@@ -2059,20 +2059,20 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    different counties are otherwise two rows both reading "Flood Advisory". */
 .arc-app .arc-opps .orow .oq { font-size: 11px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-app .arc-opps .orow .om { font-size: 10.5px; color: var(--muted); margin-top: 5px; display: flex; align-items: center; gap: 7px; }
-.arc-app .arc-opps .orow .src { border: 1px solid var(--line-2); background: var(--inset); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; color: var(--text-2); }
+.arc-app .arc-opps .orow .src { border: 1px solid var(--line-2); background: var(--inset); border-radius: var(--r-sm); padding: 1px 6px; font-size: 9.5px; color: var(--text-2); }
 .arc-app .arc-opps .orow .stale { font-family: var(--mono); font-size: 9.5px; color: var(--muted); white-space: nowrap; }
-.arc-app .arc-opps .orow .ostat { border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; font-weight: 600; color: var(--accent-contrast); }
+.arc-app .arc-opps .orow .ostat { border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: var(--r-sm); padding: 1px 6px; font-size: 9.5px; font-weight: 600; color: var(--accent-contrast); }
 .arc-app .arc-opps .odetail { min-width: 0; overflow: auto; padding: 30px clamp(22px, 3.2vw, 44px) 56px; container-type: inline-size; container-name: oppdetail; }
 .arc-app .arc-opps .odetail .inner { max-width: 1000px; }
 .arc-app .arc-opps .metarow { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; flex-wrap: wrap; }
-.arc-app .arc-opps .tchip { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 11px; border: 1px solid var(--line-2); background: var(--inset); border-radius: 7px; font-size: 11px; color: var(--text-2); }
+.arc-app .arc-opps .tchip { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 11px; border: 1px solid var(--line-2); background: var(--inset); border-radius: var(--r-md); font-size: 11px; color: var(--text-2); }
 .arc-app .arc-opps .tchip i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .arc-app .arc-opps .metarow .det { font-size: 11px; color: var(--muted); }
-.arc-app .arc-opps .upill { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 6px; font-size: 10.5px; font-weight: 600; }
+.arc-app .arc-opps .upill { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--r-sm); font-size: 10.5px; font-weight: 600; }
 .arc-app .arc-opps .upill.red { color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); }
 .arc-app .arc-opps .upill.amber { color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); }
 .arc-app .arc-opps .upill.info { color: #a9cdea; background: rgba(136, 182, 216, .13); border: 1px solid rgba(136, 182, 216, .4); }
-.arc-app .arc-opps .sstat { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: 6px; font-size: 10.5px; font-weight: 600; color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
+.arc-app .arc-opps .sstat { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: var(--r-sm); font-size: 10.5px; font-weight: 600; color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-app .arc-opps .dttl { font-family: var(--serif); font-weight: 500; font-size: clamp(1.5rem, 2.5vw, 2.05rem); line-height: 1.1; letter-spacing: -.018em; margin: 0; }
 .arc-app .arc-opps .opp-quick-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .arc-app .arc-opps .dgrid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 30px; margin-top: 24px; align-items: start; }
@@ -2098,14 +2098,14 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-opps .evitem dt { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
 .arc-app .arc-opps .evitem dd { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
 @media (max-width: 620px) { .arc-app .arc-opps .evitem { grid-template-columns: minmax(0, 1fr); gap: 3px; } }
-.arc-app .arc-opps .recpanel { border: 1px solid var(--line-2); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent); padding: 18px 20px; }
+.arc-app .arc-opps .recpanel { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: color-mix(in srgb, var(--panel) 88%, transparent); padding: 18px 20px; }
 .arc-app .arc-opps .recpanel .rl { font-size: 10px; font-weight: 600; letter-spacing: .13em; color: var(--accent); text-transform: uppercase; }
 .arc-app .arc-opps .recpanel .rtxt { font-size: 13.5px; color: var(--text); line-height: 1.6; margin-top: 9px; }
 .arc-app .arc-opps .recpanel .sub { font-size: 11px; color: var(--muted); margin: 16px 0 8px; }
 .arc-app .arc-opps .types { display: flex; flex-wrap: wrap; gap: 8px; }
-.arc-app .arc-opps .ty { font-size: 11px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--inset); border-radius: 6px; padding: 4px 10px; }
+.arc-app .arc-opps .ty { font-size: 11px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--inset); border-radius: var(--r-sm); padding: 4px 10px; }
 .arc-app .arc-opps .racts { display: flex; align-items: center; gap: 10px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); flex-wrap: wrap; }
-.arc-app .arc-opps .btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 12.5px; transition: transform var(--dur-base) var(--ease), filter var(--dur-base), border-color var(--dur-base), color var(--dur-base); }
+.arc-app .arc-opps .btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px; border-radius: var(--r-md); cursor: pointer; font-weight: 600; font-size: 12.5px; transition: transform var(--dur-base) var(--ease), filter var(--dur-base), border-color var(--dur-base), color var(--dur-base); }
 .arc-app .arc-opps .btn.gold { border: 1px solid color-mix(in srgb, var(--accent) 66%, #fff 8%); background: linear-gradient(180deg, #e1c074, var(--accent) 58%, #a9842f); color: #1a1505; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25); }
 .arc-app .arc-opps .btn.gold:hover { transform: translateY(-1px); filter: brightness(1.03); }
 .arc-app .arc-opps .btn.ghost { border: 1px solid var(--line-2); background: transparent; color: var(--text-2); }
@@ -2116,11 +2116,11 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    child only makes the block lag the scroll. Declared after the rule it overrides
    — same specificity, so source order is what decides it. */
 @container oppdetail (max-width: 760px) { .arc-app .arc-opps .side { position: static; } }
-.arc-app .arc-opps .card { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 16px; }
+.arc-app .arc-opps .card { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 16px; }
 .arc-app .arc-opps .card .cl { font-size: 10px; font-weight: 600; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
 .arc-app .arc-opps .bignum { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -.02em; color: var(--accent-contrast); line-height: 1; }
-.arc-app .arc-opps .ctrack { height: 6px; border-radius: 99px; background: var(--inset); overflow: hidden; margin: 12px 0 6px; }
-.arc-app .arc-opps .cfill { height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); transition: width .8s var(--ease); }
+.arc-app .arc-opps .ctrack { height: 6px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; margin: 12px 0 6px; }
+.arc-app .arc-opps .cfill { height: 100%; width: 0; border-radius: var(--r-full); background: linear-gradient(90deg, var(--accent), var(--accent-contrast)); transition: width .8s var(--ease); }
 .arc-app .arc-opps .cnote { font-size: 11px; color: var(--muted); }
 .arc-app .arc-opps .audrow { display: flex; align-items: baseline; gap: 8px; }
 /* 15px, not 24px. §3 sanctions serif for a persona name, but at page-title
@@ -2147,7 +2147,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    replaced with a rotating chevron so the affordance matches the rest of the
    app rather than inheriting the browser triangle. */
 .arc-app .arc-opps .signoff { padding: 0; }
-.arc-app .arc-opps .signoff > summary { list-style: none; cursor: pointer; padding: 16px; display: flex; flex-direction: column; gap: 10px; border-radius: 12px; }
+.arc-app .arc-opps .signoff > summary { list-style: none; cursor: pointer; padding: 16px; display: flex; flex-direction: column; gap: 10px; border-radius: var(--r-lg); }
 .arc-app .arc-opps .signoff > summary::-webkit-details-marker { display: none; }
 .arc-app .arc-opps .signoff > summary .cl { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0; }
 .arc-app .arc-opps .signoff > summary .cl::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg) translate(-2px, -2px); transition: transform var(--dur-base) var(--ease); }
@@ -2157,18 +2157,18 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-opps .signoff .tl { padding: 0 16px 16px; }
 .arc-app .arc-opps .locknote { margin-top: 12px; font-size: 10.5px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
 .arc-app .arc-opps .locknote i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
-.arc-app .arc-opps .opp-notice { margin-top: 14px; font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 8px; border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 9px; padding: 9px 12px; }
+.arc-app .arc-opps .opp-notice { margin-top: 14px; font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 8px; border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: var(--r-md); padding: 9px 12px; }
 .arc-app .arc-opps .opp-notice i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
 /* triage row: dismiss / snooze the focused opportunity out of the inbox */
 .arc-app .arc-opps .triage { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .arc-app .arc-opps .triage-q { font-size: 11.5px; color: var(--muted); margin-right: auto; }
-.arc-app .arc-opps .triage-btn { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: var(--dur-base); }
+.arc-app .arc-opps .triage-btn { height: 30px; padding: 0 12px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: var(--dur-base); }
 .arc-app .arc-opps .triage-btn:hover { border-color: var(--line-3); color: var(--text-2); }
 .arc-app .arc-opps .triage-btn:disabled { opacity: .55; cursor: default; }
 .arc-app .arc-opps .triage-snooze { position: relative; }
 .arc-app .arc-opps .triage-scrim { position: fixed; inset: 0; z-index: 20; }
-.arc-app .arc-opps .triage-menu { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 21; min-width: 128px; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .9); }
-.arc-app .arc-opps .triage-menu button { text-align: left; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: var(--dur-fast); }
+.arc-app .arc-opps .triage-menu { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 21; min-width: 128px; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .9); }
+.arc-app .arc-opps .triage-menu button { text-align: left; padding: 7px 10px; border: none; border-radius: var(--r-md); background: transparent; color: var(--text-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: var(--dur-fast); }
 .arc-app .arc-opps .triage-menu button:hover { background: var(--inset); color: var(--text); }
 /* The dismiss reasons are sentences, not "3 days" — they need the room, or every
    item wraps to two lines and the picker stops being scannable (BSR-686). */
@@ -2204,7 +2204,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 }
 .arc-app .modal-card {
   width: 100%; max-width: 460px; background: var(--panel); border: 1px solid var(--line-2);
-  border-radius: 14px; box-shadow: 0 24px 64px rgba(0,0,0,0.5); overflow: hidden;
+  border-radius: var(--r-lg); box-shadow: 0 24px 64px rgba(0,0,0,0.5); overflow: hidden;
   animation: arc-modal-in 0.18s var(--ease); transform-origin: top center;
 }
 .arc-app .modal-head { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px 12px; }
@@ -2212,7 +2212,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .modal-desc { margin: 5px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
 .arc-app .modal-x {
   margin-left: auto; flex-shrink: 0; width: 30px; height: 30px; display: grid; place-items: center;
-  border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; transition: var(--dur-base);
+  border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--muted); cursor: pointer; transition: var(--dur-base);
 }
 .arc-app .modal-x:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .modal-x svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; }
@@ -2230,39 +2230,39 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .mfield textarea,
 .arc-app .mfield select {
   width: 100%; font: inherit; font-size: 13px; color: var(--text); background: color-mix(in srgb, var(--inset) 70%, transparent);
-  border: 1px solid var(--line-2); border-radius: 8px; padding: 9px 11px; transition: border-color var(--dur-base), box-shadow var(--dur-base);
+  border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 9px 11px; transition: border-color var(--dur-base), box-shadow var(--dur-base);
 }
 .arc-app .mfield textarea { resize: vertical; min-height: 62px; line-height: 1.5; }
 .arc-app .mfield input::placeholder, .arc-app .mfield textarea::placeholder { color: var(--muted); }
 .arc-app .mfield input:focus, .arc-app .mfield textarea:focus, .arc-app .mfield select:focus {
   outline: none; border-color: var(--accent-border-strong); box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.arc-app .mError { font-size: 12px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border, var(--line-2)); border-radius: 8px; padding: 8px 11px; }
+.arc-app .mError { font-size: 12px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border, var(--line-2)); border-radius: var(--r-md); padding: 8px 11px; }
 
 /* Workspace identity editor — a live miniature of the rail block being edited,
    rendered on the sidebar's own surface so the preview reads as the real thing
    rather than as another form field. */
-.arc-app .wsid-preview { background: var(--sidebar); border: 1px solid var(--line-2); border-radius: 10px; padding: 11px 12px 12px; margin-bottom: 15px; }
+.arc-app .wsid-preview { background: var(--sidebar); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 11px 12px 12px; margin-bottom: 15px; }
 .arc-app .wsid-preview-h { font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-bottom: 8px; }
 .arc-app .wsid-preview-ws { display: flex; align-items: center; gap: 10px; padding: 5px 2px; }
-.arc-app .wsid-preview-mk { width: 30px; height: 30px; flex-shrink: 0; border-radius: 8px; overflow: hidden; display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 15px; color: var(--ws-accent, var(--accent)); border: 1px solid color-mix(in srgb, var(--ws-accent, var(--accent)) 32%, transparent); background: color-mix(in srgb, var(--ws-accent, var(--accent)) 16%, transparent); }
+.arc-app .wsid-preview-mk { width: 30px; height: 30px; flex-shrink: 0; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 15px; color: var(--ws-accent, var(--accent)); border: 1px solid color-mix(in srgb, var(--ws-accent, var(--accent)) 32%, transparent); background: color-mix(in srgb, var(--ws-accent, var(--accent)) 16%, transparent); }
 .arc-app .wsid-preview-mk.has-image { padding: 2px; border-color: var(--line-2); background: transparent; }
 .arc-app .wsid-preview-mk img { width: 100%; height: 100%; object-fit: contain; }
 .arc-app .wsid-preview-t { min-width: 0; display: flex; flex-direction: column; }
 .arc-app .wsid-preview-nm { font-weight: 600; font-size: 13px; letter-spacing: -.01em; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-app .wsid-preview-pl { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-app .wsid-preview-tag { margin-top: 7px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; color: var(--muted); border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 8px; display: flex; align-items: center; gap: 6px; }
+.arc-app .wsid-preview-tag { margin-top: 7px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 4px 8px; display: flex; align-items: center; gap: 6px; }
 .arc-app .wsid-preview-tag i { width: 5px; height: 5px; border-radius: 50%; background: var(--ws-accent, var(--accent)); }
 
 .arc-app .wsid-swatches { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.arc-app .wsid-sw { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line-2); cursor: pointer; padding: 0; transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease); }
+.arc-app .wsid-sw { width: 26px; height: 26px; border-radius: var(--r-md); border: 1px solid var(--line-2); cursor: pointer; padding: 0; transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease); }
 .arc-app .wsid-sw:hover { border-color: var(--line-3); }
 .arc-app .wsid-sw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--text-2); }
 .arc-app .wsid-sw-auto { width: auto; padding: 0 10px; font: inherit; font-size: 11px; font-weight: 600; color: var(--text-2); background: color-mix(in srgb, var(--inset) 70%, transparent); }
 .arc-app .wsid-logo { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 
 /* Read-only opportunity evidence carried into the draft-campaign modal */
-.arc-app .opp-seed-preview { border: 1px solid var(--line-2); border-radius: 10px; background: color-mix(in srgb, var(--inset) 45%, transparent); padding: 13px 15px; display: flex; flex-direction: column; gap: 7px; }
+.arc-app .opp-seed-preview { border: 1px solid var(--line-2); border-radius: var(--r-md); background: color-mix(in srgb, var(--inset) 45%, transparent); padding: 13px 15px; display: flex; flex-direction: column; gap: 7px; }
 .arc-app .opp-seed-preview .mlabel { color: var(--accent); }
 .arc-app .opp-seed-preview .mlabel:not(:first-child) { margin-top: 6px; }
 .arc-app .opp-seed-angle { font-size: 13px; color: var(--text); line-height: 1.55; margin: 0; }
@@ -2275,7 +2275,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 /* Modal footer buttons */
 .arc-app .mbtn {
-  display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 15px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 15px; border-radius: var(--r-md);
   border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base);
 }
 .arc-app .mbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
@@ -2285,14 +2285,14 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 /* Inline error bar on the CRM board */
 .arc-app .crm-error {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 9px 12px; border-radius: 9px;
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 9px 12px; border-radius: var(--r-md);
   font-size: 12.5px; color: var(--red-text); background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red-text) 30%, transparent);
 }
 .arc-app .crm-error button { margin-left: auto; display: grid; place-items: center; width: 22px; height: 22px; border: none; background: transparent; color: currentColor; cursor: pointer; opacity: .7; }
 .arc-app .crm-error button:hover { opacity: 1; }
 .arc-app .crm-error svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
 .arc-app .crm-notice {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 9px 12px; border-radius: 9px;
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 9px 12px; border-radius: var(--r-md);
   font-size: 12.5px; color: var(--ok-text); background: var(--ok-soft); border: 1px solid color-mix(in srgb, var(--ok-text) 30%, transparent);
 }
 .arc-app .crm-notice button { margin-left: auto; display: grid; place-items: center; width: 22px; height: 22px; border: none; background: transparent; color: currentColor; cursor: pointer; opacity: .7; }
@@ -2311,16 +2311,16 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   backdrop-filter: blur(3px); animation: arc-overlay-in 0.12s var(--ease);
 }
 .arc-app .cmdk {
-  width: 100%; max-width: 540px; background: var(--panel); border: 1px solid var(--line-2); border-radius: 13px;
+  width: 100%; max-width: 540px; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-lg);
   box-shadow: 0 24px 64px rgba(0,0,0,0.5); overflow: hidden; animation: arc-modal-in 0.16s var(--ease); transform-origin: top center;
 }
 .arc-app .cmdk-search { display: flex; align-items: center; gap: 10px; padding: 13px 15px; border-bottom: 1px solid var(--line-2); }
 .arc-app .cmdk-search svg { width: 16px; height: 16px; stroke: var(--muted); fill: none; stroke-width: 1.8; flex-shrink: 0; }
 .arc-app .cmdk-search input { flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--text); background: transparent; border: none; outline: none; }
 .arc-app .cmdk-search input::placeholder { color: var(--muted); }
-.arc-app .cmdk-esc { font-family: var(--mono); font-size: 10px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 5px; padding: 2px 6px; }
+.arc-app .cmdk-esc { font-family: var(--mono); font-size: 10px; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 2px 6px; }
 .arc-app .cmdk-list { max-height: 46vh; overflow-y: auto; padding: 6px; }
-.arc-app .cmdk-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 11px; border: none; border-radius: 8px; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.arc-app .cmdk-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 11px; border: none; border-radius: var(--r-md); background: transparent; color: var(--text-2); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .arc-app .cmdk-item.on { background: var(--surface-raised); color: var(--text); }
 .arc-app .cmdk-item .cmdk-l { font-weight: 600; }
 .arc-app .cmdk-item .cmdk-g { margin-left: auto; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
@@ -2329,7 +2329,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 /* Library "N files added" / folder notice toast */
 .arc-app .lib-notice {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 2500;
-  display: flex; align-items: center; gap: 12px; max-width: 540px; padding: 11px 15px; border-radius: 10px;
+  display: flex; align-items: center; gap: 12px; max-width: 540px; padding: 11px 15px; border-radius: var(--r-md);
   font-size: 12.5px; color: var(--text-2); background: var(--panel); border: 1px solid var(--accent-border);
   box-shadow: 0 16px 40px rgba(0,0,0,0.5); animation: arc-modal-in 0.2s var(--ease);
 }
@@ -2340,7 +2340,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 /* Brain trust-gate approve/reject actions on the "Needs review" cards */
 .arc-app .arc-brain .qcard .qactions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-2); }
 .arc-app .arc-brain .qbtn {
-  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border-radius: 8px;
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border-radius: var(--r-md);
   border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; transition: var(--dur-base);
 }
 .arc-app .arc-brain .qbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
@@ -2368,27 +2368,27 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 .arc-app .journeys .jr-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .arc-app .journeys .jr-lede { font-size: 13px; color: var(--muted); margin-top: 5px; max-width: 62ch; }
-.arc-app .journeys .jr-tag { font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; border: 1px solid transparent; }
+.arc-app .journeys .jr-tag { font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 7px; border-radius: var(--r-sm); border: 1px solid transparent; }
 .arc-app .journeys .jr-tag.wired { color: var(--ok-text); background: var(--ok-soft); border-color: var(--ok-border); }
 .arc-app .journeys .jr-tag.demo { color: var(--warn-text); background: var(--warn-soft); border-color: var(--warn-border); }
-.arc-app .journeys .jr-model { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 6px 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); }
+.arc-app .journeys .jr-model { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 6px 12px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); }
 .arc-app .journeys .jr-modellab { font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .arc-app .journeys .jr-modelval { font-size: 13px; font-weight: 600; color: var(--accent); }
 
 /* KPI row */
 
 /* Panels */
-.arc-app .journeys .jr-panel { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); padding: 16px 18px; margin-bottom: 16px; }
+.arc-app .journeys .jr-panel { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 16px 18px; margin-bottom: 16px; }
 
 /* Funnel */
 .arc-app .journeys .jr-funnel { display: flex; flex-direction: column; gap: 4px; }
-.arc-app .journeys .jr-fstage { display: grid; grid-template-columns: 148px 1fr 52px 44px; align-items: center; gap: 12px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: 9px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease); }
+.arc-app .journeys .jr-fstage { display: grid; grid-template-columns: 148px 1fr 52px 44px; align-items: center; gap: 12px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: var(--r-md); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-fstage:hover { background: var(--inset); }
 .arc-app .journeys .jr-fstage.active { border-color: var(--accent-border); background: var(--inset); }
 .arc-app .journeys .jr-flabel { font-size: 12.5px; font-weight: 500; color: var(--text-2); display: flex; align-items: center; gap: 7px; }
-.arc-app .journeys .jr-anon { font-size: 9px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 4px; }
-.arc-app .journeys .jr-fbar { height: 22px; border-radius: 6px; background: var(--inset); overflow: hidden; }
-.arc-app .journeys .jr-fbar i { display: block; height: 100%; border-radius: 6px; min-width: 3px; background: var(--accent); transition: width 0.4s var(--ease); }
+.arc-app .journeys .jr-anon { font-size: 9px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 1px 4px; }
+.arc-app .journeys .jr-fbar { height: 22px; border-radius: var(--r-sm); background: var(--inset); overflow: hidden; }
+.arc-app .journeys .jr-fbar i { display: block; height: 100%; border-radius: var(--r-sm); min-width: 3px; background: var(--accent); transition: width 0.4s var(--ease); }
 /* The attribution choice is collapsed by default: the sentence above says what
    the numbers mean, and the control is there for anyone who wants it without
    being the first thing an owner-operator meets (BSR-669). */
@@ -2414,19 +2414,19 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 /* Journey list */
 .arc-app .journeys .jr-list { display: flex; flex-direction: column; gap: 8px; }
-.arc-app .journeys .jr-row { border: 1px solid var(--line); border-radius: 10px; background: var(--inset); overflow: hidden; transition: border-color var(--dur-base) var(--ease); }
+.arc-app .journeys .jr-row { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--inset); overflow: hidden; transition: border-color var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-row.open { border-color: var(--line-3); }
 .arc-app .journeys .jr-rowhead { display: grid; grid-template-columns: minmax(120px, 1fr) auto 96px 84px 62px 16px; align-items: center; gap: 10px; width: 100%; padding: 10px 13px; background: none; border: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-rowhead:hover { background: var(--raised); }
 .arc-app .journeys .jr-who { display: flex; align-items: center; gap: 9px; min-width: 0; overflow: hidden; }
 .arc-app .journeys .jr-who b { flex-shrink: 0; max-width: 190px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-app .journeys .jr-persona { flex: 0 1 auto; min-width: 0; font-size: 10px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--panel); border-radius: 5px; padding: 1px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-app .journeys .jr-res { flex: 0 0 auto; font-size: 8.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+.arc-app .journeys .jr-persona { flex: 0 1 auto; min-width: 0; font-size: 10px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--panel); border-radius: var(--r-sm); padding: 1px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-app .journeys .jr-res { flex: 0 0 auto; font-size: 8.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: var(--r-sm); padding: 1px 5px; white-space: nowrap; }
 .arc-app .journeys .jr-res.anonymous { color: var(--jr-blue); background: var(--jr-blue-soft); }
 .arc-app .journeys .jr-res.stitched { color: var(--accent); background: var(--accent-soft); }
 .arc-app .journeys .jr-track { display: inline-flex; gap: 3px; }
 .arc-app .journeys .jr-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line-3); }
-.arc-app .journeys .jr-pill { justify-self: start; display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.arc-app .journeys .jr-pill { justify-self: start; display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: var(--r-sm); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .arc-app .journeys .jr-span { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .arc-app .journeys .jr-val { font-size: 12.5px; font-weight: 600; color: var(--ok-text); text-align: right; font-variant-numeric: tabular-nums; }
 .arc-app .journeys .jr-muted { color: var(--muted); font-weight: 400; font-style: italic; }
@@ -2446,7 +2446,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .journeys .jr-tlkind { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .arc-app .journeys .jr-tlkind b { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .arc-app .journeys .jr-dir { color: var(--muted); font-size: 12px; }
-.arc-app .journeys .jr-chip { font-size: 10px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--panel); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+.arc-app .journeys .jr-chip { font-size: 10px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--panel); border-radius: var(--r-sm); padding: 1px 6px; white-space: nowrap; }
 .arc-app .journeys .jr-chip.win { color: var(--ok-text); border-color: var(--ok-border); background: var(--ok-soft); }
 .arc-app .journeys .jr-tlsum { font-size: 11.5px; color: var(--muted); }
 .arc-app .journeys .jr-tltime { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -2455,8 +2455,8 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .journeys .jr-bd { display: flex; flex-direction: column; gap: 9px; }
 .arc-app .journeys .jr-bdrow { display: grid; grid-template-columns: 84px 1fr auto; align-items: center; gap: 10px; }
 .arc-app .journeys .jr-bn { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-app .journeys .jr-bb { height: 8px; border-radius: 99px; background: var(--inset); overflow: hidden; }
-.arc-app .journeys .jr-bb i { display: block; height: 100%; border-radius: 99px; background: var(--accent); min-width: 3px; }
+.arc-app .journeys .jr-bb { height: 8px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; }
+.arc-app .journeys .jr-bb i { display: block; height: 100%; border-radius: var(--r-full); background: var(--accent); min-width: 3px; }
 .arc-app .journeys .jr-bv { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; font-size: 12px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 .arc-app .journeys .jr-delta { font-size: 9.5px; font-weight: 600; font-style: normal; }
 .arc-app .journeys .jr-delta.up { color: var(--ok-text); }
@@ -2464,7 +2464,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 /* Attribution lens picker */
 .arc-app .journeys .jr-lens { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 9px; }
-.arc-app .journeys .jr-lensbtn { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: border-color var(--dur-base) var(--ease), color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
+.arc-app .journeys .jr-lensbtn { padding: 3px 8px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--inset); color: var(--text-2); font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: border-color var(--dur-base) var(--ease), color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-lensbtn:hover { color: var(--text); border-color: var(--line-3); }
 .arc-app .journeys .jr-lensbtn.on { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-app .journeys .jr-lensblurb { font-size: 11px; color: var(--muted); line-height: 1.45; margin-bottom: 11px; }
@@ -2478,18 +2478,18 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 
 /* Collector install panel */
 .arc-app .journeys .jr-install .jr-installlede { font-size: 12.5px; line-height: 1.55; color: var(--text-2); margin-bottom: 11px; }
-.arc-app .journeys .jr-code { display: flex; align-items: flex-start; gap: 8px; background: var(--canvas-deep); border: 1px solid var(--line-2); border-radius: 8px; padding: 10px 11px; }
+.arc-app .journeys .jr-code { display: flex; align-items: flex-start; gap: 8px; background: var(--canvas-deep); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 10px 11px; }
 .arc-app .journeys .jr-code code { flex: 1; min-width: 0; font-family: var(--mono); font-size: 10.5px; line-height: 1.55; color: var(--text-2); word-break: break-all; }
-.arc-app .journeys .jr-copy { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: var(--accent); background: none; border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 10px; cursor: pointer; transition: border-color var(--dur-base) var(--ease); }
+.arc-app .journeys .jr-copy { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: var(--accent); background: none; border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 3px 10px; cursor: pointer; transition: border-color var(--dur-base) var(--ease); }
 .arc-app .journeys .jr-copy:hover { border-color: var(--accent-border); }
 .arc-app .journeys .jr-installnote { font-size: 11.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
-.arc-app .journeys .jr-installnote code { font-family: var(--mono); font-size: 10px; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 4px; }
+.arc-app .journeys .jr-installnote code { font-family: var(--mono); font-size: 10px; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 0 4px; }
 .arc-app .journeys .jr-consent .jr-installnote { margin-top: 0; }
 .arc-app .journeys .jr-consenterr { margin-top: 9px; font-size: 11.5px; color: var(--red-text); }
 .arc-app .journeys .jr-lensbtn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* Empty state */
-.arc-app .journeys .jr-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 56px 24px; border: 1px dashed var(--line-3); border-radius: 14px; background: var(--panel); }
+.arc-app .journeys .jr-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 56px 24px; border: 1px dashed var(--line-3); border-radius: var(--r-lg); background: var(--panel); }
 .arc-app .journeys .jr-emptymk { font-size: 34px; color: var(--muted); line-height: 1; }
 .arc-app .journeys .jr-empty b { font-size: 15px; color: var(--text); }
 .arc-app .journeys .jr-empty p { font-size: 12.5px; color: var(--muted); max-width: 48ch; line-height: 1.5; }
@@ -2560,7 +2560,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   width: 100%;
   margin-top: 6px;
   padding: 9px 11px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--canvas);
   color: var(--text);
@@ -2643,7 +2643,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
     height: 44px;
     min-width: 44px;
     flex-shrink: 0;
-    border-radius: 10px;
+    border-radius: var(--r-md);
   }
 
   .arc-app .iconf svg,
@@ -2697,7 +2697,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
   max-width: min(92vw, 420px);
   padding: 10px 14px;
   border: 1px solid var(--line-2);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: var(--raised);
   color: var(--text-2);
   font-size: 12.5px;
@@ -2778,7 +2778,7 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    exactly the width that makes a card worth having. The rail sits outside
    .page-enter (it is a sibling of <main>), so nothing establishes a containing
    block and `fixed` really means the viewport here. */
-.arc-app .rail-recent-card { position: fixed; z-index: 70; width: 232px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5); display: grid; gap: 3px; pointer-events: none; }
+.arc-app .rail-recent-card { position: fixed; z-index: 70; width: 232px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5); display: grid; gap: 3px; pointer-events: none; }
 .arc-app .rail-recent-card b { font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.35; }
 .arc-app .rail-recent-card .rail-recent-card-campaign { font-size: 10.5px; color: var(--accent-contrast); }
 .arc-app .rail-recent-card .rail-recent-card-meta { font: 500 9.5px/1.4 var(--mono); color: var(--muted); }
