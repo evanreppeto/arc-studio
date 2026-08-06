@@ -81,26 +81,35 @@ describe("selectRailConversations", () => {
     expect(kept.map((row) => row.id)).toEqual(["camp-new", "camp-old", "l1", "l2"]);
   });
 
+  /* Fixtures are sized FROM the constants, not to a copy of their values. They
+     used to be hand-cut to the shipped 3/6/5, so raising a limit made these fail
+     for having nothing left to cap rather than for capping wrongly. */
   it("caps folders, per-folder chats, and unattached chats independently", () => {
+    const overLimit = RAIL_FOLDER_LIMIT + 2;
     const rows = [
-      ...Array.from({ length: 5 }, (_, index) => chat(`c1-${index}`, "c1", "One")),
-      ...Array.from({ length: 9 }, (_, index) => chat(`c2-${index}`, "c2", "Two")),
-      ...Array.from({ length: 3 }, (_, index) => chat(`c3-${index}`, "c3", "Three")),
-      ...Array.from({ length: 2 }, (_, index) => chat(`c4-${index}`, "c4", "Four")),
-      ...Array.from({ length: 9 }, (_, index) => chat(`loose${index}`)),
+      // One campaign deliberately deeper than a folder carries.
+      ...Array.from({ length: RAIL_FOLDER_CHATS + 3 }, (_, index) => chat(`c0-${index}`, "c0", "Deep")),
+      ...Array.from({ length: overLimit - 1 }, (_, campaign) =>
+        Array.from({ length: 2 }, (_, index) => chat(`c${campaign + 1}-${index}`, `c${campaign + 1}`, `Campaign ${campaign + 1}`)),
+      ).flat(),
+      ...Array.from({ length: RAIL_LOOSE_LIMIT + 4 }, (_, index) => chat(`loose${index}`)),
     ];
     const { folders, loose } = groupRailConversations(selectRailConversations(rows));
 
     expect(folders).toHaveLength(RAIL_FOLDER_LIMIT);
-    expect(folders.map((folder) => folder.campaignId)).toEqual(["c1", "c2", "c3"]);
-    expect(folders[1]?.items).toHaveLength(RAIL_FOLDER_CHATS);
+    // Folder order is where each campaign first appears in the sorted input.
+    expect(folders[0]?.campaignId).toBe("c0");
+    expect(folders.map((folder) => folder.campaignId)).not.toContain(`c${overLimit - 1}`);
+    expect(folders[0]?.items).toHaveLength(RAIL_FOLDER_CHATS);
     expect(loose).toHaveLength(RAIL_LOOSE_LIMIT);
   });
 
   it("keeps a pinned chat the unattached cap would have dropped", () => {
-    const rows = Array.from({ length: 9 }, (_, index) => chat(`loose${index}`));
-    const kept = selectRailConversations(rows, { pinnedIds: ["loose8"] }).map((row) => row.id);
-    expect(kept).toContain("loose8");
+    const beyond = RAIL_LOOSE_LIMIT + 4;
+    const rows = Array.from({ length: beyond }, (_, index) => chat(`loose${index}`));
+    const last = `loose${beyond - 1}`;
+    const kept = selectRailConversations(rows, { pinnedIds: [last] }).map((row) => row.id);
+    expect(kept).toContain(last);
     expect(kept).toHaveLength(RAIL_LOOSE_LIMIT + 1);
   });
 

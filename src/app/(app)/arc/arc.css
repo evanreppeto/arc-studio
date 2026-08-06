@@ -47,6 +47,27 @@
 .arc-conversation-scroll,
 .arc-composer-dock { transition: margin-right var(--arc-base) var(--arc-curve); }
 
+/* Docking the conversation workspace: the chat gives up the panel's width
+   rather than being covered by it, so a run's receipt and the answer it belongs
+   to can be read at the same time. The width test lives in arc-view.tsx (see
+   WORK_PANEL_DOCK_MIN_PANE) — it has to, because the panel is portaled outside
+   this subtree and a container query would never reach it — and it sets the
+   attribute this rule keys off. Below that width the attribute stays false and
+   the panel overlays as before. */
+.arc-chat[data-workspace-docked="true"] :is(.arc-conversation-header, .arc-conversation-scroll, .arc-composer-dock) {
+  margin-right: 400px;
+}
+/* Docked, the panel sits inside the pane rather than floating above it: no lift
+   shadow, and a hairline on the side it now shares with the conversation. */
+.arc-artifact-workspace[data-docked="true"] {
+  border-radius: 0;
+  border-right: 0;
+  border-top: 0;
+  border-bottom: 0;
+  box-shadow: none;
+  background: var(--canvas-deep);
+}
+
 /* ── Conversation header ────────────────────────────────────────────────── */
 .arc-conversation-header {
   min-height: 68px;
@@ -103,14 +124,125 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The title's second line: the campaign chip, then whatever the header has to
+   say about the conversation. One row, so the header keeps its two-line rhythm
+   rather than growing a third. */
+.arc-conversation-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+}
 .arc-conversation-title p {
-  margin: 4px 0 0;
+  margin: 0;
+  min-width: 0;
   color: var(--muted);
   font-size: 10.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Campaign chip — metadata scale, not a control competing with Share and
+   Workspace. Unassigned it recedes to a dashed outline: an empty slot reads as
+   an invitation, a filled one as a fact. */
+.arc-conversation-campaign { position: relative; flex: none; }
+.arc-conversation-campaign > button {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  color: var(--accent-contrast);
+  padding: 0 7px;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 560;
+  cursor: pointer;
+  transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast);
+}
+.arc-conversation-campaign > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arc-conversation-campaign > button svg { flex: none; }
+.arc-conversation-campaign > button[data-empty="true"] {
+  border-style: dashed;
+  border-color: var(--line-3);
+  background: transparent;
+  color: var(--muted);
+  font-weight: 520;
+}
+.arc-conversation-campaign > button:hover:not(:disabled) { color: var(--text); border-color: var(--accent-border-strong, var(--accent-border)); }
+.arc-conversation-campaign > button[data-empty="true"]:hover:not(:disabled) { color: var(--text-2); border-color: var(--line-3); background: rgba(255, 255, 255, .04); }
+.arc-conversation-campaign > button:disabled { opacity: .5; cursor: default; }
+
+.arc-campaign-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 232px;
+  max-width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: grid;
+  gap: 1px;
+  padding: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  box-shadow: 0 18px 44px -20px rgba(0, 0, 0, .92);
+}
+.arc-campaign-menu button {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--arc-fast), background var(--arc-fast);
+}
+.arc-campaign-menu button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-campaign-menu button:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
+.arc-campaign-menu button[aria-checked="true"] { color: var(--text); }
+.arc-campaign-menu button[aria-checked="true"] svg:last-child { color: var(--accent); }
+.arc-campaign-menu button.is-clear { color: var(--muted); }
+.arc-campaign-menu button.is-clear:hover { color: var(--text-2); }
+.arc-campaign-menu-sep { height: 1px; margin: 3px 0; background: var(--line); }
+.arc-campaign-menu-empty { margin: 0; padding: 8px; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+/* The outcome, at the control that caused it. Absolute, so a long refusal can't
+   reflow the header's two-line rhythm out from under the title. */
+.arc-campaign-notice {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  max-width: 320px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  color: var(--text-2);
+  padding: 4px 7px;
+  font-size: 10px;
+  line-height: 1.4;
+  box-shadow: 0 10px 26px -14px rgba(0, 0, 0, .9);
+}
+
 .arc-conversation-actions { display: flex; align-items: center; gap: 9px; }
 .arc-conversation-actions button:disabled { opacity: .42; cursor: not-allowed; }
 .arc-conversation-actions .arc-header-attention {
@@ -627,7 +759,20 @@
   margin-bottom: 13px;
 }
 .arc-run-live-head > span:nth-child(2) { min-width: 0; }
-.arc-run-live-head b { color: var(--text-2); font-size: 13px; font-weight: 540; }
+/* While a run is in flight this line IS the screen's focal moment — it is the
+   only thing the reader is waiting on. It used to sit at `--text-2`/540, which
+   made the live status the dimmest text in the pane while every settled message
+   above it read brighter. The settled receipt below stays quiet; this does not. */
+.arc-run-live-head b {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 570;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .arc-thinking-indicator {
   --arc-color: #cda869;
   --arc-size: 24px;
@@ -679,13 +824,19 @@
   border: 1px solid var(--line-2);
   border-radius: var(--r-md);
   background: transparent;
-  color: var(--muted);
+  /* Stop is the one control available during a run, and at `--muted` on a
+     hairline border it read as disabled — indistinguishable from the state it
+     genuinely takes when there is no run to stop. Not gold: gold means "needs
+     you", and this is an escape hatch, not a request. */
+  color: var(--text-2);
   padding: 0 11px;
   font-size: 11px;
+  font-weight: 540;
   cursor: pointer;
+  transition: color var(--arc-fast), border-color var(--arc-fast), background var(--arc-fast);
 }
-.arc-stop:hover { color: var(--text); border-color: var(--line-3); }
-.arc-stop:disabled { opacity: .5; cursor: default; }
+.arc-stop:hover { color: var(--text); border-color: var(--line-3); background: rgba(255, 255, 255, .04); }
+.arc-stop:disabled { color: var(--muted); opacity: .55; cursor: default; }
 .arc-run-divider { height: 1px; background: var(--line); }
 .arc-live-worklog {
   display: flex;
@@ -738,8 +889,13 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 6px;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+}
+/* The fade is a claim — "there is more thinking above this line" — so it is
+   only drawn once that is true. Unconditionally, it half-erased the first
+   sentence of every run, which is the exact moment someone is watching. */
+.arc-live-reasoning-scroll[data-clipped="true"] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
 }
 .arc-live-reasoning-scroll::-webkit-scrollbar { width: 6px; }
 .arc-live-reasoning-scroll::-webkit-scrollbar-thumb { border-radius: var(--r-full); background: var(--line-3); }
@@ -820,19 +976,26 @@
 .arc-live-events { display: flex; flex-direction: column; gap: 12px; }
 /* A line Arc wrote, sitting between the actions it explains. No icon column, no
    label, no status tick — it reads as prose, which is the whole point. */
-.arc-live-event.is-narration { grid-template-columns: minmax(0, 1fr); }
+.arc-live-event.is-narration { grid-template-columns: minmax(0, 1fr) 0 0; }
 .arc-live-event.is-narration .arc-live-event-copy small { max-width: 74ch; color: var(--text-2); font-size: 12.5px; line-height: 1.65; }
+/* Copy column sized to its content so the status mark stays with the step it
+   belongs to — see the note on .arc-run-row. At `1fr` a step like "Reading
+   campaign and brand guidance" put its tick ~420px away at the far edge, where
+   it read as an unrelated mark rather than that step's state. */
 .arc-live-event {
   min-height: 28px;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 20px;
+  grid-template-columns: 24px minmax(0, auto) 20px minmax(0, 1fr);
   align-items: start;
   gap: 10px;
   padding: 0 2px;
   color: var(--muted);
 }
-.arc-live-event.is-running { color: var(--text-2); }
-.arc-live-event.is-done { color: var(--muted); }
+/* The step Arc is on right now is the brightest thing in the list; finished
+   steps recede behind it. These were `--text-2` and `--muted`, which put the
+   current step *below* the settled reply above it in the visual order. */
+.arc-live-event.is-running { color: var(--text); }
+.arc-live-event.is-done { color: var(--text-2); }
 .arc-live-event.is-error { color: var(--red-text); }
 .arc-live-event-icon {
   width: 24px;
@@ -890,16 +1053,26 @@
 .arc-run-contract-grid span { color: var(--muted); font-size: 8.5px; font-weight: 650; letter-spacing: .055em; text-transform: uppercase; }
 .arc-run-contract-grid b { color: var(--text-2); font-size: 10.5px; font-weight: 520; line-height: 1.35; }
 .arc-run-rows { display: flex; flex-direction: column; }
+/* The status tick belongs to the row's label, so it sits directly after it.
+   The copy column used to be `1fr`, which absorbed every pixel of slack and
+   parked the tick against the far edge of an 82ch container — a short step like
+   "Reading brand guidance" put its own checkmark ~370px away across empty
+   space, reading as an unrelated mark floating in the gutter. Sizing the copy
+   to its content and letting the trailing column take the slack keeps the pair
+   together; long labels still ellipsize, because the copy column's min is 0. */
 .arc-run-row {
   min-height: 34px;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, auto) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 5px 2px;
   color: var(--muted);
 }
-.arc-run-row.is-running { color: var(--text-2); }
+.arc-run-row .arc-run-state { justify-self: start; }
+/* The step Arc is on right now, versus the ones behind it. These were the same
+   colour, so a running trace had no current line. */
+.arc-run-row.is-running { color: var(--text); }
 .arc-run-row.is-done { color: var(--text-2); }
 .arc-run-row.is-error { color: var(--red-text); }
 .arc-run-kind { width: 24px; height: 24px; display: grid; place-items: center; color: currentColor; }
@@ -1764,16 +1937,36 @@
   position: relative;
   z-index: 8;
   padding: 8px 24px 12px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--canvas) 80%, transparent), var(--canvas) 28%);
+  background: var(--canvas);
+}
+/* The feed scrolls under the composer, so it needs somewhere to go.
+   The dock's own background used to start at 80% opaque canvas, which is not a
+   fade — a line of the reply went from fully legible to almost gone across a
+   single pixel, and the last visible row was guillotined mid-x-height. This is
+   the runway: 56px of transparent-to-canvas above the dock, painted over the
+   feed rather than inside the dock's 8px of padding. */
+.arc-composer-dock::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 56px;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, var(--canvas));
 }
 .arc-composer-column { position: relative; width: min(930px, 100%); margin: 0 auto; }
 
 /* Jump-to-latest pill — floats just above the composer when the reader has
    scrolled up while Arc is streaming. */
+/* Sits inside the dock's fade runway, not out over live text. At -46px it
+   landed in the middle of the reply — it was reliably reproducible sitting
+   across a bullet ("map Meridian to how [Latest] already works"). -34px keeps
+   it within the 56px the fade already dims, so it always has a backdrop. */
 .arc-jump {
   position: absolute;
   left: 50%;
-  top: -46px;
+  top: -34px;
   transform: translateX(-50%);
   z-index: 12;
   display: inline-flex;
@@ -3058,7 +3251,12 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   .arc-header-attention span { display: none; }
   .arc-history-button { width: 44px; height: 44px; padding: 0; }
   .arc-conversation-title h2 { font-size: 16px; }
+  /* The subtitle goes; the campaign chip stays. In a narrow pane the header can
+     afford one line of metadata, and which campaign this chat belongs to beats
+     restating that it is private. */
   .arc-conversation-title p { display: none; }
+  .arc-conversation-meta { margin-top: 2px; }
+  .arc-conversation-campaign > button { max-width: 100%; }
   .arc-header-artifact,
   .arc-header-work { width: 44px; height: 44px; padding: 0; }
   .arc-header-artifact span,
@@ -3108,7 +3306,8 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   .arc-composer-add,
   .arc-context-meter { width: 44px; }
   .arc-send-button { width: 44px; height: 44px; }
-  .arc-jump { top: -40px; height: 30px; }
+  .arc-jump { top: -30px; height: 30px; }
+  .arc-composer-dock::before { height: 40px; }
   .arc-context-popover { width: min(190px, calc(100vw - 28px)); }
   .arc-composer-menu { left: 7px; width: min(300px, calc(100% - 14px)); bottom: calc(100% + 7px); }
   .arc-composer-menu > button { min-height: 44px; }
@@ -3132,7 +3331,8 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   .arc-run-live-head { margin-bottom: 11px; }
   .arc-run-live-head b { font-size: 12.5px; }
   .arc-live-worklog { gap: 17px; padding: 16px 0 18px; }
-  .arc-live-event { grid-template-columns: 22px minmax(0, 1fr) 18px; gap: 8px; }
+  .arc-live-event { grid-template-columns: 22px minmax(0, auto) 18px minmax(0, 1fr); gap: 8px; }
+  .arc-live-event.is-narration { grid-template-columns: minmax(0, 1fr) 0 0; }
   .arc-live-event-icon { width: 22px; }
   .arc-run-contract-grid { grid-template-columns: 1fr; }
   .arc-run-contract-grid > div:nth-child(odd) { border-right: 0; }
