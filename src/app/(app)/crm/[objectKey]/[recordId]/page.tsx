@@ -50,7 +50,7 @@ export default async function CrmRecordPage({
         }),
       ])
     : [null, null];
-  const crmLabel = getProductLanguage(settingsForLabel?.industry || profileForLabel?.industry).crmLabel;
+  const crmLabel = getProductLanguage(settingsForLabel?.industry || profileForLabel?.industry, settingsForLabel?.objectLabels).crmLabel;
 
   if (record.status !== "live") {
     return (

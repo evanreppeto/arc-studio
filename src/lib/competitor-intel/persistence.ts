@@ -1,6 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { parseCompetitorIntelPayload } from "@/domain";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 import { type AgentTaskTenantFields } from "../agent-tasks/scope";
 import { getSupabaseAdminClient } from "../supabase/server";
 
@@ -20,10 +21,10 @@ export async function persistCompetitorIntel(
   if (!tenant) {
     throw new Error("persistCompetitorIntel requires a tenant: agents and competitor_campaigns are org-scoped.");
   }
-  const agentId = await upsertArcAgent(client, tenant.org_id);
+  const agentId = await upsertArcAgent(client, tenant);
 
   const competitorCampaignId = await insertOne(client, "competitor_campaigns", {
-    ...(tenant ? { org_id: tenant.org_id } : {}),
+    ...workspaceScopeFields(tenant),
     source: req.source,
     competitor_name: req.competitorName,
     competitor_url: req.competitorUrl ?? null,
@@ -43,14 +44,17 @@ export async function persistCompetitorIntel(
   return { competitorCampaignId, status: "needs_review", runId };
 }
 
-// agents is org-scoped but has no workspace_id column, so the tenant cannot be
-// spread here -- org_id is set explicitly. The conflict target must stay
-// (org_id, key) to match the per-org unique; targeting "key" alone would
-// resolve against another tenant's agent row and overwrite it.
-async function upsertArcAgent(client: SupabaseClient, orgId: string): Promise<string> {
+// agents gained workspace_id in BSR-712, so this now carries the full tenant.
+// The conflict target must stay (org_id, key) to match the per-org unique;
+// targeting "key" alone would resolve against another tenant's agent row and
+// overwrite it.
+async function upsertArcAgent(client: SupabaseClient, tenant: AgentTaskTenantFields): Promise<string> {
   const { data, error } = await client
     .from("agents")
-    .upsert({ org_id: orgId, key: "arc", name: "Arc Orchestrator", status: "ready" }, { onConflict: "org_id,key" })
+    .upsert(
+      { ...workspaceScopeFields(tenant), key: "arc", name: "Arc Orchestrator", status: "ready" },
+      { onConflict: "org_id,key" },
+    )
     .select("id")
     .single<{ id: string }>();
   if (error) {

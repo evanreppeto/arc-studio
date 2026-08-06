@@ -4,6 +4,8 @@
  * review (never auto-contacted). Deterministic so it stays unit-testable.
  */
 
+import { countOf, DAY_NOUN } from "./vocabulary";
+
 export type ColdLeadInput = {
   id: string;
   /** Human label (contact/company name or lead id) for the card. */
@@ -11,8 +13,17 @@ export type ColdLeadInput = {
   persona: string;
   leadScore: number; // 0–100
   status: string; // lead_status value
-  /** ISO timestamp of the lead's most recent activity (latest event, else received_at). */
+  /** ISO timestamp of the lead's most recent activity, else when it arrived. */
   lastActivityAt: string;
+  /**
+   * Whether `lastActivityAt` is a real recorded interaction, or the fallback to
+   * the lead's arrival date because nothing has been logged against it.
+   *
+   * These are different facts and the card must not state the second as the
+   * first. "No activity in 90 days" asserts that someone checked; "nothing
+   * recorded since it arrived 90 days ago" is what we actually know.
+   */
+  activityKnown: boolean;
   hasActiveCampaign: boolean;
 };
 
@@ -193,11 +204,24 @@ export function detectColdLeadOpportunities(leads: ColdLeadInput[], config: Dete
       kind: "crm_inactivity",
       subjectType: "lead",
       subjectId: lead.id,
-      title: `${lead.label} — quiet ${daysCold} days`,
-      summary: `Open lead (score ${lead.leadScore}) with no live campaign and no activity in ${daysCold} days.`,
+      // PERSISTED. These two are written to the opportunity row, so they are
+      // what the card shows and what Arc reads back — a count disagreeing with
+      // its noun is stored, not just rendered (BSR-690).
+      title: lead.activityKnown
+        ? `${lead.label} — quiet ${countOf(daysCold, DAY_NOUN)}`
+        : `${lead.label} — nothing recorded in ${countOf(daysCold, DAY_NOUN)}`,
+      summary: lead.activityKnown
+        ? `Open lead (score ${lead.leadScore}) with no live campaign and no activity in ${countOf(daysCold, DAY_NOUN)}.`
+        : `Open lead (score ${lead.leadScore}) with no live campaign. Nothing has been recorded against it since it arrived ${countOf(daysCold, DAY_NOUN)} ago — that is not the same as knowing nobody has worked it.`,
       confidence,
       urgency,
-      evidence: { daysCold, leadScore: lead.leadScore, persona: lead.persona, lastActivityAt: lead.lastActivityAt },
+      evidence: {
+        daysCold,
+        leadScore: lead.leadScore,
+        persona: lead.persona,
+        lastActivityAt: lead.lastActivityAt,
+        activitySource: lead.activityKnown ? "recorded_activity" : "lead_arrival_date",
+      },
       recommendedAction: "Re-engage with a persona-tailored campaign",
       recommendedCampaignType: "re_engagement",
     });
@@ -213,6 +237,33 @@ export function detectColdLeadOpportunities(leads: ColdLeadInput[], config: Dete
 // storm-response recommendation. Deterministic so it stays unit-testable. The
 // live alert feed is injected at the I/O layer (see WeatherEventSource in
 // src/lib/opportunities/detector.ts) — this module only scores normalized input.
+
+/**
+ * Has this signal's own effective window already closed?
+ *
+ * Some opportunities describe a moment that ends on its own schedule — a weather
+ * alert is live until its `endsAt`, and after that it is not an opportunity, it
+ * is history. Expiry was enforced when opportunities were WRITTEN and never when
+ * they were READ, so a row created while an advisory was live stayed in the
+ * inbox forever: the live workspace was showing a Flood Advisory that ended
+ * three days earlier, at 55% confidence, under a headline reading "while
+ * advisories are live", with a working "Draft with Arc" button.
+ *
+ * Detection-time filtering cannot fix that on its own — it stops the row being
+ * re-created, but nothing retires the row already there. Every surface that
+ * treats an opportunity as OPEN has to ask this question too.
+ *
+ * Absent or unparseable `endsAt` means "no window" — an opportunity with nothing
+ * to expire (a cold lead, a competitor move) is never hidden by this. The one
+ * thing this must not do is hide work because a date failed to parse.
+ */
+export function hasSignalWindowClosed(endsAt: string | null | undefined, nowIso: string): boolean {
+  if (!endsAt) return false;
+  const ends = Date.parse(endsAt);
+  const now = Date.parse(nowIso);
+  if (Number.isNaN(ends) || Number.isNaN(now)) return false;
+  return ends < now;
+}
 
 /** Normalized alert severity, ordered advisory < watch < warning < emergency. */
 export type WeatherSeverity = "advisory" | "watch" | "warning" | "emergency";
@@ -451,16 +502,13 @@ export function detectWeatherEventOpportunities(
   events: WeatherEventInput[],
   config: WeatherDetectionConfig,
 ): OpportunityCandidate[] {
-  const now = Date.parse(config.now);
   const persona = typeof config.persona === "string" && config.persona.trim() ? config.persona.trim() : null;
   const allowed = new Set<WeatherCategory>(config.categories ?? DEFAULT_WEATHER_CATEGORIES);
   const out: OpportunityCandidate[] = [];
   for (const ev of events) {
     if (!ev.id) continue;
-    if (ev.endsAt) {
-      const ends = Date.parse(ev.endsAt);
-      if (!Number.isNaN(ends) && !Number.isNaN(now) && ends < now) continue; // expired alert
-    }
+    // Same question the inbox asks when it reads these back (BSR-727).
+    if (hasSignalWindowClosed(ev.endsAt, config.now)) continue;
     const severity: WeatherSeverity = WEATHER_SEVERITY_RANK[ev.severity] ? ev.severity : "advisory";
     const eventType = ev.eventType?.trim() || "Weather alert";
     // A real alert this workspace hasn't opted into — or one that drives no demand

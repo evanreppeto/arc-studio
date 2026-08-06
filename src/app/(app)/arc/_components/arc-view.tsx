@@ -25,7 +25,6 @@ import {
   CornerDownLeft,
   ChevronRight,
   ChevronDown,
-  Circle,
   CircleAlert,
   ClipboardCheck,
   CloudLightning,
@@ -67,8 +66,11 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 
 import {
+  ARC_RUN_STALE_MS,
+  isSearchableArcQuery,
   type ArcActionCard,
   type ArcAssetStatus,
+  type ArcDraftFinding,
   type ArcMention,
   type ArcMode,
   type ArcRoute,
@@ -76,6 +78,7 @@ import {
   type ShareVisibility,
 } from "@/domain";
 import { contextUsage } from "@/lib/arc-chat/context-usage";
+import type { ArcMessageSearchHit } from "@/lib/arc-chat/message-search";
 import { applyArcStreamFrame, type ArcStreamOverlay } from "@/lib/arc-chat/live-stream";
 import {
   ARC_SKILL_BUILDER,
@@ -96,6 +99,7 @@ import {
   workPanelOpenOnConversationChange,
   writeWorkPanelPreference,
 } from "@/lib/arc-chat/work-panel-preference";
+import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 import type { ConnectionView } from "@/lib/connections/read-model";
 import type { ConnectorView } from "@/lib/connectors/read-model";
 import type {
@@ -106,6 +110,7 @@ import type {
 import type { MentionGroup } from "@/lib/arc-chat/mention-search";
 import type { ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
 import { filterThreadGroups, type ArcThreadFilter } from "@/lib/arc-chat/thread-filter";
+import type { SavedKind } from "@/lib/arc-chat/saved";
 import {
   resolveArcComposerMode,
   type ArcComposerModePreference,
@@ -116,6 +121,8 @@ import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import {
   getArcConversationHeader,
   getArcConversationScrollTarget,
+  hasArcReplyInFlight,
+  shouldEditLastOnArrowUp,
   shouldShowDemoLauncher,
   shouldUseDemoSeedWorkspace,
 } from "@/lib/arc-chat/view-state";
@@ -126,6 +133,8 @@ import {
   cancelArcRunAction,
   deleteArcConversationAction,
   editAndResendArcMessageAction,
+  getArcAssetBodiesAction,
+  getArcAssetChecksAction,
   getArcAssetStatusesAction,
   pinArcConversationAction,
   regenerateArcReplyAction,
@@ -138,6 +147,7 @@ import {
   previewArcGithubSkillAction,
   removeArcGithubSkillAction,
   removeSavedArcItemAction,
+  searchArcMessagesAction,
   sendArcMessageAction,
   setArcSkillInstalledAction,
   unarchiveArcConversationAction,
@@ -148,6 +158,8 @@ import {
 // Reused rather than reimplemented: the same `requireOperator()` gate and
 // org-scoped upsert Settings has always used to switch a connector.
 import { toggleConnectorEnabled } from "../../settings/connectors-actions";
+import { OverlayPortal } from "../../_components/overlay-portal";
+import { describeBlockedSend, isMidComposition } from "../composer-guard";
 import type { GeneratedSkillRecord } from "@/lib/exemplar-skills/persistence";
 import {
   getChatSharingStateAction,
@@ -160,10 +172,12 @@ import type {
   ArcWaiting,
   ComposerMenu,
   DemoTurn,
+  PaneBox,
   ThreadItem,
 } from "./arc-view.types";
-import { DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING } from "./arc-demo-data";
-import { ArcWorkPanel, AssetReviewPanel, ChipThumb, QuestionPrompt } from "./arc-messages";
+import { DEMO_ASSET_BODIES, DEMO_ASSET_CHECKS, DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING, DEMO_WORKSPACE_CARDS } from "./arc-demo-data";
+import { ArcWorkPanel, ChipThumb, QuestionPrompt } from "./arc-messages";
+import { DeliverableReview } from "./arc-deliverable";
 import { ArcLauncher, DemoConversation, LiveConversation, type OptimisticArcTurn } from "./arc-conversation";
 import { useBottomPin } from "./use-bottom-pin";
 
@@ -217,12 +231,18 @@ function ArcModelIcon({ model, size }: { model: ArcModelPreference; size: number
   return <Hammer size={size} />;
 }
 
-function ThreadRow({ thread, active, live, campaignName, showCampaignLabel, campaigns, onOpen, onRename, onPin, onAssignCampaign, onArchive, onDelete }: {
+/** Chats shown inside an open campaign folder before it offers "Show N more".
+ *  Deep enough to reach yesterday's work, shallow enough that one busy campaign
+ *  can't push every other one off the panel. */
+const CAMPAIGN_FOLDER_ROWS = 5;
+
+function ThreadRow({ thread, active, live, campaignName, campaigns, onOpen, onRename, onPin, onAssignCampaign, onArchive, onDelete }: {
   thread: ThreadItem;
   active: boolean;
   live: boolean;
+  /** Only for the menu's campaign detail — the list shows a chat's campaign by
+   *  the folder it sits in, so a row never repeats it. */
   campaignName: string | null;
-  showCampaignLabel: boolean;
   campaigns: ArcMention[];
   onOpen: () => void;
   onRename: (title: string) => void;
@@ -316,14 +336,19 @@ function ThreadRow({ thread, active, live, campaignName, showCampaignLabel, camp
     );
   }
 
-  const visibleCampaignName = showCampaignLabel ? campaignName : null;
-  const threadPreview = thread.preview || visibleCampaignName || (thread.pinned ? "Pinned" : "Conversation");
+  /* One line per conversation. A second line appears only when Arc has a
+     rolling summary to add. The old fallbacks ("Conversation", "Pinned") gave
+     every row a second line that repeated what the row already showed, which
+     is most of why a list of 22 chats read as noise. */
   const label = (
     <span>
-      <b>{thread.title}</b>
-      {thread.running
-        ? <small className="arc-thread-working"><span className="arc-thread-dots" aria-hidden="true"><i /><i /><i /></span>Working…{visibleCampaignName ? <em><Megaphone size={9} />{visibleCampaignName}</em> : null}</small>
-        : <small className="arc-thread-preview" data-campaign={visibleCampaignName ? "true" : "false"}>{visibleCampaignName ? <Megaphone size={9} /> : null}<span>{threadPreview}</span><em>{thread.when}</em></small>}
+      <span className="arc-thread-line">
+        <b>{thread.title}</b>
+        {thread.running
+          ? <em className="arc-thread-working"><span className="arc-thread-dots" aria-hidden="true"><i /><i /><i /></span>Working</em>
+          : <em className="arc-thread-when">{thread.when}</em>}
+      </span>
+      {thread.preview ? <small className="arc-thread-preview"><span>{thread.preview}</span></small> : null}
     </span>
   );
 
@@ -442,6 +467,68 @@ function connectorStatusLabel(status: DrawerConnectorStatus): string {
   return "Not set up";
 }
 
+/** The Arc pane's box in viewport coordinates. */
+
+/**
+ * Track an element's viewport rect while `active`.
+ *
+ * The drawer portals to the shell so its scrim can cover the whole window
+ * (#955) — but once portaled it has no pane to be `position: absolute` inside,
+ * and the pane's offsets are not constant: the rail is 236px and the top bar
+ * 55px, but the demo-data banner and the billing notice bar move the pane down
+ * only when they are showing. Hardcoding those offsets is how this drifts.
+ * Measuring is the only version that stays right.
+ *
+ * `useLayoutEffect` so the first measurement lands before paint — the drawer
+ * must not appear at the CSS fallback position for a frame and then jump.
+ * ResizeObserver catches a banner appearing or the window resizing; both change
+ * the pane's own size, which is what it fires on.
+ */
+function usePaneBox(ref: React.RefObject<HTMLElement | null>, active: boolean): PaneBox | null {
+  const [box, setBox] = useState<PaneBox | null>(null);
+
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!active || !node) {
+      // Don't hold a stale box across closes — the pane may move while the
+      // drawer is shut, and a stale box would place the next open wrongly.
+      setBox(null);
+      return;
+    }
+    const measure = () => {
+      const r = node.getBoundingClientRect();
+      setBox((prev) =>
+        prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height
+          ? prev // same box → same object, so this never re-renders the drawer
+          : { top: r.top, left: r.left, width: r.width, height: r.height },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    window.addEventListener("resize", measure);
+
+    // The pane sits inside `.page-enter`, whose entrance animation carries a
+    // translateY that decays to 0 over 420ms — and getBoundingClientRect
+    // includes ancestor transforms. Opening the drawer during that window would
+    // measure the pane 9px low and stay there, because a transform changes no
+    // box and so fires no ResizeObserver. Re-measure when that animation ends.
+    // Cheap and exact: animation events bubble, and the name is unique.
+    const onPageEnterEnd = (event: AnimationEvent) => {
+      if (event.animationName === "pageEnter") measure();
+    };
+    document.addEventListener("animationend", onPageEnterEnd, true);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("animationend", onPageEnterEnd, true);
+    };
+  }, [ref, active]);
+
+  return box;
+}
+
 function ThreadDrawer({
   live,
   groups,
@@ -469,6 +556,7 @@ function ThreadDrawer({
   liveSendEnabled,
   onClose,
   onDismiss,
+  paneBox,
 }: {
   live: boolean;
   groups: ArcThreadGroupVM[];
@@ -501,6 +589,12 @@ function ThreadDrawer({
   /** The operator dismissed the drawer (Escape, the ✕, the scrim). Focus goes
    *  back to the control that opened it. */
   onDismiss: () => void;
+  /** Where to sit, in viewport coordinates — see usePaneBox. The drawer is
+   *  portaled to the shell (so its scrim can cover the whole window) but is
+   *  still meant to look like it lives inside the Arc pane, and a portaled
+   *  element has no pane to be `absolute` inside any more. Null before the
+   *  first measurement; the CSS fallback covers that frame. */
+  paneBox: PaneBox | null;
 }) {
   const router = useRouter();
   const drawerRef = useRef<HTMLElement | null>(null);
@@ -511,6 +605,10 @@ function ThreadDrawer({
   const [savedError, setSavedError] = useState<string | null>(null);
   /** Which item just went to the clipboard, so the button can confirm it. */
   const [copiedSavedId, setCopiedSavedId] = useState<string | null>(null);
+  /** Saved was the one list in the drawer you could not search or narrow — it
+   *  grows without bound and had no way through it but scrolling. */
+  const [savedSearch, setSavedSearch] = useState("");
+  const [savedKind, setSavedKind] = useState<SavedKindFilter>("all");
   // Archived conversations: a lazy-loaded disclosure at the bottom of the list.
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [archivedConvos, setArchivedConvos] = useState<ArchivedArcConversationVM[] | null>(null);
@@ -525,6 +623,9 @@ function ThreadDrawer({
   /** Connector the operator arrived at from an unmet skill requirement. */
   const [focusedConnector, setFocusedConnector] = useState<string | null>(null);
   const [connectorSearch, setConnectorSearch] = useState("");
+  /** The catalog is 16 rows deep and almost every question asked of it is
+   *  "what is on?" or "what still needs me?". Same chip row as Conversations. */
+  const [connectorFilter, setConnectorFilter] = useState<ConnectorFilter>("all");
   const [plannedOpen, setPlannedOpen] = useState(false);
   /** Key currently being switched, so only that row shows a spinner. */
   const [togglingConnector, setTogglingConnector] = useState<string | null>(null);
@@ -542,7 +643,11 @@ function ThreadDrawer({
   }, []);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ArcThreadFilter>("all");
-  const [threadGrouping, setThreadGrouping] = useState<"recent" | "campaign">("recent");
+  /** Campaign folders the operator has explicitly opened or closed. Anything
+   *  absent falls back to the default below — open where the work is. */
+  const [campaignOpen, setCampaignOpen] = useState<Record<string, boolean>>({});
+  /** Folders showing every chat rather than the first few. */
+  const [campaignShowAll, setCampaignShowAll] = useState<Record<string, boolean>>({});
   const [githubOpen, setGithubOpen] = useState(false);
   const [githubUrl, setGithubUrl] = useState("");
   const [githubPreview, setGithubPreview] = useState<WorkspaceArcSkill | null>(null);
@@ -607,6 +712,41 @@ function ThreadDrawer({
     });
   };
 
+  /**
+   * Message-body search, alongside the client-side title filter above.
+   *
+   * Debounced rather than per-keystroke: this is a server round-trip over every
+   * conversation the viewer can open, and typing "pricing" would otherwise fire
+   * seven of them. `seq` drops a slow response that lands after a newer query —
+   * without it, backspacing to a shorter query can leave the previous, longer
+   * query's results on screen.
+   */
+  // Results are stored WITH the query that produced them, so "are these hits
+  // current?" is derived at render rather than kept in sync by an effect that
+  // clears state. That removes the stale-render case (results from a longer
+  // query left on screen after backspacing) and the cascading-render warning
+  // that resetting state synchronously would earn.
+  const [messageSearch, setMessageSearch] = useState<{ query: string; hits: ArcMessageSearchHit[] } | null>(null);
+  const searchSeq = useRef(0);
+  const searchQuery = query.trim();
+  const messageSearchActive = live && isSearchableArcQuery(query);
+  const messageHits = messageSearchActive && messageSearch?.query === searchQuery ? messageSearch.hits : null;
+  const searchingMessages = messageSearchActive && messageHits === null;
+
+  useEffect(() => {
+    // Bumping the ref is not state: an in-flight response for an older query is
+    // dropped without this effect having to clear anything.
+    const seq = ++searchSeq.current;
+    if (!live || !isSearchableArcQuery(query)) return;
+    const timer = window.setTimeout(() => {
+      searchArcMessagesAction(query).then((result) => {
+        if (seq !== searchSeq.current) return; // a newer query has superseded this one
+        setMessageSearch({ query: query.trim(), hits: result.ok ? result.hits : [] });
+      });
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [query, live]);
+
   const sourceGroups = live ? groups : demoGroups;
   const availableCampaigns: ArcMention[] = campaignItems.length > 0 ? campaignItems : [
     { type: "campaign", id: "demo-camp", label: "Pricing-Intent Fast Track", href: "/campaigns" },
@@ -619,23 +759,28 @@ function ThreadDrawer({
     ["property-partners", "Property Partner Growth"],
     ...availableCampaigns.map((campaign) => [campaign.id, campaign.label] as [string, string]),
   ]);
-  const campaignGroups = (() => {
-    const byCampaign = new Map<string, ArcThreadGroupVM["items"]>();
-    for (const thread of sourceGroups.flatMap((group) => group.items)) {
-      const key = thread.campaignId || "__none__";
-      const items = byCampaign.get(key);
-      if (items) items.push(thread);
-      else byCampaign.set(key, [thread]);
+  /* The list is a two-section tree, not a grouping mode you have to switch to:
+     campaigns are folders (a chat's campaign is the thing operators actually
+     look it up by), and everything not attached to one falls through to
+     Recents, which keeps its date headings. Both sections are always visible,
+     so nothing is a click away behind a toggle. */
+  const visibleGroups = filterThreadGroups(sourceGroups, query, filter);
+  const campaignFolders = (() => {
+    const byCampaign = new Map<string, { id: string; name: string; items: ArcThreadGroupVM["items"] }>();
+    // `visibleGroups` is already newest-first, so insertion order puts the
+    // campaign with the most recent activity at the top — more useful than
+    // alphabetical, which buried whatever you were last working on.
+    for (const thread of visibleGroups.flatMap((group) => group.items)) {
+      if (!thread.campaignId) continue;
+      const folder = byCampaign.get(thread.campaignId);
+      if (folder) folder.items.push(thread);
+      else byCampaign.set(thread.campaignId, { id: thread.campaignId, name: campaignNames.get(thread.campaignId) ?? "Campaign", items: [thread] });
     }
-    return [...byCampaign.entries()]
-      .sort(([left], [right]) => {
-        if (left === "__none__") return 1;
-        if (right === "__none__") return -1;
-        return (campaignNames.get(left) ?? left).localeCompare(campaignNames.get(right) ?? right);
-      })
-      .map(([campaignId, items]) => ({ group: campaignId === "__none__" ? "No campaign" : campaignNames.get(campaignId) ?? "Campaign", items }));
+    return [...byCampaign.values()];
   })();
-  const visibleGroups = filterThreadGroups(threadGrouping === "campaign" ? campaignGroups : sourceGroups, query, filter);
+  const recentGroups = visibleGroups
+    .map((group) => ({ ...group, items: group.items.filter((thread) => !thread.campaignId) }))
+    .filter((group) => group.items.length > 0);
   const allThreads = sourceGroups.flatMap((group) => group.items);
   const runningCount = allThreads.filter((thread) => thread.running).length;
   const pinnedCount = allThreads.filter((thread) => thread.pinned).length;
@@ -674,14 +819,23 @@ function ThreadDrawer({
     return rank[a.status] - rank[b.status] || a.label.localeCompare(b.label);
   });
   const connectedCount = connectorItems.filter((connector) => connector.status === "connected").length;
+  const offCount = connectorItems.filter((connector) => connector.status === "disabled").length;
+  const setupCount = connectorItems.filter((connector) => connector.status === "not_configured" || connector.status === "error").length;
   const matchesConnectorQuery = (connector: DrawerConnectorItem) => {
     const needle = connectorSearch.trim().toLocaleLowerCase();
     return !needle || `${connector.label} ${connector.description} ${connector.kindLabel}`.toLocaleLowerCase().includes(needle);
   };
+  const matchesConnectorFilter = (connector: DrawerConnectorItem) =>
+    connectorFilter === "all"
+    || (connectorFilter === "on" && connector.status === "connected")
+    || (connectorFilter === "off" && connector.status === "disabled")
+    || (connectorFilter === "setup" && (connector.status === "not_configured" || connector.status === "error"));
   /* "Not available yet" connectors aren't actionable and were sitting at the
      same visual weight as the real ones. They get their own disclosure so the
-     list you can actually do something about stays short. */
-  const visibleConnectors = connectorItems.filter((connector) => connector.status !== "unavailable" && matchesConnectorQuery(connector));
+     list you can actually do something about stays short. The status filter
+     deliberately doesn't reach them: none of its four buckets describes
+     "we haven't built this", so they stay behind their disclosure either way. */
+  const visibleConnectors = connectorItems.filter((connector) => connector.status !== "unavailable" && matchesConnectorQuery(connector) && matchesConnectorFilter(connector));
   const plannedConnectors = connectorItems.filter((connector) => connector.status === "unavailable" && matchesConnectorQuery(connector));
   const connectorGroups = CONNECTOR_KIND_ORDER
     .map((kind) => ({ kind, label: CONNECTOR_GROUP_LABEL[kind], items: visibleConnectors.filter((connector) => connector.kind === kind) }))
@@ -955,9 +1109,49 @@ function ThreadDrawer({
     });
   };
 
+  /* Saved: narrow by kind, then by text. Counts come off the unfiltered list so
+     a chip never reads "0" only because the other chip is on. */
+  const savedCounts = {
+    all: savedItems?.length ?? 0,
+    draft: savedItems?.filter((item) => item.kind === "draft").length ?? 0,
+    angle: savedItems?.filter((item) => item.kind === "angle").length ?? 0,
+    media: savedItems?.filter((item) => item.kind === "media").length ?? 0,
+  };
+  const visibleSaved = (savedItems ?? []).filter((item) => {
+    if (savedKind !== "all" && item.kind !== savedKind) return false;
+    const needle = savedSearch.trim().toLocaleLowerCase();
+    return !needle || `${item.title} ${item.preview ?? ""} ${item.note ?? ""}`.toLocaleLowerCase().includes(needle);
+  });
+  const savedNarrowed = savedKind !== "all" || savedSearch.trim().length > 0;
+
+  const searching = query.trim().length > 0;
+  const renderThread = (thread: ArcThreadGroupVM["items"][number]) => (
+    <ThreadRow
+      key={thread.id}
+      thread={thread}
+      active={live ? thread.id === activeConversationId : thread.id === selectedDemoId}
+      live={live}
+      campaignName={thread.campaignId ? campaignNames.get(thread.campaignId) ?? "Campaign" : null}
+      campaigns={availableCampaigns}
+      onOpen={live ? onClose : () => onSelectDemo(thread.id)}
+      onRename={(title) => doRename(thread.id, title)}
+      onPin={(pinned) => doPin(thread.id, pinned)}
+      onAssignCampaign={(campaignId) => doAssignCampaign(thread.id, campaignId)}
+      onArchive={() => doArchive(thread.id)}
+      onDelete={() => doDelete(thread.id)}
+    />
+  );
+
   return (
-    <motion.aside ref={drawerRef} className="arc-history" initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} role="dialog" aria-modal="true" aria-label="Arc workspace">
-      <div className="arc-history-topline"><span className="arc-history-eyebrow">Your Arc workspace</span><button type="button" className="arc-icon-button" onClick={onDismiss} aria-label="Close Arc workspace" autoFocus><X size={17} /></button></div>
+    <motion.aside ref={drawerRef} className="arc-history" style={paneBox ? { top: paneBox.top, left: paneBox.left, height: paneBox.height, width: Math.min(386, paneBox.width - 28) } : undefined} initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} role="dialog" aria-modal="true" aria-label="Arc workspace">
+      {/* Everything in this drawer — the chats, the installed skills, the
+          connector switches, the saved items — belongs to one workspace, and
+          the panel never said which. It matters most in the account that has
+          two of them open in two tabs. */}
+      <div className="arc-history-topline">
+        <span className="arc-history-eyebrow">Arc workspace{workspaceName ? <b>{workspaceName}</b> : null}</span>
+        <button type="button" className="arc-icon-button" onClick={onDismiss} aria-label="Close Arc workspace" autoFocus><X size={17} /></button>
+      </div>
       <nav className="arc-drawer-nav" aria-label="Arc workspace sections">
         <button type="button" className={view === "conversations" ? "is-active" : ""} aria-current={view === "conversations" ? "page" : undefined} onClick={() => setView("conversations")}><MessageSquareText size={14} /><span>Conversations</span></button>
         <button type="button" className={view === "skills" ? "is-active" : ""} aria-current={view === "skills" ? "page" : undefined} onClick={() => { setView("skills"); setSkillsMode("installed"); }}><Blocks size={14} /><span>Skills</span></button>
@@ -965,55 +1159,103 @@ function ThreadDrawer({
         <button type="button" className={view === "saved" ? "is-active" : ""} aria-current={view === "saved" ? "page" : undefined} onClick={openSaved}><Bookmark size={14} /><span>Saved</span></button>
       </nav>
 
-      {view === "conversations" ? <section className="arc-drawer-view" aria-labelledby="arc-conversations-title">
-        <header className="arc-drawer-view-head"><h2 id="arc-conversations-title">Conversations</h2><p>Return to active work, reviews, and saved context.</p></header>
-        {live ? <Link href="/arc?new=1" className="arc-new-chat" prefetch={false} scroll={false} onClick={onStartNew}><Plus size={16} /> New conversation</Link> : <button type="button" className="arc-new-chat" onClick={() => onSelectDemo("new")}><Plus size={16} /> New conversation</button>}
-        <label className="arc-history-search"><Search size={15} /><input type="search" aria-label="Search conversations" placeholder="Search conversations" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-        <div className="arc-history-filters" role="group" aria-label="Filter conversations">
+      {view === "conversations" ? <section className="arc-drawer-view arc-drawer-conversations" aria-label="Conversations">
+        {/* No title block: the tab above already says "Conversations", and the
+            explanatory subtitle cost a third of the panel before the first row. */}
+        {live ? <Link href="/arc?new=1" className="arc-new-chat" prefetch={false} scroll={false} onClick={onStartNew}><Plus size={15} /> New conversation</Link> : <button type="button" className="arc-new-chat" onClick={() => onSelectDemo("new")}><Plus size={15} /> New conversation</button>}
+        <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search conversations" placeholder="Search conversations" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <div className="arc-drawer-filters" role="group" aria-label="Filter conversations">
           {([
             ["all", "All", allThreads.length],
             ["running", "Working", runningCount],
             ["pinned", "Pinned", pinnedCount],
           ] as const).map(([id, label, count]) => <button type="button" key={id} className={filter === id ? "is-active" : ""} aria-pressed={filter === id} onClick={() => setFilter(id)}><span>{label}</span>{count > 0 ? <small>{count}</small> : null}</button>)}
         </div>
-        <div className="arc-thread-grouping" role="group" aria-label="Organize conversations">
-          <button type="button" className={threadGrouping === "recent" ? "is-active" : ""} aria-pressed={threadGrouping === "recent"} onClick={() => setThreadGrouping("recent")}>Recent</button>
-          <button type="button" className={threadGrouping === "campaign" ? "is-active" : ""} aria-pressed={threadGrouping === "campaign"} onClick={() => setThreadGrouping("campaign")}><Megaphone size={12} /> Campaigns</button>
-        </div>
         {needsReviewCount > 0 || runningCount > 0 ? <div className="arc-history-attention">
-          {needsReviewCount > 0 ? <button type="button" onClick={onOpenReview}><span><ClipboardCheck size={15} /><b>{needsReviewCount} need review</b></span><ArrowRight size={14} /></button> : null}
-          {runningCount > 0 ? <span><LoaderCircle size={14} className="is-spinning" />{runningCount} active {runningCount === 1 ? "run" : "runs"}</span> : null}
+          {/* "need you" is the shared vocabulary for this state (BSR-656) — the
+              denser icon sizes are this panel's, the wording is main's. */}
+          {needsReviewCount > 0 ? <button type="button" onClick={onOpenReview}><span><ClipboardCheck size={14} /><b>{needsReviewCount} need you</b></span><ArrowRight size={13} /></button> : null}
+          {runningCount > 0 ? <span><LoaderCircle size={12} className="is-spinning" />{runningCount} active {runningCount === 1 ? "run" : "runs"}</span> : null}
         </div> : null}
         <div className="arc-history-list" onKeyDown={handleRovingListKeyDown}>
-          {visibleGroups.map((group) => (
-            <div className="arc-history-group" key={group.group}>
-              <h3 data-kind={threadGrouping === "campaign" ? "campaign" : "date"} data-unassigned={group.group === "No campaign" ? "true" : undefined}>
-                {threadGrouping === "campaign" ? <span className="arc-campaign-group-icon" aria-hidden="true">{group.group === "No campaign" ? <Circle size={8} /> : <Megaphone size={10} />}</span> : null}
-                <span>{group.group}</span>
-              </h3>
-              {group.items.map((thread) => {
-                const active = live ? thread.id === activeConversationId : thread.id === selectedDemoId;
+          {campaignFolders.length > 0 ? (
+            <div className="arc-history-section">
+              <h3 className="arc-history-section-head"><Megaphone size={11} /><span>Campaigns</span><small>{campaignFolders.length}</small></h3>
+              {campaignFolders.map((folder, index) => {
+                const holdsActive = folder.items.some((thread) => (live ? thread.id === activeConversationId : thread.id === selectedDemoId));
+                /* Open where the work is: the campaign you're in, anything Arc
+                   is running, the most recent one. A search overrides the
+                   operator's own collapse — a folder only appears here because
+                   it holds a match, so leaving it shut would show a hit count
+                   with nothing under it. Same reason the row cap lifts. */
+                const open = searching || (campaignOpen[folder.id] ?? (holdsActive || index === 0 || folder.items.some((thread) => thread.running)));
+                const capped = !searching && !campaignShowAll[folder.id] && folder.items.length > CAMPAIGN_FOLDER_ROWS;
+                const shown = capped ? folder.items.slice(0, CAMPAIGN_FOLDER_ROWS) : folder.items;
                 return (
-                  <ThreadRow
-                    key={thread.id}
-                    thread={thread}
-                    active={active}
-                    live={live}
-                    campaignName={thread.campaignId ? campaignNames.get(thread.campaignId) ?? "Campaign" : null}
-                    showCampaignLabel={threadGrouping === "recent"}
-                    campaigns={availableCampaigns}
-                    onOpen={live ? onClose : () => onSelectDemo(thread.id)}
-                    onRename={(title) => doRename(thread.id, title)}
-                    onPin={(pinned) => doPin(thread.id, pinned)}
-                    onAssignCampaign={(campaignId) => doAssignCampaign(thread.id, campaignId)}
-                    onArchive={() => doArchive(thread.id)}
-                    onDelete={() => doDelete(thread.id)}
-                  />
+                  <div className="arc-campaign-folder" key={folder.id} data-open={open ? "true" : "false"}>
+                    <button type="button" className="arc-campaign-folder-head" aria-expanded={open} onClick={() => setCampaignOpen((current) => ({ ...current, [folder.id]: !open }))}>
+                      <ChevronRight size={12} className="arc-campaign-folder-caret" />
+                      <Megaphone size={12} />
+                      <span>{folder.name}</span>
+                      {folder.items.some((thread) => thread.running) ? <i className="arc-campaign-folder-dot" aria-label="Arc is working in this campaign" /> : null}
+                      <small>{folder.items.length}</small>
+                    </button>
+                    {open ? (
+                      <div className="arc-campaign-folder-body">
+                        {shown.map(renderThread)}
+                        {capped ? <button type="button" className="arc-history-more" onClick={() => setCampaignShowAll((current) => ({ ...current, [folder.id]: true }))}>Show {folder.items.length - shown.length} more</button> : null}
+                      </div>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>
-          ))}
-          {visibleGroups.length === 0 ? <div className="arc-history-empty"><Search size={17} /><b>No conversations found</b><span>Try a different title or date.</span></div> : null}
+          ) : null}
+          {recentGroups.length > 0 ? (
+            <div className="arc-history-section">
+              <h3 className="arc-history-section-head"><span>{campaignFolders.length > 0 ? "No campaign" : "Recent"}</span></h3>
+              {recentGroups.map((group) => (
+                <div className="arc-history-group" key={group.group}>
+                  <h4>{group.group}</h4>
+                  {group.items.map(renderThread)}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {/* Message hits, below the threads whose titles matched. Separate
+              section rather than merged in: "this chat is called X" and "this
+              chat says X" are different answers, and collapsing them loses the
+              quote that explains why a result is here. */}
+          {messageSearchActive ? (
+            <div className="arc-history-section arc-history-messages">
+              <h3 className="arc-history-section-head">
+                <MessageSquareText size={11} /><span>In messages</span>
+                {searchingMessages ? <LoaderCircle size={11} className="is-spinning" /> : messageHits && messageHits.length > 0 ? <small>{messageHits.length}</small> : null}
+              </h3>
+              {(messageHits ?? []).map((hit) => (
+                <Link
+                  href={`/arc?c=${hit.conversationId}`}
+                  className="arc-message-hit"
+                  key={hit.messageId}
+                  onClick={onClose}
+                >
+                  <span className="arc-message-hit-head">
+                    <b>{hit.conversationTitle}</b>
+                    <small>{hit.role === "operator" ? "You" : "Arc"}</small>
+                  </span>
+                  <span className="arc-message-hit-snippet">
+                    {hit.snippet.truncatedStart ? "…" : ""}{hit.snippet.before}
+                    <mark>{hit.snippet.match}</mark>
+                    {hit.snippet.after}{hit.snippet.truncatedEnd ? "…" : ""}
+                  </span>
+                </Link>
+              ))}
+              {!searchingMessages && messageHits && messageHits.length === 0 ? (
+                <p className="arc-history-messages-empty">No messages contain “{query.trim()}”.</p>
+              ) : null}
+            </div>
+          ) : null}
+          {campaignFolders.length === 0 && recentGroups.length === 0 && !messageSearchActive ? <DrawerEmpty icon={<Search size={18} />} title="No conversations found" hint="Try a different title or date." /> : null}
         </div>
         <div className="arc-archived">
           <button type="button" className={`arc-archived-toggle${archivedOpen ? " is-open" : ""}`} onClick={toggleArchived} aria-expanded={archivedOpen}>
@@ -1040,11 +1282,11 @@ function ThreadDrawer({
         </div>
       </section> : null}
 
-      {view === "skills" && skillsMode === "installed" ? <section className="arc-drawer-view arc-drawer-skills" aria-labelledby="arc-skills-title">
-        <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-skills-title">Skills</h2><span>{installedSkills.length + generatedSkills.length} installed</span></div><p>Reusable workflows you can call with <code>/</code> in any conversation.</p></header>
-        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search your skills" placeholder="Search your skills" value={installedSearch} onChange={(event) => setInstalledSearch(event.target.value)} /></label>
+      {view === "skills" && skillsMode === "installed" ? <section className="arc-drawer-view arc-drawer-skills" aria-label="Skills">
+        <p className="arc-drawer-purpose">Reusable workflows you can call with <code>/</code> in any conversation.</p>
+        <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search your skills" placeholder="Search your skills" value={installedSearch} onChange={(event) => setInstalledSearch(event.target.value)} /></label>
         {voiceStatus ? <p className="arc-voice-status" data-tone={voiceStatus.tone}>{voiceStatus.tone === "ok" ? <Check size={13} /> : <Info size={13} />}{voiceStatus.text}</p> : null}
-        <div className="arc-skills-section-head"><span>Your skills</span><small>{installedEntries.length} of {installedSkills.length + generatedSkills.length}</small></div>
+        <div className="arc-drawer-section-head"><span>Your skills</span><small>{installedSearch.trim() ? `${installedEntries.length} of ${installedSkills.length + generatedSkills.length}` : `${installedSkills.length + generatedSkills.length} installed`}</small></div>
         <div className="arc-skills-list" onKeyDown={handleRovingListKeyDown}>
           {installedEntries.map(({ skill, detail, generated }) => {
             const removable = Boolean(generated) || skill.source === "github" || skill.source === "library";
@@ -1056,7 +1298,14 @@ function ThreadDrawer({
                   <span>
                     <span className="arc-skill-row-title">
                       <b>{skill.name}</b>
-                      <span className="arc-skill-source" data-source={skill.source}>{SKILL_SOURCE_LABEL[skill.source]}</span>
+                      {/* Only where it says something. The badge exists so a skill
+                          Arc ships and an untrusted public GitHub import don't
+                          look alike — and it was drawn on every row, including
+                          the eight built-ins, where it read "BUILT-IN" eight
+                          times and told you nothing. Absence now means built-in;
+                          a badge means you added this, which is the case worth
+                          the eye. */}
+                      {isBuiltInSkill(skill) ? null : <span className="arc-skill-source" data-source={skill.source}>{SKILL_SOURCE_LABEL[skill.source]}</span>}
                     </span>
                     <small>{detail}</small>
                     {/* Every command the skill answers to. Showing only the first
@@ -1071,7 +1320,7 @@ function ThreadDrawer({
               </div>
             );
           })}
-          {installedEntries.length === 0 ? <div className="arc-skill-empty"><Search size={17} /><b>No skills match</b><span>Try another workflow name or command.</span></div> : null}
+          {installedEntries.length === 0 ? <DrawerEmpty icon={<Search size={18} />} title="No skills match" hint="Try another workflow name or command." /> : null}
         </div>
         <div className="arc-skill-manage">
           <button type="button" className="arc-skill-manage-toggle" aria-expanded={manageOpen} onClick={() => setManageOpen((open) => !open)}>
@@ -1087,8 +1336,9 @@ function ThreadDrawer({
         <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Skills can prepare work, but outbound actions still require review.</p>
       </section> : null}
 
-      {view === "skills" && skillsMode === "library" ? <section className="arc-drawer-view arc-drawer-skills arc-skill-library" aria-labelledby="arc-skill-library-title">
-        <header className="arc-drawer-view-head arc-skill-library-head"><button type="button" onClick={() => setSkillsMode("installed")}><ArrowLeft size={14} /> Skills</button><div className="arc-drawer-title-row"><h2 id="arc-skill-library-title">Skill library</h2><span>Workspace</span></div><p>Install reviewed workflows from Arc or a public GitHub repository.</p></header>
+      {view === "skills" && skillsMode === "library" ? <section className="arc-drawer-view arc-drawer-skills arc-skill-library" aria-label="Skill library">
+        <div className="arc-drawer-back"><button type="button" onClick={() => setSkillsMode("installed")}><ArrowLeft size={13} /> Your skills</button></div>
+        <p className="arc-drawer-purpose">Install reviewed workflows from Arc or a public GitHub repository.</p>
         <button type="button" className="arc-github-toggle" aria-expanded={githubOpen} onClick={() => setGithubOpen((open) => !open)}><GitFork size={15} /><span><b>Import from GitHub</b><small>Repository or SKILL.md URL</small></span><ChevronDown size={13} /></button>
         {githubOpen ? <div className="arc-github-import">
           <label><span>GitHub URL</span><div><GitFork size={14} /><input type="url" value={githubUrl} placeholder="https://github.com/org/repo/blob/main/SKILL.md" onChange={(event) => { setGithubUrl(event.target.value); setGithubPreview(null); setGithubStatus(null); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void reviewGithubSkill(); } }} /></div></label>
@@ -1099,8 +1349,8 @@ function ThreadDrawer({
         {/* GitHub imports used to get their own list here, with the only remove
             button in the product. They now sit in the main Installed list with
             every other skill, badged and removable there. */}
-        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search online skills" placeholder="Search skills" value={skillSearch} onChange={(event) => setSkillSearch(event.target.value)} /></label>
-        <div className="arc-skills-section-head"><span>Discover</span><small>{visibleLibrarySkills.length} skills</small></div>
+        <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search online skills" placeholder="Search skills" value={skillSearch} onChange={(event) => setSkillSearch(event.target.value)} /></label>
+        <div className="arc-drawer-section-head"><span>Discover</span><small>{visibleLibrarySkills.length} skills</small></div>
         <div className="arc-skills-list arc-library-list" onKeyDown={handleRovingListKeyDown}>
           {visibleLibrarySkills.map((skill) => {
             const installed = installedSkillKeys.includes(skill.key);
@@ -1115,24 +1365,40 @@ function ThreadDrawer({
               <button type="button" disabled={saving} onClick={() => onSetSkillInstalled(skill, !installed)}>{saving ? <LoaderCircle size={13} className="is-spinning" /> : installed ? <Check size={13} /> : <Download size={13} />}{saving ? "Saving" : installed ? "Installed" : "Install"}</button>
             </article>;
           })}
-          {visibleLibrarySkills.length === 0 ? <div className="arc-connector-empty"><Search size={17} /><b>No skills found</b><span>Try a different workflow or command.</span></div> : null}
+          {visibleLibrarySkills.length === 0 ? <DrawerEmpty icon={<Search size={18} />} title="No skills found" hint="Try a different workflow or command." /> : null}
         </div>
         <p className="arc-drawer-footnote"><ShieldCheck size={13} /> GitHub skills are treated as untrusted text and cannot expand Arc&apos;s read-only tool boundary.</p>
       </section> : null}
 
-      {view === "connectors" ? <section className="arc-drawer-view arc-drawer-connectors" aria-labelledby="arc-connectors-title">
-        <header className="arc-drawer-view-head"><div className="arc-drawer-title-row"><h2 id="arc-connectors-title">Connectors</h2><span className="is-connector-count">{connectedCount} connected</span></div><p>Arc&apos;s plugins, with the live status for this workspace.</p></header>
+      {view === "connectors" ? <section className="arc-drawer-view arc-drawer-connectors" aria-label="Connectors">
+        <p className="arc-drawer-purpose">What Arc is allowed to read in this workspace, and what it still needs.</p>
         {!connectorsConfigured ? <div className="arc-connector-notice"><ShieldCheck size={14} /><span><b>Catalog preview</b><small>Connect a workspace to store credentials and live status.</small></span></div> : null}
-        <label className="arc-skill-search"><Search size={14} /><input type="search" aria-label="Search connectors" placeholder="Search connectors" value={connectorSearch} onChange={(event) => setConnectorSearch(event.target.value)} /></label>
+        <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search connectors" placeholder="Search connectors" value={connectorSearch} onChange={(event) => setConnectorSearch(event.target.value)} /></label>
+        <div className="arc-drawer-filters" role="group" aria-label="Filter connectors by status">
+          {([
+            ["all", "All", connectorItems.filter((connector) => connector.status !== "unavailable").length],
+            ["on", "On", connectedCount],
+            ["off", "Off", offCount],
+            ["setup", "Needs setup", setupCount],
+          ] as const).map(([id, label, count]) => <button type="button" key={id} className={connectorFilter === id ? "is-active" : ""} aria-pressed={connectorFilter === id} onClick={() => setConnectorFilter(id)}><span>{label}</span>{count > 0 ? <small>{count}</small> : null}</button>)}
+        </div>
         {connectorError ? <p className="arc-connector-error" role="alert">{connectorError}</p> : null}
         <div className="arc-connector-list">
           {connectorGroups.map((group) => (
             <Fragment key={group.kind}>
-              <div className="arc-connectors-section-head"><span>{group.label}</span><small>{group.items.filter((item) => item.status === "connected").length} of {group.items.length} on</small></div>
+              <div className="arc-drawer-section-head"><span>{group.label}</span><small>{group.items.filter((item) => item.status === "connected").length} of {group.items.length} on</small></div>
               {group.items.map((connector) => (
                 <div className="arc-connector-row" data-status={connector.status} data-focused={focusedConnector === connector.key ? "true" : undefined} ref={focusedConnector === connector.key ? focusConnectorRef : undefined} key={connector.key}>
                   <span className="arc-connector-logo" style={{ "--connector-color": connector.color } as React.CSSProperties}>{connector.mark}</span>
-                  <span className="arc-connector-copy"><span><b>{connector.label}</b><em>{connector.statusLabel}</em></span><small>{connector.kindLabel} · {connector.accessLabel}</small><p>{connector.description}</p></span>
+                  {/* Three stacked lines became two. The kind was already the
+                      group heading this row sits under, and the status pill said
+                      "Connected"/"Off" beside a switch that says the same thing
+                      louder — so the pill is now only drawn for the states no
+                      switch can express (not set up, error, not armed). */}
+                  <span className="arc-connector-copy">
+                    <span><b>{connector.label}</b><small>{connector.accessLabel}</small>{connector.toggleable ? null : <em>{connector.statusLabel}</em>}</span>
+                    <p>{connector.description}</p>
+                  </span>
                   {/* Switchable here; credential entry still belongs in Settings. */}
                   {connector.toggleable ? (
                     <button
@@ -1154,7 +1420,7 @@ function ThreadDrawer({
               ))}
             </Fragment>
           ))}
-          {connectorGroups.length === 0 ? <div className="arc-connector-empty"><Link2 size={17} /><b>No connectors found</b><span>{connectorSearch.trim() ? "Try a different name or kind." : "Open Settings to refresh the workspace catalog."}</span></div> : null}
+          {connectorGroups.length === 0 ? <DrawerEmpty icon={<Link2 size={18} />} title="No connectors found" hint={connectorSearch.trim() || connectorFilter !== "all" ? "Try a different name, kind or status." : "Open Settings to refresh the workspace catalog."} /> : null}
           {/* Not built yet — nothing to act on, so out of the main list. */}
           {plannedConnectors.length > 0 ? (
             <div className="arc-planned">
@@ -1171,22 +1437,42 @@ function ThreadDrawer({
             </div>
           ) : null}
         </div>
-        <div className="arc-connectors-section-head"><span>{connectorItems.length} workspace connectors</span><Link href="/settings?s=connections">Manage all <ArrowRight size={12} /></Link></div>
+        <div className="arc-drawer-section-head is-footer"><span>{connectorItems.length} workspace connectors</span><Link href="/settings?s=connections">Manage all <ArrowRight size={12} /></Link></div>
         <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Switching a connector on lets Arc read it — signal sources only propose, and nothing sends without your approval.</p>
       </section> : null}
 
-      {view === "saved" ? <section className="arc-drawer-view arc-drawer-saved" aria-labelledby="arc-saved-title">
-        <header className="arc-drawer-view-head"><h2 id="arc-saved-title">Saved</h2><p>Responses, drafts and media you saved from Arc. Send one straight back into the conversation.</p></header>
+      {view === "saved" ? <section className="arc-drawer-view arc-drawer-saved" aria-label="Saved">
+        <p className="arc-drawer-purpose">Responses, drafts and media you kept, ready to send back into any conversation.</p>
+        {/* The search and chips only make sense once there is a list to narrow;
+            while it loads, or when it is empty, they would be dead controls. */}
+        {savedItems && savedItems.length > 0 ? <>
+          <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search saved items" placeholder="Search saved items" value={savedSearch} onChange={(event) => setSavedSearch(event.target.value)} /></label>
+          <div className="arc-drawer-filters" role="group" aria-label="Filter saved items by kind">
+            {([
+              ["all", "All", savedCounts.all],
+              ["draft", "Drafts", savedCounts.draft],
+              ["angle", "Angles", savedCounts.angle],
+              ["media", "Media", savedCounts.media],
+            ] as const).filter(([id, , count]) => id === "all" || count > 0)
+              .map(([id, label, count]) => <button type="button" key={id} className={savedKind === id ? "is-active" : ""} aria-pressed={savedKind === id} onClick={() => setSavedKind(id)}><span>{label}</span>{count > 0 ? <small>{count}</small> : null}</button>)}
+          </div>
+        </> : null}
         {savedError ? <p className="arc-saved-error" role="alert">{savedError}</p> : null}
         {savedLoading ? (
-          <div className="arc-saved-empty"><LoaderCircle size={16} className="is-spinning" /> Loading your saved items…</div>
-        ) : savedItems && savedItems.length > 0 ? (
+          <div className="arc-drawer-loading"><LoaderCircle size={14} className="is-spinning" /> Loading your saved items…</div>
+        ) : savedItems && savedItems.length > 0 ? (<>
+          <div className="arc-drawer-section-head"><span>{savedKind === "all" ? "Everything saved" : savedKind === "draft" ? "Drafts" : savedKind === "angle" ? "Angles" : "Media"}</span><small>{savedNarrowed ? `${visibleSaved.length} of ${savedCounts.all}` : `${savedCounts.all} item${savedCounts.all === 1 ? "" : "s"}`}</small></div>
+          {/* No roving arrow keys here, unlike the other lists: a saved card
+              carries up to four controls, so Down would step within a card
+              rather than between them. Tab is the honest traversal. */}
           <div className="arc-saved-list">
-            {savedItems.map((item) => (
+            {visibleSaved.map((item) => (
               <div className="arc-saved-item" key={item.id}>
                 <div className="arc-saved-main">
-                  <span className={`arc-saved-kind is-${item.kind}`}>{item.kind === "draft" ? "Draft" : item.kind === "media" ? "Media" : "Angle"}</span>
-                  <b className="arc-saved-title">{item.title}</b>
+                  <span className="arc-saved-head">
+                    <b className="arc-saved-title">{item.title}</b>
+                    <span className={`arc-saved-kind is-${item.kind}`}>{item.kind === "draft" ? "Draft" : item.kind === "media" ? "Media" : "Angle"}</span>
+                  </span>
                   {item.preview ? <p className="arc-saved-preview">{item.preview}</p> : null}
                   {/* The reuse the copy has always promised. Text goes into the
                       composer; media has no body to insert, so its reusable
@@ -1200,21 +1486,42 @@ function ThreadDrawer({
                     <button type="button" className="arc-saved-copy" onClick={() => void copySaved(item)}>
                       {copiedSavedId === item.id ? <><Check size={12} /> Copied</> : <><Copy size={12} /> {item.kind === "media" ? "Copy link" : "Copy"}</>}
                     </button>
-                    {item.conversationHref ? <Link href={item.conversationHref} className="arc-saved-open" onClick={onClose}>Open source chat <ArrowRight size={12} /></Link> : null}
+                    {item.conversationHref ? <Link href={item.conversationHref} className="arc-saved-open" onClick={onClose}>Source chat <ArrowRight size={12} /></Link> : null}
                   </div>
                 </div>
                 <button type="button" className="arc-saved-remove" onClick={() => removeSaved(item.id)} aria-label={`Remove saved item: ${item.title}`} title="Remove"><Trash2 size={14} /></button>
               </div>
             ))}
+            {visibleSaved.length === 0 ? <DrawerEmpty icon={<Search size={18} />} title="Nothing matches" hint="Try another title, or a different kind." /> : null}
           </div>
-        ) : (
-          <div className="arc-saved-empty">
-            <Bookmark size={18} />
-            <div><b>Nothing saved yet.</b><span>Bookmark any Arc response to keep it here and reuse it in a later conversation.</span></div>
-          </div>
+        </>) : (
+          <DrawerEmpty icon={<Bookmark size={18} />} title="Nothing saved yet" hint="Bookmark any Arc response to keep it here and reuse it in a later conversation." />
         )}
+        <p className="arc-drawer-footnote"><ShieldCheck size={13} /> Reusing a saved item only fills the composer — the turn still runs, and outbound still waits on you.</p>
       </section> : null}
     </motion.aside>
+  );
+}
+
+/** Status buckets for the connector list. Deliberately about what the operator
+ *  can do next, not a mirror of `ConnectorStatus`: `not_configured` and `error`
+ *  are one bucket because the next step for both is opening Settings. */
+type ConnectorFilter = "all" | "on" | "off" | "setup";
+type SavedKindFilter = "all" | SavedKind;
+
+/**
+ * Every "nothing here" in the drawer, in one shape. There were four — one per
+ * tab — at three different heights, two icon sizes and two copy structures, so
+ * an empty Skills tab and an empty Connectors tab looked like different
+ * products. This is also why the tabs never lined up vertically when empty.
+ */
+function DrawerEmpty({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
+  return (
+    <div className="arc-drawer-empty">
+      <span className="arc-drawer-empty-mark">{icon}</span>
+      <b>{title}</b>
+      <span>{hint}</span>
+    </div>
   );
 }
 
@@ -1267,6 +1574,9 @@ const SKILL_SOURCE_LABEL: Record<ArcSkillDefinition["source"], string> = {
   github: "GitHub",
   generated: "Learned",
 };
+
+/** Ships with Arc — the default, and so the one that needs no badge. */
+const isBuiltInSkill = (skill: ArcSkillDefinition) => skill.source === "built-in" || skill.source === "system";
 
 const VOICE_TIER_LABEL: Record<GeneratedSkillRecord["evidenceTier"], string> = {
   outcome: "Backed by booked work",
@@ -1340,17 +1650,19 @@ function ShareDialog({ conversationId, onClose }: { conversationId: string | nul
   });
 
   return (
-    <motion.div className="arc-modal-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} role="presentation">
-      <motion.div className="arc-share-dialog" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.99 }} role="dialog" aria-modal="true" aria-labelledby="arc-share-title" onClick={(event) => event.stopPropagation()}>
-        <div className="arc-share-head"><div><h2 id="arc-share-title">Share conversation</h2><p>Private by default. Choose who can view or collaborate.</p></div><button type="button" className="arc-icon-button" onClick={onClose} aria-label="Close share dialog"><X size={17} /></button></div>
-        {!conversationId ? <p className="arc-share-empty">Start a real conversation before sharing it.</p> : null}
-        <fieldset disabled={busy || !conversationId}><legend>Who can access</legend><div className="arc-segment"><button type="button" className={visibility === "private" ? "is-active" : ""} onClick={() => setVisibility("private")}>Private</button><button type="button" className={visibility === "workspace" ? "is-active" : ""} onClick={() => setVisibility("workspace")}>Workspace</button></div></fieldset>
-        {visibility === "workspace" ? <fieldset disabled={busy || !conversationId}><legend>Workspace permission</legend><div className="arc-segment"><button type="button" className={permission === "view" ? "is-active" : ""} onClick={() => setPermission("view")}>Can view</button><button type="button" className={permission === "collaborate" ? "is-active" : ""} onClick={() => setPermission("collaborate")}>Can collaborate</button></div></fieldset> : null}
-        <button type="button" className="arc-primary-button" onClick={save} disabled={busy || !conversationId}>{busy ? "Saving…" : "Save access"}</button>
-        <div className="arc-share-people"><h3>People with access</h3>{state?.shared.length ? state.shared.map((member) => <div key={member.userId}><span><Users size={15} /><b>{member.email ?? member.userId}</b><small>{member.permission}</small></span><button type="button" onClick={() => remove(member.userId)}>Remove</button></div>) : <p>No one has been added yet.</p>}{state?.addable.slice(0, 3).map((member) => <div key={member.userId}><span><Users size={15} /><b>{member.email ?? member.userId}</b></span><button type="button" onClick={() => add(member.userId, "view")}>Add</button></div>)}</div>
-        {notice ? <p className="arc-share-notice">{notice}</p> : null}
+    <OverlayPortal>
+      <motion.div className="arc-modal-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} role="presentation">
+        <motion.div className="arc-share-dialog" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.99 }} role="dialog" aria-modal="true" aria-labelledby="arc-share-title" onClick={(event) => event.stopPropagation()}>
+          <div className="arc-share-head"><div><h2 id="arc-share-title">Share conversation</h2><p>Private by default. Choose who can view or collaborate.</p></div><button type="button" className="arc-icon-button" onClick={onClose} aria-label="Close share dialog"><X size={17} /></button></div>
+          {!conversationId ? <p className="arc-share-empty">Start a real conversation before sharing it.</p> : null}
+          <fieldset disabled={busy || !conversationId}><legend>Who can access</legend><div className="arc-segment"><button type="button" className={visibility === "private" ? "is-active" : ""} onClick={() => setVisibility("private")}>Private</button><button type="button" className={visibility === "workspace" ? "is-active" : ""} onClick={() => setVisibility("workspace")}>Workspace</button></div></fieldset>
+          {visibility === "workspace" ? <fieldset disabled={busy || !conversationId}><legend>Workspace permission</legend><div className="arc-segment"><button type="button" className={permission === "view" ? "is-active" : ""} onClick={() => setPermission("view")}>Can view</button><button type="button" className={permission === "collaborate" ? "is-active" : ""} onClick={() => setPermission("collaborate")}>Can collaborate</button></div></fieldset> : null}
+          <button type="button" className="arc-primary-button" onClick={save} disabled={busy || !conversationId}>{busy ? "Saving…" : "Save access"}</button>
+          <div className="arc-share-people"><h3>People with access</h3>{state?.shared.length ? state.shared.map((member) => <div key={member.userId}><span><Users size={15} /><b>{member.email ?? member.userId}</b><small>{member.permission}</small></span><button type="button" onClick={() => remove(member.userId)}>Remove</button></div>) : <p>No one has been added yet.</p>}{state?.addable.slice(0, 3).map((member) => <div key={member.userId}><span><Users size={15} /><b>{member.email ?? member.userId}</b></span><button type="button" onClick={() => add(member.userId, "view")}>Add</button></div>)}</div>
+          {notice ? <p className="arc-share-notice">{notice}</p> : null}
+        </motion.div>
       </motion.div>
-    </motion.div>
+    </OverlayPortal>
   );
 }
 
@@ -1446,6 +1758,14 @@ export function ArcView({
   // the inline package summary.
   const [reviewCards, setReviewCards] = useState<ArcActionCard[] | null>(null);
   const [assetStatuses, setAssetStatuses] = useState<Record<string, ArcAssetStatus>>({});
+  // The readable copy behind each card, so the conversation renders the draft
+  // instead of a receipt pointing at one. Keyed by asset id, same as statuses.
+  // The offline preview seeds from fixtures; live seeds from the asset rows.
+  const [assetBodies, setAssetBodies] = useState<Record<string, ArcAssetBody>>(live ? {} : DEMO_ASSET_BODIES);
+  // Live guardrail findings per asset. A MISSING key means "not loaded yet" and
+  // an empty array means "loaded, none recorded" — the card renders very
+  // different things for those two, so the distinction is load-bearing.
+  const [assetChecks, setAssetChecks] = useState<Record<string, ArcDraftFinding[]>>(live ? {} : DEMO_ASSET_CHECKS);
   const resolvedDemoConversationId =
     initialDemoConversationId &&
     (initialDemoConversationId === "new" ||
@@ -1457,15 +1777,30 @@ export function ArcView({
   const [demoTurns, setDemoTurns] = useState<DemoTurn[]>([]);
   const [demoPending, setDemoPending] = useState(false);
   const [stoppingTaskId, setStoppingTaskId] = useState<string | null>(null);
+  // ↑ in an empty composer opens your last message for editing (the convention
+  // in every chat app). A {id, n} token rather than a bare id so pressing ↑,
+  // cancelling, and pressing ↑ again re-opens the same message.
+  const [editSignal, setEditSignal] = useState<{ id: string; n: number } | null>(null);
+  // A failure that belongs to one message — a regenerate or edit-and-resend that
+  // didn't take — reported at that message instead of in the composer chip row,
+  // which is where every error used to land regardless of where it happened.
+  const [messageNotice, setMessageNotice] = useState<{ id: string; text: string } | null>(null);
   const demoTimer = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerMenuRef = useRef<HTMLDivElement | null>(null);
   const composerMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
-  const scrollRef = useRef<HTMLElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
   const chatRootRef = useRef<HTMLDivElement | null>(null);
+  // The review overlay and the workspace panel cover the pane instead of docking
+  // into it, so they need the same measured box the thread drawer does.
+  const panelPaneBox = usePaneBox(chatRootRef, workPanelOpen || Boolean(reviewCards?.length));
+  // Measured only while the drawer is open — see usePaneBox. `.arc-chat` is the
+  // element the drawer used to be `position: absolute` inside, so its rect is
+  // exactly the box the drawer should keep occupying now that it is portaled.
+  const drawerPaneBox = usePaneBox(chatRootRef, historyOpen);
   // Bottom-follow tracking. `guard()` covers the deliberate scroll-to-top calls
   // (opening a thread at its start, a new chat) that move scrollTop up exactly
   // like a reader would, so the tracker doesn't read them as "the reader left
@@ -1477,7 +1812,10 @@ export function ArcView({
   const [streamOverlay, setStreamOverlay] = useState<ArcStreamOverlay | null>(null);
   const visibleConversationId = startingNewConversation ? null : activeConversationId;
   const visibleMessages = startingNewConversation ? [] : messages;
-  const awaitingReply = live && (Boolean(optimisticTurn) || visibleMessages.some((message) => message.status === "pending" || (message.role === "arc" && !message.body.trim())));
+  // A run the server has judged dead is deliberately not "awaiting" — that is
+  // what unlocks the composer, tears down the SSE subscription, and stops the
+  // spinner on a turn the runner abandoned.
+  const awaitingReply = live && (Boolean(optimisticTurn) || hasArcReplyInFlight(visibleMessages));
   // The newest reply that actually built something. A stable id (not the message
   // array) so the auto-open effect below fires on a new asset-bearing run rather
   // than on every render.
@@ -1576,17 +1914,32 @@ export function ArcView({
     };
   }, [live, awaitingReply, visibleConversationId, router]);
 
-  // Backstop: reconcile with the server on a slow cadence while awaiting, so a
-  // blocked or proxy-buffered SSE stream still resolves. Defense in depth, not the
-  // primary path — the SSE stream above carries the live updates.
+  // Backstop: reconcile with the server while awaiting, so a blocked or
+  // proxy-buffered SSE stream still resolves. Defense in depth, not the primary
+  // path — the SSE stream above carries the live updates.
+  //
+  // This used to give up flat at 120s, which left an operator sitting on a dead
+  // run watching a spinner that could never resolve: the server doesn't judge a
+  // run stalled until ARC_RUN_STALE_MS (180s), so the client stopped looking a
+  // full minute *before* the answer existed. It now keeps checking — slowly,
+  // once the useful fast window is over — until past the stale cutoff, at which
+  // point the stall verdict arrives, `awaitingReply` flips false, and this tears
+  // itself down. The ceiling is derived from the cutoff so the two can't drift.
   useEffect(() => {
     if (!awaitingReply) return;
     const startedAt = Date.now();
-    const interval = window.setInterval(() => {
-      if (Date.now() - startedAt > 120_000) return window.clearInterval(interval);
+    const ceiling = ARC_RUN_STALE_MS + 60_000;
+    let timer = 0;
+    const tick = () => {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed > ceiling) return;
       router.refresh();
-    }, 6000);
-    return () => window.clearInterval(interval);
+      // Fast while a reply is plausibly seconds away; slow once we're only
+      // waiting to be told it isn't coming.
+      timer = window.setTimeout(tick, elapsed < 120_000 ? 6_000 : 15_000);
+    };
+    timer = window.setTimeout(tick, 6_000);
+    return () => window.clearTimeout(timer);
   }, [awaitingReply, router]);
 
   // The workspace exists to hold campaign assets, so that is the only thing that
@@ -1748,9 +2101,11 @@ export function ArcView({
   });
   const latestQuestion = live ? [...visibleMessages].reverse().find((message) => message.role === "arc")?.questions?.[0] ?? null : null;
   const visibleQuestion = latestQuestion && latestQuestion.id !== dismissedQuestionId ? latestQuestion : null;
-  const contextState = visibleMessages.length > 0
-    ? contextUsage(visibleMessages.map((message) => message.body ?? ""))
-    : { tokens: 4_320, pct: 18, level: "ok" as const };
+  // No special case for the empty conversation: contextUsage([]) is already
+  // 0% (asserted in context-usage.test.ts). The branch that used to be here
+  // substituted a hardcoded 18%, so a conversation with nothing in it claimed
+  // a fifth of the window was spent.
+  const contextState = contextUsage(visibleMessages.map((message) => message.body ?? ""));
   // The context meter is a persistent affordance again: it always shows so the
   // operator can see (and click into) how full the window is at any point, not
   // only once usage crosses a threshold. Its ring still colors by level, so a
@@ -1884,21 +2239,41 @@ export function ArcView({
     }
 
     setUploading(true);
-    const results = await Promise.all(files.map(async (file) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      return uploadArcAttachmentAction(formData);
-    }));
-    const uploaded = results.flatMap((result) => result.ok ? [result.attachment] : []);
-    const firstError = results.find((result) => !result.ok);
-    if (uploaded.length > 0) setAttachments((current) => [...current, ...uploaded]);
-    setComposerNotice(firstError && !firstError.ok ? firstError.error : `${uploaded.length} file${uploaded.length === 1 ? "" : "s"} attached`);
-    setUploading(false);
+    // `finally`, because `uploading` gates submitDraft. Without it a rejected
+    // upload — a network blip, an action that throws — leaves the flag true for
+    // the life of the page, and from then on every send returns silently at the
+    // guard below: no message, no error, no request. That is not hypothetical;
+    // it is a day of "I sent it and nothing happened".
+    try {
+      const results = await Promise.all(files.map(async (file) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        return uploadArcAttachmentAction(formData);
+      }));
+      const uploaded = results.flatMap((result) => result.ok ? [result.attachment] : []);
+      const firstError = results.find((result) => !result.ok);
+      if (uploaded.length > 0) setAttachments((current) => [...current, ...uploaded]);
+      setComposerNotice(firstError && !firstError.ok ? firstError.error : `${uploaded.length} file${uploaded.length === 1 ? "" : "s"} attached`);
+    } catch (error) {
+      setComposerNotice(error instanceof Error ? `Attachment failed: ${error.message}` : "That attachment could not be uploaded.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const submitDraft = () => {
     const body = draft.trim();
-    if (!body || /^\/[^\s]*$/.test(body) || /@$/.test(body) || isSending || demoPending || uploading) return;
+    // Silent: the composer is already showing why (empty box, open skill picker,
+    // open mention picker). See composer-guard.ts for the rule.
+    if (isMidComposition(body)) return;
+    // Never silent: these are flags the operator cannot see. A send that does
+    // nothing and says nothing is indistinguishable from a broken app — which is
+    // precisely how a stuck `uploading` went unnoticed for a day.
+    const blocked = describeBlockedSend({ isSending, demoPending, uploading });
+    if (blocked) {
+      setComposerNotice(blocked);
+      return;
+    }
     if (command === "add-skill") {
       setComposerMenu(null);
       setComposerNotice(null);
@@ -2089,20 +2464,26 @@ export function ArcView({
     router.refresh();
   };
 
+  // Both of these used to report into `composerNotice` — so a regenerate that
+  // failed on the third message announced itself at the bottom of the screen,
+  // next to the send button, and overwrote whatever the last error was. They
+  // report at the message they belong to now.
   const handleEditResend = (messageId: string, newBody: string) => {
     setComposerNotice(null);
+    setMessageNotice(null);
     startSend(async () => {
       const result = await editAndResendArcMessageAction({ messageId, body: newBody });
-      if (!result.ok) return setComposerNotice(result.error);
+      if (!result.ok) return setMessageNotice({ id: messageId, text: result.error });
       router.refresh();
     });
   };
 
   const handleRegenerate = (replyMessageId: string) => {
     setComposerNotice(null);
+    setMessageNotice(null);
     startSend(async () => {
       const result = await regenerateArcReplyAction(replyMessageId);
-      if (!result.ok) return setComposerNotice(result.error);
+      if (!result.ok) return setMessageNotice({ id: replyMessageId, text: result.error });
       router.refresh();
     });
   };
@@ -2142,7 +2523,7 @@ export function ArcView({
   const latestDemoRequest = [...demoTurns].reverse().find((turn) => turn.role === "operator")?.body;
   const latestDemoArcTurn = [...demoTurns].reverse().find((turn) => turn.role === "arc");
   const demoSeed = shouldUseDemoSeedWorkspace({ live, selectedDemoId, turnCount: demoTurns.length });
-  const workCards = live ? latestArcMessage?.actions ?? [] : demoSeed ? DEMO_PACKAGE_CARDS : [];
+  const workCards = live ? latestArcMessage?.actions ?? [] : demoSeed ? DEMO_WORKSPACE_CARDS : [];
   const reviewableWorkCards = (live || selectedDemoId === "new" ? workCards : DEMO_PACKAGE_CARDS).filter((card) => card.approval);
   // Stable key for EVERY asset this conversation references — not just the latest
   // turn's. Receipt cards render per message throughout the thread and all read
@@ -2179,6 +2560,51 @@ export function ArcView({
       .catch(() => {
         // Best-effort: a failed lookup leaves the card snapshot in place rather
         // than blanking a status the operator is looking at.
+      });
+    return () => { cancelled = true; };
+  }, [live, conversationAssetKey]);
+
+  /**
+   * The copy itself, for the same set of assets.
+   *
+   * Separate from the status fetch on purpose: a status is four bytes and a body
+   * is a page of prose, so a failure to load the copy must not cost the chat its
+   * live decision state. Each falls back independently — no bodies means every
+   * card renders its stored preview, which is what it did before this existed.
+   */
+  useEffect(() => {
+    if (!live || !conversationAssetKey) return;
+    let cancelled = false;
+    getArcAssetBodiesAction(conversationAssetKey.split(","))
+      .then((fromDb) => {
+        if (cancelled || !fromDb || Object.keys(fromDb).length === 0) return;
+        setAssetBodies((current) => ({ ...current, ...fromDb }));
+      })
+      .catch(() => {
+        // Best-effort, as above: the card keeps its preview.
+      });
+    return () => { cancelled = true; };
+  }, [live, conversationAssetKey]);
+
+  /**
+   * The findings recorded against those same assets.
+   *
+   * The card's own `flags` are frozen at draft time and on prod are usually
+   * empty while the asset holds OPEN findings — 15 of them across 13 assets,
+   * two of which are blockers. Reading live is the only way the chat can report
+   * a finding raised after Arc drafted, or stop reporting one since resolved.
+   */
+  useEffect(() => {
+    if (!live || !conversationAssetKey) return;
+    let cancelled = false;
+    getArcAssetChecksAction(conversationAssetKey.split(","))
+      .then((fromDb) => {
+        if (cancelled || !fromDb) return;
+        setAssetChecks((current) => ({ ...current, ...fromDb }));
+      })
+      .catch(() => {
+        // Best-effort: the card falls back to "unknown" and stays silent about
+        // checks rather than claiming there were none.
       });
     return () => { cancelled = true; };
   }, [live, conversationAssetKey]);
@@ -2253,20 +2679,25 @@ export function ArcView({
 
   return (
     <div className="arc-chat" ref={chatRootRef} data-workspace-open={panelVisible ? "true" : "false"} data-new-conversation={live && !visibleConversationId && visibleMessages.length === 0 && !optimisticTurn ? "true" : "false"}>
+      {/* The chat surface has no visible title; this names the document so the
+          route still has exactly one h1 like every other. */}
+      <h1 className="sr-only">Arc</h1>
       <header className="arc-conversation-header">
         <button type="button" ref={historyButtonRef} className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-expanded={historyOpen} aria-haspopup="dialog" aria-label="Open conversations"><MessagesSquare size={17} /><span>Conversations</span></button>
-        <div className="arc-conversation-title"><h1>{header.title}</h1><p>{header.subtitle}</p></div>
+        <div className="arc-conversation-title"><h2>{header.title}</h2><p>{header.subtitle}</p></div>
         <div className="arc-conversation-actions">
-          {needsReviewCards.length > 0 ? <button type="button" className="arc-header-attention" aria-label={`${needsReviewCards.length} items need review`} onClick={() => openReview(needsReviewCards)}><ClipboardCheck size={15} /><span>{needsReviewCards.length} need review</span></button> : null}
+          {needsReviewCards.length > 0 ? <button type="button" className="arc-header-attention" aria-label={`${needsReviewCards.length} items need you`} onClick={() => openReview(needsReviewCards)}><ClipboardCheck size={15} /><span>{needsReviewCards.length} need you</span></button> : null}
           <button type="button" onClick={() => setShareOpen(true)} disabled={!visibleConversationId} title={!visibleConversationId ? "Start a real conversation before sharing" : "Share conversation"}><Share2 size={15} /> Share</button>
           <button type="button" className="arc-header-work" aria-expanded={panelVisible} aria-label={panelVisible ? "Close conversation workspace" : "Open conversation workspace"} onClick={() => setWorkPanelVisibility(!panelVisible)}>{panelVisible ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}<span>Workspace</span></button>
         </div>
       </header>
 
-      <main className="arc-conversation-scroll" ref={scrollRef}>
+      {/* A <div>, not <main>: the shell now provides the page's single main
+          landmark, and nesting one inside another is invalid. */}
+      <div className="arc-conversation-scroll" ref={scrollRef}>
         <div className="arc-conversation-column">
           {live && historyLoadError ? <div className="arc-history-load-error" role="status"><CircleAlert size={15} /><span><b>History is temporarily unavailable.</b>{historyLoadError}</span></div> : null}
-          {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
+          {live ? <LiveConversation messages={renderedMessages} optimisticTurn={optimisticTurn} operatorName={greetName} waiting={waiting} assetStatuses={assetStatuses} assetBodies={assetBodies} assetChecks={assetChecks} onSuggestion={updateDraft} onReview={openReview} onEdit={handleEditResend} onRegenerate={handleRegenerate} onCancelRun={stopLiveRun} stoppingTaskId={stoppingTaskId} onAssetStatus={recordAssetStatus} editSignal={editSignal} messageNotice={messageNotice} onDismissMessageNotice={() => setMessageNotice(null)} /> : showDemoLauncher ? <ArcLauncher greetName={greetName} waiting={DEMO_WAITING} onPick={updateDraft} /> : <DemoConversation turns={demoTurns} pending={demoPending} includeSeed={selectedDemoId !== "new"} packageStatuses={assetStatuses} assetBodies={assetBodies} assetChecks={assetChecks} pendingContract={buildArcRunContract({ mode, route, contextScopes, agentTaskId: "DEMO-RUNNING" })} onReview={openReview} onEditResend={demoEditResend} onStop={stopDemoRun} onAssetStatus={recordAssetStatus} />}
           {/* Room for the reply to arrive into, so the question can sit at the
               top of the view while the answer grows downward beneath it.
               Always mounted, and sized to exactly the shortfall — it shrinks as
@@ -2277,7 +2708,7 @@ export function ArcView({
           <div ref={spacerRef} className="arc-turn-spacer" aria-hidden="true" />
           <div ref={endRef} />
         </div>
-      </main>
+      </div>
 
       <footer className="arc-composer-dock">
         <div className="arc-composer-column">
@@ -2371,6 +2802,23 @@ export function ArcView({
                 items[event.key === "ArrowDown" ? 0 : items.length - 1]?.focus();
                 return;
               }
+              // ↑ on an empty composer edits your last message — see
+              // shouldEditLastOnArrowUp for why the empty gate is load-bearing.
+              if (event.key === "ArrowUp") {
+                const last = [...visibleMessages].reverse().find((message) => message.role === "operator");
+                if (shouldEditLastOnArrowUp({
+                  draft,
+                  live,
+                  busy: isSending || demoPending || awaitingReply,
+                  menuOpen: Boolean(composerMenu),
+                  hasOperatorMessage: Boolean(last),
+                })) {
+                  event.preventDefault();
+                  setMessageNotice(null);
+                  setEditSignal((current) => ({ id: last!.id, n: (current?.n ?? 0) + 1 }));
+                  return;
+                }
+              }
               if (event.key === "Enter" && !event.shiftKey) {
                 if (composerMenu === "commands" && unresolvedSkillToken && visibleSkills.length > 0) {
                   event.preventDefault();
@@ -2407,19 +2855,24 @@ export function ArcView({
         </div>
       </footer>
 
-      {/* The two side panels swap in place, so they get their own presence scope:
-          mode="wait" lets the outgoing panel finish exiting before the next one
-          enters — rendering both at once cross-fades their text on top of each other. */}
+      {/* Both panels now cover the content pane rather than docking beside it, so
+          they still swap in one presence scope — mode="wait" keeps the outgoing
+          one from cross-fading its text under the incoming one. */}
       <AnimatePresence mode="wait">
         {reviewCards && reviewCards.length > 0
-          ? <AssetReviewPanel key="asset-review" cards={reviewCards} statuses={assetStatuses} onStatus={recordAssetStatus} onClose={() => setReviewCards(null)} />
+          ? <DeliverableReview key="asset-review" cards={reviewCards} statuses={assetStatuses} bodies={assetBodies} checks={assetChecks} paneBox={panelPaneBox} returnLabel={workPanelOpen ? "Workspace" : undefined} onStatus={recordAssetStatus} onClose={() => setReviewCards(null)} />
           : workPanelOpen
-            ? <ArcWorkPanel key="work-panel" message={latestArcMessage} messages={live ? renderedMessages : undefined} cards={workCards} statuses={assetStatuses} demoSeed={demoSeed} demoPending={demoPending} demoRequest={latestDemoRequest} demoOutcome={latestDemoArcTurn ? latestDemoArcTurn.outcome ?? "complete" : undefined} onReview={openReview} onRecover={recoverRun} onClose={() => setWorkPanelVisibility(false)} />
+            ? <ArcWorkPanel key="work-panel" message={latestArcMessage} messages={live ? renderedMessages : undefined} cards={workCards} statuses={assetStatuses} demoSeed={demoSeed} demoPending={demoPending} demoRequest={latestDemoRequest} demoOutcome={latestDemoArcTurn ? latestDemoArcTurn.outcome ?? "complete" : undefined} paneBox={panelPaneBox} onReview={openReview} onRecover={recoverRun} onClose={() => setWorkPanelVisibility(false)} />
             : null}
       </AnimatePresence>
       <AnimatePresence>
-        {panelVisible ? <motion.button type="button" className="arc-workspace-scrim" aria-label="Close conversation workspace" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setReviewCards(null); setWorkPanelVisibility(false); }} /> : null}
-        {historyOpen ? <Fragment key="arc-workspace"><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismissHistory} aria-label="Close Arc workspace" /><ThreadDrawer live={live} groups={threadGroups} activeConversationId={visibleConversationId} selectedDemoId={selectedDemoId} needsReviewCount={needsReviewCards.length} onSelectDemo={selectDemoThread} onStartNew={startNewConversation} onOpenReview={() => { setHistoryOpen(false); openReview(needsReviewCards); }} onUseSkill={applyDrawerSkill} onUseSaved={useSavedItem} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} campaignItems={mentionGroups.find((group) => group.type === "campaign")?.items ?? []} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} onDismiss={dismissHistory} /></Fragment> : null}
+        {/* Scrim AND drawer portal together, never one without the other. The
+            drawer claims `aria-modal` and traps Tab across the whole document,
+            so its scrim has to block the pointer across the whole shell to
+            match — and a portaled scrim left behind a pane-scoped drawer would
+            paint over the drawer it belongs to, since .page-enter's transform
+            makes the page a single stacking context. See overlay-portal.tsx. */}
+        {historyOpen ? <Fragment key="arc-workspace"><OverlayPortal><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismissHistory} aria-label="Close Arc workspace" /><ThreadDrawer live={live} groups={threadGroups} activeConversationId={visibleConversationId} selectedDemoId={selectedDemoId} needsReviewCount={needsReviewCards.length} onSelectDemo={selectDemoThread} onStartNew={startNewConversation} onOpenReview={() => { setHistoryOpen(false); openReview(needsReviewCards); }} onUseSkill={applyDrawerSkill} onUseSaved={useSavedItem} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} campaignItems={mentionGroups.find((group) => group.type === "campaign")?.items ?? []} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} onDismiss={dismissHistory} paneBox={drawerPaneBox} /></OverlayPortal></Fragment> : null}
         {shareOpen ? <ShareDialog key="share-dialog" conversationId={visibleConversationId} onClose={() => setShareOpen(false)} /> : null}
       </AnimatePresence>
     </div>

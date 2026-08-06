@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildNotification, formatDuration, pullRequestNumber } from "./deploy-notify.mjs";
 
-const REPO = "evanreppeto/marketing";
+const REPO = "evanreppeto/arc-studio";
 
 /**
  * Captured from the real repository on 2026-07-31, not invented. The shapes

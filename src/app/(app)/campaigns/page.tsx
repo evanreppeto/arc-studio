@@ -1,13 +1,22 @@
-import { humanizePersonaLabel as humanizePersona } from "@/domain";
+import {
+  humanizePersonaLabel as humanizePersona,
+  WORK_STATE_LABEL, personaAccent,} from "@/domain";
+import { describeContents, nextActionFor, pieceLabel, signalTiming } from "./_components/board-derivations";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
-import { getCampaignWorkspaceList, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
+
+// The review queue opens from this screen as well as from a campaign, and every
+// rule it needs — .rqwrap, and the .cbtn/.pill/.review it reuses — lives here.
+// A route-scoped stylesheet stopped being right when the component stopped
+// belonging to one route: without this the queue renders as an unstyled block.
+import "./campaign.css";
+import { getCampaignWorkspaceList, humanizeChannel, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { canonicalIndustryKey } from "@/lib/product-language";
 
 import { CampaignsBoard, type CampaignRow, type CampaignTone } from "./_components/campaigns-board";
-import { needsOperatorApproval } from "./_components/tone";
+import { deskTone } from "./_components/tone";
 
 export const metadata = { title: "Campaigns — Arc Studio" };
 
@@ -32,43 +41,17 @@ function toneFor(status: string): CampaignTone {
   return "draft";
 }
 
+// Status labels come from the one vocabulary (BSR-656) — the board used to say
+// "In review" while its own tab said "Needs approval" and Home said "Needs you"
+// about the same row.
 const TONE_LABEL: Record<CampaignTone, string> = {
-  live: "Live",
-  review: "In review",
-  revise: "Needs revision",
-  approved: "Approved",
-  draft: "Draft",
-  archived: "Archived",
+  live: WORK_STATE_LABEL.sending,
+  review: WORK_STATE_LABEL.needs_you,
+  revise: WORK_STATE_LABEL.needs_changes,
+  approved: WORK_STATE_LABEL.approved,
+  draft: WORK_STATE_LABEL.draft,
+  archived: WORK_STATE_LABEL.archived,
 };
-
-function nextActionFor(tone: CampaignTone, pendingCount: number): { next: string; nextTone: "" | "go" | "warn" } {
-  if (pendingCount > 0) {
-    return { next: `Approve ${pendingCount} piece${pendingCount === 1 ? "" : "s"}`, nextTone: "go" };
-  }
-  switch (tone) {
-    case "live":
-      return { next: "Sending", nextTone: "" };
-    case "approved":
-      return { next: "Scheduled to send", nextTone: "go" };
-    case "review":
-      return { next: "In review", nextTone: "go" };
-    case "revise":
-      return { next: "Revision requested", nextTone: "warn" };
-    case "archived":
-      return { next: "Paused", nextTone: "" };
-    default:
-      return { next: "Draft in progress", nextTone: "" };
-  }
-}
-
-function personaDot(persona: string): string {
-  const p = (persona || "").toLowerCase();
-  if (/storm|hail|weather|damage/.test(p)) return "#7fb89a";
-  if (/property|manager|realtor|hoa|commercial/.test(p)) return "#c8a24a";
-  if (/insurance|adjuster/.test(p)) return "#88b6d8";
-  if (/past|repeat|existing|customer|reactivation/.test(p)) return "#9678c8";
-  return "#c8a24a";
-}
 
 function formatAbs(iso: string): string {
   const d = new Date(iso);
@@ -80,28 +63,91 @@ function formatAbs(iso: string): string {
     : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function toRow(item: CampaignWorkspaceListItem): CampaignRow {
-  const tone = toneFor(item.status);
-  const { next, nextTone } = nextActionFor(tone, item.pendingCount);
+function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
+  // The campaign's own status, and then the state the row should actually WEAR.
+  // A campaign carries two states — `campaign_status` and the state of the
+  // deliverables inside it — and the board used to file by the second while
+  // printing the first, so a card under "Needs you" wore an "Approved" pill.
+  // See `deskTone`.
+  const tone = deskTone(toneFor(item.status), item.pendingCount);
+  // launchState's counts, NOT item.rollup — the two disagree, and this column
+  // has to match the page the row links to. See `DeliverableCounts`.
+  const { next, nextTone } = nextActionFor(tone, item.pendingCount, {
+    approved: item.approvedCount,
+    required: item.requiredCount,
+    // What the row will actually disclose. An archived campaign has zero
+    // *required* deliverables and can still hold several, and the row has to
+    // agree with its own "Show N assets" control.
+    held: item.contentPieces.length,
+  });
   // Prefer the short persona label for the Audience chip; the fuller
   // audienceSummary sentence is too long for a chip.
   const audience = humanizePersona(item.persona) || item.audienceSummary?.trim() || "";
   return {
     id: item.id,
     name: item.name,
-    brief: item.objective?.trim() || item.whyBuilt?.trim() || "Campaign package",
+    // `campaignTheme` sits ahead of `whyBuilt` because it is the only one of the
+    // three that is REQUIRED at creation, so it is always a real sentence about
+    // this campaign. `whyBuilt` degrades to "Arc has not recorded reasoning yet"
+    // when `reasoning_payload` is empty — which it is on every live row — so
+    // reaching it would just trade one placeholder for another.
+    brief: item.objective?.trim() || item.campaignTheme?.trim() || item.whyBuilt?.trim() || "New campaign",
+    timing: signalTiming(item.signal, nowMs),
     tone,
+    creativeOnly: item.creativeOnly,
     statusLabel: TONE_LABEL[tone],
     next,
     nextTone,
     pendingCount: item.pendingCount,
     audience,
-    dot: personaDot(item.persona || audience),
+    dot: personaAccent(item.persona || audience),
     channels: item.channels.join(" · "),
     updatedRel: relativeTime(item.updatedAtIso) || item.updatedAt,
     updatedAbs: formatAbs(item.updatedAtIso),
     href: item.href,
+    // The read-model has computed these all along; the board simply never
+    // asked for them, so a package with three approved images rendered
+    // identically to an empty one.
+    thumbnailUrl: item.thumbnailUrl,
+    mediaCount: item.mediaCount,
+    // Composed from the same kinds the opened card lists, so "An email and a
+    // text message" can never disagree with the assets shown underneath it.
+    contents: describeContents(
+      item.contentPieces.map((piece) => humanizeChannel(piece.kind || piece.channel) || ""),
+    ),
+    // Through the same `toneFor`/`TONE_LABEL` pair the row's own status pill
+    // uses, so a piece and its campaign never label the same state differently.
+    pieces: item.contentPieces.map((piece) => {
+      const pieceTone = toneFor(piece.status);
+      const { label, sub } = pieceLabel(
+        piece.title,
+        item.name,
+        humanizeChannel(piece.kind || piece.channel) || "Deliverable",
+      );
+      return {
+        id: piece.id,
+        title: label,
+        kind: sub,
+        statusLabel: TONE_LABEL[pieceTone],
+        tone: pieceTone,
+        thumbnailUrl: piece.media[0]?.thumbnailUrl ?? piece.media[0]?.url ?? null,
+        needsReview: piece.needsReview,
+      };
+    }),
   };
+}
+
+/**
+ * One clock for every row, read once — a per-row `Date.now()` would let two
+ * signal windows in the same render be measured against different instants.
+ *
+ * The read lives in here rather than in the component body because the React
+ * compiler (correctly) refuses an impure call during render; `relativeTime`
+ * above hides the same call the same way.
+ */
+function buildRows(campaigns: CampaignWorkspaceListItem[]): CampaignRow[] {
+  const nowMs = Date.now();
+  return campaigns.map((item) => toRow(item, nowMs));
 }
 
 export default async function CampaignsPage() {
@@ -111,7 +157,7 @@ export default async function CampaignsPage() {
     // which discarded the error entirely — and since the read-model already
     // catches internally and returns its own message, the only thing this
     // wrapper ever did was throw information away.
-    getCampaignWorkspaceList(undefined, "Arc", ctx.orgId).catch((error: unknown) => ({
+    getCampaignWorkspaceList(undefined, "Arc", ctx.orgId, ctx.workspaceId).catch((error: unknown) => ({
       status: "unavailable" as const,
       message: error instanceof Error ? error.message : "Campaign workspace is unavailable.",
     })),
@@ -127,7 +173,7 @@ export default async function CampaignsPage() {
       ? demoPersonaOptions
       : [];
   // Three states, not two. A failed load and an empty workspace used to render
-  // identically — the board showed "0 packages" whether the query returned
+  // identically — the board showed "0 campaigns" whether the query returned
   // nothing or blew up, so a broken campaigns read looked exactly like a new
   // tenant. That is how a real prod failure went unnoticed while the twice-daily
   // guardrail stayed green (BSR-542).
@@ -138,34 +184,22 @@ export default async function CampaignsPage() {
     // staring at an empty board deserves to find something when they go looking.
     console.error(`[campaigns] read failed for org ${ctx.orgId}: ${loadError}`);
   }
-  const rows = list.status === "live" ? list.campaigns.map(toRow) : [];
+  const rows = list.status === "live" ? buildRows(list.campaigns) : [];
 
-  // Two different facts, said as two different things. They used to be one claim
-  // with two answers — a tab reading 4 above a footer reading 9 — because the
-  // footer regexed the rendered next-action label to find packages with an
-  // undecided piece. Both numbers were real; only the wording pretended they were
-  // the same number.
-  //
-  // - submitted: packages whose STATUS is on your desk. Matches the tab exactly
-  //   (same predicate), because the tab is what it summarises.
-  // - pieces: deliverables with no decision recorded. This is the count the tab
-  //   cannot show: a package can be Approved and still hold an undecided piece,
-  //   so it sits under "Approved" while its row reads "Approve 1 piece".
-  //
-  // "Undecided" rather than "awaiting you" on purpose: a revision-requested piece
-  // has no decision but is waiting on ARC to re-draft, not on you.
-  const submitted = rows.filter((r) => needsOperatorApproval(r.tone)).length;
-  const pendingPieces = rows.reduce((sum, r) => sum + r.pendingCount, 0);
-  const packagesWithPieces = rows.filter((r) => r.pendingCount > 0).length;
+  // The board groups by `needsOperatorAttention` itself; this page only needs
+  // the finer count, which the header sentence and the review button share.
+  const pendingAssets = rows.reduce((sum, r) => sum + r.pendingCount, 0);
 
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-  const parts = [
-    pendingPieces > 0
-      ? `${plural(pendingPieces, "piece")} across ${plural(packagesWithPieces, "package")} undecided`
-      : null,
-    submitted > 0 ? `${plural(submitted, "package")} submitted for approval` : null,
-  ].filter(Boolean);
-  const arcNote = parts.length > 0 ? parts.join(" · ") : "Arc drafts approval-gated packages here as opportunities come in";
 
-  return <CampaignsBoard rows={rows} arcNote={arcNote} personaOptions={personaOptions} loadError={loadError} />;
+  // Passed as a NUMBER, not read back out of arcNote. Deriving a count from a
+  // rendered label is the exact bug BSR-726 was: the footer regexed its own
+  // text and disagreed with the tab above it.
+  return (
+    <CampaignsBoard
+      rows={rows}
+      undecidedCount={pendingAssets}
+      personaOptions={personaOptions}
+      loadError={loadError}
+    />
+  );
 }

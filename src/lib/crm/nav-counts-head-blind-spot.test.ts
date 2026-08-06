@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { getCrmNavCounts } from "./read-model";
+
 /**
  * Regression for BSR-575.
  *
@@ -38,7 +44,6 @@ function headBlindSpotClient() {
 
 describe("getCrmNavCounts when a counted relation is missing", () => {
   it("reports unavailable rather than a CRM full of zeros", async () => {
-    const { getCrmNavCounts } = await import("./read-model");
     const result = await getCrmNavCounts();
 
     // Before the fix this was `{ status: "live", counts: { contacts: 0, … } }` —

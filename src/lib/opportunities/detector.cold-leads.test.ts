@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 import { type OpportunityCandidate } from "@/domain";
 
+
+// Static, not `await import(…)` inside each test: `vi.mock` is hoisted above
+// imports, so the mocks apply either way. The dynamic form bought nothing and
+// charged this file's module transform to whichever test ran first (BSR-739).
+import { runColdLeadDetection } from "./detector";
+
 /**
  * runColdLeadDetection is what writes the Opportunity Inbox — 64 of prod's 82 open
  * cards came from it. Every test that mentioned it mocked it with vi.fn(), so its
@@ -31,7 +37,6 @@ vi.mock("@/lib/supabase/server", () => ({
   },
 }));
 
-const { runColdLeadDetection } = await import("./detector");
 
 const NOW = "2026-07-16T13:00:00.000Z";
 const QUIET = "2026-06-06T13:00:00.000Z"; // 40 days before NOW
@@ -57,7 +62,10 @@ const captured = (): OpportunityCandidate[] => {
 
 const client = (over: Record<string, unknown> = {}) =>
   createSupabaseQueryMock({
-    events: { data: [], error: null },
+    // No recorded activity by default — the prod default, now that we know
+    // nothing has ever written the table this used to read.
+    crm_activities: { data: [], error: null },
+    engagement_events: { data: [], error: null },
     campaigns: { data: [], error: null },
     companies: { data: [{ id: "co_1", name: "North Shore Property Group" }], error: null },
     contacts: { data: [{ id: "ct_1", full_name: "Dana Whitfield" }], error: null },
@@ -75,19 +83,19 @@ describe("runColdLeadDetection card titles", () => {
     await runColdLeadDetection(client(), NOW);
 
     // The regression this pins: it used to read "Lead c1aa307a — quiet 40 days".
-    expect(captured()[0].title).toBe("Dana Whitfield (North Shore Property Group) — quiet 40 days");
+    expect(captured()[0].title).toBe("Dana Whitfield (North Shore Property Group) — nothing recorded in 40 days");
   });
 
   it("falls back to the company when the lead has no contact", async () => {
     listLeads.mockResolvedValue([lead({ contactId: null })]);
     await runColdLeadDetection(client(), NOW);
-    expect(captured()[0].title).toBe("North Shore Property Group — quiet 40 days");
+    expect(captured()[0].title).toBe("North Shore Property Group — nothing recorded in 40 days");
   });
 
   it("uses the uuid only when nothing else identifies the lead", async () => {
     listLeads.mockResolvedValue([lead({ contactId: null, companyId: null })]);
     await runColdLeadDetection(client(), NOW);
-    expect(captured()[0].title).toBe("Lead c1aa307a — quiet 40 days");
+    expect(captured()[0].title).toBe("Lead c1aa307a — nothing recorded in 40 days");
   });
 
   it("prefers a real name over the loss summary", async () => {
@@ -100,14 +108,14 @@ describe("runColdLeadDetection card titles", () => {
   it("falls back to the loss summary when the record is nameless", async () => {
     listLeads.mockResolvedValue([lead({ contactId: null, companyId: null, lossSummary: "Basement flood, 2 units" })]);
     await runColdLeadDetection(client(), NOW);
-    expect(captured()[0].title).toBe("Basement flood, 2 units — quiet 40 days");
+    expect(captured()[0].title).toBe("Basement flood, 2 units — nothing recorded in 40 days");
   });
 
   it("survives a name lookup returning nothing rather than titling the card null", async () => {
     listLeads.mockResolvedValue([lead()]);
     await runColdLeadDetection(client({ companies: { data: [], error: null }, contacts: { data: [], error: null } }), NOW);
     const title = captured()[0].title;
-    expect(title).toBe("Lead c1aa307a — quiet 40 days");
+    expect(title).toBe("Lead c1aa307a — nothing recorded in 40 days");
     expect(title).not.toMatch(/null|undefined/);
   });
 
@@ -130,5 +138,70 @@ describe("runColdLeadDetection card titles", () => {
     // queries over the same org-scoped ids.
     expect(from.filter((c) => c[1] === "contacts")).toHaveLength(2);
     expect(captured()).toHaveLength(3);
+  });
+});
+
+/**
+ * The bug this pins: recency used to come from `public.events`, which nothing
+ * has ever written (BSR-671). Every lead therefore fell back to its arrival
+ * date, and the card asserted "no activity in N days" about leads that had been
+ * worked that morning.
+ */
+describe("runColdLeadDetection recency", () => {
+  it("counts a note logged against the lead's contact as activity", async () => {
+    listLeads.mockResolvedValue([lead({ receivedAt: "2026-01-01T00:00:00.000Z" })]);
+    await runColdLeadDetection(
+      client({ crm_activities: { data: [{ entity_id: "ct_1", occurred_at: QUIET }], error: null } }),
+      NOW,
+    );
+
+    const card = captured()[0];
+    // 40 days from the note, not 196 from the arrival date.
+    expect(card.title).toContain("quiet 40 days");
+    expect(card.evidence).toMatchObject({ daysCold: 40, activitySource: "recorded_activity" });
+  });
+
+  it("counts an engagement event carrying the lead id", async () => {
+    listLeads.mockResolvedValue([lead({ receivedAt: "2026-01-01T00:00:00.000Z" })]);
+    await runColdLeadDetection(
+      client({
+        engagement_events: {
+          data: [{ lead_id: "c1aa307a-1111-2222-3333-444444444444", occurred_at: QUIET }],
+          error: null,
+        },
+      }),
+      NOW,
+    );
+
+    expect(captured()[0].evidence).toMatchObject({ daysCold: 40, activitySource: "recorded_activity" });
+  });
+
+  it("says what it actually knows when nothing is recorded", async () => {
+    listLeads.mockResolvedValue([lead()]);
+    await runColdLeadDetection(client(), NOW);
+
+    const card = captured()[0];
+    expect(card.title).toContain("nothing recorded in 40 days");
+    expect(card.summary).toContain("that is not the same as knowing nobody has worked it");
+    expect(card.evidence).toMatchObject({ activitySource: "lead_arrival_date" });
+  });
+
+  it("takes the most recent activity when several are recorded", async () => {
+    listLeads.mockResolvedValue([lead({ receivedAt: "2026-01-01T00:00:00.000Z" })]);
+    await runColdLeadDetection(
+      client({
+        crm_activities: {
+          data: [
+            { entity_id: "ct_1", occurred_at: "2026-02-01T00:00:00.000Z" },
+            { entity_id: "ct_1", occurred_at: QUIET },
+            { entity_id: "ct_1", occurred_at: "2026-03-01T00:00:00.000Z" },
+          ],
+          error: null,
+        },
+      }),
+      NOW,
+    );
+
+    expect(captured()[0].evidence).toMatchObject({ daysCold: 40 });
   });
 });

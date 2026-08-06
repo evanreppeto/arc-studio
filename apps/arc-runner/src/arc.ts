@@ -5,7 +5,7 @@ import { resolveWorkspaceSummary } from "./workspace-summary";
 import { buildTurnContentAsync } from "./attachments";
 import { buildRecallQuery, resolveRecallMemory, type RecallItem } from "./recall";
 import { buildSystemPrompt, formatHistory, type ArcTurnContext } from "./context";
-import { buildQueryOptions, inferenceForRoute, type InferenceSettings } from "./inference";
+import { buildQueryOptions, describeRailStop, inferenceForRoute, type ArcRoute, type InferenceSettings } from "./inference";
 import type { ArcClient } from "./arc-client";
 import { ARC_SYSTEM_PROMPT } from "./prompt";
 import { allowedToolNames, toolsForMode, type ArcMode, type ToolContext } from "./tools";
@@ -18,6 +18,7 @@ import { resolveArcSkill, type ArcSkill } from "./skills";
 import { reviewTurnDrafts } from "./critic";
 import { createCumulativeStreamBuffer } from "./live-stream-buffer";
 import { createToolCallLog, type ArcToolCall } from "./tool-calls";
+import { buildUsageDetail, type UsageDetail } from "./usage-detail";
 import type {
   ArcActionCard,
   ArcCampaignTaskPayload,
@@ -46,7 +47,13 @@ export type ArcTurnResult = {
   /** The model's extended-thinking transcript for this turn, preserved so the
    *  completed reply keeps the "Thought for Ns" trace. Null when none was emitted. */
   reasoning?: string | null;
-  usage: { model: string; inputTokens: number | null; outputTokens: number | null };
+  usage: {
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    /** Raw usage fields the ledger does not have columns for (BSR-502 Finding 3). */
+    detail: UsageDetail | null;
+  };
 };
 
 /**
@@ -62,6 +69,45 @@ export type ArcTurnResult = {
  * add CRM-interaction + brain writes). Each tool reports a running -> done step
  * to the chat bubble, producing the live trace. Outbound has no tool in any mode.
  */
+/**
+ * The runaway rails we set ourselves (`maxTurns`, `maxBudgetUsd`), as the SDK
+ * reports them: it raises the non-success result as an error, e.g. "Claude Code
+ * returned an error result: Reached maximum number of turns (12)".
+ *
+ * Hitting one is not the same as crashing. On 2026-08-04 a Studio question
+ * ("put our logo on the side of the car") ran 2.5 minutes on the fast tier,
+ * spent all 12 turns reading the workspace, and the operator got "Arc hit an
+ * error generating a reply. Check the runner logs." — every word Arc had already
+ * written was thrown away with the exception.
+ */
+const RAIL_STOP_RE = /maximum number of turns|max(?:imum)? budget/i;
+
+
+/**
+ * Iterate a query stream, ending it cleanly when the run trips one of our own
+ * rails instead of letting the exception unwind the turn.
+ *
+ * A generator rather than a try/catch around the loop body: the caller's loop is
+ * long, and wrapping it would re-indent ~130 lines of unrelated code for a
+ * three-line behaviour change. Anything that isn't a rail stop still throws.
+ */
+async function* untilRailStop<T>(source: AsyncIterable<T>, onStop: (message: string) => void): AsyncGenerator<T> {
+  const iterator = source[Symbol.asyncIterator]();
+  for (;;) {
+    let next: IteratorResult<T>;
+    try {
+      next = await iterator.next();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!RAIL_STOP_RE.test(message)) throw error;
+      onStop(message);
+      return;
+    }
+    if (next.done) return;
+    yield next.value;
+  }
+}
+
 const REPLY_STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "in", "is", "it", "of", "on", "or", "that", "the", "this", "to", "was", "were", "with",
 ]);
@@ -200,6 +246,8 @@ async function runArcQuery(opts: {
   client: ArcClient;
   content: TurnContent;
   inference: InferenceSettings;
+  /** The tier this turn runs on, so a rail stop can name it (BSR-721). */
+  route: ArcRoute;
   toolContext?: ToolContext;
   skill?: ArcSkill | null;
   /** Live partial reply text, posted as the model streams (chat-turn only). */
@@ -354,6 +402,7 @@ async function runArcQuery(opts: {
   });
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
+  let usageDetail: UsageDetail | null = null;
   // Diagnostic for BSR-573: Arc had never captured a character of reasoning in
   // production, and nothing in the code path said why — the thinking branch
   // reads a defensively-typed field, so a shape change or an absent event fails
@@ -388,15 +437,21 @@ async function runArcQuery(opts: {
 
   await step(STEP_REASONING, "running");
 
-  for await (const message of query({
-    prompt: promptInput(opts.content, opts.ctx.scope.conversationId ?? "arc-turn"),
-    options: buildQueryOptions({
-      inference: opts.inference,
-      systemPrompt: system,
-      mcpServers: { arc: arcServer, ...remoteServers },
-      allowedTools: [...allowedToolNames(opts.mode, opts.skill), ...remoteAllowed],
+  let railStop: string | null = null;
+  for await (const message of untilRailStop(
+    query({
+      prompt: promptInput(opts.content, opts.ctx.scope.conversationId ?? "arc-turn"),
+      options: buildQueryOptions({
+        inference: opts.inference,
+        systemPrompt: system,
+        mcpServers: { arc: arcServer, ...remoteServers },
+        allowedTools: [...allowedToolNames(opts.mode, opts.skill), ...remoteAllowed],
+      }),
     }),
-  })) {
+    (message) => {
+      railStop = message;
+    },
+  )) {
     if (message.type === "stream_event") {
       const event = message.event;
       seenEventShapes.add(
@@ -496,10 +551,28 @@ async function runArcQuery(opts: {
       }
     } else if (message.type === "result" && message.subtype === "success") {
       resultText = message.result;
-      const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+      const usage = (message as { usage?: Record<string, unknown> }).usage;
       if (usage) {
-        inputTokens = typeof usage.input_tokens === "number" ? usage.input_tokens : inputTokens;
-        outputTokens = typeof usage.output_tokens === "number" ? usage.output_tokens : outputTokens;
+        const count = (k: string): number | null => (typeof usage[k] === "number" ? (usage[k] as number) : null);
+        inputTokens = count("input_tokens") ?? inputTokens;
+        outputTokens = count("output_tokens") ?? outputTokens;
+        // BSR-502 Finding 3, now CONFIRMED in production: one turn reported
+        // input_tokens = 8 against cache_read 92,215 + cache_creation 12,707.
+        // The meter was recording ~8 tokens of a ~105,000-token input side.
+        //
+        // The first pass captured only the two fields the hypothesis named, plus
+        // the raw key set as a hedge — and the key set is what paid off, showing
+        // `cache_creation` (an object whose per-TTL halves bill at DIFFERENT
+        // multipliers), `service_tier` and `server_tool_use`, none of whose
+        // VALUES had been captured. buildUsageDetail stops enumerating and takes
+        // the whole payload under a structural guard, so a field nobody thought
+        // to ask for is already in the row next time.
+        //
+        // Still not priced. Cache reads are cheaper than base input and cache
+        // creation is dearer, and the multipliers have to be confirmed against
+        // published rates before any of this reaches a bill.
+        usageDetail = buildUsageDetail(usage);
+        console.log(`[arc-runner] usage payload: ${JSON.stringify(usage)}`);
       }
     }
   }
@@ -513,7 +586,23 @@ async function runArcQuery(opts: {
   // commentary on work in progress. Narration lives in the trace instead, shown
   // above the answer in the order Arc wrote it.
   const replyChunks = assistantChunks.filter((_, index) => !narrationChunks.has(index));
-  const body = assembleReplyBody(replyChunks, resultText);
+  // A rail stop with nothing written is a failed turn and still reads as one —
+  // there is no answer to salvage, so let the caller record the error. With an
+  // answer in hand, ship it and say it was cut short. Note the usage numbers:
+  // they only arrive on the success result, so a salvaged turn meters as zero
+  // tokens. That is an undercount, logged rather than hidden.
+  if (railStop) {
+    console.warn(
+      `[arc-runner] run stopped on a rail (${railStop}) — ${replyChunks.some((chunk) => chunk.trim()) ? "returning the partial answer; usage for this turn is NOT metered" : "nothing written, failing the turn"}`,
+    );
+    if (!replyChunks.some((chunk) => chunk.trim())) throw new Error(railStop);
+  }
+  const assembled = assembleReplyBody(replyChunks, resultText);
+  // Name the limit and the tier. "Ran out of steps" left the operator with no
+  // next move; the same request often finishes on a tier with more room.
+  const body = railStop
+    ? `${assembled}\n\n${describeRailStop(opts.route, { partial: true, reason: railStop })}`
+    : assembled;
   const reasoning = thinkingStream.value().trim() || null;
   console.log(
     `[arc-runner] stream shapes: ${[...seenEventShapes].sort().join(", ") || "none"} | thinking_delta fields: ${thinkingDeltaKeys ?? "none"} | reasoning chars: ${reasoning?.length ?? 0} | blocks: ${blockSequences.join(" / ") || "none"} | pre-tool text chars: ${preToolTextChars} | narration chunks: ${narrationChunks.size}/${assistantChunks.length} | tool calls: ${toolLog.value().length}${toolLog.dropped() ? ` (+${toolLog.dropped()} over cap, not recorded)` : ""} | timeline: ${timeline.join(" ")}`,
@@ -535,7 +624,7 @@ async function runArcQuery(opts: {
     memory: opts.ctx.memory ?? [],
     drafts,
     reasoning,
-    usage: { model: opts.inference.model, inputTokens, outputTokens },
+    usage: { model: opts.inference.model, inputTokens, outputTokens, detail: usageDetail },
   };
 }
 
@@ -590,6 +679,7 @@ export async function runArcTurn(payload: MarkChatMessagePayload, client: ArcCli
     client,
     content,
     inference: inferenceForRoute(payload.route),
+    route: payload.route,
     // Thread the turn's level so media tools tell the generate endpoints which
     // tier (Swift=fast / Studio=standard) to resolve image/video models from.
     // Also thread conversationId so draft tools can link the chat to the campaign.
@@ -687,6 +777,7 @@ export async function runArcOpportunityDraft(
     client,
     content: payload.message,
     inference: inferenceForRoute("standard"),
+    route: "standard",
     toolContext: { opportunityId: payload.opportunityId },
     skill,
   });
@@ -732,8 +823,47 @@ export async function runArcOpportunityScan(
     client,
     content: payload.message,
     inference: inferenceForRoute("standard"),
+    route: "standard",
     skill,
   });
+}
+
+/**
+ * The instruction block for a campaign task wake. Pure and exported so the
+ * rules below are assertable — they are load-bearing behaviour, not phrasing,
+ * and both were learned from a revision that silently did nothing (BSR-695,
+ * BSR-706).
+ */
+export function buildCampaignTaskPrompt(payload: ArcCampaignTaskPayload): string {
+  return [
+    `Campaign task: ${payload.taskType}.`,
+    `Work only on campaign_id "${payload.campaignId}". When creating campaign drafts, attach them to that campaign_id.`,
+    "Create approval-gated draft assets only. Do not send, publish, launch, approve, unlock dispatch, or spend.",
+    // A revision names one asset. Without this the operator's instruction
+    // arrives scoped only to the campaign, and Arc has to guess which asset
+    // "add the logo" referred to as soon as the campaign holds more than one.
+    ...(payload.taskType === "campaign_asset_revision" && payload.assetId
+      ? [
+          "",
+          `This is a REVISION of the existing asset "${payload.assetId}". The operator's instruction below describes what to change about that asset specifically — read it first, and keep everything they did not ask you to change. Do not start an unrelated concept from scratch.`,
+          // The copy path, and the reason it has to be spelled out: for two
+          // months no tool could edit an existing asset, so every copy revision
+          // ran to `completed` having written nothing (BSR-759). Now one can —
+          // and the wrong-but-plausible answer, create_campaign_draft, is still
+          // sitting right next to it, leaving the asset they asked about
+          // untouched and a second one beside it.
+          `If the change is to the COPY — wording, an offer, a phone number, a subject line, a call to action — read the asset's current text with get_campaign, then call revise_campaign_asset with asset_id "${payload.assetId}" and the COMPLETE revised body. That is the only tool that changes an existing deliverable; create_campaign_draft does NOT revise anything, it adds a second asset and leaves theirs as it was.`,
+          // Branding revisions are the single most common ask on an image asset
+          // and the one generation can never satisfy: every prompt is hardened to
+          // forbid text and logos, so regenerating returns an image without them
+          // again and the operator sees their request silently ignored (BSR-706).
+          "If the instruction asks for the business's logo, name, phone number, or any words on the image, do NOT regenerate the background to add them. Image generation is hardened to refuse text and logos, so a regenerated image comes back without them and the operator's request is silently dropped. Use compose_creative instead, passing the existing asset's image as background_url — it overlays the real Brand Kit logo, colours and fonts.",
+          "Be straight about what compositing gives them: the logo lands as a brand lockup positioned by the layout, NOT painted onto an object inside the photo. If they asked for branding on a vehicle, a sign, a uniform, or anything else in the scene, say plainly in your reply that you cannot paint it into the image, describe what you produced instead, and let them decide. A draft that quietly ignores the instruction is worse than an honest 'here is the closest I can get'.",
+        ]
+      : []),
+    "",
+    payload.message,
+  ].join("\n");
 }
 
 /**
@@ -765,13 +895,7 @@ export async function runArcCampaignTask(
     skill,
   };
 
-  const prompt = [
-    `Campaign task: ${payload.taskType}.`,
-    `Work only on campaign_id "${payload.campaignId}". When creating campaign drafts, attach them to that campaign_id.`,
-    "Create approval-gated draft assets only. Do not send, publish, launch, approve, unlock dispatch, or spend.",
-    "",
-    payload.message,
-  ].join("\n");
+  const prompt = buildCampaignTaskPrompt(payload);
 
   const result = await runArcQuery({
     step,
@@ -780,6 +904,7 @@ export async function runArcCampaignTask(
     client,
     content: prompt,
     inference: inferenceForRoute("standard"),
+    route: "standard",
     toolContext: { campaignId: payload.campaignId, conversationId: payload.conversationId },
     skill,
   });

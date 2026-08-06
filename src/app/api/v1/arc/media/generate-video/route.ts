@@ -10,6 +10,7 @@ import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablem
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { hardenImagePrompt } from "@/lib/media/prompt";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
+import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { storeGeneratedMedia } from "@/lib/media/storage";
 import { getAppSettings } from "@/lib/settings/store";
 import { recordUsageEvent } from "@/lib/ai-usage/persistence";
@@ -54,15 +55,30 @@ export async function POST(request: Request) {
         units: 1,
         metadata: { route: "generate-video", job_id: typeof body.job_id === "string" ? body.job_id : null },
       });
+      const videoPrompt = typeof body.prompt === "string" ? body.prompt : undefined;
+      const videoRisk = videoPrompt ? deriveImageRiskFlags(videoPrompt) : [];
+      // Same Library gap as the image route (BSR-634), same best-effort posture.
+      const assetId = await recordGeneratedMedia({
+        orgId: allowed.scope.orgId,
+        objectPath,
+        publicUrl: url,
+        contentType: result.contentType,
+        kind: "video",
+        byteSize: result.bytes.byteLength,
+        prompt: videoPrompt,
+        model: typeof body.model === "string" ? body.model : "veo",
+        jobId: typeof body.job_id === "string" ? body.job_id : null,
+        riskFlags: videoRisk,
+      });
       const media = {
         kind: "video" as const,
         url,
         source: "ai_generated" as const,
         model: typeof body.model === "string" ? body.model : "veo",
         ...(typeof body.job_id === "string" ? { jobId: body.job_id } : {}),
-        riskFlags: typeof body.prompt === "string" ? deriveImageRiskFlags(body.prompt) : [],
+        riskFlags: videoRisk,
       };
-      return NextResponse.json({ ok: true, status: "done", media, objectPath }, { status: 201 });
+      return NextResponse.json({ ok: true, status: "done", media, objectPath, ...(assetId ? { libraryAssetId: assetId } : {}) }, { status: 201 });
     }
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
     if (!prompt) return fail("rejected", "prompt is required to start a video.", 400);
@@ -75,12 +91,20 @@ export async function POST(request: Request) {
     const aspectRatio =
       typeof body.aspect_ratio === "string" && body.aspect_ratio.trim() ? body.aspect_ratio.trim() : "16:9";
     const durationSeconds = typeof body.duration_seconds === "number" ? body.duration_seconds : undefined;
+    // Person-generation policy is normally the deployment default (DONT_ALLOW —
+    // Veo 3.1 allowlists anything more permissive). Accepting an override here
+    // means a project that HAS been allowlisted can ask for people without a
+    // redeploy; an unknown value falls back to the default rather than erroring.
+    const personGeneration =
+      typeof body.person_generation === "string" && body.person_generation.trim()
+        ? body.person_generation.trim()
+        : undefined;
     // Spend-cap the START only (a poll of an in-flight job finishes work whose
     // cost is already incurred). Video ≈ 10 image-units in the rate table.
     const metered = await meterConnectorCall(
       undefined,
       { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: MEDIA_UNITS.video, costTier: access.costTier, context: { route: "generate-video" } },
-      () => provider.startVideo({ prompt: hardenImagePrompt(prompt), aspectRatio, durationSeconds }),
+      () => provider.startVideo({ prompt: hardenImagePrompt(prompt), aspectRatio, durationSeconds, personGeneration }),
     );
     if (!metered.ok) return fail("plan_limit", metered.refusal.message, 402);
     const start = metered.result;

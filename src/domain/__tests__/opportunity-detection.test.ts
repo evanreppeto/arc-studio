@@ -29,6 +29,7 @@ function lead(over: Partial<ColdLeadInput> = {}): ColdLeadInput {
     leadScore: 70,
     status: "qualified",
     lastActivityAt: "2026-05-01T00:00:00.000Z", // 47 days before NOW
+    activityKnown: true,
     hasActiveCampaign: false,
     ...over,
   };
@@ -542,5 +543,47 @@ describe("fire weather is its own category (BSR-551)", () => {
 
   it("is opt-out-able like any other category", () => {
     expect(parseWeatherCategories(["property_damage"])).toEqual(["property_damage"]);
+  });
+});
+
+/**
+ * The cold-lead title and summary are written to the opportunity row, so a
+ * count disagreeing with its noun is stored — shown on the card, and read back
+ * by Arc when it reasons about the record (BSR-690).
+ *
+ * `coldDays: 1` is not contrived. The 30-day default only binds
+ * `crm_inactivity`; prod carries daysCold on four opportunity kinds, three of
+ * which sit below 30 today (10, 12, 13) and never pass through this floor.
+ */
+describe("cold-lead copy agrees in number", () => {
+  const dayBefore = "2026-06-16T00:00:00.000Z"; // exactly 1 day before NOW
+
+  it("says '1 day', never '1 days', when activity is known", () => {
+    const [out] = detectColdLeadOpportunities(
+      [lead({ lastActivityAt: dayBefore, activityKnown: true })],
+      { now: NOW, coldDays: 1 },
+    );
+    expect(out.evidence.daysCold).toBe(1);
+    expect(out.title).toContain("quiet 1 day");
+    expect(out.title).not.toContain("1 days");
+    expect(out.summary).toContain("no activity in 1 day.");
+    expect(out.summary).not.toContain("1 days");
+  });
+
+  it("says '1 day', never '1 days', when nothing has been recorded", () => {
+    const [out] = detectColdLeadOpportunities(
+      [lead({ lastActivityAt: dayBefore, activityKnown: false })],
+      { now: NOW, coldDays: 1 },
+    );
+    expect(out.title).toContain("nothing recorded in 1 day");
+    expect(out.title).not.toContain("1 days");
+    expect(out.summary).toContain("since it arrived 1 day ago");
+    expect(out.summary).not.toContain("1 days");
+  });
+
+  it("keeps the plural everywhere above one", () => {
+    const [out] = detectColdLeadOpportunities([lead()], { now: NOW });
+    expect(out.title).toContain("quiet 47 days");
+    expect(out.summary).toContain("no activity in 47 days.");
   });
 });

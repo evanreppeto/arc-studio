@@ -21,6 +21,12 @@ export type RunRow = {
   /** A line of Arc's own prose rather than an action — rendered as text, with no
    *  label and no status tick. */
   isNarration?: boolean;
+  /**
+   * The tool's own input/output, verbatim, for the disclosure under a tool row.
+   * `detail` carries the one-line summary of it; this is the text behind the
+   * "Show raw" toggle. Redacted before it gets here (BSR-724).
+   */
+  payload?: string;
 };
 
 /** One turn in the backend-less demo conversation (no persistence). */
@@ -50,3 +56,15 @@ export type ThreadItem = {
   running?: boolean;
   campaignId?: string | null;
 };
+
+/**
+ * A content pane's rect in viewport coordinates.
+ *
+ * The overlays (thread drawer, deliverable review, workspace panel) portal out
+ * to the shell so their scrims can cover the whole window, which leaves them
+ * with no pane to be positioned inside — and `position: fixed` is not the way
+ * back, because `.page-enter`'s transform makes "fixed" mean "fixed to the
+ * content pane". So the container measures the pane and each overlay positions
+ * from the box. See `usePaneBox` in arc-view.tsx.
+ */
+export type PaneBox = { top: number; left: number; width: number; height: number };

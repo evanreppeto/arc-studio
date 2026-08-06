@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
-import { Fraunces, Geist, Geist_Mono } from "next/font/google";
+import { DM_Sans, Fraunces, Geist, Geist_Mono, Inter, Oswald, Playfair_Display, Source_Serif_4, Space_Grotesk } from "next/font/google";
 
 import { AttributionCapture } from "@/app/_components/attribution-capture";
 import { getCurrentOrgId } from "@/lib/auth/org";
@@ -33,6 +33,36 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
+// ---------------------------------------------------------------------------
+// The brand-kit typeface catalog (src/domain/brand-fonts.ts) — the faces a
+// WORKSPACE can pick for its own creative, distinct from the three above, which
+// are Arc Studio's own chrome and are not tenant-configurable.
+//
+// Declared here so the Brand page previews a choice in the real face rather than
+// a substitute. Declaring a family costs almost nothing on the client: these
+// generate @font-face rules, and a browser only downloads a face that rendered
+// text actually uses — so a workspace pulls the one or two it picked, not all
+// six. The renderer loads its own static .ttf copies server-side; this pair of
+// sources is kept honest by the brand-fonts test.
+// ---------------------------------------------------------------------------
+const brandInter = Inter({ subsets: ["latin"], weight: ["400", "700"], variable: "--bf-inter", display: "swap" });
+const brandDmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "700"], variable: "--bf-dm-sans", display: "swap" });
+const brandSpaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["400", "700"], variable: "--bf-space-grotesk", display: "swap" });
+const brandSourceSerif = Source_Serif_4({ subsets: ["latin"], weight: ["400", "700"], variable: "--bf-source-serif", display: "swap" });
+const brandPlayfair = Playfair_Display({ subsets: ["latin"], weight: ["400", "700"], variable: "--bf-playfair", display: "swap" });
+const brandOswald = Oswald({ subsets: ["latin"], weight: ["400", "700"], variable: "--bf-oswald", display: "swap" });
+
+const BRAND_FONT_VARIABLES = [
+  brandInter,
+  brandDmSans,
+  brandSpaceGrotesk,
+  brandSourceSerif,
+  brandPlayfair,
+  brandOswald,
+]
+  .map((f) => f.variable)
+  .join(" ");
+
 // Canonical origin for absolute URLs in social cards. Falls back to the live
 // domain so a share from any preview still resolves a real image.
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL?.startsWith("http")
@@ -41,7 +71,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_APP_URL?.startsWith("http")
 
 const OG_TITLE = "Arc Studio — Marketing operations, with your approval";
 const OG_DESCRIPTION =
-  "Arc finds source-backed opportunities, drafts approval-gated campaigns, and prepares creative — and never sends without your sign-off.";
+  "Arc finds opportunities backed by real evidence, drafts the campaigns, and prepares the creative — and never sends anything without your sign-off.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -104,7 +134,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${geist.variable} ${geistMono.variable}`}
+      className={`${fraunces.variable} ${geist.variable} ${geistMono.variable} ${BRAND_FONT_VARIABLES}`}
       data-accent={appearanceAccent}
       data-density={appearanceDensity}
       data-motion={appearanceMotion}

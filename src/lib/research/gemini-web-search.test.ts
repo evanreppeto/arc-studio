@@ -65,6 +65,40 @@ describe("searchWebWithGemini", () => {
         },
       ],
       searchQueries: ["Chicago property management associations"],
+      // The fixture carries no usageMetadata; null distinguishes that from a
+      // call that genuinely used no tokens (BSR-502).
+      usage: null,
+    });
+  });
+
+  it("surfaces Gemini's token accounting for the ledger (BSR-502)", async () => {
+    // Grounded search is exactly where tool-use prompt tokens dominate, so the
+    // raw fields have to reach the caller unfolded — the metering layer decides
+    // how they map onto the ledger's two columns.
+    const response = {
+      ...groundedResponse(),
+      usageMetadata: {
+        promptTokenCount: 1_000,
+        toolUsePromptTokenCount: 30_000,
+        candidatesTokenCount: 800,
+        thoughtsTokenCount: 2_200,
+        totalTokenCount: 34_000,
+      },
+    };
+    const result = await searchWebWithGemini({
+      query: "Find property management lead sources in Chicago",
+      apiKey: "test-key",
+      model: "gemini-2.5-flash",
+      createClient: () => ({ models: { generateContent: async () => response } }),
+    });
+
+    expect(result.usage).toEqual({
+      promptTokenCount: 1_000,
+      toolUsePromptTokenCount: 30_000,
+      candidatesTokenCount: 800,
+      thoughtsTokenCount: 2_200,
+      cachedContentTokenCount: undefined,
+      totalTokenCount: 34_000,
     });
   });
 

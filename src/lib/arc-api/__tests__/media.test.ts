@@ -7,9 +7,20 @@ import { arcCreateFolder, arcFileAsset } from "../media";
 const ORG = "org-1";
 const OTHER = "org-2";
 
+/**
+ * `createFolder` reads its new sibling's `sort_order` before inserting, so a
+ * creation is two round trips now — the folder used to land on the column's
+ * `default 0` and tie with whatever else held 0, which let Postgres return the
+ * rail in a different order on different reads.
+ */
+const SIBLINGS_THEN_INSERT = (id: string) => [
+  { data: [], error: null },
+  { data: { id }, error: null },
+];
+
 describe("arcCreateFolder", () => {
   it("creates a folder at the Library root", async () => {
-    const supabase = createSupabaseQueryMock({ media_folders: { data: { id: "f-1" }, error: null } });
+    const supabase = createSupabaseQueryMock({ media_folders: SIBLINGS_THEN_INSERT("f-1") });
     const result = await arcCreateFolder({ name: "  Proof photos  " }, { client: supabase as never, orgId: ORG });
     expect(result).toEqual({ ok: true, id: "f-1" });
     const insert = supabase.calls.find(([m]) => m === "insert") as [string, Record<string, unknown>];
@@ -20,6 +31,7 @@ describe("arcCreateFolder", () => {
     const supabase = createSupabaseQueryMock({
       media_folders: [
         { data: { org_id: ORG }, error: null }, // parent ownership lookup
+        { data: [], error: null }, // sibling sort_order lookup
         { data: { id: "f-2" }, error: null }, // insert
       ],
     });
@@ -54,7 +66,7 @@ describe("arcCreateFolder", () => {
   });
 
   it("passes a trimmed description through to createFolder", async () => {
-    const supabase = createSupabaseQueryMock({ media_folders: { data: { id: "f-1" }, error: null } });
+    const supabase = createSupabaseQueryMock({ media_folders: SIBLINGS_THEN_INSERT("f-1") });
     const result = await arcCreateFolder(
       { name: "Proof", description: "  Before/after proof  " },
       { client: supabase as never, orgId: ORG },
@@ -70,7 +82,9 @@ describe("arcFileAsset", () => {
     const supabase = createSupabaseQueryMock({
       media_assets: [
         { data: { org_id: ORG }, error: null }, // asset ownership lookup
-        { data: null, error: null }, // move (update)
+        // The move is org-scoped now and returns the updated row (BSR-707);
+        // `null` here meant "nothing matched", i.e. not this org's asset.
+        { data: [{ id: "a-1" }], error: null }, // move (update ... select)
       ],
       media_folders: { data: { org_id: ORG }, error: null }, // target folder lookup
     });
@@ -84,7 +98,7 @@ describe("arcFileAsset", () => {
     const supabase = createSupabaseQueryMock({
       media_assets: [
         { data: { org_id: ORG }, error: null },
-        { data: null, error: null },
+        { data: [{ id: "a-1" }], error: null },
       ],
     });
     const result = await arcFileAsset({ asset_id: "a-1", folder_id: null }, { client: supabase as never, orgId: ORG });

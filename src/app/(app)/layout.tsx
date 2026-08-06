@@ -109,6 +109,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppShell
+      demoData={isDemoDataEnabled()}
+      // The resolved tenant, not its display identity — see the prop docs on
+      // AppShell. Two orgs in prod render the same workspace name, so the ids
+      // are the only thing that can tell a check (or a person) which one is on
+      // screen.
+      workspaceId={ctx.workspaceId}
+      orgSlug={ctx.orgSlug}
       workspaceName={identity.name}
       orgName={ctx.orgName}
       workspaceSubtitle={identity.subtitle}
@@ -119,6 +126,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       logoUrl={logoUrl}
       avatarUrl={viewerAvatarUrl}
       industry={industry}
+      objectLabels={appSettings?.objectLabels}
       workspaces={workspacesView.workspaces}
       navBadges={navBadges}
       recentConversations={recentConversations}

@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { archivePersona, createPersona, editPersona, type EditPersonaInput, type NewPersonaInput } from "../actions";
 import { EditPersonaModal } from "./edit-persona-modal";
 import { NewPersonaModal } from "./new-persona-modal";
+import { KpiStrip } from "../../_components/kpi-strip";
+import { HowThisWorks } from "../../_components/define";
 
 export type PersonaVM = {
   slug: string;
@@ -92,7 +94,14 @@ function buildOptimisticPersona(slug: string, v: NewPersonaInput): PersonaVM {
   };
 }
 
-export function PersonasView({ personas, initialSlug }: { personas: PersonaVM[]; initialSlug?: string }) {
+export function PersonasView({ personas, initialSlug, failed = null }: {
+  personas: PersonaVM[];
+  initialSlug?: string;
+  /** Why the persona read failed, or null. An empty roster is a claim about the
+   *  workspace; a failed read is the absence of one, and they must not look the
+   *  same (BSR-563 fixed exactly this for the performance numbers below). */
+  failed?: string | null;
+}) {
   const [view, setView] = useState<"roster" | "compare">("roster");
   const [segment, setSegment] = useState("all");
   const [q, setQ] = useState("");
@@ -228,13 +237,23 @@ export function PersonasView({ personas, initialSlug }: { personas: PersonaVM[];
   if (allPersonas.length === 0) {
     return (
       <div className="arc-personas">
-        <div className="empty">
-          <p>No personas yet. Personas are the playbooks that power your CRM, targeting, and campaigns — define your own for how your business sees its audience.</p>
-          <button type="button" className="gbtn" onClick={() => setNewOpen(true)} style={{ marginTop: 14 }}>
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-            Create your first persona
-          </button>
-        </div>
+        {/* A failed read is NOT an empty workspace. "No personas yet" plus
+            "create your first" is an onboarding claim, and showing it to
+            someone who has twelve personas and a broken query is the same
+            failure BSR-563 fixed for the numbers on this page. */}
+        {failed ? (
+          <div className="empty" role="status">
+            <p>{failed}</p>
+          </div>
+        ) : (
+          <div className="empty">
+            <p>No personas yet. Personas are the playbooks that power your CRM, targeting, and campaigns — define your own for how your business actually sells.</p>
+            <button type="button" className="gbtn" onClick={() => setNewOpen(true)} style={{ marginTop: 14 }}>
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+              Create your first persona
+            </button>
+          </div>
+        )}
         <NewPersonaModal
           key={newOpen ? "open" : "closed"}
           open={newOpen}
@@ -251,21 +270,24 @@ export function PersonasView({ personas, initialSlug }: { personas: PersonaVM[];
         <div className="ph1row">
           <div>
             <h1 className="pt">Personas</h1>
-            <div className="psub">The revenue-intelligence layer — playbooks that power CRM, targeting &amp; campaigns</div>
+            <div className="psub">Who you sell to — and how Arc talks to each type</div>
           </div>
           <div style={{ display: "flex", gap: 9 }}>
             <button type="button" className="gbtn" onClick={() => setNewOpen(true)}>
               <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-              New persona <span className="tg" style={{ marginLeft: 2 }}>org-config</span>
+              New persona
             </button>
           </div>
         </div>
-        <div className="pstats">
-          <div className="pstat"><div className="sl">Personas</div><div className="sv">{allPersonas.length}</div><div className="sd">org-defined</div></div>
-          <div className="pstat"><div className="sl">Segments</div><div className="sv">{headStats.segmentCount}</div><div className="sd">acq · eng · ret</div></div>
-          <div className="pstat"><div className="sl">With an angle</div><div className="sv">{headStats.withAngle}</div><div className="sd">ready for Arc to use</div></div>
-          <div className="pstat"><div className="sl">Attributed leads</div><div className="sv">{headStats.leads.toLocaleString()}</div><div className="sd">last 30 days</div></div>
-        </div>
+        <KpiStrip
+          className="pstats"
+          items={[
+            { label: "Personas", value: String(allPersonas.length), sublabel: "you defined these" },
+            { label: "Segments", value: String(headStats.segmentCount), sublabel: "winning · keeping · growing" },
+            { label: "With an angle", value: String(headStats.withAngle), sublabel: "ready for Arc to use" },
+            { label: "Attributed leads", value: headStats.leads.toLocaleString(), sublabel: "last 30 days" },
+          ]}
+        />
         {/* The "N personas scoring below target — Arc can draft refreshed proof points"
             banner was removed with the score itself. It fired off persona.score, a
             constant 60 nothing ever updates, so it appeared for every workspace on
@@ -423,7 +445,7 @@ function PersonaDetail({ p, onEdit, onArchive }: { p: PersonaVM; onEdit: () => v
       <div className="dhead">
         <span className="dav" style={{ background: `${p.segColor}22`, color: p.segColor, border: `1px solid ${p.segColor}55` }}>{p.initials}</span>
         <div className="dh-main">
-          <h1 className="dname">{p.name}</h1>
+          <h2 className="dname">{p.name}</h2>
           <div className="dmeta">
             <span className="chip seg">{p.segmentLabel}</span>
             <span className="chip org" style={{ color: p.stageColor }}>{p.stage}</span>
@@ -447,39 +469,52 @@ function PersonaDetail({ p, onEdit, onArchive }: { p: PersonaVM; onEdit: () => v
             (leads / jobs / revenue) is in the Performance card below. */}
       </div>
 
-      <div className="sec dduo">
-        {/* The Signals radar was tagged "wired · snapshots" but plotted
-            persona.signals — written as {engagement:60, fit:60, intent:60} and never
-            updated — so every persona rendered an identical triangle. Its driver lines
-            ("Room to lift opens & replies", "Partial ICP match", "Few recent buying
-            signals") were a fallback keyed off that same constant, so every workspace
-            got the same three invented diagnoses. Nothing computes these yet. */}
-        <div className="radarcard">
-          <h3 className="sh" style={{ alignSelf: "flex-start", marginBottom: 4 }}>Signals</h3>
-          <p style={{ margin: "4px 2px 0", fontSize: "12px", lineHeight: 1.6, color: "var(--muted)" }}>
-            Engagement, fit and intent scoring isn&rsquo;t computed yet — Arc doesn&rsquo;t score personas from
-            your CRM activity today. Real attributed performance is in the Performance card.
-          </p>
-        </div>
+      {/* One card, full width. There was a "Signals" card beside this one whose
+          entire content was a paragraph explaining that signals are not computed
+          yet and pointing at this card — a titled panel, holding a third of the
+          row, whose only message was that it had nothing to say. (Its history:
+          it plotted persona.signals, a hardcoded {engagement:60, fit:60,
+          intent:60}, so every persona drew an identical triangle with the same
+          three invented diagnoses.) When the scoring exists it earns a card
+          again; until then the screen doesn't narrate its own gaps. */}
+      <div className="sec dsolo">
         <div className="perfcard">
-          <h3 className="sh">Performance {p.perfUnavailable ? <span className="tg est">unavailable</span> : <span className="tg wired">wired · leads / outcomes</span>}</h3>
+          <h3 className="sh">Performance {p.perfUnavailable ? <span className="tg est">not available yet</span> : null}</h3>
           {/* A failed CRM read is not a persona with no conversions. */}
           {p.perfUnavailable && (
             <p style={{ margin: "0 2px 10px", fontSize: "11.5px", lineHeight: 1.55, color: "var(--warn-text)" }}>
               Couldn&rsquo;t read leads / outcomes from your CRM — these figures aren&rsquo;t your data.
             </p>
           )}
-          <div className="perfgrid">
-            <div className="pc"><div className="pl">Leads (30d)</div><div className="pv">{p.perf.leads}</div><div className="pd">attributed</div></div>
-            <div className="pc"><div className="pl">Booked jobs</div><div className="pv">{p.perf.jobs}</div><div className="pd">scheduled</div></div>
-            <div className="pc"><div className="pl">Won revenue</div><div className="pv">{p.perf.revenue}</div><div className="pd">outcomes</div></div>
-            <div className="pc"><div className="pl">Conversion</div><div className="pv">{p.perf.leads > 0 ? `${Math.round((p.perf.jobs / p.perf.leads) * 100)}%` : "—"}</div><div className="pd">lead → job</div></div>
-          </div>
+          <KpiStrip
+            className="perfgrid"
+            items={[
+              { label: "Leads (30d)", value: String(p.perf.leads), sublabel: "attributed to this persona" },
+              { label: "Booked jobs", value: String(p.perf.jobs), sublabel: "scheduled" },
+              { label: "Won revenue", value: p.perf.revenue, sublabel: "from closed outcomes" },
+              {
+                label: "Conversion",
+                value: p.perf.leads > 0 ? `${Math.round((p.perf.jobs / p.perf.leads) * 100)}%` : "",
+                sublabel: "lead to job",
+                emptyHint: "Fills in once this persona has leads",
+              },
+            ]}
+          />
         </div>
       </div>
 
       <div className="sec">
         <div className="sh">Playbook</div>
+        <HowThisWorks>
+          <p>
+            A persona is a type of customer you sell to — how they found you, what they worry about, and what usually
+            convinces them. Arc matches each new contact to one, then writes to them in the way that persona responds to.
+          </p>
+          <p>
+            These are yours to edit. Change the message angle or the proof points and Arc uses your wording from its next
+            draft onward — nothing already approved changes.
+          </p>
+        </HowThisWorks>
         <div className="pbk">
           {p.angle && (
             <div className="pbi full">

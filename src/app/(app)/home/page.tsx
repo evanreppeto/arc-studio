@@ -1,6 +1,15 @@
 import Link from "next/link";
 
-import { humanizePersonaLabel as humanizePersona } from "@/domain";
+import {
+  humanizePersonaLabel as humanizePersona,
+  ASSET_NOUN,
+  definitionText,
+  countOf,
+  DAY_NOUN,
+  needsYouPhrase,
+  toWorkState,
+  WORK_STATE_LABEL,
+  humanizeArcProse} from "@/domain";
 import { resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getActivationState } from "@/lib/activation/read-model";
@@ -10,7 +19,8 @@ import { type OpportunityEvidence } from "@/lib/opportunities/read-model";
 
 import { QuickActions } from "./_components/quick-actions";
 import { SetupChecklist } from "./_components/setup-checklist";
-import { Sparkline } from "../_components/sparkline";
+import { Define } from "../_components/define";
+import { KpiStrip } from "../_components/kpi-strip";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
 
@@ -27,8 +37,13 @@ function relativeTime(iso: string): string {
   return `${Math.round(hr / 24)}d ago`;
 }
 
+// Home renders the SAME Arc-written opportunity prose the inbox does — the hero
+// card read `"Suburban Home Background Asset" (campaign 0bd41cb3-…)` — so it
+// goes through the same sanitizer rather than a second one that would drift
+// (#908, BSR-740). Cleaned before truncating, so removing a token can win back
+// room for words.
 function concise(value: string, maxLength: number): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
+  const normalized = humanizeArcProse(value).replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
   const clipped = normalized.slice(0, maxLength + 1);
   const lastSpace = clipped.lastIndexOf(" ");
@@ -42,8 +57,19 @@ function pillTone(a: { status: string; statusLabel: string; riskLevel: string })
   return "ok";
 }
 
-// Friendlier task-pill labels than the raw approval status (mockup: "Needs you" / "Blocked").
-const PILL_LABEL: Record<"warn" | "red" | "ok", string> = { warn: "Needs you", red: "Blocked", ok: "Ready" };
+// Task-pill labels, resolved through the one vocabulary (BSR-656) rather than
+// spelled out here.
+//
+// The red slot is a compliance hold, and it says so (BSR-755). It read "Needs
+// changes" — the state that means Arc is reworking it — when in fact nothing
+// happens until a person rules on it. The tone stays red because a rule-blocked
+// item must not read as one of the routine amber crowd; only the words change,
+// from a state Arc owns to the one thing the operator can act on.
+const PILL_LABEL: Record<"warn" | "red" | "ok", string> = {
+  warn: WORK_STATE_LABEL.needs_you,
+  red: "Blocked by a rule",
+  ok: WORK_STATE_LABEL.approved,
+};
 
 // Cite chips for the top opportunity — each references a REAL evidence field on
 // the record, so the [1][2] badges are honest source pointers, not decoration.
@@ -51,8 +77,8 @@ function evidenceFacts(ev?: OpportunityEvidence | null): string[] {
   if (!ev) return [];
   const facts: string[] = [];
   for (const url of ev.evidence_urls ?? []) facts.push(`Source · ${url.replace(/^https?:\/\//, "")}`);
-  if (typeof ev.leadScore === "number") facts.push(`Lead score ${ev.leadScore}`);
-  if (typeof ev.daysCold === "number") facts.push(`${ev.daysCold} days since last activity`);
+  if (typeof ev.leadScore === "number") facts.push(`Lead score ${ev.leadScore} — ${definitionText("lead_score")}`);
+  if (typeof ev.daysCold === "number") facts.push(`${countOf(ev.daysCold, DAY_NOUN)} since last activity`);
   if (ev.lastActivityAt) facts.push(`Last activity ${relativeTime(ev.lastActivityAt)}`);
   if (!facts.length && ev.persona) facts.push(`Persona · ${humanizePersona(ev.persona)}`);
   return facts.slice(0, 3);
@@ -69,32 +95,40 @@ export default async function HomePage() {
   // you" queue, the metrics, and the campaign rows all read from the same summary
   // so they can't disagree with each other.
   const [summary, overview, activation] = await Promise.all([
-    getWorkspaceSummary(ctx.orgId),
+    getWorkspaceSummary(ctx.orgId, "Arc", ctx.workspaceId),
     getAnalyticsOverview(ctx.orgId),
     // First-run guidance. Hidden once the workspace has records and the owner
     // has either finished or dismissed it, so an established workspace never
     // sees this.
     getActivationState(ctx.orgId, ctx.workspaceId ?? null),
   ]);
-  const approvalCount = summary.approvals.length;
-  const approvals = summary.approvals.slice(0, 3);
+  // Both the phrase and the list are headed "Needs you", so both read the
+  // operator-blocked subset — a card Arc is reworking under that heading is the
+  // same category error the count had (BSR-753). The count is a real total; the
+  // list is the first three of it.
+  const approvalCount = summary.approvalsNeedingYouCount;
+  const approvals = summary.approvalsNeedingYou.slice(0, 3);
   const campaigns = summary.campaigns.slice(0, 4);
   const openOppCount = summary.opportunities.length;
-  const opps = summary.opportunities.slice(0, 3);
-  const focal = opps[0] ?? null;
-
-  // Right column: source-backed signals (top opportunities) + Arc activity feed.
-  const signalLabel: Record<string, string> = { high: "Urgent · watched by Arc", medium: "Watched by Arc", low: "Background signal" };
-  const signals = opps.slice(0, 3).map((o) => ({
-    id: o.id,
-    title: o.title,
-    source: signalLabel[o.urgency] ?? "Source-backed signal",
-    time: relativeTime(o.evidence?.lastActivityAt ?? ""),
-  }));
+  // One opportunity, one place on this page. The top one is the focal card; the
+  // list below it is what's LEFT, not the same three again.
+  //
+  // This screen used to render `opportunities.slice(0, 3)` into three separate
+  // surfaces — the "Top opportunity" hero, the "Open opportunities" grid, and a
+  // "Signals" rail — so the first opportunity appeared three times and the next
+  // two appeared twice, on one viewport, under three different headings. Nine
+  // cards for three facts. The rail was the purest copy: same rows, same links,
+  // relabelled "Source-backed, watched by Arc", which is what the inbox already
+  // says about all of them. It's gone; the grid now starts after the focal card.
+  const focal = summary.opportunities[0] ?? null;
+  const opps = summary.opportunities.slice(1, 4);
+  // This feed renders `<b>{actor}</b> {text}`, so `text` has to be a PREDICATE —
+  // handed the entry's title it read "You Approval Revision Requested" four
+  // times down the front page (BSR-734).
   const activityItems = summary.activity.slice(0, 5).map((a) => ({
     at: relativeTime(a.occurredAt),
     actor: a.actorType === "arc" || a.actorType === "sub_agent" ? "Arc" : a.actorType === "human" ? "You" : "System",
-    text: a.title || a.detail,
+    text: a.predicate,
   }));
 
   const now = new Date();
@@ -123,30 +157,39 @@ export default async function HomePage() {
           {firstName ? `, ${firstName}` : ""}
         </h1>
         <div className="subline">
-          {approvalCount} {approvalCount === 1 ? "package" : "packages"} waiting
+          {needsYouPhrase(approvalCount)}
           <span className="dot">·</span>
           {openOppCount} open {openOppCount === 1 ? "opportunity" : "opportunities"}
           <span className="dot">·</span>
-          {liveCampaigns} live
+          {liveCampaigns} {liveCampaigns === 1 ? "campaign" : "campaigns"} sending
         </div>
 
         <SetupChecklist checklist={activation.checklist} />
 
         {focal && (
-          <div className="focal">
-            <div className="lab">Top opportunity</div>
+          <>
+            {/* Was a gold uppercase kicker inside the card, which §3 bans above a
+                title. The words still earn their place — this card needs to say
+                what it is — so they become a section heading in the same rhythm
+                as "Open opportunities" and "Active campaigns" below. */}
+            <div className="sech">
+              <h3>Top opportunity</h3>
+            </div>
+            <div className="focal">
             <div className="row1">
-              <h2>{focal.title}</h2>
+              <h4>{focal.title}</h4>
               {evidenceFacts(focal.evidence).length > 0 && (
                 <span className="cites">
                   <span className="cites-label">Evidence</span>
                   {evidenceFacts(focal.evidence).map((f, i) => (
-                    <span className="cite" key={i} title={f}>{i + 1}</span>
+                    <span className="cite" key={i} title={f} tabIndex={0} role="note" aria-label={`Evidence: ${f}`}>
+                      {i + 1}
+                    </span>
                   ))}
                 </span>
               )}
               <div className="conf">
-                <span className="cl">Confidence</span>
+                <span className="cl">Confidence<Define term="confidence" /></span>
                 <span className="track">
                   <span className="fill" style={{ width: `${focal.confidence}%` }} />
                 </span>
@@ -160,19 +203,20 @@ export default async function HomePage() {
                 className="btn ghost"
                 href={{ pathname: "/arc", query: { new: "1", prompt: promptForOpportunity(focal) } }}
               >
-                Ask Arc to draft it
+                Draft with Arc
               </Link>
             </div>
-          </div>
+            </div>
+          </>
         )}
 
         <div className="sech">
-          <h3>Waiting on you</h3>
-          <span className="ct">{approvalCount} to decide</span>
+          <h3>{WORK_STATE_LABEL.needs_you}</h3>
+          <span className="ct">{approvalCount}</span>
         </div>
         <div className="rule" />
         {approvals.length === 0 ? (
-          <p className="empty-note">Nothing needs your approval right now. Arc surfaces drafts here as it prepares them.</p>
+          <p className="empty-note">Nothing needs your approval right now. Arc puts drafts here as it finishes them.</p>
         ) : (
           approvals.map((a) => {
             const tone = pillTone(a);
@@ -190,38 +234,35 @@ export default async function HomePage() {
         )}
         {approvalCount > approvals.length ? (
           <Link className="more queue-more" href="/campaigns">
-            View all {approvalCount} waiting →
+            View all {approvalCount} →
           </Link>
         ) : null}
 
-        <div className="metrics">
-          {metrics.map((m) => {
-            const series = overview.trend[KPI_TREND[m.label]]?.cur ?? [];
-            return (
-              <div className="metric" key={m.label}>
-                <div className="ml">{m.label}</div>
-                <div className="mrow">
-                  <span className="mv">{m.value}</span>
-                  {m.deltaLabel && m.deltaLabel !== "—" ? (
-                    <span className={`delta ${m.dir}`} title={m.prevLabel}>{m.deltaLabel}</span>
-                  ) : null}
-                </div>
-                {series.length > 1 ? (
-                  <div className="spark">
-                    <Sparkline points={series} up={m.dir === "up"} />
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
+        <KpiStrip
+          items={metrics.map((m) => ({
+            label: m.label,
+            value: m.value,
+            delta: { label: m.deltaLabel, dir: m.dir },
+            // The window was only ever a hover title, so the delta read as a
+            // number with no baseline (BSR-659).
+            sublabel: `vs previous 30 days`,
+            spark: { points: overview.trend[KPI_TREND[m.label]]?.cur ?? [], up: m.dir === "up" },
+          }))}
+        />
 
+        {/* Heading says "also", because the one above it is an open opportunity
+            too — the reader has just looked at it. With a single opportunity
+            open, the focal card has already said everything and the section
+            doesn't render at all rather than printing "no opportunities"
+            directly beneath one. */}
+        {(opps.length > 0 || !focal) && (
+          <>
         <div className="sech">
-          <h3>Open opportunities</h3>
+          <h3>{focal ? "Also open" : "Open opportunities"}</h3>
           <Link className="more" href="/opportunities">All opportunities →</Link>
         </div>
         {opps.length === 0 ? (
-          <p className="empty-note">No open opportunities yet. Arc watches your signals and surfaces source-backed ones here.</p>
+          <p className="empty-note">No open opportunities yet. Arc watches for signs of interest and lists the ones it can back up with evidence.</p>
         ) : (
           <div className="opps">
             {opps.map((o) => (
@@ -243,13 +284,15 @@ export default async function HomePage() {
             ))}
           </div>
         )}
+          </>
+        )}
 
         <div className="sech">
-          <h3>Campaigns in flight</h3>
+          <h3>Active campaigns</h3>
           <Link className="more" href="/campaigns">All campaigns →</Link>
         </div>
         {campaigns.length === 0 ? (
-          <p className="empty-note">No campaigns yet. Arc drafts approval-gated packages here as opportunities come in.</p>
+          <p className="empty-note">No campaigns yet. Arc drafts them here as opportunities come in — nothing sends until you approve it.</p>
         ) : (
           <div className="ctable">
             <div className="ch">
@@ -261,40 +304,28 @@ export default async function HomePage() {
               <Link key={camp.id} href={`/campaigns/${camp.id}`} className="cr">
                 <div>
                   <div className="cn">{camp.name}</div>
-                  {camp.pendingCount > 0 && <div className="csub">{camp.pendingCount} to approve</div>}
+                  {camp.pendingCount > 0 && <div className="csub">{countOf(camp.pendingCount, ASSET_NOUN)} to approve</div>}
                 </div>
                 <span>{humanizePersona(camp.persona)}</span>
-                <span className="cn" style={{ textTransform: "capitalize", fontWeight: 500 }}>{camp.status}</span>
+                <span className="cn" style={{ fontWeight: 500 }}>{WORK_STATE_LABEL[toWorkState(camp.status)]}</span>
               </Link>
             ))}
           </div>
         )}
       </section>
 
+      {/* Two blocks, and neither repeats the main column: what you can start,
+          and what Arc has already done. The "Signals" block that used to sit on
+          top was the third rendering of the same three opportunities the focal
+          card and the grid to its left already showed. */}
       <aside className="col-r">
-        <h3 className="rh">Signals</h3>
-        <div className="rsub">Source-backed, watched by Arc</div>
-        <div>
-          {signals.length === 0 ? (
-            <p className="empty-note">No signals yet. Arc surfaces source-backed ones here.</p>
-          ) : (
-            signals.map((s, i) => (
-              <Link className="sig" href={`/opportunities?selected=${encodeURIComponent(s.id)}`} key={s.id}>
-                <div className="st">{s.title}</div>
-                <div className="sm">
-                  <span className="src">
-                    <b>[{i + 1}]</b> {s.source}
-                  </span>
-                  <span className="sa">{s.time}</span>
-                </div>
-              </Link>
-            ))
-          )}
-        </div>
+        <h3 className="rh">Quick actions</h3>
+        <div className="rsub">Start something with Arc</div>
+        <QuickActions />
 
         <div className="rsec">
           <h3 className="rh">Arc activity</h3>
-          <div className="rsub">Recent agent runs</div>
+          <div className="rsub">What Arc has been doing</div>
           <div>
             {activityItems.length === 0 ? (
               <p className="empty-note">No recent activity yet.</p>
@@ -309,12 +340,6 @@ export default async function HomePage() {
               ))
             )}
           </div>
-        </div>
-
-        <div className="rsec">
-          <h3 className="rh">Quick actions</h3>
-          <div className="rsub">Start something with Arc</div>
-          <QuickActions />
         </div>
       </aside>
     </div>

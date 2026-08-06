@@ -1,6 +1,8 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 
 import { GOLDEN_QUESTIONS, gradeGoldenAnswer } from "../src/domain/arc-eval";
+import { WORK_STATE_LABEL } from "../src/domain/vocabulary";
+import { assertExpectedTenant } from "./tenant";
 
 /**
  * NIGHTLY PROD SMOKE (BSR-478).
@@ -25,7 +27,37 @@ import { GOLDEN_QUESTIONS, gradeGoldenAnswer } from "../src/domain/arc-eval";
  *
  * The seeded data is frozen (the org is archived and nothing writes to it but
  * this run), which is exactly what makes the known-fact assertions stable.
+ *
+ * That paragraph used to be the ONLY thing keeping this suite off the live
+ * tenant — prose, in a file whose credentials come from a repo secret nobody
+ * reads it before changing. `assertSmokeTenant` below now enforces it: every
+ * test that touches the app confirms the resolved workspace is the seeded one
+ * BEFORE it does anything, and step 4 confirms it again immediately before its
+ * write. Repoint E2E_EMAIL at a live-tenant account and the run stops with
+ * "wrong workspace" instead of quietly filing revision requests against real
+ * customer campaigns.
  */
+
+/**
+ * What step 4's revision asks for, and the label it then expects to see.
+ *
+ * The instruction is a FIXTURE MARKER, not just copy. Requesting a revision
+ * queues an `agent_tasks` row that nothing consumes (see step 4's own comment),
+ * so the nightly would otherwise strand one task per run forever — and since
+ * BSR-708 the stranded-task check fails the build on exactly that, meaning the
+ * smoke would fail every night on work it created itself (BSR-722).
+ *
+ * The "Release the nightly's own revision fixture" step in
+ * .github/workflows/prod-nightly.yml cancels these rows by matching
+ * `objective LIKE 'Nightly smoke check%'`. Keep that prefix if you reword this.
+ * Drift is not silent: a changed prefix stops matching, the fixture strands, and
+ * the stranded-task check reddens the next night.
+ */
+const REVISION_FIXTURE_INSTRUCTION =
+  "Nightly smoke check — no action needed; this asset is reopened immediately.";
+
+/** The state an asset lands in once a revision is requested (BSR-656). */
+const NEEDS_CHANGES_LABEL = WORK_STATE_LABEL.needs_changes;
 
 const EMAIL = process.env.E2E_EMAIL || "owner@bsr.test";
 // No fallback — this signs in to PRODUCTION. Unset ⇒ the run skips visibly
@@ -66,6 +98,24 @@ function requireDeploy() {
   test.skip(!PASSWORD, "set the PROD_E2E_PASSWORD secret to run the nightly smoke");
 }
 
+/**
+ * Confirm this run is in the SEEDED SMOKE ORG before it touches anything.
+ *
+ * This suite writes (step 4 requests a revision), and the tenant it writes to is
+ * decided by a repo secret. Prod's two orgs are indistinguishable on screen —
+ * same org name, same workspace name — so a credential repointed at the live
+ * tenant would look completely normal while filing revision requests against a
+ * real customer's campaigns. The only thing that ever prevented that was a
+ * comment. Now it is an assertion, and it runs before every step.
+ *
+ * Pinned by E2E_EXPECTED_WORKSPACE_ID (set in .github/workflows/prod-nightly.yml).
+ */
+async function openSmokeTenant(page: Page, context: BrowserContext, path: string, label: string) {
+  await login(context);
+  await page.goto(path, { waitUntil: "domcontentloaded" });
+  await assertExpectedTenant(page, label);
+}
+
 /** Count outbound dispatches visible in the Outbox, so step 5 can prove the run sent nothing. */
 async function sentCount(page: Page): Promise<number> {
   await page.goto("/outbox", { waitUntil: "domcontentloaded" });
@@ -78,15 +128,14 @@ test.describe("nightly prod smoke", () => {
   test.beforeEach(requireDeploy);
 
   test("step 2: the console home renders real data, not the empty state", async ({ page, context }) => {
-    await login(context);
-    await page.goto("/home", { waitUntil: "domcontentloaded" });
-
-    expect(page.url(), "step 2: should not be bounced back to login").not.toContain("/login");
+    await openSmokeTenant(page, context, "/home", "step 2 (console home)");
 
     // An empty state has masked schema errors before — a page that renders
     // "nothing yet" looks identical to a page whose query silently returned
     // zero rows. Assert a non-zero count, which the empty state cannot produce.
     const body = page.locator("body");
+    // Kept as a render check only. `/big shoulders/i` matches BOTH of prod's
+    // orgs, so it never identified anything; the tenant assertion above does.
     await expect(body, "step 2: the tenant should render").toContainText(/big shoulders/i);
     await expect(body, "step 2: home should show a non-zero count, not an empty state").toContainText(/[1-9]\d*/);
   });
@@ -116,11 +165,15 @@ test.describe("nightly prod smoke", () => {
         );
         test.setTimeout(ARC_REPLY_TIMEOUT_MS + 60_000);
 
-        await login(context);
         // A fresh conversation per question: shared context would let an earlier
         // answer supply a later one's facts, which is the same echo problem the
         // question wording is designed to avoid.
-        await page.goto("/arc?new=1", { waitUntil: "domcontentloaded" });
+        //
+        // The tenant check matters here beyond safety: the golden questions are
+        // graded against facts seeded into THIS org. Asked in the live tenant
+        // they would fail as "Arc's reasoning degraded", which is the most
+        // expensive possible way to be told the credential moved.
+        await openSmokeTenant(page, context, "/arc?new=1", `${question.id} (golden question)`);
 
         const composer = page.locator(".arc-composer textarea");
         await expect(composer, `${question.id}: the Arc composer should be present`).toBeVisible();
@@ -145,8 +198,10 @@ test.describe("nightly prod smoke", () => {
   });
 
   test("step 4: a campaign revision request persists", async ({ page, context }) => {
-    await login(context);
-    await page.goto("/campaigns", { waitUntil: "domcontentloaded" });
+    // The only WRITE in this suite. The tenant gate is not a formality here —
+    // everything below files a revision request against whatever campaign it
+    // finds, and in the live tenant that is a real customer's campaign.
+    await openSmokeTenant(page, context, "/campaigns", "step 4 (campaign revision)");
     await expect(page.locator("body"), "step 4: the campaigns list should render").toContainText(/campaign/i);
 
     // Walk campaigns until one has an asset still awaiting a decision. Which
@@ -195,18 +250,57 @@ test.describe("nightly prod smoke", () => {
     await revise.click();
     const instruction = page.getByPlaceholder(/tell arc what to change/i);
     await expect(instruction, "step 4: the revision composer should open").toBeVisible();
-    await instruction.fill("Nightly smoke check — no action needed; this asset is reopened immediately.");
+    await instruction.fill(REVISION_FIXTURE_INSTRUCTION);
     await page.getByRole("button", { name: /send to arc/i }).click();
 
-    // The assertion that matters is PERSISTENCE, not the optimistic UI: the view
-    // flips the pill locally before the server answers, so asserting without a
-    // reload would pass even if the write never landed.
+    // The assertion below is PERSISTENCE, not the optimistic UI: the view flips
+    // the pill locally before the server answers, so asserting without a reload
+    // would pass even if the write never landed.
+    //
+    // Know what this does NOT prove, because for six nights it was mistaken for
+    // proof (BSR-708). The state surviving a reload says the row was written. It
+    // says nothing about whether anything CONSUMED it — and it did not:
+    // `queueArcRevision` never woke the runner, nothing polls `agent_tasks`,
+    // and every revision this test filed sat `queued` forever while this step
+    // reported success (BSR-695). Persistence was never the thing in doubt.
+    //
+    // Execution is asserted OUT OF BAND, by the "No agent work is stranded" step
+    // in .github/workflows/prod-nightly.yml — a task still `queued` 30 minutes on
+    // fails the run. It lives there rather than here because a real revision is
+    // an Opus turn plus possible media generation: far past this test's budget,
+    // and not something to pay for inside a page assertion.
+    //
+    // MEASURED 2026-08-05, and it narrows that claim: in THIS tenant the
+    // out-of-band half currently proves nothing. A run against the reseeded
+    // fixture flipped the asset to `revision_requested` and created NO
+    // `agent_tasks` row at all — `select ... where org_id = <smoke org>` returns
+    // zero rows, ever. The stranded-work guard only fires on a task still
+    // `queued` after 30 minutes, so with no row to find it passes vacuously.
+    // The smoke workspace has no Secret Manager token scoped to it (the same
+    // blocker that skips every golden question), so Arc work cannot be queued
+    // here at all.
+    //
+    // So: the guard remains valuable for the LIVE tenant, which is where it is
+    // deliberately unscoped to look. It just does not prove the revision this
+    // step files will ever run. Do not read a green nightly as end-to-end proof
+    // of the revision path (BSR-759) — that still needs ARC_SMOKE_ENABLED plus
+    // a scoped token, at which point asserting the row's existence here becomes
+    // worth adding. Asserting it BEFORE then would only pin the nightly red,
+    // which is the failure mode BSR-722 was written to end.
+    //
+    // Read the expected label from the vocabulary rather than hardcoding it
+    // (BSR-723). This assertion used to look for "revision requested" — the raw
+    // stored value, which reached the screen unlabelled until BSR-656 routed the
+    // lifecycle through `domain/vocabulary`. So it was pinned to exactly the
+    // defect BSR-656 and BSR-709 exist to remove, and fixing the leak broke the
+    // test. Sourcing the string here means the next rename moves the assertion
+    // with the product instead of reddening the nightly.
     await expect(async () => {
       await page.reload({ waitUntil: "domcontentloaded" });
       await expect(
         page.locator("body"),
-        "step 4: the revision should still be recorded after a reload",
-      ).toContainText(/revision requested/i);
+        `step 4: the revision should still be recorded after a reload (expected the ${NEEDS_CHANGES_LABEL} state)`,
+      ).toContainText(NEEDS_CHANGES_LABEL);
     }).toPass({ timeout: 30_000, intervals: [2_000] });
 
     // --- repeatable without a restore ---
@@ -226,7 +320,10 @@ test.describe("nightly prod smoke", () => {
   });
 
   test("step 5: the smoke run sent nothing outbound", async ({ page, context }) => {
-    await login(context);
+    // Counting the wrong tenant's Outbox would compare two unrelated numbers and
+    // still report "nothing was sent" — the one assertion in this project that
+    // must never be satisfiable by accident.
+    await openSmokeTenant(page, context, "/outbox", "step 5 (outbound count)");
     const before = await sentCount(page);
 
     // Re-read after exercising the app. Outbound is approval-gated and nothing

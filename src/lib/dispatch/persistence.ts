@@ -2,8 +2,10 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveCampaignAudience, type AudienceChannel, type AudienceContact } from "@/domain";
 import { type AgentTaskTenantFields } from "@/lib/agent-tasks/scope";
+import { loadSuppressedAddresses } from "@/lib/email-suppression/persistence";
 
 import { DISPATCH_STATUS_ORDER, type DispatchStatus } from "./status";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 const EVENT_FOR_STATUS: Partial<Record<DispatchStatus, string>> = {
   queued: "dispatch_queued",
@@ -47,6 +49,11 @@ export async function enqueueDispatchesForAssets(input: EnqueueInput, client: Su
   const approvalByAsset = await loadApprovalByAsset(client, assets.map((a) => a.id), tenant);
   const needsAudience = assets.some((a) => addressableChannel(a.channel) !== null);
   const contacts = needsAudience ? await loadCandidateContacts(client, campaign, tenant) : [];
+  // Loaded once for the whole enqueue rather than per asset. Throws on a read
+  // failure by design — an empty set would read as "nobody is suppressed" and
+  // queue every opted-out address.
+  const suppressedAddresses =
+    needsAudience && tenant ? await loadSuppressedAddresses(tenant.org_id, client) : undefined;
   const existingKeys = await loadExistingKeys(client, campaignId, tenant);
 
   for (const asset of assets) {
@@ -58,6 +65,7 @@ export async function enqueueDispatchesForAssets(input: EnqueueInput, client: Su
         { persona: campaign.persona, contactId: campaign.contactId, companyId: campaign.companyId },
         contacts,
         channel,
+        { suppressedAddresses },
       );
       for (const recipient of recipients) {
         const key = dispatchKey(campaignId, asset.id, channel, recipient.contactId);
@@ -143,7 +151,10 @@ async function loadApprovalByAsset(client: SupabaseClient, assetIds: string[], t
 }
 
 export async function loadCandidateContacts(client: SupabaseClient, campaign: CampaignTarget, tenant?: AgentTaskTenantFields): Promise<AudienceContact[]> {
-  let query = applyOrgScope(client.from("contacts").select("id,persona,status,email,phone,full_name,company_id"), tenant);
+  // email_unsubscribed_at is selected because the resolver now filters on it.
+  // It was absent from this projection, which is why unsubscribed contacts were
+  // enqueued as dispatches and only died one at a time at the send gate.
+  let query = applyOrgScope(client.from("contacts").select("id,persona,status,email,phone,full_name,company_id,email_unsubscribed_at"), tenant);
   if (campaign.contactId) {
     query = query.eq("id", campaign.contactId);
   } else {
@@ -152,7 +163,7 @@ export async function loadCandidateContacts(client: SupabaseClient, campaign: Ca
   }
   const { data, error } = await query;
   assertOk("contacts lookup", error);
-  return ((data ?? []) as Array<{ id: string; persona: string; status: string; email: string | null; phone: string | null; full_name: string | null; company_id: string | null }>).map((c) => ({
+  return ((data ?? []) as Array<{ id: string; persona: string; status: string; email: string | null; phone: string | null; full_name: string | null; company_id: string | null; email_unsubscribed_at: string | null }>).map((c) => ({
     id: c.id,
     persona: c.persona,
     status: c.status as AudienceContact["status"],
@@ -160,6 +171,7 @@ export async function loadCandidateContacts(client: SupabaseClient, campaign: Ca
     phone: c.phone,
     fullName: c.full_name,
     companyId: c.company_id,
+    emailUnsubscribedAt: c.email_unsubscribed_at,
   }));
 }
 
@@ -191,7 +203,7 @@ type InsertArgs = {
 
 async function insertDispatchRow(client: SupabaseClient, args: InsertArgs): Promise<void> {
   const { error } = await client.from("campaign_dispatches").insert({
-    ...orgTenantFields(args.tenant),
+    ...workspaceScopeFields(args.tenant),
     campaign_id: args.campaignId,
     campaign_asset_id: args.asset.id,
     channel: args.asset.channel,
@@ -213,7 +225,7 @@ async function logAssetEnqueueEvent(
   const { tenant, campaignId, asset, scheduled, scheduledFor, operator, detailExtra } = args;
   const baseDetail = scheduled ? `Scheduled "${asset.title}" for ${scheduledFor}.` : `Queued "${asset.title}" for dispatch.`;
   const { error } = await client.from("campaign_events").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     campaign_asset_id: asset.id,
     event_type: scheduled ? "dispatch_scheduled" : "dispatch_queued",
@@ -290,7 +302,7 @@ export async function transitionDispatch(input: TransitionInput, client: Supabas
   const eventType = EVENT_FOR_STATUS[to];
   if (eventType) {
     const { error: eventError } = await client.from("campaign_events").insert({
-      ...orgTenantFields(tenant),
+      ...workspaceScopeFields(tenant),
       campaign_id: existing.campaign_id,
       event_type: eventType,
       actor: operator,
@@ -306,6 +318,3 @@ function applyOrgScope<Query>(query: Query, tenant?: AgentTaskTenantFields): Que
   return (query as { eq(column: string, value: string): Query }).eq("org_id", tenant.org_id);
 }
 
-function orgTenantFields(tenant?: AgentTaskTenantFields): Record<string, string> {
-  return tenant ? { org_id: tenant.org_id } : {};
-}

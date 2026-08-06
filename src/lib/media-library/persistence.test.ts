@@ -2,7 +2,46 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
-import { buildStoragePath, createFolder, insertAsset, insertAssetWithUrl, sanitizeFileName, setAvailableToArc, DEFAULT_MEDIA_FOLDERS, seedDefaultMediaFolders } from "./persistence";
+import { buildStoragePath, createFolder, createsFolderCycle, insertAsset, insertAssetWithUrl, moveAsset, reorderFolders, sanitizeFileName, setAvailableToArc, updateFolder, DEFAULT_MEDIA_FOLDERS, seedDefaultMediaFolders } from "./persistence";
+
+/**
+ * The invariant behind dragging one folder onto another.
+ *
+ * A cycle is not a cosmetic problem: `buildFolderViews` and the rail's renderer
+ * both walk children recursively, so a folder made its own ancestor either
+ * vanishes from the tree or recurses without end in the browser. The check is
+ * pure so it can be exercised here rather than only against a database.
+ */
+describe("createsFolderCycle", () => {
+  const rows = [
+    { id: "a", parent_id: null },
+    { id: "b", parent_id: "a" },
+    { id: "c", parent_id: "b" },
+    { id: "d", parent_id: null },
+  ];
+
+  it("refuses a folder's direct child", () => {
+    expect(createsFolderCycle(rows, "a", "b")).toBe(true);
+  });
+
+  it("refuses a deeper descendant, not just the child", () => {
+    expect(createsFolderCycle(rows, "a", "c")).toBe(true);
+  });
+
+  it("allows an unrelated branch, and allows moving a child up under a sibling", () => {
+    expect(createsFolderCycle(rows, "a", "d")).toBe(false);
+    expect(createsFolderCycle(rows, "c", "d")).toBe(false);
+  });
+
+  it("terminates on data that is already cyclic, and refuses rather than widening it", () => {
+    const broken = [
+      { id: "x", parent_id: "y" },
+      { id: "y", parent_id: "x" },
+      { id: "z", parent_id: null },
+    ];
+    expect(createsFolderCycle(broken, "z", "x")).toBe(true);
+  });
+});
 
 describe("sanitizeFileName", () => {
   it("strips path separators and unsafe chars", () => {
@@ -18,10 +57,16 @@ describe("buildStoragePath", () => {
 });
 
 describe("createFolder", () => {
+  // Two reads now: the existing siblings' sort_order, then the insert.
+  const responses = (siblings: { sort_order: number }[]) => ({
+    media_folders: [
+      { data: siblings, error: null },
+      { data: { id: "folder-2" }, error: null },
+    ],
+  });
+
   it("persists a parent folder when creating a subfolder", async () => {
-    const supabase = createSupabaseQueryMock({
-      media_folders: { data: { id: "folder-2" }, error: null },
-    });
+    const supabase = createSupabaseQueryMock(responses([]));
 
     await createFolder({
       orgId: "org-1",
@@ -38,6 +83,78 @@ describe("createFolder", () => {
         parent_id: "folder-1",
       }),
     ]);
+  });
+
+  /**
+   * `sort_order` is `not null default 0`, and this used to leave it there — so
+   * every folder an operator made tied with whichever seeded folder also held
+   * 0, and a tie on the only ORDER BY column lets Postgres return the rail in a
+   * different order on different reads. Confirmed on the live tenant before
+   * this was written: two folders both sat at 0.
+   */
+  it("puts a new folder after its existing siblings instead of tying them at 0", async () => {
+    const supabase = createSupabaseQueryMock(responses([{ sort_order: 0 }, { sort_order: 3 }, { sort_order: 1 }]));
+
+    await createFolder({ orgId: "org-1", name: "Storm 2026", client: supabase });
+
+    expect(supabase.calls).toContainEqual(["insert", expect.objectContaining({ sort_order: 4 })]);
+  });
+
+  it("starts at 0 when the parent has no children yet", async () => {
+    const supabase = createSupabaseQueryMock(responses([]));
+
+    await createFolder({ orgId: "org-1", name: "First", client: supabase });
+
+    expect(supabase.calls).toContainEqual(["insert", expect.objectContaining({ sort_order: 0 })]);
+  });
+
+  it("scopes the sibling lookup to the top level with `is`, not `eq`, for a null parent", async () => {
+    const supabase = createSupabaseQueryMock(responses([]));
+
+    await createFolder({ orgId: "org-1", name: "Top", client: supabase });
+
+    // `.eq("parent_id", null)` does not match NULL rows in PostgREST — it would
+    // silently see no siblings and hand every root folder the same 0.
+    expect(supabase.calls).toContainEqual(["is", "parent_id", null]);
+  });
+});
+
+describe("reorderFolders", () => {
+  it("writes each id's position, and refuses ids that are not this parent's children", async () => {
+    const supabase = createSupabaseQueryMock({
+      media_folders: [
+        { data: [{ id: "a" }, { id: "b" }], error: null },
+        { data: [{ id: "a" }], error: null },
+        { data: [{ id: "b" }], error: null },
+      ],
+    });
+
+    // "zz" is not in the org's rows for this parent; the browser sent it, so it
+    // does not get to decide membership.
+    const written = await reorderFolders("org-1", "parent-1", ["b", "zz", "a"], supabase);
+
+    expect(written).toBe(2);
+    expect(supabase.calls).toContainEqual(["update", { sort_order: 0 }]);
+    expect(supabase.calls).toContainEqual(["update", { sort_order: 1 }]);
+    expect(supabase.calls).not.toContainEqual(["eq", "id", "zz"]);
+  });
+});
+
+describe("updateFolder", () => {
+  it("leaves a field alone when its key is absent, and clears it on an explicit null", async () => {
+    const nameOnly = createSupabaseQueryMock({ media_folders: { data: [{ id: "f1" }], error: null } });
+    await updateFolder("f1", { name: "Renamed" }, "org-1", nameOnly);
+    expect(nameOnly.calls).toContainEqual(["update", { name: "Renamed" }]);
+
+    const cleared = createSupabaseQueryMock({ media_folders: { data: [{ id: "f1" }], error: null } });
+    await updateFolder("f1", { description: null }, "org-1", cleared);
+    expect(cleared.calls).toContainEqual(["update", { description: null }]);
+  });
+
+  it("does not issue a write at all when the patch is empty", async () => {
+    const supabase = createSupabaseQueryMock({ media_folders: { data: [{ id: "f1" }], error: null } });
+    await updateFolder("f1", {}, "org-1", supabase);
+    expect(supabase.calls).toEqual([]);
   });
 });
 
@@ -229,5 +346,35 @@ describe("setAvailableToArc", () => {
   it("reports no match when the asset belongs to another org", async () => {
     const { client } = updateClient([]);
     expect(await setAvailableToArc("asset-1", true, "other-org", client)).toBe(false);
+  });
+});
+
+
+/**
+ * BSR-707. `moveAsset` was the one mutator in this file that took no orgId — it
+ * updated on `id` alone. That was safe only because its single caller checked
+ * ownership first, and "safe by external convention" runs out at the second
+ * caller. The Library's move action is that second caller.
+ */
+describe("moveAsset", () => {
+  it("scopes the update to the org, not just the id", async () => {
+    const supabase = createSupabaseQueryMock({ media_assets: { data: [{ id: "a-1" }], error: null } });
+    await moveAsset("a-1", "f-1", "org-1", supabase);
+    expect(supabase.calls).toContainEqual(["update", { folder_id: "f-1" }]);
+    expect(supabase.calls).toContainEqual(["eq", "id", "a-1"]);
+    expect(supabase.calls).toContainEqual(["eq", "org_id", "org-1"]);
+  });
+
+  it("reports false when the row is not this org's, rather than a silent no-op", async () => {
+    // An org-scoped UPDATE that matches nothing succeeds and changes nothing.
+    // Returning void there would have reported someone else's asset as moved.
+    const supabase = createSupabaseQueryMock({ media_assets: { data: [], error: null } });
+    await expect(moveAsset("a-1", "f-1", "other-org", supabase)).resolves.toBe(false);
+  });
+
+  it("treats a null folder as the root, not as a missing argument", async () => {
+    const supabase = createSupabaseQueryMock({ media_assets: { data: [{ id: "a-1" }], error: null } });
+    await expect(moveAsset("a-1", null, "org-1", supabase)).resolves.toBe(true);
+    expect(supabase.calls).toContainEqual(["update", { folder_id: null }]);
   });
 });

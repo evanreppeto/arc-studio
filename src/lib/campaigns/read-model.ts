@@ -1,10 +1,18 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { arcAssetStatusFromDb, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
+import { arcAssetStatusFromDb, arcFindingSeverity, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
   parseConsideredAudiences,
+  humanizeArcProse,
+  isCreativeOnlyCampaign,
+  isFixKind,
+  type InlineFix,
   normalizeHandoffNote,
+  toWorkState,
+  WORK_STATE_LABEL,
   type ConsideredAudience,
+  type ArcDraftFinding,
 } from "@/domain";
+import { mediaReviewKey } from "@/lib/campaigns/media-identity";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { reportDegraded } from "@/lib/observability/report-degraded";
@@ -22,7 +30,8 @@ const OUTPUT_SELECT =
 const AGENT_TASK_SELECT = "id,objective,task_type,status,priority,metadata,created_at,updated_at";
 const DECISION_SELECT = "id,approval_item_id,decision,decided_by,decided_at,decision_notes,previous_status,next_status";
 const RECOMMENDATION_SELECT = "id,approval_item_id,agent,recommendation,rationale,risk_flags,suggested_edits,created_at";
-const FINDING_SELECT = "id,campaign_asset_id,severity,status,matched_text,finding_message,created_at";
+const FINDING_SELECT =
+  "id,campaign_asset_id,severity,status,matched_text,finding_message,created_at,fix_target,fix_label,fix_kind";
 
 export type CampaignWorkspaceAssetCategory = "physical" | "virtual" | "ads" | "media" | "other";
 
@@ -57,7 +66,47 @@ export type CampaignMediaAsset = {
   lineage: Array<[string, string]>;
   /** Generation prompt when the source tool declared one. */
   prompt: string | null;
+  /** Declared aspect ratio as the producer recorded it ("4:3", "9:16"). This is
+   *  the entry's own claim, not a measurement — `media_assets.width/height` are
+   *  unpopulated (BSR-652), so there is nothing to verify it against. Null when
+   *  the producer declared none. */
+  format: string | null;
+  /** Risk flags recorded against THIS asset ("privacy/redaction", embedded
+   *  text, claim risk). Distinct from the deliverable's guardrail notes: these
+   *  name the specific image. Empty when none were recorded — which is not the
+   *  same as reviewed-and-clean. */
+  riskFlags: string[];
+  /** The `media_assets` row this creative came from, when the producer recorded
+   *  the link. Null for entries written before the id was threaded through, and
+   *  for anything that never went through the Library. */
+  libraryAssetId: string | null;
+  /** Storage path of the object. The only join key that exists on entries with
+   *  no `libraryAssetId`, which today is most of them. */
+  storagePath: string | null;
+  /** This asset's own review decision. */
+  review: CampaignMediaReview;
 };
+
+/**
+ * Review state for one media asset.
+ *
+ * `unreviewed` is the honest default and by far the common case: asset review
+ * writes to `approval_items` with a `media_asset_id`, and there are zero such
+ * rows in prod — the path is built and has never run. An asset with no approval
+ * row has NOT been reviewed and cleared; it has not been looked at. Those two
+ * must never render the same.
+ */
+export type CampaignMediaReviewState = "unreviewed" | "pending" | "approved" | "declined" | "needs_revision" | "archived";
+
+export type CampaignMediaReview = {
+  state: CampaignMediaReviewState;
+  /** Who decided. Null while unreviewed, and null on a row that recorded no reviewer. */
+  reviewer: string | null;
+  reviewedAt: string | null;
+  notes: string | null;
+};
+
+const UNREVIEWED: CampaignMediaReview = { state: "unreviewed", reviewer: null, reviewedAt: null, notes: null };
 
 /**
  * Media that is allowed to render as campaign creative. `referenced` media —
@@ -67,6 +116,20 @@ export function renderableMedia(media: CampaignMediaAsset[]): CampaignMediaAsset
   return media.filter((asset) => asset.origin !== "referenced");
 }
 
+/**
+ * Map an `approval_items.status` onto the review state the campaign surface
+ * shows. Anything unrecognized becomes `pending` rather than a decision — an
+ * unknown status is not evidence that someone approved something.
+ */
+export function mediaReviewStateFromStatus(status: string | null | undefined): CampaignMediaReviewState {
+  const s = (status ?? "").toLowerCase();
+  if (/approved/.test(s)) return "approved";
+  if (/declined|rejected/.test(s)) return "declined";
+  if (/revision/.test(s)) return "needs_revision";
+  if (/archiv/.test(s)) return "archived";
+  return "pending";
+}
+
 export type CampaignWorkspaceListItem = {
   id: string;
   name: string;
@@ -74,11 +137,37 @@ export type CampaignWorkspaceListItem = {
   status: string;
   lifecycle: CampaignLaunchState["lifecycle"];
   pendingCount: number;
+  /**
+   * Approved / non-archived deliverable counts, straight off `buildLaunchState`
+   * — the SAME numbers the campaign's own detail page renders in `.cstate`.
+   *
+   * The board must not compute this from `rollup` instead. The two disagree:
+   * `buildLaunchState` counts built assets and drops archived ones, while
+   * `deriveCampaignRollup` also counts standalone approvals (those with no
+   * `campaign_asset_id`). One live campaign has 6 assets and 1 standalone
+   * approval, so the rollup says 7 where the detail page says 6 — two answers
+   * to one question, on two screens, about one campaign.
+   */
+  approvedCount: number;
+  requiredCount: number;
   pendingDeliverables: PendingDeliverable[];
+  /**
+   * Empty string when the campaign has no objective — NOT a placeholder
+   * sentence. This used to be `campaign.objective ?? "No objective captured
+   * yet."`, which is a non-null string, so every `objective || theme || …`
+   * fallback a caller wrote was dead on arrival and three of five live rows
+   * spent their subtitle announcing that a field was blank.
+   */
   objective: string;
+  /** The operator/Arc-supplied theme. Required at creation, so this is the
+   *  reliable thing to say when there is no objective. */
+  campaignTheme: string;
+  /** Timing of the signal this campaign was built from, when it had one. */
+  signal: CampaignSourceSignal | null;
   audienceSummary: string;
   offerSummary: string;
-  whyBuilt: string;
+  /** Null when Arc recorded no reasoning — see `CampaignWorkspaceReasoning`. */
+  whyBuilt: string | null;
   assetCount: number;
   approvalCount: number;
   mediaCount: number;
@@ -89,6 +178,12 @@ export type CampaignWorkspaceListItem = {
   driver: CampaignDriver;
   /** Distinct channel labels for the card subline, e.g. ["Meta", "Email"]. */
   channels: string[];
+  /**
+   * Every deliverable is a raw generation prompt — this is a Studio batch, not
+   * something that goes to a customer. The board groups these separately rather
+   * than mixing them into the approval queue. See `isCreativeOnlyCampaign`.
+   */
+  creativeOnly: boolean;
   previewText: string | null;
   previewLabel: string | null;
   contentPieces: CampaignListContentPiece[];
@@ -97,6 +192,39 @@ export type CampaignWorkspaceListItem = {
   href: string;
   rollup: CampaignRollup;
 };
+
+/**
+ * The timing Arc recorded on the signal that produced a campaign.
+ *
+ * Shape censused against the live workspace: `urgency` sits at the top level of
+ * `campaigns.source_signal` and the timing under `evidence`
+ * (`{origin, urgency, evidence: {eventType, severity, startsAt, endsAt, …}}`).
+ * Both levels are read anyway — this column is agent-written JSON with no
+ * constraint behind it, and a key that moves should degrade to null rather than
+ * throw.
+ */
+export type CampaignSourceSignal = {
+  urgency: string | null;
+  eventType: string | null;
+  startsAtIso: string | null;
+  endsAtIso: string | null;
+};
+
+/** Null when the campaign carries no signal timing at all — most of them. An
+ *  operator-created package has no window to close. */
+export function parseCampaignSourceSignal(raw: unknown): CampaignSourceSignal | null {
+  const root = asObject(raw);
+  const evidence = asObject(root.evidence);
+  const pick = (key: string) => getString(evidence[key]) ?? getString(root[key]);
+
+  const signal: CampaignSourceSignal = {
+    urgency: pick("urgency"),
+    eventType: pick("eventType") ?? pick("event_type"),
+    startsAtIso: pick("startsAt") ?? pick("starts_at"),
+    endsAtIso: pick("endsAt") ?? pick("ends_at"),
+  };
+  return Object.values(signal).some(Boolean) ? signal : null;
+}
 
 export type CampaignListContentPiece = {
   id: string;
@@ -181,14 +309,28 @@ export type CampaignAssetRecommendation = {
 };
 
 export type CampaignAssetFinding = {
+  /** Needed to apply the fix below — the operator's click has to name a row. */
+  id: string;
   claim: string;
   severity: string;
   message: string;
+  /** The one value this finding is asking for, when it reduces to one (BSR-743).
+   *  Null is the ordinary case: most findings are judgement, not a blank to fill,
+   *  and every finding written before this existed has none. */
+  fix: InlineFix | null;
 };
 
 export type CampaignWorkspaceReasoning = {
-  whyBuilt: string;
-  recommendedAction: string;
+  /**
+   * Null when Arc recorded nothing — the view renders these behind `&&` guards
+   * that were written to hide an absent field and could never fire, because the
+   * old fallbacks ("Arc has not recorded reasoning for this campaign yet.", "No
+   * recommended action recorded.") are truthy. `reasoning_payload` is `{}` on
+   * every live campaign, so the reasoning panel — whose whole job is explaining
+   * why Arc built the thing — rendered two sentences saying it cannot.
+   */
+  whyBuilt: string | null;
+  recommendedAction: string | null;
   guardrailFlags: string[];
   toolsUsed: string[];
   promptInputs: Array<{ label: string; value: string }>;
@@ -494,6 +636,9 @@ type GuardrailFindingRow = {
   matched_text: string | null;
   finding_message: string;
   created_at: string;
+  fix_target: string | null;
+  fix_label: string | null;
+  fix_kind: string | null;
 };
 
 type CompanyRow = {
@@ -532,7 +677,7 @@ export type CampaignNameRef = { id: string; name: string; href: string };
  * approval / output aggregation — so callers that only need names (Arc composer,
  * mention search) don't pay for the full workspace build on every render.
  */
-export async function listCampaignNames(orgId?: string, client?: SupabaseClient): Promise<CampaignNameRef[]> {
+export async function listCampaignNames(orgId?: string, client?: SupabaseClient, workspaceId?: string | null): Promise<CampaignNameRef[]> {
   if (!client && !isSupabaseAdminConfigured()) {
     if (!isDemoDataEnabled()) return [];
     const demo = buildDemoCampaignWorkspaceList();
@@ -540,7 +685,7 @@ export async function listCampaignNames(orgId?: string, client?: SupabaseClient)
   }
   try {
     const supabase = client ?? getSupabaseAdminClient();
-    const { data, error } = await applyOrgScope(supabase.from("campaigns").select("id,name"), orgId)
+    const { data, error } = await applyCampaignScope(supabase.from("campaigns").select("id,name"), orgId, workspaceId)
       .order("updated_at", { ascending: false })
       .limit(100);
     assertSupabaseResult("campaigns", error);
@@ -588,7 +733,244 @@ export async function getArcAssetStatuses(
   }
 }
 
-export async function getCampaignWorkspaceList(client?: SupabaseClient, agentName = "Arc", orgId?: string): Promise<CampaignWorkspaceList> {
+/** One deliverable's readable copy, for a surface that renders it rather than links to it. */
+export type ArcAssetBody = {
+  id: string;
+  /** The copy an operator should be reading: the newest authored version. */
+  body: string;
+  /** True when `body` came from `edited_body` / `approved_body` rather than Arc's original draft. */
+  edited: boolean;
+  /**
+   * The asset's CURRENT name.
+   *
+   * The card carries a title frozen at draft time, and on prod 4 of 17 have
+   * drifted — two of them badly: cards still read "Landing page — needs revision
+   * (placeholder)" and "Paid social — needs revision (fake-urgency risk)" for
+   * assets Arc has since revised into "Landing page — Chicago water-damage
+   * response" and "Paid social — We slow the situation down". The chat was
+   * describing work as an unrevised placeholder after the revision landed.
+   */
+  title: string | null;
+};
+
+/**
+ * The full copy behind a conversation's action cards, keyed by asset id.
+ *
+ * An action card carries `preview`, and `preview` is a ~280-character prefix of
+ * the body — verified against prod, where the longest one on record is 280 and
+ * the median cuts mid-word ("one of the "). It was sized for a receipt, and a
+ * receipt is what the chat could render from it. The copy itself only ever
+ * existed in `campaign_assets`, which is why reading a draft meant leaving the
+ * conversation.
+ *
+ * Read at render time rather than widened into the card at write time on
+ * purpose: cards are frozen JSON in `arc_messages.metadata`, so a card-shape
+ * change reaches nothing already written, and every draft an operator has open
+ * today predates it. Reading through the asset also means the chat shows the
+ * copy as it stands now — an edit made on the campaign page is visible in the
+ * conversation instead of the conversation quoting a superseded draft.
+ *
+ * Org-scoped, and returns {} rather than throwing, for the same reason
+ * `getArcAssetStatuses` does: a card that falls back to its stored preview still
+ * renders, and a chat that fails to render helps nobody.
+ */
+export async function getArcAssetBodies(
+  assetIds: readonly string[],
+  orgId?: string,
+  client?: SupabaseClient,
+): Promise<Record<string, ArcAssetBody>> {
+  const ids = [...new Set(assetIds.filter((id) => typeof id === "string" && id.trim()))];
+  if (ids.length === 0) return {};
+  if (!client && !isSupabaseAdminConfigured()) return {};
+  try {
+    const supabase = client ?? getSupabaseAdminClient();
+    const { data, error } = await applyOrgScope(
+      supabase.from("campaign_assets").select("id,title,draft_body,edited_body,approved_body"),
+      orgId,
+    ).in("id", ids);
+    assertSupabaseResult("campaign_assets", error);
+    const out: Record<string, ArcAssetBody> = {};
+    for (const row of (data ?? []) as Array<{ id: string; title: string | null; draft_body: string | null; edited_body: string | null; approved_body: string | null }>) {
+      // Newest authored version wins — approving an edit must not make the chat
+      // fall back to showing the copy that edit replaced.
+      const authored = row.approved_body?.trim() || row.edited_body?.trim() || null;
+      const body = authored ?? row.draft_body?.trim() ?? "";
+      if (!body) continue;
+      out[row.id] = { id: row.id, body, edited: Boolean(authored), title: row.title?.trim() || null };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The guardrail findings recorded against a set of assets, keyed by asset id.
+ *
+ * The Arc chat rendered a card's frozen `flags` and nothing else. A census of
+ * prod found 13 of 16 approval-bearing cards carrying zero flags while those
+ * same assets held 15 OPEN findings — 13 warnings and 2 blockers. The checks had
+ * run and been recorded; the chat had simply never read the table they land in.
+ *
+ * Read live for the same reason bodies are (see `getArcAssetBodies`): the card
+ * is frozen JSON in `arc_messages.metadata`, so it cannot learn about a finding
+ * raised after Arc drafted — and a finding resolved since is no longer a
+ * warning. Org-scoped; returns {} rather than throwing, and the caller
+ * distinguishes "no findings" from "not loaded" (see `arcDraftCheckState`).
+ */
+export async function getArcAssetChecks(
+  assetIds: readonly string[],
+  orgId?: string,
+  client?: SupabaseClient,
+): Promise<Record<string, ArcDraftFinding[]>> {
+  const ids = [...new Set(assetIds.filter((id) => typeof id === "string" && id.trim()))];
+  if (ids.length === 0) return {};
+  if (!client && !isSupabaseAdminConfigured()) return {};
+  try {
+    const supabase = client ?? getSupabaseAdminClient();
+    const { data, error } = await applyOrgScope(
+      supabase.from("guardrail_findings").select("id,campaign_asset_id,severity,status,matched_text,finding_message"),
+      orgId,
+    ).in("campaign_asset_id", ids);
+    assertSupabaseResult("guardrail_findings", error);
+
+    const out: Record<string, ArcDraftFinding[]> = {};
+    // Every requested id gets an entry, including an EMPTY one. That empty array
+    // is the difference between "we looked and found none" and "we haven't
+    // looked" — the caller renders very different things for those two.
+    for (const id of ids) out[id] = [];
+    for (const row of (data ?? []) as GuardrailFindingRow[]) {
+      const assetId = row.campaign_asset_id;
+      if (!assetId || !out[assetId]) continue;
+      out[assetId].push({
+        id: row.id,
+        severity: arcFindingSeverity(row.severity),
+        message: row.finding_message,
+        matchedText: row.matched_text ?? undefined,
+        open: (row.status ?? "").toLowerCase() === "open",
+      });
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Every deliverable in the workspace still waiting on a decision, wherever it
+ * lives (BSR-702 follow-on).
+ *
+ * The campaign list already builds all of this — it fetches the campaigns, the
+ * assets and the approvals, and runs them through `buildWorkspaceAssets`. What
+ * it throws away is the review: `approval_recommendations` and
+ * `guardrail_findings` are only read on the detail path, so a list item knows a
+ * deliverable is undecided but not what the reviewer said about it. A queue
+ * that could not show the review would be a list of titles.
+ *
+ * `assetDecisionState(...) === "pending"` is the SAME predicate the board's
+ * "N deliverables undecided" is counted with, on purpose. The count and the
+ * queue behind it are one claim, and this file already carries the scars of
+ * what happens when two surfaces answer that question separately (BSR-726).
+ */
+export type ReviewQueueEntry = {
+  campaignId: string;
+  campaignName: string;
+  asset: CampaignWorkspaceAsset;
+};
+
+export type WorkspaceReviewQueue =
+  | { status: "live"; entries: ReviewQueueEntry[] }
+  | { status: "unavailable"; message: string };
+
+export async function getWorkspaceReviewQueue(
+  client?: SupabaseClient,
+  agentName = "Arc",
+  orgId?: string,
+  workspaceId?: string | null,
+): Promise<WorkspaceReviewQueue> {
+  if (!client && !isSupabaseAdminConfigured()) {
+    return isDemoDataEnabled()
+      ? { status: "live", entries: buildDemoReviewQueue(agentName) }
+      : { status: "live", entries: [] };
+  }
+
+  try {
+    const supabase = client ?? getSupabaseAdminClient();
+    const { data, error } = await applyCampaignScope(
+      supabase.from("campaigns").select(CAMPAIGN_SELECT),
+      orgId,
+      workspaceId,
+    )
+      .order("updated_at", { ascending: false })
+      .limit(100);
+    assertSupabaseResult("campaigns", error);
+
+    const campaigns = (data ?? []) as CampaignRow[];
+    const campaignIds = campaigns.map((campaign) => campaign.id);
+    if (campaignIds.length === 0) return { status: "live", entries: [] };
+
+    const [assets, approvals] = await Promise.all([
+      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at", orgId, workspaceId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at", orgId, workspaceId),
+    ]);
+    const approvalIds = approvals.map((approval) => approval.id);
+    const assetIds = assets.map((asset) => asset.id);
+
+    // The review, which the list read does not fetch. Both tolerate failure the
+    // same way the detail read does: a missing critique must not take the queue
+    // down with it — an un-reviewed deliverable still needs deciding.
+    const [outputs, recommendations, findings] = await Promise.all([
+      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "approval_item_id", approvalIds, "created_at", orgId, workspaceId).catch(() => []),
+      selectIn<ApprovalRecommendationRow>(supabase, "approval_recommendations", RECOMMENDATION_SELECT, "approval_item_id", approvalIds, "created_at", orgId, workspaceId)
+        .then(groupByApprovalItem)
+        .catch(() => new Map<string, ApprovalRecommendationRow[]>()),
+      selectIn<GuardrailFindingRow>(supabase, "guardrail_findings", FINDING_SELECT, "campaign_asset_id", assetIds, "created_at", orgId, workspaceId)
+        .then(groupFindingsByAsset)
+        .catch(() => new Map<string, CampaignAssetFinding[]>()),
+    ]);
+
+    const entries: ReviewQueueEntry[] = [];
+    for (const campaign of campaigns) {
+      const campaignApprovals = approvals.filter((approval) => approval.campaign_id === campaign.id);
+      const campaignAssets = buildWorkspaceAssets(
+        assets.filter((asset) => asset.campaign_id === campaign.id),
+        campaignApprovals,
+        outputs.filter((output) => output.approval_item_id && campaignApprovals.some((approval) => approval.id === output.approval_item_id)),
+        agentName,
+        recommendations,
+        findings,
+      );
+      for (const asset of campaignAssets) {
+        if (assetDecisionState(asset) !== "pending") continue;
+        entries.push({ campaignId: campaign.id, campaignName: cleanCampaignName(campaign.name), asset });
+      }
+    }
+    return { status: "live", entries };
+  } catch (error) {
+    // Said out loud rather than returned empty: "nothing is waiting on you" and
+    // "we could not find out" are different answers, and only one of them means
+    // the reviewer can stop.
+    return {
+      status: "unavailable",
+      message: error instanceof Error ? error.message : "Could not load what is waiting on you.",
+    };
+  }
+}
+
+/** The same queue over the demo campaigns, so the preview can exercise it. */
+function buildDemoReviewQueue(agentName: string): ReviewQueueEntry[] {
+  const entries: ReviewQueueEntry[] = [];
+  for (const campaign of demoCampaigns(agentName)) {
+    const detail = buildDemoCampaignWorkspaceDetail(campaign, agentName);
+    for (const asset of detail.assets) {
+      if (assetDecisionState(asset) !== "pending") continue;
+      entries.push({ campaignId: campaign.id, campaignName: campaign.name, asset });
+    }
+  }
+  return entries;
+}
+
+export async function getCampaignWorkspaceList(client?: SupabaseClient, agentName = "Arc", orgId?: string, workspaceId?: string | null): Promise<CampaignWorkspaceList> {
   if (!client && !isSupabaseAdminConfigured()) {
     // Local preview has no database. When the demo flag is on, render a realistic
     // read-only campaign library. When off, return an empty live list so real
@@ -601,17 +983,18 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
   try {
     const supabase = client ?? getSupabaseAdminClient();
     const resolvedOrgId = orgId;
-    const { data, error } = await applyOrgScope(
+    const { data, error } = await applyCampaignScope(
       supabase.from("campaigns").select(CAMPAIGN_SELECT),
       resolvedOrgId,
+      workspaceId,
     ).order("updated_at", { ascending: false }).limit(100);
     assertSupabaseResult("campaigns", error);
 
     const campaigns = (data ?? []) as CampaignRow[];
     const campaignIds = campaigns.map((campaign) => campaign.id);
     const [assets, approvals] = await Promise.all([
-      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at", resolvedOrgId),
-      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at", resolvedOrgId),
+      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at", resolvedOrgId, workspaceId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at", resolvedOrgId, workspaceId),
     ]);
     const approvalOutputs = await selectIn<AgentOutputRow>(
       supabase,
@@ -621,6 +1004,7 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
       approvals.map((approval) => approval.id),
       "created_at",
       resolvedOrgId,
+      workspaceId,
     );
     const mediaByCampaign = buildMediaByCampaign(campaigns, assets, approvals, approvalOutputs, agentName);
     const sourceCountByCampaign = buildSourceCountByCampaign(campaigns, approvals, approvalOutputs);
@@ -646,10 +1030,15 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
         status: statusLabel(campaign.status),
         lifecycle: launch.lifecycle,
         pendingCount: launch.pendingCount,
+        approvedCount: launch.approvedCount,
+        requiredCount: launch.requiredCount,
         pendingDeliverables: selectPendingDeliverables(campaignAssets),
-        objective: campaign.objective ?? "No objective captured yet.",
-        audienceSummary: campaign.audience_summary ?? "Audience has not been summarized yet.",
-        offerSummary: campaign.offer_summary ?? "Offer has not been summarized yet.",
+        // Empty, not a placeholder sentence — see the field's note on the type.
+        objective: campaign.objective?.trim() ?? "",
+        campaignTheme: campaign.campaign_theme?.trim() || humanize(campaign.restoration_focus ?? ""),
+        signal: parseCampaignSourceSignal(campaign.source_signal),
+        audienceSummary: campaign.audience_summary?.trim() ?? "",
+        offerSummary: campaign.offer_summary?.trim() ?? "",
         whyBuilt: reasoning.whyBuilt,
         assetCount: campaignAssets.length,
         approvalCount: campaignApprovals.length,
@@ -659,6 +1048,11 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
         assetTypes,
         driver: campaignDriver({ sourceSystem: campaign.source_system ?? null, lifecycle: launch.lifecycle }),
         channels: orderedChannels(campaignAssetRows.map((asset) => humanizeChannel(asset.asset_type ?? asset.channel ?? ""))),
+        // From the RAW rows, deliberately. `campaignAssets[].assetType` has
+        // already been humanized, and `humanizeChannel` collapses image_prompt
+        // and social_ad both to "Paid" — classifying off either would make a
+        // generation batch indistinguishable from an ad.
+        creativeOnly: isCreativeOnlyCampaign(campaignAssetRows.map((asset) => asset.asset_type ?? "")),
         previewText: preview?.text ?? null,
         previewLabel: preview?.label ?? null,
         contentPieces: buildListContentPieces(campaignAssets),
@@ -706,7 +1100,7 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
 // identical to a populated DB view. No piece here is sendable.
 // ---------------------------------------------------------------------------
 
-type DemoMedia = { id: string; type: CampaignMediaAsset["type"]; title: string; seed: string; lineage?: Array<[string, string]>; prompt?: string };
+type DemoMedia = { id: string; type: CampaignMediaAsset["type"]; title: string; seed: string; lineage?: Array<[string, string]>; prompt?: string; format?: string; riskFlags?: string[] };
 
 type DemoPiece = {
   id: string;
@@ -725,6 +1119,11 @@ type DemoPiece = {
   compliance?: string;
   /** Original draft vs current copy, drives the "What changed" diff. */
   revision?: { draft: string; current: string };
+  /** The claims review sitting on this piece. Prod writes one on every copy
+   *  draft, so a fixture without one leaves the review block — the first thing
+   *  the deliverable card shows — invisible in the backend-less preview. */
+  recommendation?: CampaignAssetRecommendation;
+  findings?: CampaignAssetFinding[];
 };
 
 /** A source-backed record the detail page lists under "Sources" / "Linked
@@ -762,6 +1161,8 @@ type DemoCampaign = {
   guardrailFlags: string[];
   toolsUsed: string[];
   channels: string[];
+  /** Only the signal-driven fixtures carry one, same as the live table. */
+  signal?: CampaignSourceSignal;
   sourceCount: number;
   sources: DemoSource[];
   createdAtIso: string;
@@ -781,6 +1182,14 @@ function demoMedia(media: DemoMedia): CampaignMediaAsset {
     thumbnailUrl: `https://picsum.photos/seed/${media.seed}/240/160`,
     mimeType: media.type === "video" ? "video/mp4" : "image/jpeg",
     description: media.title,
+    // Demo media declares a ratio because real prod entries do; without one the
+    // offline preview could not exercise the tile's aspect handling at all.
+    format: media.format ?? "4:3",
+    riskFlags: media.riskFlags ?? [],
+    libraryAssetId: null,
+    storagePath: null,
+    // Demo data has no approval rows behind it, which is also true of prod.
+    review: UNREVIEWED,
     lineage: media.lineage ?? [],
     prompt: media.prompt ?? null,
     source: "Approved media",
@@ -818,8 +1227,12 @@ function buildDemoListItem(campaign: DemoCampaign): CampaignWorkspaceListItem {
     status: campaign.status,
     lifecycle: campaign.lifecycle,
     pendingCount: pendingPieces.length,
+    approvedCount: approvedPieces.length,
+    requiredCount: campaign.pieces.length,
     pendingDeliverables: pendingPieces.map((piece) => ({ assetId: piece.id, title: piece.title, kind: piece.kind })),
     objective: campaign.objective,
+    campaignTheme: campaign.campaignTheme,
+    signal: campaign.signal ?? null,
     audienceSummary: campaign.audienceSummary,
     offerSummary: campaign.offerSummary,
     whyBuilt: campaign.whyBuilt,
@@ -831,6 +1244,9 @@ function buildDemoListItem(campaign: DemoCampaign): CampaignWorkspaceListItem {
     assetTypes,
     driver: campaign.driver,
     channels: campaign.channels.slice(0, 3),
+    // Demo pieces carry humanized kinds ("Image Prompt"); the classifier
+    // normalizes, so the demo and live branches agree on the same campaign.
+    creativeOnly: isCreativeOnlyCampaign(campaign.pieces.map((piece) => piece.kind)),
     previewText: firstPreview,
     previewLabel: contentPieces[0]?.channel ?? null,
     contentPieces,
@@ -857,8 +1273,20 @@ export function buildDemoCampaignWorkspaceList(agentName = "Arc"): CampaignWorks
 
 /** Map a demo status string to the same plain status labels the real read-model
  *  emits, so downstream launch/checklist logic behaves identically. */
+/**
+ * `CampaignWorkspaceAsset.status` carries the STORED status, not a label.
+ *
+ * It is re-read as a status all over the detail view — `statusMeta`,
+ * `isActionable`, `/^approved/i` — and the view writes raw values back into it
+ * optimistically (`"revision_requested"`, `"pending_approval"`). Passing it
+ * through `statusLabel` used to work only by accident: "Pending approval"
+ * happens to contain "pending", so the round-trip survived. The moment the label
+ * became "Needs you" — which contains neither "pending" nor "review" — every
+ * pending asset rendered as "Draft" (BSR-656). Label at the display boundary,
+ * never in the read model.
+ */
 function demoAssetStatus(rawStatus: string): string {
-  return statusLabel(rawStatus);
+  return rawStatus;
 }
 
 function demoDetailAsset(piece: DemoPiece): CampaignWorkspaceAsset {
@@ -879,9 +1307,11 @@ function demoDetailAsset(piece: DemoPiece): CampaignWorkspaceAsset {
     complianceNotes: piece.compliance ?? "No asset-level compliance notes captured.",
     guardrailFlags: [],
     blockedPhrases: [],
-    recommendation: null,
-    findings: [],
-    claimsReviewed: false,
+    recommendation: piece.recommendation ?? null,
+    findings: piece.findings ?? [],
+    // Only a claims review counts as reviewed, and in the fixtures that is
+    // exactly the pieces carrying one — same rule the live read applies.
+    claimsReviewed: piece.recommendation?.agent === "draft-critic",
     // Approved demo pieces in a Live campaign are deployable; everything else
     // stays dispatch-locked so the gold "outbound locked" gate shows.
     dispatchLocked: !/approved/i.test(piece.rawStatus),
@@ -1108,6 +1538,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
     pieceStatus,
     updatedAt,
     updatedAtIso,
+    signal,
   }: {
     id: string;
     name: string;
@@ -1119,11 +1550,36 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
     pieceStatus: "pending_approval" | "approved";
     updatedAt: string;
     updatedAtIso: string;
+    signal?: CampaignSourceSignal;
   }): DemoCampaign => {
     const pending = pieceStatus === "pending_approval";
     const status = pending ? "In Review" : lifecycle === "Live" ? "Live" : "Approved";
-    const statusLabel = pending ? "Pending approval" : "Approved";
+    // The raw status, exactly as a real row stores it — the view maps it to a
+    // label. A fixture holding "Needs you" here would round-trip through
+    // `statusMeta` as "Draft", because "Needs you" is not a status.
+    const pieceStatusValue = pending ? "pending_approval" : "approved";
     const action = target.cta || "Take the next step";
+    // Full email copy, not a one-line summary: the deliverable card renders this
+    // as the draft under review, and a single sentence there shows none of what
+    // reviewing an actual email is like.
+    const emailCopy = [
+      target.angle,
+      "",
+      offer,
+      "",
+      "You don't have to work out which piece to sort first. That's our job — we take it from the first",
+      "conversation through to the part where it's done, and you hear from one team the whole way.",
+      "",
+      "We answer within the hour, every time — no exceptions.",
+      "",
+      "Call [phone number] — a real person picks up.",
+      "",
+      `${action} →`,
+      "",
+      "Or reply to this email and someone will call you back.",
+      "",
+      "[Unsubscribe] · You're receiving this because you asked us to keep you posted.",
+    ].join("\n");
     return {
       id,
       name,
@@ -1159,6 +1615,7 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
       guardrailFlags: ["Human approval required", "Outbound locked until approved"],
       toolsUsed: ["Customer signal", "Persona match", "Approved brand context"],
       channels: ["Email", "LinkedIn"],
+      signal,
       sourceCount: 2,
       sources: [
         {
@@ -1184,24 +1641,92 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
           title: `${name} — email`,
           kind: "Email",
           channel: "Email",
-          status: statusLabel,
+          status: pieceStatusValue,
           rawStatus: pieceStatus,
           needsReview: pending,
-          preview: `${target.angle} ${action}.`,
-          body: `${target.angle}\n\n${offer}\n\n${action} →`,
+          preview: emailCopy,
+          body: emailCopy,
           compliance: "Audience, offer, and CTA require human review before dispatch.",
+          recommendation: {
+            agent: "draft-critic",
+            verdict: "request revision",
+            rationale: `The offer and the audience fit are well grounded — both trace back to records in this workspace, and the ${target.name} match is the reason this draft exists. Two things stop it from going out as written. The response-time line commits the business to something no document in this workspace backs up, and the reply-to-callback line describes a handoff no process note covers. Neither needs a rewrite; both are single-line fixes.`,
+            riskFlags: ["unsupported_claim"],
+            suggestedEdits:
+              "1) Point the response-time line at a documented commitment, or soften it to \"we'll come back to you the same day\". 2) Confirm that replying to this email actually reaches someone who can call back — if not, change it to \"reply and we'll follow up\".",
+          },
+          findings: [
+            {
+              id: `${id}-finding-placeholder`,
+              claim: "Call [phone number] — a real person picks up.",
+              severity: "blocker",
+              message:
+                "This is still the placeholder, so the call-to-action points at nothing. It cannot go out until the real number is in it.",
+              // The shape this whole feature exists for: one missing value, and
+              // the exact text to put it in place of.
+              fix: { target: "[phone number]", label: "The number to call", kind: "phone" },
+            },
+            {
+              id: `${id}-finding-response-time`,
+              claim: "We answer within the hour, every time — no exceptions.",
+              severity: "blocker",
+              message:
+                "Nothing in this workspace's evidence sets a response-time commitment, and \"no exceptions\" turns it into a promise the business has to keep on every single inbound. Point it at a documented commitment or soften it before this goes out.",
+              fix: null,
+            },
+            {
+              id: `${id}-finding-callback`,
+              claim: "Or reply to this email and someone will call you back.",
+              severity: "warning",
+              message:
+                "No proof point or process note describes a reply-to-callback workflow. Plausible operationally, but unsubstantiated here — worth confirming with whoever owns the inbox.",
+              fix: null,
+            },
+          ],
           media: [{ id: `${id}-hero`, type: "image", title: `${name} campaign creative`, seed: id, lineage: [["ai", "Made in Higgsfield · seedream"], ["ai", "Source job · hf_20260722_0917"]], prompt: "Campaign hero creative in the workspace brand style, photoreal, no embedded text." }],
         },
+        // Two pieces the review passed with nothing raised. Kept clean on
+        // purpose: a package where every deliverable is flagged never exercises
+        // the "reviewed and clear" state, and that is the common one.
         {
           id: `${id}-social`,
           title: `${name} — social post`,
           kind: "Social Post",
           channel: "LinkedIn",
-          status: statusLabel,
+          status: pieceStatusValue,
           rawStatus: pieceStatus,
           needsReview: pending,
           preview: `${target.angle} ${action}.`,
           compliance: "No automatic publishing. Human approval is required.",
+          recommendation: {
+            agent: "draft-critic",
+            verdict: "approve",
+            rationale:
+              "Every claim here traces to something in this workspace — the audience fit, the offer, and the next step all match records the campaign was built from. Nothing overstates what the business does, and there is no commitment in the copy that would need a document behind it.",
+            riskFlags: [],
+            suggestedEdits: "",
+          },
+          findings: [],
+        },
+        {
+          id: `${id}-sms`,
+          title: `${name} — SMS`,
+          kind: "SMS",
+          channel: "SMS",
+          status: pieceStatusValue,
+          rawStatus: pieceStatus,
+          needsReview: pending,
+          preview: `${target.angle} ${action} — reply STOP to opt out.`,
+          compliance: "Opt-out language is required on every message. Human approval before dispatch.",
+          recommendation: {
+            agent: "draft-critic",
+            verdict: "approve",
+            rationale:
+              "Short enough for one segment, carries the opt-out, and makes no claim beyond the offer already approved elsewhere in this package.",
+            riskFlags: [],
+            suggestedEdits: "",
+          },
+          findings: [],
         },
       ],
     };
@@ -1215,6 +1740,9 @@ function genericDemoCampaigns(agentName: string): DemoCampaign[] {
       theme: "Lead conversion",
       objective: "Turn recent high-intent interest into qualified conversations with a clear, low-friction next step.",
       offer: "A short consultation tailored to the questions prospects are already researching.",
+      // Urgency with no window — the other half of the timing chip, so the
+      // offline preview shows both tones it can render.
+      signal: { urgency: "high", eventType: null, startsAtIso: null, endsAtIso: null },
       lifecycle: "In review",
       pieceStatus: "pending_approval",
       updatedAt: "Jul 21, 2026",
@@ -1292,6 +1820,15 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
       guardrailFlags: ["No payout guarantees", "Response time stated as historical average"],
       toolsUsed: ["Search-trend signal", "CRM service-area match", "Approved media library"],
       channels: ["Gmail", "Meta", "Instagram", "SMS"],
+      // Fixed dates, like every other timestamp in these fixtures — so this one
+      // renders the expired-window state rather than a countdown that changes
+      // meaning depending on the day the preview is opened.
+      signal: {
+        urgency: "high",
+        eventType: "Freeze-thaw advisory",
+        startsAtIso: "2026-07-19T12:00:00.000Z",
+        endsAtIso: "2026-07-21T18:00:00.000Z",
+      },
       sourceCount: 6,
       sources: [
         {
@@ -1338,7 +1875,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
           title: "Water in your home? We respond in 60 minutes.",
           kind: "Email",
           channel: "Email",
-          status: "Pending approval",
+          status: "pending_approval",
           rawStatus: "pending_approval",
           needsReview: true,
           preview: "When a pipe bursts, every minute counts. A Summit Restoration crew is on call 24/7 across the North Shore.",
@@ -1353,7 +1890,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
           title: "SMS — Same-day mitigation reminder",
           kind: "SMS",
           channel: "SMS",
-          status: "Pending approval",
+          status: "pending_approval",
           rawStatus: "pending_approval",
           needsReview: true,
           preview: "A crew can be on-site within the hour for your water emergency. Reply YES and we'll call you right back.",
@@ -1444,7 +1981,7 @@ function restorationDemoCampaigns(agentName: string): DemoCampaign[] {
           title: "Still dealing with that burst pipe?",
           kind: "Email",
           channel: "Email",
-          status: "Pending approval",
+          status: "pending_approval",
           rawStatus: "pending_approval",
           needsReview: true,
           preview: "We saw you reached out overnight. A crew can be at your door this morning, ready to go.",
@@ -1813,6 +2350,7 @@ export async function getCampaignWorkspaceDetail(
   client?: SupabaseClient,
   agentName = "Arc",
   orgId?: string,
+  workspaceId?: string | null,
 ): Promise<CampaignWorkspaceDetail> {
   if (!client && !isSupabaseAdminConfigured()) {
     // Local preview has no database. Build the same rich review workspace from
@@ -1826,9 +2364,10 @@ export async function getCampaignWorkspaceDetail(
   try {
     const supabase = client ?? getSupabaseAdminClient();
     const resolvedOrgId = orgId;
-    const { data, error } = await applyOrgScope(
+    const { data, error } = await applyCampaignScope(
       supabase.from("campaigns").select(CAMPAIGN_SELECT).eq("id", campaignId),
       resolvedOrgId,
+      workspaceId,
     ).maybeSingle();
     assertSupabaseResult("campaigns", error);
 
@@ -1838,23 +2377,23 @@ export async function getCampaignWorkspaceDetail(
 
     const campaign = data as CampaignRow;
     const [assets, events, agentTasks] = await Promise.all([
-      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", [campaignId], "updated_at", resolvedOrgId),
-      selectIn<CampaignEventRow>(supabase, "campaign_events", "id,event_type,actor,detail,occurred_at", "campaign_id", [campaignId], "occurred_at", resolvedOrgId),
-      selectIn<AgentTaskRow>(supabase, "agent_tasks", AGENT_TASK_SELECT, "campaign_id", [campaignId], "created_at", resolvedOrgId),
+      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", [campaignId], "updated_at", resolvedOrgId, workspaceId),
+      selectIn<CampaignEventRow>(supabase, "campaign_events", "id,event_type,actor,detail,occurred_at", "campaign_id", [campaignId], "occurred_at", resolvedOrgId, workspaceId),
+      selectIn<AgentTaskRow>(supabase, "agent_tasks", AGENT_TASK_SELECT, "campaign_id", [campaignId], "created_at", resolvedOrgId, workspaceId),
     ]);
     const assetIds = assets.map((asset) => asset.id);
     const [campaignApprovals, assetApprovals] = await Promise.all([
-      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", [campaignId], "submitted_at", resolvedOrgId),
-      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_asset_id", assetIds, "submitted_at", resolvedOrgId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", [campaignId], "submitted_at", resolvedOrgId, workspaceId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_asset_id", assetIds, "submitted_at", resolvedOrgId, workspaceId),
     ]);
     const approvals = uniqueById([...campaignApprovals, ...assetApprovals]);
     const approvalIds = approvals.map((approval) => approval.id);
     const [assetOutputs, approvalOutputs] = await Promise.all([
-      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "campaign_asset_id", assetIds, "created_at", resolvedOrgId),
-      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "approval_item_id", approvalIds, "created_at", resolvedOrgId),
+      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "campaign_asset_id", assetIds, "created_at", resolvedOrgId, workspaceId),
+      selectIn<AgentOutputRow>(supabase, "agent_outputs", OUTPUT_SELECT, "approval_item_id", approvalIds, "created_at", resolvedOrgId, workspaceId),
     ]);
     const outputs = uniqueById([...assetOutputs, ...approvalOutputs]);
-    const decisions = await selectIn<ApprovalDecisionRow>(supabase, "approval_decisions", DECISION_SELECT, "approval_item_id", approvalIds, "decided_at", resolvedOrgId);
+    const decisions = await selectIn<ApprovalDecisionRow>(supabase, "approval_decisions", DECISION_SELECT, "approval_item_id", approvalIds, "decided_at", resolvedOrgId, workspaceId);
     // selectIn orders descending, so each group's head is the agent's latest word.
     // Advisory data only: if the table is missing or the read fails, the campaign
     // still renders without it — a recommendation must never take down the page.
@@ -1867,11 +2406,16 @@ export async function getCampaignWorkspaceDetail(
         approvalIds,
         "created_at",
         resolvedOrgId,
+        workspaceId,
       ).catch(() => []),
     );
-    // NB no org scope: guardrail_findings has no org_id column, so passing one
-    // would query a column that doesn't exist. It's scoped transitively by
-    // campaign_asset_id, and these ids are already this org's assets.
+    // The comment that used to sit here said guardrail_findings has no org_id
+    // column and that passing one would query a column that doesn't exist. That
+    // stopped being true when BSR-653 made org_id and workspace_id NOT NULL on
+    // this table; the read simply never caught up. Scoped explicitly now —
+    // transitive scoping through campaign_asset_id was correct but relied on
+    // every caller passing ids it had already filtered, which is a property of
+    // the callers rather than of this query.
     const findings = groupFindingsByAsset(
       await selectIn<GuardrailFindingRow>(
         supabase,
@@ -1880,28 +2424,39 @@ export async function getCampaignWorkspaceDetail(
         "campaign_asset_id",
         assetIds,
         "created_at",
+        resolvedOrgId,
+        workspaceId,
       ).catch(() => []),
     );
     const relatedIds = collectRelatedIds(campaign, approvals);
     const [companies, contacts, leads] = await Promise.all([
-      selectIn<CompanyRow>(supabase, "companies", "id,name,website_url,phone,email,partner_tier", "id", relatedIds.companyIds, undefined, resolvedOrgId),
-      selectIn<ContactRow>(supabase, "contacts", "id,full_name,email,phone,title", "id", relatedIds.contactIds, undefined, resolvedOrgId),
-      selectIn<LeadRow>(supabase, "leads", "id,source,status,loss_summary,lead_score,metadata", "id", relatedIds.leadIds, undefined, resolvedOrgId),
+      selectIn<CompanyRow>(supabase, "companies", "id,name,website_url,phone,email,partner_tier", "id", relatedIds.companyIds, undefined, resolvedOrgId, workspaceId),
+      selectIn<ContactRow>(supabase, "contacts", "id,full_name,email,phone,title", "id", relatedIds.contactIds, undefined, resolvedOrgId, workspaceId),
+      selectIn<LeadRow>(supabase, "leads", "id,source,status,loss_summary,lead_score,metadata", "id", relatedIds.leadIds, undefined, resolvedOrgId, workspaceId),
     ]);
 
-    const assetsView = addPreviewCampaignPieces(
+    const assetsBeforeReview = addPreviewCampaignPieces(
       campaignId,
       buildWorkspaceAssets(assets, approvals, outputs, agentName, recommendations, findings),
       campaign.updated_at,
     );
-    const media = renderableMedia(
+    const mediaBeforeReview = renderableMedia(
       uniqueMedia([
         ...collectMediaFromCampaign(campaign),
-        ...assetsView.flatMap((asset) => asset.media),
+        ...assetsBeforeReview.flatMap((asset) => asset.media),
         ...approvals.flatMap((approval) => collectMediaFromApproval(approval)),
         ...outputs.flatMap((output) => collectMediaFromOutput(output, agentName)),
       ]),
     );
+    // One lookup for the whole page, applied to both the per-deliverable tiles
+    // and the campaign-wide creative list, so the same asset cannot report two
+    // different review states in two places on one screen.
+    const mediaReviews = await resolveMediaReviews(supabase, mediaBeforeReview, resolvedOrgId, workspaceId);
+    const assetsView = assetsBeforeReview.map((asset) => ({
+      ...asset,
+      media: asset.media.map((item) => withMediaReview(item, mediaReviews)),
+    }));
+    const media = mediaBeforeReview.map((item) => withMediaReview(item, mediaReviews));
     const sources = buildSources({ campaign, assets, approvals, companies, contacts, leads, outputs }, agentName);
     const reasoning = buildReasoning(campaign, assets, agentName);
     const rollup = deriveCampaignRollup(collectPieceStatuses(assets, approvals));
@@ -1914,9 +2469,16 @@ export async function getCampaignWorkspaceDetail(
         persona: humanize(campaign.persona),
         campaignTheme: campaign.campaign_theme?.trim() || humanize(campaign.restoration_focus ?? ""),
         status: statusLabel(campaign.status),
-        objective: campaign.objective ?? "No objective captured yet.",
-        audienceSummary: campaign.audience_summary ?? "Audience has not been summarized yet.",
-        offerSummary: campaign.offer_summary ?? "Offer has not been summarized yet.",
+        // Empty rather than a placeholder sentence, for the same reason as the
+        // list read above — and here it un-breaks THREE guards the view already
+        // had. The brief list filters falsy values (`.filter(([, v]) => v)`),
+        // the header subtitle falls back through `objective || …`, and both were
+        // inert because a placeholder is truthy. Three of the five live
+        // campaigns have a null objective, so three detail pages headlined with
+        // "No objective captured yet." under the campaign's own name.
+        objective: campaign.objective?.trim() ?? "",
+        audienceSummary: campaign.audience_summary?.trim() ?? "",
+        offerSummary: campaign.offer_summary?.trim() ?? "",
         complianceNotes: campaign.compliance_notes ?? "No campaign-level compliance notes captured.",
         // The two package fields that complete the contract: what targeting was
         // weighed and rejected, and the note for whoever continues offline.
@@ -2192,6 +2754,8 @@ export async function getCampaignsForRecord(
   recordId: string,
   client?: SupabaseClient,
   agentName = "Arc",
+  orgId?: string,
+  workspaceId?: string | null,
 ): Promise<LinkedCampaign[]> {
   if (!client && !isSupabaseAdminConfigured()) return [];
 
@@ -2199,9 +2763,12 @@ export async function getCampaignsForRecord(
     const supabase = client ?? getSupabaseAdminClient();
     const column = columnFor(kind);
 
+    // These were previously unscoped, leaning on the record id having been
+    // resolved in-tenant. That is inherited isolation, not enforced isolation —
+    // scope them explicitly now that campaigns carry a workspace.
     const [{ data: directRows, error: directError }, { data: approvalRows, error: approvalError }] = await Promise.all([
-      supabase.from("campaigns").select("id").eq(column, recordId),
-      supabase.from("approval_items").select("campaign_id").eq(column, recordId),
+      applyCampaignScope(supabase.from("campaigns").select("id").eq(column, recordId), orgId, workspaceId),
+      applyOrgScope(supabase.from("approval_items").select("campaign_id").eq(column, recordId), orgId),
     ]);
     assertSupabaseResult("campaigns", directError);
     assertSupabaseResult("approval_items", approvalError);
@@ -2212,14 +2779,22 @@ export async function getCampaignsForRecord(
     );
     if (ids.length === 0) return [];
 
-    const { data, error } = await supabase.from("campaigns").select(CAMPAIGN_SELECT).in("id", ids).order("updated_at", { ascending: false });
+    const { data, error } = await applyCampaignScope(
+      supabase.from("campaigns").select(CAMPAIGN_SELECT).in("id", ids),
+      orgId,
+      workspaceId,
+    ).order("updated_at", { ascending: false });
     assertSupabaseResult("campaigns", error);
     const campaigns = (data ?? []) as CampaignRow[];
     const campaignIds = campaigns.map((campaign) => campaign.id);
 
     const [assets, approvals] = await Promise.all([
-      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at"),
-      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at"),
+      // Scoped explicitly, not just by association. `campaignIds` already comes
+      // from a tenant-scoped query, so these rows were constrained in practice —
+      // but that is an argument about a caller, and the filter here is what the
+      // boundary actually rests on once the service role has bypassed RLS.
+      selectIn<CampaignAssetRow>(supabase, "campaign_assets", ASSET_SELECT, "campaign_id", campaignIds, "updated_at", orgId, workspaceId),
+      selectIn<ApprovalItemRow>(supabase, "approval_items", APPROVAL_SELECT, "campaign_id", campaignIds, "submitted_at", orgId, workspaceId),
     ]);
     const approvalOutputs = await selectIn<AgentOutputRow>(
       supabase,
@@ -2228,6 +2803,8 @@ export async function getCampaignsForRecord(
       "approval_item_id",
       approvals.map((approval) => approval.id),
       "created_at",
+      orgId,
+      workspaceId,
     );
 
     return campaigns.map((campaign) => {
@@ -2300,7 +2877,8 @@ function mapAsset(asset: CampaignAssetRow): CampaignWorkspaceAsset {
     assetType: humanize(asset.asset_type),
     category: classifyAssetCategory(asset),
     channel: humanize(asset.channel ?? asset.asset_type),
-    status: statusLabel(asset.status),
+    // Raw, not labelled — see demoAssetStatus. The view labels it.
+    status: asset.status,
     body: readableBody === EMPTY_READABLE_PREVIEW ? rawBody : readableBody,
     preview: readableBody,
     complianceNotes: asset.compliance_notes ?? "No asset-level compliance notes captured.",
@@ -2439,6 +3017,11 @@ function buildPreviewCampaignPieces(updatedAt: string): CampaignWorkspaceAsset[]
           thumbnailUrl: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80",
           mimeType: "image/jpeg",
           description: "Demo preview image for a launch social creative.",
+          format: "16:9",
+          riskFlags: [],
+          libraryAssetId: null,
+          storagePath: null,
+          review: UNREVIEWED,
           lineage: [
             ["ai", "Made in Higgsfield · seedream"],
             ["ai", "Source job · hf_20260722_0917"],
@@ -2479,7 +3062,7 @@ function buildPreviewCampaignPieces(updatedAt: string): CampaignWorkspaceAsset[]
       assetType: "Call Script",
       category: "other",
       channel: "CRM",
-      status: "Pending approval",
+      status: "pending_approval",
       body: "Open by referencing the launch this week, ask whether any teams are still stuck on setup, then offer a short onboarding walkthrough before the schedule fills.",
       preview: "CRM/call script for teams that responded to recent launch outreach.",
       complianceNotes: "Demo preview content for layout review only.",
@@ -2532,9 +3115,22 @@ function groupFindingsByAsset(rows: GuardrailFindingRow[]): Map<string, Campaign
   for (const row of rows) {
     if (!row.campaign_asset_id || row.status !== "open") continue;
     const finding: CampaignAssetFinding = {
+      id: row.id,
       claim: row.matched_text ?? "",
       severity: row.severity,
-      message: row.finding_message,
+      // The claims reviewer had been narrating its own lookups into this field —
+      // "searches for 'reply' returned nothing", learning ids, tool names. The
+      // runner's tool contract stops new ones; this reaches the rows already
+      // written, which no prompt change ever can. Removes plumbing only: every
+      // claim, number and caveat survives.
+      message: humanizeArcProse(row.finding_message) || row.finding_message,
+      // All three or none — the CHECK constraint makes a half-populated fix
+      // unrepresentable, so a missing target here means "no fix", never
+      // "a fix we failed to read".
+      fix:
+        row.fix_target && row.fix_label
+          ? { target: row.fix_target, label: row.fix_label, kind: isFixKind(row.fix_kind) ? row.fix_kind : "text" }
+          : null,
     };
     const group = byAsset.get(row.campaign_asset_id);
     if (group) group.push(finding);
@@ -2551,9 +3147,13 @@ function pickRecommendation(rows: ApprovalRecommendationRow[] | undefined): Camp
   return {
     agent: row.agent,
     verdict: row.recommendation,
-    rationale: row.rationale ?? "",
+    // Same treatment as the findings: strip the plumbing, keep the judgement.
+    // Falling back to the raw value matters — a passage that is ENTIRELY machine
+    // text would otherwise clean to an empty string, and a blank rationale reads
+    // as "the reviewer said nothing" rather than "the reviewer said it badly".
+    rationale: humanizeArcProse(row.rationale) || row.rationale || "",
     riskFlags: asStringArray(row.risk_flags),
-    suggestedEdits: row.suggested_edits ?? "",
+    suggestedEdits: humanizeArcProse(row.suggested_edits) || row.suggested_edits || "",
   };
 }
 
@@ -2575,7 +3175,7 @@ function attachApproval(
   const rows = recommendations?.get(approval.id);
   return {
     ...view,
-    approval: { id: approval.id, status: statusLabel(approval.status) },
+    approval: { id: approval.id, status: approval.status },
     recommendation: pickRecommendation(rows),
     claimsReviewed: reviewedByCritic(rows),
   };
@@ -2597,7 +3197,8 @@ function mapOutputAsAsset(output: AgentOutputRow, agentName: string): CampaignWo
     assetType: humanize(type),
     category: classifyAssetText(`${type} ${output.title}`),
     channel: channelLabelFromType(type),
-    status: statusLabel(output.approval_status),
+    // Raw status — the view labels it (see demoAssetStatus).
+    status: output.approval_status,
     body: readableBody === EMPTY_READABLE_PREVIEW ? rawBody : readableBody,
     preview: readableBody,
     complianceNotes: output.compliance_status ? `Compliance: ${humanize(output.compliance_status)}` : "No output-level compliance notes captured.",
@@ -2631,7 +3232,8 @@ function mapApprovalAsAsset(approval: ApprovalItemRow, agentName: string): Campa
     assetType: humanize(type),
     category: classifyAssetText(`${type} ${channel} ${buildApprovalTitle(approval)}`),
     channel: humanize(channel),
-    status: statusLabel(approval.status),
+    // Raw status — the view labels it (see demoAssetStatus).
+    status: approval.status,
     body: readableBody === EMPTY_READABLE_PREVIEW ? rawBody : readableBody,
     preview: readableBody,
     complianceNotes: approval.compliance_notes ?? "No approval-level compliance notes captured.",
@@ -2648,7 +3250,7 @@ function mapApprovalAsAsset(approval: ApprovalItemRow, agentName: string): Campa
     updatedAt: formatDate(approval.updated_at),
     media,
     revision: null,
-    approval: { id: approval.id, status: statusLabel(approval.status) },
+    approval: { id: approval.id, status: approval.status },
   };
 }
 
@@ -2668,10 +3270,9 @@ export function buildReasoning(campaign: CampaignRow, assets: CampaignAssetRow[]
   return {
     whyBuilt:
       getString(reasoning.why_arc_created_it) ??
-      campaign.objective ??
-      campaign.offer_summary ??
-      `${agentName} has not recorded reasoning for this campaign yet.`,
-    recommendedAction: getString(reasoning.recommended_action) ?? "No recommended action recorded.",
+      getString(campaign.objective) ??
+      getString(campaign.offer_summary),
+    recommendedAction: getString(reasoning.recommended_action),
     guardrailFlags: asStringArray(reasoning.guardrail_flags),
     toolsUsed,
     promptInputs: buildPromptInputs(assets),
@@ -2697,14 +3298,18 @@ export function buildExecutiveOverview(input: {
     ...assets.flatMap((asset) => [asObject(asset.prompt_inputs), asObject(asset.reasoning_payload), asObject(asset.audit_payload)]),
     ...approvals.flatMap((approval) => [asObject(approval.prompt_inputs), asObject(approval.reasoning_payload), asObject(approval.audit_payload)]),
   ];
-  const whySignal = sentenceFragment(findPayloadAnswer(payloads, WHY_KEYS) ?? reasoning.whyBuilt);
+  // Not pre-trimmed to a string: with no payload answer and no recorded
+  // reasoning this is genuinely absent, and interpolating "" into the sentence
+  // below would print a headless ". Goal: reduce decision friction…" as the
+  // brief's "Why now". The brief list drops falsy rows, so "" removes it.
+  const whySignal = findPayloadAnswer(payloads, WHY_KEYS) ?? reasoning.whyBuilt;
 
   return {
     what:
       findPayloadAnswer(payloads, JOURNEY_OVERVIEW_KEYS) ??
       findPayloadAnswer(payloads, WHAT_KEYS) ??
       `Move ${audience} toward a trusted next step with ${offer}. Objective: ${objective}.`,
-    why: `${whySignal}. Goal: reduce decision friction and make the next step clear.`,
+    why: whySignal ? `${sentenceFragment(whySignal)}. Goal: reduce decision friction and make the next step clear.` : "",
     timeframe:
       findPayloadAnswer(payloads, TIMEFRAME_KEYS) ??
       buildJourneyTimeframe(campaign, agentName),
@@ -2888,6 +3493,45 @@ function classifyAssetText(value: string): CampaignWorkspaceAssetCategory {
   return "other";
 }
 
+/**
+ * Tables that carry `workspace_id` and must be filtered on it (BSR-711).
+ *
+ * Kept as a set rather than passed per call so `selectIn` is safe to hand a
+ * workspace for ANY table: the org-owned ones (`companies`, `contacts`, `leads`)
+ * have no such column, and filtering them on it would return nothing at all
+ * rather than erroring — a silent empty result is the worst failure available
+ * here.
+ */
+const WORKSPACE_SCOPED_TABLES = new Set([
+  "campaigns",
+  "campaign_assets",
+  "campaign_events",
+  "campaign_dispatches",
+  "campaign_results",
+  "approval_items",
+  "approval_decisions",
+  "approval_recommendations",
+  "agent_outputs",
+  "agent_tasks",
+  // Has had workspace_id NOT NULL since BSR-653; it was simply never added
+  // here, so passing a workspace id for this table did nothing at all.
+  "guardrail_findings",
+  // Same omission, found the same way: `resolveMediaReviews` joins campaign
+  // creative to its review through this table, and passing a workspace id did
+  // nothing until it was listed here.
+  "media_assets",
+]);
+
+/**
+ * Narrow a query to a workspace, but only for a table that has the column. Same
+ * generic shape as `applyOrgScope` — a `typeof query` self-reference here makes
+ * the Supabase builder's types recurse infinitely.
+ */
+function applyWorkspaceScope<Query>(query: Query, table: string, workspaceId?: string | null): Query {
+  if (!workspaceId || !WORKSPACE_SCOPED_TABLES.has(table)) return query;
+  return (query as { eq(column: string, value: string): Query }).eq("workspace_id", workspaceId);
+}
+
 export async function selectIn<T>(
   client: SupabaseClient,
   table: string,
@@ -2896,11 +3540,16 @@ export async function selectIn<T>(
   values: string[],
   orderBy?: string,
   orgId?: string,
+  workspaceId?: string | null,
 ): Promise<T[]> {
   const uniqueValues = [...new Set(values.filter(Boolean))];
   if (uniqueValues.length === 0) return [];
 
-  let query = applyOrgScope(client.from(table).select(columns).in(column, uniqueValues), orgId);
+  let query = applyWorkspaceScope(
+    applyOrgScope(client.from(table).select(columns).in(column, uniqueValues), orgId),
+    table,
+    workspaceId,
+  );
   if (orderBy) {
     query = query.order(orderBy, { ascending: false });
   }
@@ -2910,9 +3559,123 @@ export async function selectIn<T>(
   return (data ?? []) as T[];
 }
 
+type MediaAssetIdRow = { id: string; storage_path: string | null };
+type MediaApprovalRow = {
+  media_asset_id: string | null;
+  status: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  decision_notes: string | null;
+  created_at: string | null;
+};
+
+// Key a media asset for review lookup. Imported rather than defined here: the
+// operator's decide action resolves the same blob to the same row through
+// `resolveMediaAssetId`, and if the two ever disagreed about which picture an
+// entry IS, a reviewer would approve one image and watch a different one change
+// state. One rule, one file — see media-identity.ts.
+
+/**
+ * Resolve each asset's own review decision from `approval_items`.
+ *
+ * Campaign media is a JSON blob, not a row, so it has no database identity of
+ * its own — the link runs entry → `media_assets` (by id when recorded, else by
+ * storage path) → `approval_items.media_asset_id`. An asset we cannot join, or
+ * one with no approval row, stays `unreviewed`: this function never invents a
+ * decision, and a failed lookup must not read as a clean review.
+ *
+ * Both tables are workspace-owned and both filters are required. The service
+ * role bypasses RLS, so on a server-side read the app-layer filter IS the
+ * boundary — org alone returns every workspace in the organisation. This read
+ * was org-only until now and, because it goes through `selectIn` rather than a
+ * literal `.from(…).eq("org_id", …)`, `workspace-readers.test.ts` could not see
+ * it to say so; the guard below closes that blind spot for this helper.
+ */
+async function resolveMediaReviews(
+  client: SupabaseClient,
+  media: CampaignMediaAsset[],
+  orgId?: string,
+  workspaceId?: string | null,
+): Promise<Map<string, CampaignMediaReview>> {
+  const reviews = new Map<string, CampaignMediaReview>();
+  const ids = media.map((m) => m.libraryAssetId).filter((v): v is string => Boolean(v));
+  const paths = media.map((m) => (m.libraryAssetId ? null : m.storagePath)).filter((v): v is string => Boolean(v));
+  if (ids.length === 0 && paths.length === 0) return reviews;
+
+  const [byId, byPath] = await Promise.all([
+    selectIn<MediaAssetIdRow>(client, "media_assets", "id,storage_path", "id", ids, undefined, orgId, workspaceId).catch(() => []),
+    selectIn<MediaAssetIdRow>(client, "media_assets", "id,storage_path", "storage_path", paths, undefined, orgId, workspaceId).catch(() => []),
+  ]);
+
+  // asset id -> the media keys that resolve to it (a path and an id can both
+  // point at the same row).
+  const keysByAssetId = new Map<string, string[]>();
+  const remember = (assetId: string, key: string) => {
+    const existing = keysByAssetId.get(assetId);
+    if (existing) existing.push(key);
+    else keysByAssetId.set(assetId, [key]);
+  };
+  for (const row of byId) remember(row.id, `id:${row.id}`);
+  for (const row of byPath) if (row.storage_path) remember(row.id, `path:${row.storage_path}`);
+  if (keysByAssetId.size === 0) return reviews;
+
+  const approvals = await selectIn<MediaApprovalRow>(
+    client,
+    "approval_items",
+    "media_asset_id,status,reviewed_by,reviewed_at,decision_notes,created_at",
+    "media_asset_id",
+    [...keysByAssetId.keys()],
+    "created_at",
+    orgId,
+    workspaceId,
+  ).catch(() => []);
+
+  // Ordered newest-first by selectIn, so the first row per asset is current.
+  for (const row of approvals) {
+    if (!row.media_asset_id) continue;
+    const keys = keysByAssetId.get(row.media_asset_id);
+    if (!keys || reviews.has(keys[0])) continue;
+    const review: CampaignMediaReview = {
+      state: mediaReviewStateFromStatus(row.status),
+      reviewer: getString(row.reviewed_by),
+      reviewedAt: getString(row.reviewed_at),
+      notes: getString(row.decision_notes),
+    };
+    for (const key of keys) reviews.set(key, review);
+  }
+
+  return reviews;
+}
+
+function withMediaReview(media: CampaignMediaAsset, reviews: Map<string, CampaignMediaReview>): CampaignMediaAsset {
+  const key = mediaReviewKey(media);
+  const review = key ? reviews.get(key) : undefined;
+  return review ? { ...media, review } : media;
+}
+
 function applyOrgScope<Query>(query: Query, orgId?: string): Query {
   if (!orgId) return query;
   return (query as { eq(column: string, value: string): Query }).eq("org_id", orgId);
+}
+
+/**
+ * Scope a query on `campaigns` itself. Campaigns are workspace-owned (BSR-637)
+ * and `workspace_id` is NOT NULL as of BSR-639, so a campaign belongs to exactly
+ * one workspace and must not be listed in its siblings.
+ *
+ * `applyOrgScope` above still serves the campaign-*adjacent* tables — assets,
+ * approvals, events, outputs — which have no workspace column yet and gain one
+ * in a later slice of the boundary migration.
+ *
+ * A missing `workspaceId` degrades to org-only scoping rather than returning
+ * nothing, matching `applyOrgScope`. That path is real: the offline demo, open /
+ * operator auth mode, and service-role callers whose bearer token predates
+ * workspace scoping all legitimately arrive without one.
+ */
+function applyCampaignScope<Query>(query: Query, orgId?: string, workspaceId?: string | null): Query {
+  const scoped = applyOrgScope(query, orgId);
+  if (!workspaceId) return scoped;
+  return (scoped as { eq(column: string, value: string): Query }).eq("workspace_id", workspaceId);
 }
 
 function collectRelatedIds(campaign: CampaignRow, approvals: ApprovalItemRow[]) {
@@ -3178,11 +3941,38 @@ function mapMediaAsset(value: unknown, source: string, origin: CampaignMediaOrig
     virality,
     lineage: external.rows,
     prompt: external.prompt,
+    format: normalizeAspectRatio(getString(value.format) ?? getString(value.aspect_ratio) ?? getString(value.aspectRatio)),
+    riskFlags: asStringArray(value.risk_flags ?? value.riskFlags),
+    libraryAssetId: getString(value.library_asset_id) ?? getString(value.libraryAssetId),
+    storagePath: getString(value.path) ?? getString(value.storage_path) ?? getString(value.storagePath),
   });
+}
+
+/**
+ * Accept a declared aspect ratio only in the `w:h` shape the producers actually
+ * write ("4:3", "9:16"), with both sides positive and sane. Everything here
+ * arrives from a tool payload, and this string ends up in a CSS `aspect-ratio`
+ * — an unvalidated value would be free rein over the tile's geometry.
+ */
+function normalizeAspectRatio(value: string | null): string | null {
+  if (!value) return null;
+  const match = /^\s*(\d{1,4})\s*[:x/]\s*(\d{1,4})\s*$/i.exec(value);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!width || !height) return null;
+  // A ratio beyond 10:1 either way is a bad payload, not a real creative.
+  if (width / height > 10 || height / width > 10) return null;
+  return `${width}:${height}`;
 }
 
 /** Test-only alias so unit tests can reach the otherwise module-private mapper. */
 export const mapMediaAssetForTest = mapMediaAsset;
+
+/** Test-only alias. The full detail read cannot exercise this deterministically
+ *  — the query mock hands responses out per table in call order, and
+ *  `approval_items` is read several times before the media lookup. */
+export const resolveMediaReviewsForTest = resolveMediaReviews;
 
 function createMediaAsset(input: {
   url: string;
@@ -3196,6 +3986,10 @@ function createMediaAsset(input: {
   virality?: ViralityScore | null;
   lineage?: Array<[string, string]>;
   prompt?: string | null;
+  format?: string | null;
+  riskFlags?: string[];
+  libraryAssetId?: string | null;
+  storagePath?: string | null;
 }): CampaignMediaAsset {
   const type = classifyMediaAsset(input.url, input.mimeType, input.hintedType);
   return {
@@ -3211,6 +4005,13 @@ function createMediaAsset(input: {
     virality: input.virality ?? null,
     lineage: input.lineage ?? [],
     prompt: input.prompt ?? null,
+    format: input.format ?? null,
+    riskFlags: input.riskFlags ?? [],
+    libraryAssetId: input.libraryAssetId ?? null,
+    storagePath: input.storagePath ?? null,
+    // Filled in by resolveMediaReviews when a review exists. Everything starts
+    // unreviewed because that is what an absent approval row means.
+    review: UNREVIEWED,
   };
 }
 
@@ -3389,7 +4190,10 @@ export function uniqueMedia(items: CampaignMediaAsset[]) {
 // Map an asset_type / channel enum value to the marketing-channel label the
 // Campaigns table shows (matches the mockup: Email · SMS · Paid · Landing · One-pager).
 // Creative-prompt asset types (image/video) collapse to their delivery channel (Paid).
-function humanizeChannel(raw: string): string {
+/** Channel/asset-type casing, e.g. `sms` → "SMS". Exported so the board's
+ *  deliverable labels use the same map as its Channels column — otherwise a
+ *  generic title-caser renders "Sms". */
+export function humanizeChannel(raw: string): string {
   const map: Record<string, string> = {
     email: "Email",
     sms: "SMS",
@@ -3519,12 +4323,22 @@ function stableId(value: string) {
   return hash.toString(36);
 }
 
+/**
+ * The stored status, in the product's one vocabulary (BSR-656).
+ *
+ * This used to spell its own labels — "Pending approval", "Pending owner
+ * approval", "Revision requested" — which is how the campaign screen ended up
+ * showing four names for one state: this function fed the header while the
+ * asset cards went through `WORK_STATE_LABEL`. Both halves now come from the
+ * same place. `pending_approval` and `pending_owner_approval` collapse to one
+ * label on purpose: to the person looking at it, both mean it is on their desk.
+ */
 function statusLabel(status: string) {
-  if (status === "pending_owner_approval") return "Pending owner approval";
-  if (status === "pending_approval") return "Pending approval";
-  if (status === "needs_compliance") return "Needs compliance";
-  if (status === "revision_requested") return "Revision requested";
-  return humanize(status);
+  // A compliance block is NOT a routine "needs you" — it is stopped by a rule
+  // rather than waiting on a decision, and the campaign view already words it
+  // this way. Kept distinct, and worded the same as there.
+  if (status === "needs_compliance") return "Blocked by a rule";
+  return WORK_STATE_LABEL[toWorkState(status)];
 }
 
 export function humanize(value: string) {

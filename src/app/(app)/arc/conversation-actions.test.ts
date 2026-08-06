@@ -10,6 +10,11 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseAdminClient: vi.fn(),
 }));
 vi.mock("@/lib/auth/org", () => ({ getCurrentOrgId: vi.fn(async () => "org-1") }));
+// Campaign lookup resolves the workspace too, not just the org — campaigns are
+// workspace-owned (BSR-637) and the linkable set is workspace-scoped (BSR-639).
+vi.mock("@/lib/auth/workspace", () => ({
+  getCurrentWorkspaceContext: vi.fn(async () => ({ orgId: "org-1", workspaceId: "workspace-1" })),
+}));
 vi.mock("@/lib/campaigns/read-model", () => ({
   listCampaignNames: vi.fn(async () => [
     { id: "campaign-1", name: "Storm Rapid Response", href: "/campaigns/campaign-1" },

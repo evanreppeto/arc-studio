@@ -8,6 +8,40 @@
    ============================================================================ */
 
 :root {
+  /* Motion — four response times, not the 29 hand-typed values these replace.
+     `0.14s` and `0.15s` were each written ~120 times in two spellings apiece; no
+     one can perceive the difference, so it was 300 decisions maintained by hand.
+     Values are the dominant member of each cluster, so the app's existing feel is
+     codified rather than changed — the largest shift anywhere is 0.18s -> 0.2s.
+     The easing companion is `--ease` (arc-app.css, on .arc-app).
+     Deliberately NOT tokenised: the reduced-motion overrides (0.001ms), the
+     Chrome autofill suppression hack (600000s), and anything over 0.3s, which is
+     a considered one-off rather than a UI response. */
+  --dur-fast: 120ms;            /* tight feedback — hovers on small controls */
+  --dur-base: 150ms;            /* the default; ~85% of all transitions */
+  --dur-slow: 200ms;            /* panels, disclosure, larger surfaces */
+  --dur-slower: 250ms;          /* full-surface fades, overlays */
+
+  /* Corner radius — four steps, replacing every integer from 2px to 16px.
+     847 hand-typed declarations meant 847 individual judgement calls; nobody can
+     point at a 9px corner beside an 8px one, which is exactly why it could only
+     accumulate, never be reviewed. Each value is the dominant member of its
+     cluster, so this codifies the current shape language rather than restyling
+     it — the mid step carries half the app and shifts by at most 1px on 328 of
+     its 413 declarations. 12px with 6px of padding also makes --r-sm the
+     geometrically correct inner radius for a menu item inside a menu.
+     Held out on purpose:
+       - 2px/3px (24 decls) — tick marks, 3px indicator bars, focus-ring corners.
+         Near-square by design; rounding them to 6px would visibly inflate them,
+         and a scale needing an --r-xs for 24 uses is not a scale.
+       - `50%` (72 decls) — NOT folded into --r-full. They agree only on a square
+         element: on a rectangle `50%` is an ellipse and `999px` is a stadium.
+         Different intent, so it stays spelled as a circle. */
+  --r-sm: 6px;                  /* chips, keyboard hints, toggles, menu items */
+  --r-md: 8px;                  /* buttons, nav rows, thumbnails, inputs */
+  --r-lg: 12px;                 /* cards, panels, menus, modals */
+  --r-full: 999px;              /* pills and tracks — one spelling, not four */
+
   /* Surface tiers — warm near-black, stepping up for separation */
   --canvas: #16161a;            /* page background, warm obsidian */
   --canvas-deep: #101013;       /* gutter / behind-rail void */
@@ -23,7 +57,11 @@
   /* Text tiers — warm ivory */
   --text-primary: #f2eee4;
   --text-secondary: #b8b4aa;
-  --text-muted: #777c80;
+  /* #777c80 measured 3.84:1 on --inset and 4.02:1 on --panel — under the 4.5:1
+     floor for body text on every surface except the deepest. Lightened just
+     enough to clear it everywhere (worst case 4.96:1) while staying clearly
+     recessive against --text-secondary. */
+  --text-muted: #8a8f93;
 
   /* Borders */
   --border-hairline: rgba(232, 224, 205, 0.08);
@@ -61,6 +99,15 @@
   --ok-border: rgba(127, 184, 154, 0.55);
   --ok-border-soft: rgba(127, 184, 154, 0.40);
   --on-ok: #0e1612;
+
+  /* Neutral category tint — the "this is a different KIND of thing" colour, for
+     provenance and channel chips. Replaces a violet (`--vio` / `--vio-text`)
+     that DESIGN.md §8 bans and that was, in most of its call sites, resolving to
+     nothing at all: `--vio` was never defined anywhere, and `--vio-text` only
+     existed inside `.arc-outbox` (BSR-661). */
+  --slate: #8fa2ba;
+  --slate-soft: rgba(150, 168, 196, 0.16);
+  --slate-text: #a9b6c9;
 
   --warn: #d8b65e;
   --warn-solid: #c8a24a;
@@ -222,7 +269,7 @@ html[data-motion="reduced"] *::after {
   --color-input: var(--input);
   --color-ring: var(--ring);
   --font-sans: var(--ff-body), "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--ff-display), var(--ff-body), "Segoe UI Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--ff-display, var(--ff-body)), "Segoe UI Variable", ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--ff-serif), "Fraunces", Georgia, "Times New Roman", serif;
   --font-mono: var(--ff-mono), "Cascadia Mono", ui-monospace, "Segoe UI Mono", monospace;
 }
@@ -332,7 +379,7 @@ time,
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--r-full);
   border: 3px solid transparent;
   background-clip: padding-box;
 }
@@ -439,11 +486,11 @@ time,
   position: relative;
   transform: translateY(0) scale(1);
   transition:
-    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    color 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+    transform var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1),
+    border-color var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1),
+    background-color var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1),
+    color var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow var(--dur-base) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .chicago-dark :where(a, button)[class*="rounded"]:hover {
@@ -870,7 +917,7 @@ time,
 .focal-card {
   position: relative;
   overflow: hidden;
-  transition: border-color 220ms ease;
+  transition: border-color var(--dur-slow) ease;
 }
 .focal-card:hover {
   border-color: var(--accent-border-strong);
@@ -915,7 +962,7 @@ time,
     position: relative;
     isolation: isolate;
     overflow: visible;
-    border-radius: 9999px;
+    border-radius: var(--r-full);
     background: transparent;
   }
   .arc-persona[data-state="listening"] {
@@ -953,7 +1000,7 @@ time,
     position: absolute;
     inset: 6%;
     z-index: 0;
-    border-radius: 9999px;
+    border-radius: var(--r-full);
     background: radial-gradient(
       circle at 50% 42%,
       color-mix(in srgb, var(--arc-persona-accent) 72%, transparent) 0%,
@@ -991,7 +1038,7 @@ time,
     position: absolute;
     inset: -42%;
     z-index: 0;
-    border-radius: 9999px;
+    border-radius: var(--r-full);
     background: radial-gradient(
       circle at 50% 46%,
       color-mix(in srgb, var(--arc-persona-accent) 26%, transparent) 0%,
@@ -1047,7 +1094,7 @@ time,
 /* Non-gradient skeleton for not-yet-streamed content (replaces gradient-text shimmer) */
 .arc-skel {
   height: 11px;
-  border-radius: 5px;
+  border-radius: var(--r-sm);
   background: var(--surface-inset);
   position: relative;
   overflow: hidden;
@@ -1062,6 +1109,38 @@ time,
 }
 @keyframes arc-skel-slide { 100% { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .arc-skel::after { animation: none; } }
+
+/* Media placeholder for <AppImage>. Reuses .arc-skel's sweep language so a loading
+   thumbnail reads the same as loading text.
+
+   Painted as the image's OWN background rather than a wrapper: an <img> renders its
+   background behind its image content, so the skeleton fills exactly the box the
+   parent already sized and needs no extra DOM. Once decoded, the background is
+   dropped and the real pixels fade in — a thumbnail never appears as an empty box. */
+.appimg {
+  background-color: var(--surface-inset);
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: appimg-sweep 1.5s ease-in-out infinite;
+}
+.appimg[data-loaded="true"] {
+  background-image: none;
+  background-color: transparent;
+  animation: appimg-in 260ms ease-out both;
+}
+@keyframes appimg-sweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes appimg-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .appimg { animation: none; }
+  .appimg[data-loaded="true"] { animation: none; }
+}
 
 @keyframes text-shimmer {
   0% { background-position: 200% 0; }
@@ -1100,7 +1179,7 @@ time,
 }
 .arc-shimmer-bar {
   height: 11px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: linear-gradient(90deg, var(--surface-inset) 0%, var(--surface-raised) 50%, var(--surface-inset) 100%);
   background-size: 200% 100%;
   animation: text-shimmer 1.6s linear infinite;
@@ -1109,7 +1188,7 @@ time,
 /* Composer focus glow: a soft gold ring blooms around the input box when it
    takes focus, layered over the existing panel elevation. Plain CSS (not a
    Tailwind arbitrary ring) so the two shadows compose reliably. */
-.arc-composer-glow { transition: box-shadow 200ms ease, border-color 200ms ease; }
+.arc-composer-glow { transition: box-shadow var(--dur-slow) ease, border-color var(--dur-slow) ease; }
 .arc-composer-glow:focus-within {
   box-shadow: var(--elev-panel), 0 0 0 3px var(--accent-soft);
 }
@@ -1150,7 +1229,7 @@ time,
   position: absolute;
   width: 46rem;
   height: 46rem;
-  border-radius: 9999px;
+  border-radius: var(--r-full);
   background: radial-gradient(circle at center, var(--accent), transparent 68%);
   filter: blur(90px);
   opacity: 0.05;
@@ -1219,7 +1298,7 @@ time,
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 9999px;
+  border-radius: var(--r-full);
   background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
   opacity: 0.3;
   animation: arc-tstep-halo 1.8s ease-in-out infinite;
@@ -1228,7 +1307,7 @@ time,
   position: relative;
   width: 7px;
   height: 7px;
-  border-radius: 9999px;
+  border-radius: var(--r-full);
   background: var(--accent);
   box-shadow: 0 0 7px var(--accent-soft);
   animation: arc-tstep-core 1.8s ease-in-out infinite;

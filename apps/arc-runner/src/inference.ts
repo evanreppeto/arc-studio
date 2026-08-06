@@ -31,11 +31,18 @@ export type InferenceSettings = {
 // Arc Pulse — Instant. Sonnet 5 supersedes 4.6 (near-Opus quality at Sonnet cost,
 // adaptive thinking on by default). Its tokenizer is ~30% heavier than 4.6, so the
 // budget rail is bumped to keep the same effective headroom per turn.
+//
+// maxTurns was 12, which an ordinary question reached: every Studio message
+// routes here (the composer sends no route, so `fast` is the default) in act or
+// draft mode, where reading the brand kit, the library and the brain costs a
+// turn each before Arc has written a word. On 2026-08-04 "put our logo on the
+// side of the car" spent all 12 and the operator got an error. 20 keeps the
+// tier below STANDARD; `maxBudgetUsd` is the rail that actually bounds spend.
 const FAST: InferenceSettings = {
   model: "claude-sonnet-5",
   fallbackModel: "claude-haiku-4-5",
   maxThinkingTokens: 2_000,
-  maxTurns: 12,
+  maxTurns: 20,
   maxBudgetUsd: 1,
 };
 
@@ -121,4 +128,65 @@ export function buildQueryOptions(args: {
     // assistant/result messages still land.
     includePartialMessages: true,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Runaway rails, told to the operator (BSR-721)
+// ---------------------------------------------------------------------------
+
+/** What the operator calls each tier in the composer's model picker. */
+const ROUTE_LABEL: Record<ArcRoute, string> = {
+  fast: "Arc Spark",
+  standard: "Arc Forge",
+  deep: "Arc Deep",
+};
+
+/** The tier a route can escalate to, when one exists with more room. */
+const NEXT_ROUTE_UP: Partial<Record<ArcRoute, ArcRoute>> = {
+  fast: "standard",
+};
+
+/**
+ * Recognise one of OUR rails in an SDK failure.
+ *
+ * The SDK raises a non-success result as an error, e.g. "Claude Code returned an
+ * error result: Reached maximum number of turns (12)". Hitting a rail we set
+ * ourselves is not a crash, and the operator's next move differs completely —
+ * retry or escalate, rather than report a bug.
+ */
+export function isRailStop(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return /maximum number of turns|max(?:imum)? budget/i.test(message);
+}
+
+/**
+ * What to tell the operator when a turn stops on a rail.
+ *
+ * Names the limit and the tier, because "Arc hit an error" gave them nothing to
+ * act on: on 2026-08-04 a Studio image edit spent all 12 turns on the fast tier
+ * and reported as a crash. The same request finishes on a tier with 24.
+ *
+ * `partial` is the difference between "here is what I got, it is cut short" and
+ * "nothing survived" — two different messages, because the first is a usable
+ * answer and the second is not.
+ */
+export function describeRailStop(route: ArcRoute, opts: { partial: boolean; reason?: string }): string {
+  // A caller that lost the route must not produce "reached its limit on
+  // undefined" — degrade to naming no tier rather than naming a wrong one.
+  const known = route in ROUTE_LABEL ? route : null;
+  const settings = inferenceForRoute(known ?? "fast");
+  const budget = /budget/i.test(opts.reason ?? "");
+  const limit = budget ? `its spend limit ($${settings.maxBudgetUsd})` : `its ${settings.maxTurns}-step limit`;
+  const on = known ? ` on ${ROUTE_LABEL[known]}` : "";
+  const up = known ? NEXT_ROUTE_UP[known] : undefined;
+  // Only offer an escalation that genuinely has more room — telling someone to
+  // switch to a tier with the same ceiling wastes a retry.
+  const escalate =
+    up && inferenceForRoute(up).maxTurns > inferenceForRoute(route).maxTurns
+      ? ` For a longer job, switch to ${ROUTE_LABEL[up]} — it gets ${inferenceForRoute(up).maxTurns} steps.`
+      : "";
+
+  return opts.partial
+    ? `_Arc stopped here — this turn reached ${limit}${on} before finishing. Ask again to pick up where it left off.${escalate}_`
+    : `This turn reached ${limit}${on} before Arc wrote anything, so there is nothing to show. This is a safety limit, not a failure — ask again and it will pick up with what it already learned.${escalate}`;
 }

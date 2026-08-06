@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { KpiStrip } from "../../../../_components/kpi-strip";
 import { useState, useTransition } from "react";
 
 import { humanizePersonaLabel } from "@/domain";
@@ -70,7 +71,7 @@ const KIND_COLOR: Record<string, string> = {
   contact: "#c8a24a",
   property: "#88b6d8",
   lead: "#88b6d8",
-  job: "#9678c8",
+  job: "#8fa2ba",
   outcome: "#7fb89a",
 };
 
@@ -354,7 +355,7 @@ export function RecordView({
         <div className="idrow">
           <span className="bigav">{initials(record.name)}</span>
           <div className="idmain">
-            <h1 className="rname">{record.name}</h1>
+            <h2 className="rname">{record.name}</h2>
             {record.detail && <div className="rrole">{record.detail}</div>}
             <div className="idchips">
               {dispPersona && (
@@ -664,14 +665,11 @@ export function RecordView({
               {record.engagement.length > 0 && (
                 <div className="sec">
                   <h3 className="sh">Engagement</h3>
-                  <div className="egrid">
-                    {record.engagement.map((e) => (
-                      <div className="ecell" key={e.label}>
-                        <div className="ev">{e.value}</div>
-                        <div className="el">{e.label}</div>
-                      </div>
-                    ))}
-                  </div>
+                  {/* The shared strip, not an eighth hand-rolled one. This was
+                      `repeat(3, 1fr)` — the equal dashboard row DESIGN.md bans —
+                      and with four metrics it left an orphan on a second row.
+                      KpiStrip sizes asymmetrically off its own count. */}
+                  <KpiStrip items={record.engagement.map((e) => ({ label: e.label, value: e.value }))} />
                 </div>
               )}
 

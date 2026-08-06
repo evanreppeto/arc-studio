@@ -88,3 +88,6 @@ dev-server-*.err.log
 *.zip
 __MACOSX/
 *.eps
+
+# Per-run timing report consumed by scripts/check-test-timing.mjs (BSR-739).
+test-results.json

@@ -16,8 +16,11 @@ import { recordConnectionUse } from "@/lib/connections/persistence";
 import { sendResendEmail } from "@/lib/connections/resend-client";
 import { readConnectorCredential } from "@/lib/connectors/credentials";
 
-import { getUnsubscribeSecret, isContactSuppressed, loadWorkspaceEmailIdentity } from "./email-identity";
+import { checkEmailSuppression } from "@/lib/email-suppression/persistence";
+
+import { getUnsubscribeSecret, loadWorkspaceEmailIdentity } from "./email-identity";
 import { isLiveSendEnabled } from "./live-send";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 // The ONLY place the app performs a real send. It operates on an already-queued
 // (or operator-forced "send now" scheduled) approval-linked `campaign_dispatches`
@@ -70,6 +73,7 @@ async function logCampaignEvent(
   if (!campaignId) return;
   const { error } = await client.from("campaign_events").insert({
     org_id: orgId,
+    ...(await workspaceIdFields(client, orgId, { campaignId })),
     campaign_id: campaignId,
     event_type: eventType,
     actor,
@@ -200,7 +204,16 @@ export async function executeResendDispatch(
       credential_ref: string | null;
     }>();
   assertOk("connections lookup", connectionError);
-  if (!connection?.enabled) {
+  // Two different states, two different remedies. `!connection?.enabled` covers
+  // both, and reporting them as one told a workspace that has never connected
+  // Resend that it was "connected but disabled" — false, and it points at a
+  // toggle that does not exist for them. This is the FIRST error a workspace
+  // hits on its first send, so it is the worst place to describe the wrong
+  // problem (BSR-757).
+  if (!connection) {
+    return { ok: false, message: "Resend isn't connected for this workspace. Connect it in Settings → Connections." };
+  }
+  if (!connection.enabled) {
     return { ok: false, message: "Resend is connected but disabled. Enable it in Settings → Connections." };
   }
 
@@ -232,7 +245,17 @@ export async function executeResendDispatch(
 
   // Consent, then compliance, then brand — in that order, because each is a
   // reason NOT to send and the cheapest refusal should come first.
-  const suppression = await isContactSuppressed(dispatch.contact_id, client);
+  const suppression = await checkEmailSuppression(
+    {
+      orgId: dispatch.org_id,
+      contactId: dispatch.contact_id,
+      // The address the dispatch will actually mail, not the contact's current
+      // one — those diverge once a payload is queued, and the address in the
+      // payload is the one that reaches a human.
+      address: Array.isArray(dispatch.payload?.to) ? dispatch.payload.to[0] : dispatch.payload?.to,
+    },
+    client,
+  );
   if (suppression.suppressed) {
     await markFailed(client, dispatch.org_id, dispatchId, dispatch.campaign_id, operator, suppression.reason ?? "Recipient is suppressed.");
     return { ok: false, message: suppression.reason ?? "Recipient is suppressed." };
@@ -314,10 +337,10 @@ export async function executeResendDispatch(
   assertOk("campaign_dispatches sent update", updateError);
 
   await recordConnectionUse(client, dispatch.org_id, "resend");
-  await logCampaignEvent(client, dispatch.org_id, dispatch.campaign_id, "dispatch_sent", operator, `Sent via Resend (${providerMessageId}).`);
+  await logCampaignEvent(client, dispatch.org_id, dispatch.campaign_id, "dispatch_sent", operator, `Sent by email (${providerMessageId}).`);
   await recordOutboundTouch(client, dispatch, providerMessageId);
 
-  return { ok: true, message: "Sent via Resend.", providerMessageId };
+  return { ok: true, message: "Sent by email.", providerMessageId };
 }
 
 /**
@@ -348,7 +371,7 @@ async function recordOutboundTouch(client: SupabaseClient, dispatch: DispatchRow
       campaign_id: dispatch.campaign_id,
       campaign_asset_id: dispatch.campaign_asset_id,
       contact_id: dispatch.contact_id,
-      summary: "Campaign email dispatched via Resend.",
+      summary: "Campaign email sent.",
       metadata: { provider: "resend" },
     });
     if (error) {

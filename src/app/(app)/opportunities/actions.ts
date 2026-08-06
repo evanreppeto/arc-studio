@@ -5,12 +5,14 @@ import { revalidatePath } from "next/cache";
 import {
   buildCampaignSeedFromOpportunity,
   isAllowedPersona,
+  type DismissReason,
   type OpportunityPackageBrief,
   RESTORATION_FOCUS_VALUES,
 } from "@/domain";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { createCampaignFromOpportunity } from "@/lib/campaigns/create";
+import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getOrgPersonaKeys } from "@/lib/personas/read-model";
 import { runDeterministicOpportunityScan } from "@/lib/opportunities/scan";
 import { executeOpportunityDraftTask } from "@/lib/opportunities/draft-package";
@@ -63,13 +65,19 @@ export type OpportunityTriageResult = { ok: true; persisted: boolean } | { ok: f
  * outside world: triage records a decision, never sends or contacts anything. Gated
  * by requireOperator() and org-scoped. `persisted: false` is the honest offline signal.
  */
-export async function dismissOpportunityAction(opportunityId: string): Promise<OpportunityTriageResult> {
+export async function dismissOpportunityAction(
+  opportunityId: string,
+  reason?: DismissReason | null,
+): Promise<OpportunityTriageResult> {
   await requireOperator();
   if (!opportunityId) return { ok: false, error: "Missing opportunity." };
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
   try {
     const ctx = await getCurrentWorkspaceContext();
-    await dismissOpportunity(opportunityId, undefined, { orgId: ctx.orgId });
+    // `reason` is optional by design (BSR-686): a dismissal that says nothing is
+    // still a dismissal, and making it mandatory would cost the volume that
+    // makes the signal worth having.
+    await dismissOpportunity(opportunityId, reason ?? null, undefined, { orgId: ctx.orgId });
     revalidatePath("/opportunities");
     return { ok: true, persisted: true };
   } catch (error) {
@@ -187,6 +195,12 @@ async function createDraftCampaign(input: DraftCampaignFromOpportunityInput): Pr
   if (opp.campaignId) return { status: "existing", campaignId: opp.campaignId };
 
   try {
+    // The Brand Kit is what says where this business operates. Read it here so a
+    // signal-driven campaign is scoped by the workspace rather than by whatever
+    // geography the alert happened to cover (BSR-756). Best-effort: an
+    // unreadable profile must not block the draft — the summary says the scope
+    // is unverified instead of quietly implying coverage.
+    const profile = await getBusinessProfile(ctx.orgId).catch(() => null);
     const seed = buildCampaignSeedFromOpportunity(
       {
         title: opp.title,
@@ -195,6 +209,8 @@ async function createDraftCampaign(input: DraftCampaignFromOpportunityInput): Pr
         urgency: opp.urgency,
         persona: opp.persona,
         recommendedCampaignType: opp.recommendedCampaignType,
+        signalArea: typeof opp.evidence?.area === "string" ? opp.evidence.area : null,
+        serviceAreas: profile?.serviceAreas ?? null,
       },
       allowedPersonaKeys,
     );

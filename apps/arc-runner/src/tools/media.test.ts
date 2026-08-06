@@ -22,6 +22,54 @@ describe("generate_image", () => {
     expect(genImage.name).toBe("generate_image");
   });
 
+  it("creates no campaign when the operator asked for just the image", async () => {
+    // BSR-634. The tool used to create a campaign unconditionally, because until
+    // generated media reached the Library a campaign was the only way an image
+    // was reachable at all. Asking for "just one image, no campaign" produced a
+    // campaign anyway — contradicting the operator and leaving junk behind.
+    const media = { kind: "image", url: "https://x/y.png", source: "ai_generated", format: "4:3", model: "m", jobId: "j" };
+    const { cards, apiPost, call } = setup([async () => ({ media, objectPath: "arc-generated/y.png" })]);
+
+    const out = await call({ prompt: "a service van", title: "Van", library_only: true });
+
+    // Generation happened; the draft-asset call did NOT.
+    expect(apiPost).toHaveBeenCalledTimes(1);
+    expect(apiPost).toHaveBeenCalledWith("/api/v1/arc/media/generate-image", expect.objectContaining({ prompt: "a service van" }));
+    const payload = JSON.parse(out.content[0]!.text) as { campaignId: string | null; status: string };
+    expect(payload.campaignId).toBeNull();
+    expect(payload.status).toMatch(/Library/i);
+    // The card points at the Library and carries no approval — there is no
+    // campaign asset to approve, and the Library holds it for review instead.
+    expect(cards[0]).toMatchObject({ kind: "result", title: "Van", href: "/library", media });
+    expect(cards[0]!.approval).toBeUndefined();
+  });
+
+  it("still attaches to a campaign the operator named, even with library_only set", async () => {
+    // An explicit campaign_id is a clearer instruction than the flag.
+    const media = { kind: "image", url: "https://x/y.png", source: "ai_generated", format: "1:1", model: "m", jobId: "j" };
+    const { apiPost, call } = setup([
+      async () => ({ media, objectPath: "arc-generated/y.png" }),
+      async () => ({ campaignId: "c1", assetId: "a1" }),
+    ]);
+
+    await call({ prompt: "x", title: "T", library_only: true, campaign_id: "c1" });
+
+    expect(apiPost).toHaveBeenCalledTimes(2);
+    expect(apiPost).toHaveBeenNthCalledWith(2, "/api/v1/arc/campaigns/draft-asset", expect.objectContaining({ campaign_id: "c1" }));
+  });
+
+  it("still creates a campaign by default, so nothing changes for normal campaign work", async () => {
+    const media = { kind: "image", url: "https://x/y.png", source: "ai_generated", format: "1:1", model: "m", jobId: "j" };
+    const { apiPost, call } = setup([
+      async () => ({ media, objectPath: "arc-generated/y.png" }),
+      async () => ({ campaignId: "c1", assetId: "a1" }),
+    ]);
+
+    await call({ prompt: "x", title: "T", name: "Spring push", persona: "persona_landlord" });
+
+    expect(apiPost).toHaveBeenCalledTimes(2);
+  });
+
   it("generates, creates a draft asset, and emits a media+approval card", async () => {
     const media = { kind: "image", url: "https://x/y.png", source: "ai_generated", format: "1:1", model: "m", jobId: "j" };
     const { cards, apiPost, call } = setup([
@@ -91,6 +139,63 @@ function setupVideo(posts: Array<() => Promise<unknown>>) {
     (genVideo.handler as (a: Record<string, unknown>, e?: unknown) => Promise<{ content: Array<{ type: string; text: string }> }>)(args);
   return { cards, apiPost, call, genVideo };
 }
+
+// BSR-706. Branding is the most common revision ask on an image asset and the
+// one image generation can never satisfy: hardenImagePrompt strips text/logos
+// from every prompt unconditionally, so "add our logo" regenerates a picture
+// that still has no logo. compose_creative is the only path that puts the real
+// Brand Kit logo on an image — but Arc only reaches for it if the descriptions
+// say so. These assert the signposts, because without them the tools quietly
+// point Arc at the tool that cannot do the job.
+describe("branding revisions route to compositing, not regeneration", () => {
+  const descriptions = () => {
+    const client = { apiPost: vi.fn() } as unknown as ArcClient;
+    const step = vi.fn(async () => {});
+    const tools = mediaTools(client, step, () => {}, {});
+    return Object.fromEntries(tools.map((t) => [t.name, t.description ?? ""]));
+  };
+
+  it("sends generate_image callers to compose_creative for logos and on-image words", () => {
+    const generateImage = descriptions().generate_image;
+    expect(generateImage).toMatch(/compose_creative/);
+    // naming the replacement is the point — "added later in design" told Arc the
+    // request was someone else's job without saying whose
+    expect(generateImage).toMatch(/logo/i);
+  });
+
+  it("tells compose_creative it is the answer to a branding revision", () => {
+    expect(descriptions().compose_creative).toMatch(/revision/i);
+    expect(descriptions().compose_creative).toMatch(/background_url/);
+  });
+
+  /**
+   * This test used to assert the OPPOSITE — that compose_creative tells the
+   * operator a branded truck is impossible. It was pinning a false limit.
+   *
+   * Nothing forbade it. There was simply no edit path: the provider could only
+   * generate, so the mark could only be a lockup positioned over the photo. The
+   * operator's word for that was "stupid", and they were right. `edit_image`
+   * exists now, and the description must ROUTE to it rather than refuse.
+   */
+  it("routes a mark-on-an-object request to edit_image instead of refusing it", () => {
+    const compose = descriptions().compose_creative;
+    expect(compose).toMatch(/edit_image/);
+    // The old refusal must not come back in any wording.
+    expect(compose).not.toMatch(/branded creative rather than a branded truck/i);
+    expect(compose).toMatch(/not tell them a branded truck is impossible/i);
+  });
+
+  it("tells edit_image it owns changing an existing picture", () => {
+    const edit = descriptions().edit_image;
+    expect(edit).toMatch(/ALREADY EXISTS/);
+    expect(edit).toMatch(/image_url/);
+    expect(edit).toMatch(/instruction/);
+    // Why it is not "just regenerate": that discards the picture being edited.
+    expect(edit).toMatch(/rolls the dice|throws that picture away/i);
+    // An edit inherits the original's claims and adds the model's on top.
+    expect(edit).toMatch(/risk-flagged|inherits/i);
+  });
+});
 
 describe("compose_creative", () => {
   it("exposes compose_creative", () => {
@@ -254,5 +359,48 @@ describe("generate_video", () => {
       "/api/v1/arc/media/generate-video",
       expect.objectContaining({ level: "standard" }),
     );
+  });
+});
+
+/**
+ * The four places that must agree about a tool.
+ *
+ * BSR-759 was exactly this drift: a tool existed, and the allowlist or the prompt
+ * did not know about it, so Arc either could not call it or was never told to.
+ * The failure is silent — the tool is simply never used, and the operator gets
+ * the old answer forever.
+ *
+ * `edit_image` is the tool most likely to suffer it, because the prompt actively
+ * used to say the thing it makes possible was impossible.
+ */
+describe("edit_image is wired everywhere, not just defined", () => {
+  const read = (rel: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { join } = require("node:path") as typeof import("node:path");
+    return readFileSync(join(__dirname, "..", rel), "utf8");
+  };
+
+  it("is in the skills allowlist, or Arc cannot call it", () => {
+    expect(read("skills.ts")).toMatch(/"edit_image"/);
+  });
+
+  it("is in the act-mode capability line, or Arc is not told it has it", () => {
+    expect(read("context.ts")).toMatch(/edit_image/);
+  });
+
+  it("is in the app map's writes for the campaigns surface", () => {
+    expect(read("app-map.ts")).toMatch(/edit_image/);
+  });
+
+  it("is named in the system prompt, with the old refusal retired", () => {
+    const prompt = read("prompt.ts");
+    expect(prompt).toMatch(/edit_image/);
+    // The prompt used to forbid logos in images flatly. That rule is about
+    // GENERATION; stated flatly it also forbade the edit that makes a branded
+    // truck possible.
+    expect(prompt).toMatch(/GENERATED image/);
+    expect(prompt).toMatch(/never tell an operator a branded truck is impossible/i);
   });
 });

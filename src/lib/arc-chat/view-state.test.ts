@@ -1,11 +1,91 @@
 import { describe, expect, it } from "vitest";
 
+import type { ArcMessage } from "./persistence";
 import {
   getArcConversationHeader,
   getArcConversationScrollTarget,
+  hasArcReplyInFlight,
+  isArcReplyInFlight,
+  shouldEditLastOnArrowUp,
   shouldShowDemoLauncher,
   shouldUseDemoSeedWorkspace,
 } from "./view-state";
+
+describe("shouldEditLastOnArrowUp", () => {
+  const ready = { draft: "", live: true, busy: false, menuOpen: false, hasOperatorMessage: true };
+
+  it("edits the last message from an empty composer", () => {
+    expect(shouldEditLastOnArrowUp(ready)).toBe(true);
+  });
+
+  it("leaves ↑ as a cursor key the moment anything is typed", () => {
+    // The one that matters: stealing ↑ from a draft in progress would break
+    // ordinary text navigation for the sake of a shortcut.
+    expect(shouldEditLastOnArrowUp({ ...ready, draft: "d" })).toBe(false);
+    expect(shouldEditLastOnArrowUp({ ...ready, draft: "a longer half-written message" })).toBe(false);
+  });
+
+  it("yields to an open composer menu, which already owns ↑", () => {
+    expect(shouldEditLastOnArrowUp({ ...ready, menuOpen: true })).toBe(false);
+  });
+
+  it("refuses while a turn is in flight", () => {
+    expect(shouldEditLastOnArrowUp({ ...ready, busy: true })).toBe(false);
+  });
+
+  it("does nothing in the backend-less preview or an empty thread", () => {
+    expect(shouldEditLastOnArrowUp({ ...ready, live: false })).toBe(false);
+    expect(shouldEditLastOnArrowUp({ ...ready, hasOperatorMessage: false })).toBe(false);
+  });
+});
+
+function reply(overrides: Partial<ArcMessage> = {}): ArcMessage {
+  return {
+    id: "message-1",
+    conversationId: "conversation-1",
+    role: "arc",
+    body: "",
+    status: "pending",
+    agentTaskId: "task-1",
+    mentions: [],
+    media: [],
+    steps: [],
+    feedback: null,
+    actions: [],
+    suggestions: [],
+    attachments: [],
+    createdAt: "2026-08-05T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("isArcReplyInFlight", () => {
+  it("counts a pending reply as working", () => {
+    expect(isArcReplyInFlight(reply())).toBe(true);
+  });
+
+  it("counts a bodyless arc row as working — the runner inserts before it writes", () => {
+    expect(isArcReplyInFlight(reply({ status: "complete", body: "   " }))).toBe(true);
+  });
+
+  it("counts a finished reply as done", () => {
+    expect(isArcReplyInFlight(reply({ status: "complete", body: "Here you go." }))).toBe(false);
+  });
+
+  /**
+   * The whole point of the stalled flag. A stranded run matches BOTH in-flight
+   * shapes above — still `pending`, still bodyless — so without this it spins
+   * forever and keeps the composer locked behind it.
+   */
+  it("counts a stalled run as done, even though it is still pending and bodyless", () => {
+    expect(isArcReplyInFlight(reply({ stalled: true }))).toBe(false);
+    expect(hasArcReplyInFlight([reply({ stalled: true })])).toBe(false);
+  });
+
+  it("still reports work when one reply stalled and another is live", () => {
+    expect(hasArcReplyInFlight([reply({ stalled: true }), reply({ id: "message-2" })])).toBe(true);
+  });
+});
 
 describe("shouldShowDemoLauncher", () => {
   it("shows the launcher for an untouched new demo conversation", () => {

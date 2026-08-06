@@ -20,6 +20,7 @@ import type { SettingsWorkspace } from "@/lib/auth/workspaces-view";
 
 import { Modal } from "../../_components/modal";
 import { removeWorkspaceRowLogoAction, saveWorkspaceRowLogoAction } from "../branding-actions";
+import { AppImage } from "../../_components/app-image";
 
 export type WorkspaceIdentityValue = {
   workspaceId: string;
@@ -172,8 +173,7 @@ export function WorkspaceIdentityModal({
         <div className="wsid-preview-ws">
           <span className={`wsid-preview-mk${preview.logoUrl ? " has-image" : ""}`}>
             {preview.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo; next/image would need per-host remotePatterns
-              <img src={preview.logoUrl} alt="" />
+              <AppImage src={preview.logoUrl} alt="" />
             ) : (
               workspaceInitials(preview.name || organizationName)
             )}

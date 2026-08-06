@@ -199,7 +199,16 @@ type NextBestActionRow = {
   updated_at: string | null;
 };
 
-export async function getPartnerDevelopmentDashboard(client?: SupabaseClient, agentName = "Arc"): Promise<PartnerDevelopmentDashboard> {
+/**
+ * NOTE (BSR-653): this function has no callers anywhere in `src/` or `apps/` — its
+ * only reader is nothing. It is left in place rather than deleted (deletions are
+ * not authorised here), but two things are true and worth knowing before reviving
+ * it: the read-model is otherwise ORG-BLIND — no query in this file filters
+ * `org_id` — and that is a separate hole from the one BSR-653 closes. `orgId` is
+ * threaded through the two tables this ticket touches so a revival starts from a
+ * correct base rather than inheriting the gap.
+ */
+export async function getPartnerDevelopmentDashboard(client?: SupabaseClient, agentName = "Arc", orgId?: string): Promise<PartnerDevelopmentDashboard> {
   if (!client && !isSupabaseAdminConfigured()) {
     return { status: "unavailable", message: "Supabase env vars are not configured." };
   }
@@ -245,12 +254,14 @@ export async function getPartnerDevelopmentDashboard(client?: SupabaseClient, ag
           "partner_health_snapshots",
           "id,company_id,contact_id,persona,health_score,relationship_stage,trailing_90_day_referrals,trailing_90_day_won_revenue_cents,last_referral_at,recommended_action,risk_flags,reasoning_payload,created_at",
           "created_at",
+          orgId,
         ),
         optionalSelect<NextBestActionRow>(
           supabase,
           "next_best_actions",
           "id,approval_item_id,company_id,campaign_id,lead_id,title,action_type,status,priority,approval_required,recommendation,reason,due_at,updated_at",
           "updated_at",
+          orgId,
         ),
       ]);
 
@@ -441,9 +452,9 @@ function buildNextAction(input: {
     return { text: `Ask ${agentName} to attach source evidence and classify the partner fit.`, source: "missing evidence", href: "/arc" };
   }
   if (typeof input.score !== "number") {
-    return { text: `Ask ${agentName} to score partner fit and create an approval-gated recommendation.`, source: "missing score", href: "/arc" };
+    return { text: `Ask ${agentName} to score partner fit and draft a recommendation for you to approve.`, source: "missing score", href: "/arc" };
   }
-  return { text: "Prepare an approval-gated partner campaign brief. No outbound execution.", source: "safe default", href: "/campaigns" };
+  return { text: "Prepare a partner campaign brief for your approval. Nothing goes out.", source: "safe default", href: "/campaigns" };
 }
 
 function inferPartnerTrack(company: CompanyRow, metadata: JsonObject) {
@@ -541,8 +552,19 @@ function buildDataContracts(partners: PartnerCard[], healthCount: number, action
   ] as Array<{ label: string; status: "live" | "needed"; detail: string }>;
 }
 
-async function optionalSelect<T>(client: SupabaseClient, table: string, columns: string, orderBy: string): Promise<T[]> {
-  const { data, error } = await client.from(table).select(columns).order(orderBy, { ascending: false }).limit(250);
+async function optionalSelect<T>(
+  client: SupabaseClient,
+  table: string,
+  columns: string,
+  orderBy: string,
+  orgId?: string,
+): Promise<T[]> {
+  let query = client.from(table).select(columns);
+  // Only filter when the caller resolved an org. This whole read-model is
+  // currently org-blind (see the note on getPartnerDevelopmentDashboard); passing
+  // the id where we have it is the start of closing that, not the end of it.
+  if (orgId) query = query.eq("org_id", orgId);
+  const { data, error } = await query.order(orderBy, { ascending: false }).limit(250);
   if (error) return [];
   return (data ?? []) as T[];
 }

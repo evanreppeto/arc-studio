@@ -4,10 +4,13 @@ import {
   applyConfidenceFloor,
   DEFAULT_CONFIDENCE_FLOOR,
   dismissCooldownDays,
+  isDismissReason,
+  type DismissReason,
   type OpportunityCandidate,
 } from "@/domain";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { type Database } from "@/lib/supabase/database.types";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 /**
@@ -136,7 +139,11 @@ export async function upsertOpportunities(
     status: "pending",
     detected_by: "arc",
   }));
-  const { error: insErr } = await db.from("opportunities").insert(rows);
+  // Every row in this batch shares one org, so the workspace resolves once.
+  const workspaceFields = await workspaceIdFields(db, orgId);
+  const { error: insErr } = await db
+    .from("opportunities")
+    .insert(rows.map((row) => ({ ...row, ...workspaceFields })));
   if (insErr) return { ok: false, error: insErr.message };
   return persisted(rows.length, filtered);
 }
@@ -158,8 +165,33 @@ async function setStatus(
   return { ok: true };
 }
 
-export function dismissOpportunity(id: string, client?: SupabaseClient, scope?: OpportunityScope) {
-  return setStatus(id, { status: "dismissed", dismissed_at: new Date().toISOString() }, client, scope);
+/**
+ * Triage an opportunity out of the inbox, optionally recording WHY (BSR-686).
+ *
+ * `reason` is optional and stays optional: dismiss is valuable because it costs
+ * one tap, and a required field would trade the volume for the detail. An
+ * unreasoned dismissal is still a dismissal — it just teaches nothing.
+ *
+ * Validated here rather than trusted from the caller, so a bad value is a null
+ * (a dismissal that records no reason) instead of a 23514 that loses the
+ * dismissal entirely. The DB CHECK is the backstop, not the first line.
+ */
+export function dismissOpportunity(
+  id: string,
+  reason?: DismissReason | null,
+  client?: SupabaseClient,
+  scope?: OpportunityScope,
+) {
+  return setStatus(
+    id,
+    {
+      status: "dismissed",
+      dismissed_at: new Date().toISOString(),
+      dismissed_reason: isDismissReason(reason) ? reason : null,
+    },
+    client,
+    scope,
+  );
 }
 
 export function snoozeOpportunity(id: string, untilIso: string, client?: SupabaseClient, scope?: OpportunityScope) {

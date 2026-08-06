@@ -53,7 +53,7 @@ const TABS: Array<{
     label: "Campaigns",
     title: "Complete packages, not blank pages",
     description:
-      "A campaign in Arc is the whole package: brief, audience, email, SMS, ad copy, landing copy, and creative — assembled by Arc, approved by you.",
+      "A campaign in Arc holds every asset: brief, audience, email, SMS, ad copy, landing copy, and creative — assembled by Arc, approved by you.",
     bullets: [
       "Brief, audience, persona logic, and every deliverable in one record",
       "Assets carry provenance — real media, AI-generated, or composite",

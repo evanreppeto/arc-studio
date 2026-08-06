@@ -1,5 +1,16 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  approvalItemLabel,
+  approvalDecisionActivityLabel,
+  approvalDecisionActivityPredicate,
+  campaignEventActivityPredicate,
+  runActivityLabel,
+  runActivityPredicate,
+  toWorkState,
+  WORK_STATE_LABEL,
+} from "@/domain";
+
 import { isDemoDataEnabled } from "../demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 import { buildDemoActivity } from "./demo";
@@ -15,7 +26,7 @@ export type ActivityTone = "green" | "red" | "amber" | "blue" | "gray";
 export type ActivityActorType = "human" | "arc" | "sub_agent" | "integration" | "system";
 export type ActivityCategory = "approval" | "campaign" | "crm" | "asset" | "agent" | "integration" | "risk" | "system";
 export type ActivityInsightLabel =
-  | "Needs review"
+  | "Needs you"
   | "Marketing progress"
   | "Risk blocked"
   | "Data changed"
@@ -27,7 +38,14 @@ export type ActivityEntry = {
   id: string;
   kind: ActivityKind;
   tone: ActivityTone;
+  /** Standalone noun phrase, for a list row that leads with the event. */
   title: string;
+  /**
+   * The same event as a verb phrase, for a feed that names the actor first and
+   * renders `{actor} {predicate}`. Home did that with `title` and produced
+   * "You Approval Revision Requested" (BSR-734).
+   */
+  predicate: string;
   detail: string;
   actor: string;
   actorType: ActivityActorType;
@@ -182,8 +200,15 @@ export async function getRecentActivity(
 
     // Tenant isolation: when an orgId is supplied (Arc API tokens via arcGuard),
     // every source MUST be org-scoped — the service-role client bypasses RLS, so
-    // this app-layer filter is the only boundary. agent_run_logs has no org_id
-    // column, so it's scoped indirectly through its task's org.
+    // this app-layer filter is the only boundary.
+    //
+    // agent_run_logs is scoped indirectly, through its task's org. The note that
+    // used to sit here said that was because the table "has no org_id column";
+    // it does, and it is NOT NULL. Left as-is anyway rather than "simplified" to
+    // a direct filter, because task_id is nullable: a parentless run log is
+    // excluded by this in() and would be included by .eq("org_id"). That is a
+    // behaviour change, not a cleanup, and it does not belong in a lock migration.
+    // Tracked with the wider read-path sweep (BSR-729).
     let scopedTaskIds: string[] = [];
     if (orgId) {
       const { data: taskRows } = await supabase.from("agent_tasks").select("id").eq("org_id", orgId);
@@ -202,9 +227,7 @@ export async function getRecentActivity(
     const campaignEventsSel = supabase
       .from("campaign_events")
       .select("id,campaign_id,approval_item_id,event_type,actor,detail,payload,occurred_at");
-    const eventsSel = supabase.from("events").select("id,actor,subject_type,subject_id,type,payload,occurred_at");
-
-    const [decisions, runs, outputs, campaignEvents, events] = await Promise.all([
+    const [decisions, runs, outputs, campaignEvents] = await Promise.all([
       (orgId ? decisionsSel.eq("org_id", orgId) : decisionsSel)
         .order("decided_at", { ascending: false })
         .limit(sourceLimit),
@@ -217,23 +240,26 @@ export async function getRecentActivity(
       (orgId ? campaignEventsSel.eq("org_id", orgId) : campaignEventsSel)
         .order("occurred_at", { ascending: false })
         .limit(sourceLimit),
-      (orgId ? eventsSel.eq("org_id", orgId) : eventsSel)
-        .order("occurred_at", { ascending: false })
-        .limit(sourceLimit),
     ]);
 
     // Resolve the campaign behind every referenced approval item / agent task in
     // one batched pass, so entries can link to a page that exists.
-    const links = await resolveActivityLinks(supabase, orgId, [decisions, outputs, campaignEvents, events], [runs, outputs]);
+    const links = await resolveActivityLinks(supabase, orgId, [decisions, outputs, campaignEvents], [runs, outputs]);
 
     const sources = [
       collectSource("approval_decisions", decisions, (row) => mapDecision(row, links)),
       collectSource("agent_run_logs", runs, (row) => mapRun(row, links)),
       collectSource("agent_outputs", outputs, (row) => mapOutput(row, links)),
       collectSource("campaign_events", campaignEvents, (row) => mapCampaignEvent(row, links)),
-      collectSource("events", events, (row) => mapEvent(row, links)),
     ];
 
+    // `public.events` was a fifth source here. Nothing in the app, the scripts,
+    // the runner or a trigger has ever written that table (BSR-671), so it
+    // could only ever contribute zero rows — a query on every feed load and a
+    // claim of coverage the feed did not have. The four sources below are the
+    // ones that carry activity. If a generic event stream is ever built, adding
+    // a mapper back is a smaller cost than keeping a dead one.
+    //
     // One drifted column or failing table must not blank the entire feed: each
     // source degrades to zero rows (logged) while the others still render. Only
     // a total failure (every source errored — e.g. the DB is unreachable) falls
@@ -354,7 +380,7 @@ export function groupActivityEntriesByDay(entries: ActivityEntry[], now = new Da
 }
 
 function isNeedsReviewEntry(entry: ActivityEntry): boolean {
-  return entry.insightLabel === "Needs review";
+  return entry.insightLabel === "Needs you";
 }
 
 export function mapDecision(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS): ActivityEntry {
@@ -366,7 +392,8 @@ export function mapDecision(row: Record<string, unknown>, links: ActivityLinks =
     id: `decision:${String(row.id)}`,
     kind: "decision",
     tone: decisionTone(decision),
-    title: `Approval ${titleize(decision)}`,
+    title: approvalDecisionActivityLabel(decision),
+    predicate: approvalDecisionActivityPredicate(decision),
     detail: str(row.decision_notes) ?? `Decision recorded by ${decidedBy}.`,
     actor: decidedBy,
     actorType: "human",
@@ -388,7 +415,8 @@ export function mapRun(row: Record<string, unknown>, links: ActivityLinks = NO_L
     id: `run:${String(row.id)}`,
     kind: "run",
     tone: error ? "red" : runTone(status),
-    title: `Run ${titleize(status)}`,
+    title: runActivityLabel(status),
+    predicate: runActivityPredicate(status),
     detail: error ?? str(row.reasoning_summary) ?? str(row.model_name) ?? "Agent run logged.",
     actor,
     actorType: agentActorType(actor),
@@ -413,7 +441,10 @@ function mapOutput(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS
     kind: "draft",
     tone,
     title: str(row.title) ?? "Agent draft created",
-    detail: `${titleize(str(row.output_type) ?? "draft")} - ${titleize(approval || compliance || "pending approval")}`,
+    // The output's own title is a real name Arc wrote; the predicate says what
+    // Arc DID with it, so the feed line reads "Arc drafted <name>".
+    predicate: "created a draft",
+    detail: `${approvalItemLabel(str(row.output_type))} · ${WORK_STATE_LABEL[toWorkState(approval || compliance || "pending approval")]}`,
     actor: "Arc",
     actorType: "arc",
     category: tone === "red" ? "risk" : "asset",
@@ -439,6 +470,11 @@ export function mapCampaignEvent(row: Record<string, unknown>, links: ActivityLi
     kind: "campaign",
     tone,
     title: campaignEventTitle(eventType, decisionSignal),
+    // A decided approval says WHICH decision; everything else names the event.
+    predicate:
+      normalizeStatus(eventType) === "approval_decided" && decisionSignal
+        ? approvalDecisionActivityPredicate(normalizeStatus(decisionSignal))
+        : campaignEventActivityPredicate(eventType),
     detail: detail ?? "Campaign lifecycle update.",
     actor,
     actorType: actorTypeFromActor(actor),
@@ -447,31 +483,6 @@ export function mapCampaignEvent(row: Record<string, unknown>, links: ActivityLi
     relatedLabel: detail ?? "Campaign update",
     occurredAt: str(row.occurred_at) ?? "",
     href: campaignId ? `/campaigns/${campaignId}` : approvalHref(links, approvalId),
-  };
-}
-
-export function mapEvent(row: Record<string, unknown>, links: ActivityLinks = NO_LINKS): ActivityEntry {
-  const subjectType = str(row.subject_type) ?? "record";
-  const subjectId = str(row.subject_id);
-  const eventType = str(row.type) ?? "record.updated";
-  const payload = object(row.payload);
-  const title = str(payload.title) ?? titleize(eventType);
-  const detail = str(payload.detail) ?? `${titleize(subjectType)} activity recorded.`;
-  const actor = displayActor(str(row.actor));
-
-  return {
-    id: `event:${String(row.id)}`,
-    kind: "event",
-    tone: eventTone(eventType),
-    title,
-    detail,
-    actor,
-    actorType: actorTypeFromActor(actor),
-    category: categoryForEvent(subjectType, eventType),
-    insightLabel: insightForEvent(subjectType, eventType),
-    relatedLabel: str(payload.relatedLabel) ?? titleize(subjectType),
-    occurredAt: str(row.occurred_at) ?? "",
-    href: hrefForSubject(subjectType, subjectId, links),
   };
 }
 
@@ -492,8 +503,8 @@ function insightForDecision(decision: string): ActivityInsightLabel {
 }
 
 function insightForOutput(approval: string, compliance: string, tone: ActivityTone): ActivityInsightLabel {
-  if (isActiveReviewStatus(approval) || isActiveReviewStatus(compliance)) return "Needs review";
-  if (!approval && !compliance) return "Needs review";
+  if (isActiveReviewStatus(approval) || isActiveReviewStatus(compliance)) return "Needs you";
+  if (!approval && !compliance) return "Needs you";
   if (isApprovedStatus(approval)) return "Marketing progress";
   if (tone === "red") return "Risk blocked";
   if (isTerminalReviewStatus(approval) || isTerminalReviewStatus(compliance)) return "Data changed";
@@ -585,7 +596,7 @@ function campaignTone(eventType: string, decisionSignal: string | null): Activit
 
 function insightForCampaignEvent(eventType: string, tone: ActivityTone): ActivityInsightLabel {
   if (tone === "red") return "Risk blocked";
-  if (tone === "amber" && normalizeStatus(eventType).includes("submitted")) return "Needs review";
+  if (tone === "amber" && normalizeStatus(eventType).includes("submitted")) return "Needs you";
   if (tone === "green") return "Marketing progress";
   return "Data changed";
 }
@@ -674,7 +685,7 @@ function insightForEvent(subjectType: string, eventType: string): ActivityInsigh
   const subject = subjectType.toLowerCase();
   const event = eventType.toLowerCase();
   if (event.includes("risk") || event.includes("block")) return "Risk blocked";
-  if (event.includes("review") || event.includes("approval") || event.includes("pending")) return "Needs review";
+  if (event.includes("review") || event.includes("approval") || event.includes("pending")) return "Needs you";
   if (subject.includes("campaign")) {
     return event.includes("result") || event.includes("sent") || event.includes("launch")
       ? "Campaign result"

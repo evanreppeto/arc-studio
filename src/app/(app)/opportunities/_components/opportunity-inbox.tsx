@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,14 +13,24 @@ import {
   snoozeOpportunityAction,
 } from "../actions";
 import { scanMessage } from "../scan-feedback";
+import type { ScanStatusLine } from "../scan-status-copy";
 import { DraftCampaignModal, type DraftMode } from "./draft-campaign-modal";
+import { definitionText, DEFINITIONS, DISMISS_REASON_OPTIONS, type DismissReason } from "@/domain";
+import { Define, HowThisWorks } from "../../_components/define";
 
-export type OppSignal = { label: string; value: string };
+/** `hint` carries the definition for a coined label (BSR-659). */
+export type OppSignal = { label: string; value: string; hint?: string };
 export type OppRouting = { step: string; note: string; done: boolean };
 
 export type OpportunityVM = {
   id: string;
   name: string;
+  /**
+   * The distinguishing tail of the title — "Cook, IL / DuPage, IL +1 more" — when
+   * `name` alone would not tell two cards apart. Null when a more specific field
+   * (staleness) already carries it.
+   */
+  qualifier: string | null;
   title: string;
   confidence: number;
   urgencyTone: "red" | "amber" | "info";
@@ -45,7 +55,6 @@ export type OpportunityVM = {
   audienceNote: string;
   campaignTypes: string[];
   evidence: OppSignal[];
-  impact: OppSignal[];
   routing: OppRouting[];
   /** Lifecycle: "pending" | "drafting" | "drafted" (open states the inbox lists). */
   status: string;
@@ -115,18 +124,44 @@ function ScanButton({ subtle }: { subtle?: boolean }) {
   );
 }
 
+/**
+ * What Arc's own background scan last did.
+ *
+ * Arc has scanned this workspace daily since 2026-08-01 and the product never
+ * said so — the inbox offered a manual scan button and nothing else, so work
+ * Arc did on its own read as work nobody did. Worse, every outcome looked
+ * identical: on 2026-08-04 a scan ran, proposed nothing, failed to mark itself
+ * complete, and the screen was indistinguishable from a healthy quiet day.
+ */
+function ScanStatus({ status }: { status?: ScanStatusLine | null }) {
+  if (!status) return null;
+  return (
+    <div className={`scanstat ${status.tone}`} role="status">
+      <span className="l">
+        <i />
+        {status.text}
+      </span>
+      {status.detail && <span className="d">{status.detail}</span>}
+    </div>
+  );
+}
+
 /** The scan form + its result line. Self-contained so both call sites report alike. */
-function ScanForm({ subtle }: { subtle?: boolean }) {
+function ScanForm({ subtle, status }: { subtle?: boolean; status?: ScanStatusLine | null }) {
   const [result, formAction] = useActionState(scanForOpportunitiesAction, null);
   return (
     <>
       <form action={formAction}>
         <ScanButton subtle={subtle} />
       </form>
-      {result && (
+      {/* The manual scan's own result supersedes the background one — it is
+          newer, and it is what the operator just asked for. */}
+      {result ? (
         <div className={`scanmsg${result.ok ? "" : " bad"}`} role="status">
           {scanMessage(result)}
         </div>
+      ) : (
+        <ScanStatus status={status} />
       )}
     </>
   );
@@ -150,12 +185,19 @@ export function OpportunityInbox({
   opps,
   personaOptions,
   selectedId,
+  scanStatus,
+  failed = null,
 }: {
   opps: OpportunityVM[];
   /** The org's own personas for the draft-campaign picker. */
   personaOptions?: { key: string; label: string }[];
   /** Opportunity selected by a contextual deep link from Home or Arc. */
   selectedId?: string;
+  /** What Arc's last background scan did — null when there is no history. */
+  scanStatus?: ScanStatusLine | null;
+  /** Why the opportunity read failed, or null. An empty inbox and a broken one
+   *  are opposite messages; this is what tells them apart. */
+  failed?: string | null;
 }) {
   // Selection is held by id, not list index: filtering, sorting and triage all
   // reorder the list, and an index would silently point at a different card.
@@ -170,6 +212,39 @@ export function OpportunityInbox({
   // optimistically so the card leaves the inbox instantly, before the refetch.
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [dismissOpen, setDismissOpen] = useState(false);
+  const triageRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Close the triage menus on an outside click or Escape.
+   *
+   * This replaced a pair of click-catching scrim overlays. A scrim div is
+   * invisible to a keyboard: there is no way to tab to it and Escape did
+   * nothing, so a keyboard user who opened a menu was stuck with it open —
+   * BSR-664's ratchet caught the second one being added here, which is the
+   * ratchet working. Listening on the document covers both pointer and
+   * keyboard, and matches what `FilterMenu`/`SortMenu` in crm-board.tsx do.
+   *
+   * (Prose here deliberately avoids naming the old markup literally: this
+   * guard greps raw source and does not strip comments, unlike its sibling in
+   * plumbing-vocabulary.test.ts, so a comment quoting a tag trips it.)
+   */
+  useEffect(() => {
+    if (!snoozeOpen && !dismissOpen) return;
+    const close = () => { setSnoozeOpen(false); setDismissOpen(false); };
+    function onDown(e: MouseEvent) {
+      if (triageRef.current && !triageRef.current.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [snoozeOpen, dismissOpen]);
   const [triaging, setTriaging] = useState(false);
   const router = useRouter();
 
@@ -203,7 +278,7 @@ export function OpportunityInbox({
             No open opportunities yet. Arc scans your CRM for source-backed signals — quiet leads worth re-engaging,
             and more.
           </div>
-          <ScanForm subtle />
+          <ScanForm subtle status={scanStatus} />
         </div>
       </div>
     );
@@ -222,16 +297,17 @@ export function OpportunityInbox({
   // Triage the focused opportunity out of the inbox. Optimistic: advance to the
   // next card and hide this one now, then persist + refetch. On failure, restore
   // it and surface the error. Never sends or contacts anything.
-  const triage = (kind: "dismiss" | "snooze", days?: number) => {
+  const triage = (kind: "dismiss" | "snooze", days?: number, reason?: DismissReason) => {
     if (triaging) return;
     const id = o.id;
     const at = ordered.findIndex((op) => op.id === id);
     setCurId(ordered[at + 1]?.id ?? ordered[at - 1]?.id ?? null);
     setTriaging(true);
     setSnoozeOpen(false);
+    setDismissOpen(false);
     setNotice(null);
     setRemoved((prev) => new Set(prev).add(id));
-    (kind === "dismiss" ? dismissOpportunityAction(id) : snoozeOpportunityAction(id, days ?? 7)).then((res) => {
+    (kind === "dismiss" ? dismissOpportunityAction(id, reason ?? null) : snoozeOpportunityAction(id, days ?? 7)).then((res) => {
       setTriaging(false);
       if (!res.ok) {
         setRemoved((prev) => { const next = new Set(prev); next.delete(id); return next; });
@@ -272,17 +348,31 @@ export function OpportunityInbox({
 
   return (
     <div className="arc-opps">
+      {/* The visible "Opportunities" title only renders in the empty state, so
+          with data this route had no h1. Hidden rather than visible: the screen
+          leads with the selected opportunity by design, and adding a second
+          visible title would fight it. */}
+      <h1 className="sr-only">Opportunities</h1>
+      {/* A read that FAILED must not read as a quiet week. The inbox is Arc's
+          proactive surface, so an empty one is a claim ("nothing for you") and
+          a broken one is the absence of a claim — rendering them identically is
+          how an outage looks like a working product (BSR-544 / BSR-563). */}
+      {failed && (
+        <div className="opp-failed" role="status">
+          {failed}
+        </div>
+      )}
       <aside className="olist">
         <div className="olisthd">
           <span className="h">OPEN OPPORTUNITIES</span>
           <span className="c">
             {typeFilter
               ? `${ordered.length} of ${visible.length}`
-              : `${visible.length} open${highCount > 0 ? ` · ${highCount} high` : ""} · ${avgConf}% avg`}
+              : `${visible.length} open${highCount > 0 ? ` · ${highCount} high` : ""} · ${avgConf}% avg confidence`}
           </span>
         </div>
         <div style={{ padding: "2px 4px 12px" }}>
-          <ScanForm />
+          <ScanForm status={scanStatus} />
         </div>
 
         {types.length > 1 && (
@@ -344,10 +434,11 @@ export function OpportunityInbox({
               <div style={{ minWidth: 0 }}>
                 <div className="ot">
                   <span className="nm">{it.name}</span>
-                  <span className="pct">{it.confidence}%</span>
+                  <span className="pct" title={`Confidence — ${definitionText("confidence")}`}>{it.confidence}%</span>
                 </div>
+                {it.qualifier && <div className="oq">{it.qualifier}</div>}
                 <div className="om">
-                  Confidence <span className="src">{it.sourceLabel}</span>
+                  <span className="src">{it.sourceLabel}</span>
                   {it.staleLabel && <span className="stale">{it.staleLabel}</span>}
                   {it.statusLabel && <span className="ostat">{it.statusLabel}</span>}
                 </div>
@@ -366,11 +457,11 @@ export function OpportunityInbox({
         <div className="inner fade" key={o.id}>
           <div className="metarow">
             <span className="tchip"><i />{o.typeLabel}</span>
-            <span className={`upill ${o.urgencyTone}`}>{o.urgencyLabel} urgency</span>
+            <span className={`upill ${o.urgencyTone}`} title={definitionText("urgency")}>{o.urgencyLabel} urgency</span>
             {o.statusLabel && <span className="sstat">{o.statusLabel}</span>}
-            <span className="det">Surfaced by Arc</span>
+            <span className="det">Found by Arc</span>
           </div>
-          <h1 className="dttl">{o.title}</h1>
+          <h2 className="dttl">{o.title}</h2>
 
           <div className="opp-quick-actions" aria-label="Opportunity actions">
             {o.campaignHref ? (
@@ -385,21 +476,22 @@ export function OpportunityInbox({
                   type="button"
                   className="btn gold"
                   onClick={() => {
-                    setMode("operator");
-                    setDraftOpen(true);
-                  }}
-                >
-                  Create campaign
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => {
                     setMode("arc");
                     setDraftOpen(true);
                   }}
                 >
-                  Ask Arc to draft
+                  Draft with Arc
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  title="Creates an empty campaign from this opportunity for you to write yourself"
+                  onClick={() => {
+                    setMode("operator");
+                    setDraftOpen(true);
+                  }}
+                >
+                  Start one myself
                 </button>
               </>
             )}
@@ -414,25 +506,13 @@ export function OpportunityInbox({
 
           <div className="dgrid">
             <div className="mainc">
-              <div className="lab">Why Arc surfaced this</div>
-              <p className="summary">{o.summary}</p>
-
-              {o.evidence.length > 0 && (
-                <div className="blk">
-                  <div className="lab">Signals</div>
-                  {o.evidence.map((e, i) => (
-                    <div className="evrow" key={i}>
-                      <span className="n">{i + 1}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="es">{e.label}</div>
-                        <div className="ed">{e.value}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="blk recpanel">
+              {/* The recommendation leads. It used to sit third, under "why" and
+                  "what Arc saw", so the reader worked through the reasoning
+                  before reaching the thing to decide — the same shape the
+                  campaign card had before #928 put the verdict first. Evidence
+                  is what you consult when the recommendation surprises you, so
+                  it belongs after it, not in front of it. */}
+              <div className="recpanel">
                 <div className="rl">Recommended action</div>
                 <div className="rtxt">{o.recommendedAction}</div>
                 {o.campaignTypes.length > 0 && (
@@ -447,26 +527,81 @@ export function OpportunityInbox({
                 )}
               </div>
 
+              <div className="blk">
+                <div className="lab">Why Arc flagged this</div>
+                <p className="summary">{o.summary}</p>
+              </div>
+
+              {o.evidence.length > 0 && (
+                <div className="blk">
+                  <div className="lab">What Arc saw</div>
+                  {/* A definition list, not numbered cards. These are parallel
+                      facts, and the numbers claimed an order they never had —
+                      while the card treatment gave each one a pointer cursor and
+                      a hover nudge for a row that has never been clickable. */}
+                  <dl className="evlist">
+                    {o.evidence.map((e, i) => (
+                      <div className="evitem" key={i}>
+                        <dt title={e.hint}>{e.label}</dt>
+                        <dd>{e.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              )}
+
               {o.status !== "drafting" && (
-                <div className="triage">
+                <div className="triage" ref={triageRef}>
                   <span className="triage-q">Not relevant right now?</span>
-                  <button type="button" className="triage-btn" onClick={() => triage("dismiss")} disabled={triaging}>
-                    Dismiss
-                  </button>
+                  {/* Dismiss opens a reason picker rather than firing straight
+                      away (BSR-686). Every item completes the dismissal in one
+                      tap — the reason is the tap, not an extra step — and
+                      "Just dismiss" keeps the no-reason path one tap deeper
+                      rather than removing it. */}
+                  <div className="triage-snooze">
+                    <button
+                      type="button"
+                      className="triage-btn"
+                      aria-haspopup="menu"
+                      aria-expanded={dismissOpen}
+                      onClick={() => { setDismissOpen((v) => !v); setSnoozeOpen(false); }}
+                      disabled={triaging}
+                    >
+                      Dismiss ▾
+                    </button>
+                    {dismissOpen && (
+                      <>
+                        <div className="triage-menu triage-menu-wide" role="menu" aria-label="Dismiss because">
+                          {DISMISS_REASON_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => triage("dismiss", undefined, opt.value)}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                          <button type="button" role="menuitem" className="triage-menu-plain" onClick={() => triage("dismiss")}>
+                            Just dismiss
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                   <div className="triage-snooze">
                     <button
                       type="button"
                       className="triage-btn"
                       aria-haspopup="menu"
                       aria-expanded={snoozeOpen}
-                      onClick={() => setSnoozeOpen((v) => !v)}
+                      onClick={() => { setSnoozeOpen((v) => !v); setDismissOpen(false); }}
                       disabled={triaging}
                     >
                       Snooze ▾
                     </button>
                     {snoozeOpen && (
                       <>
-                        <div className="triage-scrim" onClick={() => setSnoozeOpen(false)} />
                         <div className="triage-menu" role="menu" aria-label="Snooze for">
                           <button type="button" role="menuitem" onClick={() => triage("snooze", 1)}>1 day</button>
                           <button type="button" role="menuitem" onClick={() => triage("snooze", 3)}>3 days</button>
@@ -481,10 +616,10 @@ export function OpportunityInbox({
 
             <div className="side">
               <div className="card">
-                <div className="cl">Confidence</div>
+                <div className="cl">Confidence<Define term="confidence" /></div>
                 <div className="bignum">{o.confidence}%</div>
                 <ConfidenceFill pct={o.confidence} />
-                <div className="cnote">Arc&rsquo;s confidence in this signal</div>
+                <div className="cnote">{DEFINITIONS.confidence.basedOn}</div>
               </div>
 
               {(o.persona || o.audienceNote) && (
@@ -503,22 +638,18 @@ export function OpportunityInbox({
                 </div>
               )}
 
-              {o.impact.length > 0 && (
-                <div className="card">
-                  <div className="cl">Signal strength</div>
-                  <div className="impact">
-                    {o.impact.map((m, i) => (
-                      <div className="icell" key={i}>
-                        <div className="il">{m.label}</div>
-                        <div className="iv">{m.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="card">
-                <div className="cl">Approval routing</div>
+              {/* Folded, because the answer never changes. The approval chain is
+                  the same for every opportunity, so a permanently-open card
+                  spent a quarter of the side column restating it — while the
+                  one line that carries the reassurance stays visible. A native
+                  <details> rather than Radix: this needs no JS, works on first
+                  paint, and DESIGN.md §4.1 treats adopting Radix as a decision
+                  rather than a default. */}
+              <details className="card signoff">
+                <summary>
+                  <span className="cl">Who signs off</span>
+                  <span className="locknote"><i />Nothing sends until you approve</span>
+                </summary>
                 <div className="tl">
                   {o.routing.map((s, i) => (
                     <div className={`tlstep${s.done ? " done" : ""}`} key={i}>
@@ -527,8 +658,18 @@ export function OpportunityInbox({
                     </div>
                   ))}
                 </div>
-                <div className="locknote"><i />Nothing sends until you approve</div>
-              </div>
+              </details>
+
+              <HowThisWorks>
+                <p>
+                  Arc watches your records for things worth acting on — someone reading your pricing page again, a customer
+                  who has gone quiet, a review worth asking for — and lists them here with the evidence it used.
+                </p>
+                <p>
+                  <b>Confidence</b> is how sure Arc is that this is real. {DEFINITIONS.confidence.basedOn} Nothing here
+                  contacts anyone: Arc can draft from an opportunity, but it waits for you.
+                </p>
+              </HowThisWorks>
             </div>
           </div>
         </div>

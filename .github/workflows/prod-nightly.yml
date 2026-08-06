@@ -6,11 +6,26 @@ name: Prod nightly smoke
 # that gap is where this project's expensive bugs live. This exercises the paths
 # that have broken SILENTLY — where every surface still looked fine.
 #
+# WHAT AN ASSERTION MUST NAME (BSR-708): the observable EFFECT, not the request.
+# Every UI step here once asserted only that a write landed, and step 4 passed
+# for six consecutive nights while every revision it filed sat unexecuted — the
+# row was written, nothing consumed it, and "recorded" looked exactly like
+# "ran". A check that asserts "we wrote the request" cannot detect a missing
+# consumer. The "No agent work is stranded" step below exists to close that
+# specific hole; apply the same rule to anything added here.
+#
 # WHICH TENANT: the smoke credentials belong to the ARCHIVED seeded demo org
 # (`big-shoulders-restoration`, org 63b72a45…) — test-only accounts, seeded
 # data, no real users. Prod's other org, `big-shoulders-restoration-2`, is the
 # REAL live tenant and must never be written to by this workflow. Both orgs are
 # NAMED "Big Shoulders Restoration"; only the slug/id tells them apart.
+#
+# That used to be enforced by this comment alone, which is no enforcement at all
+# for a suite that WRITES and takes its tenant from a repo secret. It is now
+# pinned by E2E_EXPECTED_WORKSPACE_ID below and asserted by the spec before every
+# step — including immediately before step 4's revision request. Repoint the
+# credential and the run stops with "wrong workspace" instead of filing revision
+# requests against real customer campaigns.
 #
 # The Arc known-fact check additionally needs ARC_SMOKE_ENABLED=1, which is only
 # true once the runner has a Secret Manager token scoped to the smoke workspace.
@@ -53,14 +68,205 @@ jobs:
           E2E_EMAIL: ${{ secrets.PROD_E2E_EMAIL || 'owner@bsr.test' }}
           # No literal fallback — this signs in to production. Unset ⇒ skip.
           E2E_PASSWORD: ${{ secrets.PROD_E2E_PASSWORD }}
+          # The SEEDED SMOKE workspace — the only tenant this writing suite may
+          # touch. Asserted before every step; see assertExpectedTenant in
+          # e2e/tenant.ts. In the file rather than in repo variables so that
+          # "which tenant does the nightly write to" is answerable from a diff.
+          E2E_EXPECTED_WORKSPACE_ID: ${{ vars.PROD_SMOKE_WORKSPACE_ID || '0d2ddb28-2582-41b6-9c50-a001bd2ee9a6' }}
+          E2E_EXPECTED_ORG_SLUG: ${{ vars.PROD_SMOKE_ORG_SLUG || 'big-shoulders-restoration' }}
           ARC_SMOKE_ENABLED: ${{ vars.ARC_SMOKE_ENABLED }}
+
+      # BSR-708. The UI steps above prove a request was RECORDED. They cannot
+      # prove anything CONSUMED it, and that distinction is not academic: step 4
+      # requested a revision every night from 2026-07-28 to 2026-08-03, stranded
+      # a task every time, and passed every time. `agent_tasks` is a durable
+      # record, not a queue — the wake POST is the only thing that starts a task
+      # (nothing polls it; `arc-chat/inbox.ts` reclaims `arc_chat_message` only),
+      # so a dropped or missing wake leaves a perfect row that never runs.
+      #
+      # This is read-only and deliberately NOT limited to the smoke org or to
+      # revisions: stranded work in the LIVE tenant is the more urgent signal,
+      # and every task type has the same failure mode.
+      - name: Connect to the prod database
+        id: pg
+        if: ${{ always() }}
+        env:
+          DB_URL: ${{ secrets.PROD_SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::warning title=Prod database steps SKIPPED::PROD_SUPABASE_DB_URL is not set, so nothing verified that queued agent work is actually running and this run's own revision fixture was left queued. This is the check that would have caught BSR-695."
+            echo "ready=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Any psql that can reach the server will do — these steps run two
+          # read-only SELECTs and one narrowly-scoped UPDATE, none of which need
+          # a version-matched client. Pinning `postgresql-client-17` made this
+          # step's success depend on the runner image happening to carry that
+          # exact major: it worked on 2026-08-04 and exited 100 ("unable to
+          # locate package") on 2026-08-05 when the image rolled, which SKIPPED
+          # both guards below — including "No agent work is stranded", the
+          # BSR-708 check that had correctly gone red the night before. A
+          # monitoring step a base image can silently disarm is not a monitor.
+          #
+          # NOT the same fix as backup-prod.yml, which pins the same package and
+          # is right to. That job adds the PGDG apt repo first, so its pin
+          # resolves, and it needs the exact major because `pg_dump` REFUSES to
+          # dump a server newer than itself. Reading rows has no such rule, so
+          # the nightly takes the client it can actually get rather than adding
+          # a network dependency on apt.postgresql.org to a monitoring job.
+          sudo apt-get update -qq
+          if ! sudo apt-get install -y -qq postgresql-client-17; then
+            echo "postgresql-client-17 unavailable on $(lsb_release -ds 2>/dev/null || echo 'this image'); falling back to the distro's psql."
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+
+          # Same parsing as backup-prod.yml: the stored password contains an `@`,
+          # so libpq splits a URI at the wrong one. Split on the LAST `@` and pass
+          # the pieces discretely. Nothing is echoed — the URL is a secret.
+          python3 - <<'PARSE'
+          import os, re, pathlib
+          url = os.environ["DB_URL"]
+          rest = re.sub(r"^[a-zA-Z0-9+]+://", "", url).split("?", 1)[0]
+          userinfo, hostpart = rest.rsplit("@", 1)
+          user, _, password = userinfo.partition(":")
+          hostport, _, database = hostpart.partition("/")
+          host, _, port = hostport.partition(":")
+          pathlib.Path(pathlib.Path.home() / ".pgpass").write_text(
+              f"{host}:{port or '5432'}:{database or 'postgres'}:{user}:{password}\n")
+          (pathlib.Path.home() / ".pgpass").chmod(0o600)
+          pathlib.Path("pg.env").write_text(
+              f"PGHOST={host}\nPGPORT={port or '5432'}\nPGDATABASE={database or 'postgres'}\nPGUSER={user}\n")
+          PARSE
+          echo "ready=true" >>"$GITHUB_OUTPUT"
+
+      # BSR-722. Step 4 requests a revision to prove the write lands, and that
+      # queues an `agent_tasks` row nothing will ever consume — so before this
+      # step existed, every nightly run left one more stranded task behind and
+      # the check below failed on the run's OWN fixture, every night, forever.
+      # A guard that is always red carries no signal, which is the failure mode
+      # BSR-708 was written to end.
+      #
+      # Scoped by the fixture's own instruction text, so it can only ever match
+      # rows this test wrote. Real operator revisions — the three that stranded
+      # in the live tenant on 2026-08-03 — do not match and still fail the run.
+      # Cancelling the task does NOT touch the asset: it stays in
+      # `revision_requested`, which is what keeps step 4 repeatable.
+      #
+      # Deliberately narrow. Do not widen this into a general sweep of queued
+      # work: `redispatchStalledRevision` is operator-initiated on purpose
+      # (src/lib/campaigns/revision-recovery.ts), because a background retry
+      # would hide the dropped-wake problem again.
+      - name: Release the nightly's own revision fixture
+        if: ${{ always() && steps.pg.outputs.ready == 'true' }}
+        env:
+          PGSSLMODE: require
+          PGCONNECT_TIMEOUT: "30"
+        run: |
+          set -euo pipefail
+          set -a; . ./pg.env; set +a
+
+          # Prefix match, not the full sentence: the instruction contains an
+          # em dash, and keeping this predicate ASCII avoids an encoding round
+          # trip through YAML, bash and psql. The prefix is documented as a
+          # fixture marker on REVISION_FIXTURE_INSTRUCTION in
+          # e2e/prod-nightly.spec.ts — reword one and the other stops matching,
+          # at which point the fixture strands and the next run goes red. Loud,
+          # not silent, by design.
+          RELEASED=$(psql -tAX -c "
+            with released as (
+              update agent_tasks
+                 set status = 'canceled', updated_at = now()
+               where task_type = 'campaign_asset_revision'
+                 and status = 'queued'
+                 and objective like 'Nightly smoke check%'
+              returning 1
+            )
+            select count(*) from released;")
+
+          echo "Released ${RELEASED} revision fixture row(s) queued by this run." >>"$GITHUB_STEP_SUMMARY"
+
+      - name: No agent work is stranded
+        if: ${{ always() && steps.pg.outputs.ready == 'true' }}
+        env:
+          PGSSLMODE: require
+          PGCONNECT_TIMEOUT: "30"
+          # Longer than a nightly run, so this job's own fresh task is never the
+          # thing it fails on — anything older has genuinely been abandoned.
+          STRANDED_AFTER: "30 minutes"
+        run: |
+          set -euo pipefail
+          set -a; . ./pg.env; set +a
+
+          STRANDED=$(psql -tAX -c "
+            select coalesce(string_agg(
+              format('%s x%s in %s (oldest %s old)', task_type, n, org, age), E'\n'), '')
+            from (
+              select t.task_type, o.slug as org, count(*) as n,
+                     date_trunc('minute', now() - min(t.created_at))::text as age
+              from agent_tasks t join organizations o on o.id = t.org_id
+              where t.status = 'queued'
+                and t.created_at < now() - interval '${STRANDED_AFTER}'
+              group by 1, 2
+            ) s;")
+
+          if [ -n "$STRANDED" ]; then
+            echo "### Stranded agent work" >>"$GITHUB_STEP_SUMMARY"
+            echo '```' >>"$GITHUB_STEP_SUMMARY"
+            echo "$STRANDED" >>"$GITHUB_STEP_SUMMARY"
+            echo '```' >>"$GITHUB_STEP_SUMMARY"
+            echo "::error title=Agent tasks are queued and nothing is running them::These rows were written correctly and never consumed — the symptom of a missing or dropped wake, not of a slow runner. Whatever queued them must call the wake itself; nothing polls agent_tasks. See BSR-695 and docs. Rows:%0A$(echo "$STRANDED" | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
+          echo "No agent task has been queued longer than ${STRANDED_AFTER}." >>"$GITHUB_STEP_SUMMARY"
 
       # A skipped test is a hollow pass — it looks identical to success on the
       # checks UI. Surface the counts so "green" can be read honestly.
-      - name: Report skipped checks
+      #
+      # A warning alone was not enough, and 2026-08-05 is the proof: the golden
+      # questions had been skipping into a green run, the DB guards had been
+      # skipping since the runner image rolled, and prod backups had been failing
+      # since a repo rename — for two nights, unnoticed, because every one of
+      # those degraded to SILENCE and the annotation nobody opens was the only
+      # thing that said so.
+      #
+      # So the summary now leads with what this run did NOT verify. Deliberately
+      # does not fail: pinning the nightly red for a known-missing credential is
+      # the BSR-722 failure mode, where a permanently red check stops carrying
+      # signal. The goal is that a GREEN run cannot be misread as "everything
+      # was checked".
+      - name: State what this run did and did not verify
         if: ${{ always() }}
         run: |
           set -euo pipefail
+          {
+            echo "## What this run actually verified"
+            echo
+            echo "| capability | status |"
+            echo "| --- | --- |"
+
+            if [ "${{ vars.ARC_SMOKE_ENABLED }}" = "1" ]; then
+              echo "| Arc's reasoning (golden questions) | verified |"
+            else
+              echo "| Arc's reasoning (golden questions) | **NOT VERIFIED** — every question skipped (\`ARC_SMOKE_ENABLED\` is not 1) |"
+            fi
+
+            if [ "${{ steps.pg.outputs.ready }}" = "true" ]; then
+              echo "| Nothing is stranded in the LIVE tenant | verified |"
+            else
+              echo "| Nothing is stranded in the LIVE tenant | **NOT VERIFIED** — the database steps did not run |"
+            fi
+
+            # Measured, not assumed: a run against the reseeded fixture flipped
+            # the asset and created no `agent_tasks` row at all, because the
+            # smoke workspace holds no scoped token. The stranded-work guard
+            # only fires on a row that exists, so it cannot cover this.
+            echo "| The revision this run filed will actually RUN | **NOT VERIFIED** — the smoke workspace cannot queue Arc work, so no task row is created and the stranded-work guard has nothing to find |"
+            echo
+            echo "Prod backups are a separate workflow (\`backup-prod.yml\`) and are not covered by this run."
+          } >>"$GITHUB_STEP_SUMMARY"
+
           if [ "${{ vars.ARC_SMOKE_ENABLED }}" != "1" ]; then
             echo "::warning title=The golden questions are SKIPPED::The nightly smoke is not exercising Arc's reasoning at all — every golden question is skipping, which reports as a green run. Set the repo variable ARC_SMOKE_ENABLED=1 once the runner has a Secret Manager token scoped to the smoke workspace (BSR-478, BSR-507)."
           fi

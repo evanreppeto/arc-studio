@@ -12,6 +12,7 @@ import {
   WorkspaceIdentityModal,
   type WorkspaceIdentityValue,
 } from "../settings/_components/workspace-identity-modal";
+import { AppImage } from "./app-image";
 
 export type WorkspaceOption = SettingsWorkspace;
 
@@ -79,8 +80,7 @@ export function WorkspaceSwitcher({
     <>
       <span className={`mk${logoUrl ? " has-image" : ""}`}>
         {logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo; next/image would need per-host remotePatterns
-          <img src={logoUrl} alt={orgName} />
+          <AppImage src={logoUrl} alt={orgName} />
         ) : (
           workspaceInitials(workspaceName || orgName)
         )}
@@ -147,8 +147,7 @@ export function WorkspaceSwitcher({
             >
               <span className={`ws-item-mk${option.logoUrl ? " has-image" : ""}`}>
                 {option.logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo; next/image would need per-host remotePatterns
-                  <img src={option.logoUrl} alt="" />
+                  <AppImage src={option.logoUrl} alt="" />
                 ) : (
                   workspaceInitials(option.name)
                 )}

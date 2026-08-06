@@ -11,12 +11,15 @@ import { type ReactNode, useEffect, useState } from "react";
 import { ArrowRight, ArrowUpRight, Bookmark, Brain, Check, CircleAlert, ClipboardCheck, Copy, CornerUpLeft, Database, Link2, MessageSquareText, PanelRightOpen, PencilLine, RefreshCcw, RotateCcw, ShieldCheck, Target, X, Zap } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
-import type { ArcActionCard, ArcAssetStatus, ArcMention, ArcMode, ArcRecall, ArcRoute } from "@/domain";
+import { arcStalledMessage, WORK_STATE_LABEL } from "@/domain";
+import type { ArcActionCard, ArcAssetStatus, ArcDraftFinding, ArcMention, ArcMode, ArcRecall, ArcRoute, ArcStalledReason } from "@/domain";
 import type { ArcMessage, ArcStep } from "@/lib/arc-chat/persistence";
+import { hasArcReplyInFlight, isArcReplyInFlight } from "@/lib/arc-chat/view-state";
 import { buildArcLauncherRecommendation } from "@/lib/arc-chat/launcher-state";
 import { buildArcOutcomeView, type ArcOutcomeBadge } from "@/lib/arc-chat/outcome-view";
 import { buildArcRunContract, type ArcRunContract } from "@/lib/arc-chat/run-contract";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
+import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 
 import { ArcAnswer, MARKDOWN_COMPONENTS, REHYPE_HIGHLIGHT_PLUGINS, REMARK_PLUGINS } from "./arc-markdown";
 import {
@@ -24,8 +27,6 @@ import {
   AssistantMessage,
   assetStatusMeta,
   copyMessageText,
-  DraftPackageCard,
-  DraftReceiptCard,
   MessageActions,
   operatorMessageBefore,
   OperatorMessage,
@@ -35,6 +36,7 @@ import {
   useMessageContextMenu,
   type MessageMenuItem,
 } from "./arc-messages";
+import { DeliverablePackageHead, InlineDeliverable } from "./arc-deliverable";
 import { decideArcDraftAction, saveArcMessageAction, saveArcMessageToBrainAction } from "../actions";
 import {
   buildDemoLiveWork,
@@ -207,7 +209,7 @@ function packageMenuItems({
 }): MessageMenuItem[] {
   const remaining = cards.filter((card) => card.approval && statusOf(card) !== "approved" && statusOf(card) !== "rejected");
   return [
-    { kind: "item", label: "Review package", icon: <PanelRightOpen size={14} />, onSelect: onOpen },
+    { kind: "item", label: "Review assets", icon: <PanelRightOpen size={14} />, onSelect: onOpen },
     { kind: "separator" },
     {
       kind: "item",
@@ -232,12 +234,63 @@ function packageMenuItems({
   ];
 }
 
+/**
+ * What a turn shows once its run has died.
+ *
+ * The failure this replaces was a spinner that never stopped — and because the
+ * row genuinely stayed `pending`, reloading the page brought it right back. So
+ * the bar here is not "show an error", it's: say plainly that Arc stopped, keep
+ * whatever partial work did land, promise nothing went out, and put the way
+ * forward one click away. `onRetry` re-runs the original question through the
+ * same path Regenerate uses, so there is no second code path to keep honest.
+ */
+function StalledReply({ reason, onRetry }: { reason: ArcStalledReason; onRetry?: () => void }) {
+  return (
+    <div className="arc-stalled-reply" role="status">
+      <CircleAlert size={15} aria-hidden />
+      <p>{arcStalledMessage(reason)}</p>
+      {onRetry ? (
+        <button type="button" onClick={onRetry}>
+          <RotateCcw size={13} aria-hidden />
+          Try again
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * A failure that belongs to one message, shown at that message.
+ *
+ * Every error in this screen used to land in `composerNotice` — one shared
+ * string, no severity, no auto-dismiss — so a regenerate that failed on the
+ * third turn reported itself at the bottom of the page beside the send button,
+ * and overwrote whatever the previous error had been. Distance from the cause
+ * is the whole problem, so this renders inline and is dismissible.
+ */
+function MessageNotice({ text, onDismiss }: { text: string; onDismiss?: () => void }) {
+  return (
+    <div className="arc-message-notice" role="alert">
+      <CircleAlert size={13} aria-hidden />
+      <span>{text}</span>
+      {onDismiss ? (
+        <button type="button" onClick={onDismiss} aria-label="Dismiss">
+          <X size={12} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ReviewableWork({ children }: { children: ReactNode }) {
   return (
     <section className="arc-response-output" aria-label="Reviewable work">
+      {/* The right-hand label used to read "Ready for review" while the pill on
+          the card inside said "Needs review" — one card, two states, saying
+          opposite things (BSR-656). Both are the queue label now. */}
       <div className="arc-response-output-label">
         <span><ClipboardCheck size={13} />Created by Arc</span>
-        <b>Ready for review</b>
+        <b>{WORK_STATE_LABEL.needs_you}</b>
       </div>
       {children}
     </section>
@@ -374,12 +427,24 @@ export function LiveConversation({
   onCancelRun,
   stoppingTaskId,
   onAssetStatus,
+  assetBodies,
+  assetChecks,
+  editSignal,
+  messageNotice,
+  onDismissMessageNotice,
 }: {
   messages: ArcMessage[];
   optimisticTurn?: OptimisticArcTurn | null;
   operatorName: string;
   waiting?: ArcWaiting | null;
   assetStatuses: Record<string, ArcAssetStatus>;
+  /** The readable copy behind each approval-gated card, keyed by asset id. Empty
+   *  until the fetch lands, and empty forever without a backend — a card falls
+   *  back to its own stored preview either way. */
+  assetBodies: Record<string, ArcAssetBody>;
+  /** Live guardrail findings by asset id. A missing key means not loaded yet;
+   *  an empty array means loaded with none recorded. */
+  assetChecks: Record<string, ArcDraftFinding[]>;
   onSuggestion: (value: string) => void;
   onReview: (cards: ArcActionCard[]) => void;
   onEdit: (messageId: string, newBody: string) => void;
@@ -387,6 +452,11 @@ export function LiveConversation({
   onCancelRun: (taskId: string, conversationId: string) => void;
   stoppingTaskId: string | null;
   onAssetStatus: (assetId: string, status: ArcAssetStatus) => void;
+  /** Which message the composer's ↑ asked to edit, and how many times. */
+  editSignal?: { id: string; n: number } | null;
+  /** A failure that belongs to one message, shown at that message. */
+  messageNotice?: { id: string; text: string } | null;
+  onDismissMessageNotice?: () => void;
 }) {
   const { openMenu, menuElement } = useMessageContextMenu();
   const router = useRouter();
@@ -397,8 +467,10 @@ export function LiveConversation({
     return <ArcLauncher greetName={operatorName} waiting={waiting} onPick={onSuggestion} />;
   }
 
-  // While a reply is in flight, hide edit/regenerate — the turn is already running.
-  const awaitingReply = Boolean(optimisticTurn) || messages.some((message) => message.status === "pending" || (message.role === "arc" && !message.body.trim()));
+  // While a reply is in flight, hide edit/regenerate — the turn is already
+  // running. A stalled run is explicitly not in flight, so those come back:
+  // recovering from a dead turn is exactly when you need them.
+  const awaitingReply = Boolean(optimisticTurn) || hasArcReplyInFlight(messages);
   const lastIndex = messages.length - 1;
 
   const arcMenuItems = (message: ArcMessage, index: number): MessageMenuItem[] => {
@@ -427,8 +499,23 @@ export function LiveConversation({
   return (
     <>
       {messages.map((message, index) => {
-        if (message.role === "operator") return <OperatorMessage key={message.id} body={message.body} timeIso={message.createdAt} attachments={message.attachments} onEdit={awaitingReply ? undefined : (newBody) => onEdit(message.id, newBody)} onContextMenu={(event, helpers) => openMenu(event, operatorMenuItems(message, helpers.startEdit))} />;
-        const pending = message.status === "pending" || (message.role === "arc" && !message.body.trim());
+        if (message.role === "operator") {
+          return (
+            <div key={message.id} className="arc-message-slot">
+              <OperatorMessage
+                body={message.body}
+                timeIso={message.createdAt}
+                attachments={message.attachments}
+                onEdit={awaitingReply ? undefined : (newBody) => onEdit(message.id, newBody)}
+                onContextMenu={(event, helpers) => openMenu(event, operatorMenuItems(message, helpers.startEdit))}
+                startEditSignal={editSignal?.id === message.id ? editSignal.n : 0}
+              />
+              {messageNotice?.id === message.id ? <MessageNotice text={messageNotice.text} onDismiss={onDismissMessageNotice} /> : null}
+            </div>
+          );
+        }
+        const pending = isArcReplyInFlight(message);
+        const stalled = Boolean(message.stalled);
         const operatorMessage = operatorMessageBefore(messages, index);
         // Runner-measured wall-clock. Message rows are inserted before the run,
         // so subtracting their created_at values reported 0s for real work.
@@ -452,14 +539,22 @@ export function LiveConversation({
           recallCount: message.recall?.length ?? 0,
           actions: message.actions,
         });
-        const failed = message.status === "failed";
+        // A stalled run has no verdict of its own to report — it never finished.
+        // Read it as failed so the receipt shows what did land before it died.
+        const failed = message.status === "failed" || stalled;
         return (
           <AssistantMessage key={message.id} timeIso={message.createdAt} active={pending} onContextMenu={pending ? undefined : (event) => openMenu(event, arcMenuItems(message, index))}>
-            <RunTrace pending={pending} responding={pending && Boolean(message.body.trim())} reasoning={message.reasoning} steps={message.steps} toolCalls={message.toolCalls} contract={contract} thoughtSeconds={thoughtSeconds} startedAtIso={message.createdAt} answerText={message.body} onStop={pending && message.agentTaskId ? () => onCancelRun(message.agentTaskId as string, message.conversationId) : undefined} stopping={stoppingTaskId === message.agentTaskId} outcome={message.status === "failed" ? (message.body.startsWith("Stopped by you") ? "canceled" : "failed") : "complete"} />
+            <RunTrace pending={pending} responding={pending && Boolean(message.body.trim())} reasoning={message.reasoning} steps={message.steps} toolCalls={message.toolCalls} contract={contract} thoughtSeconds={thoughtSeconds} startedAtIso={message.createdAt} answerText={message.body} onStop={pending && message.agentTaskId ? () => onCancelRun(message.agentTaskId as string, message.conversationId) : undefined} stopping={stoppingTaskId === message.agentTaskId} outcome={failed ? (message.body.startsWith("Stopped by you") ? "canceled" : "failed") : "complete"} />
             {/* One container across the whole lifecycle: `message.body` is the
                 partial reply while pending and the final reply once settled, so
                 completion patches this node instead of replacing it. */}
             <ArcAnswer text={message.body} streaming={pending} />
+            {stalled ? (
+              <StalledReply
+                reason={message.stalledReason ?? "timed_out"}
+                onRetry={awaitingReply ? undefined : () => onRegenerate(message.id)}
+              />
+            ) : null}
             {!pending ? (
               <ResponseMeta
                 outcome={failed ? null : outcomeView}
@@ -478,15 +573,39 @@ export function LiveConversation({
                   {approvalCards.length ? (
                     <ReviewableWork>
                       <AssetStatusUpdate cards={approvalCards} statuses={assetStatuses} />
-                      {approvalCards.length === 1 ? <DraftReceiptCard card={approvalCards[0]!} status={statusOf(approvalCards[0]!)} onReview={() => onReview(approvalCards)} onContextMenu={(event) => openMenu(event, receiptMenuItems({ card: approvalCards[0]!, status: statusOf(approvalCards[0]!), onOpen: () => onReview(approvalCards), onAssetStatus }))} /> : null}
-                      {approvalCards.length >= 2 ? <DraftPackageCard cards={approvalCards} statuses={assetStatuses} onReview={() => onReview(approvalCards)} onContextMenu={(event) => openMenu(event, packageMenuItems({ cards: approvalCards, statusOf, onOpen: () => onReview(approvalCards), onAssetStatus }))} /> : null}
+                      {/* Every drafted deliverable renders here, in the thread.
+                          A package gets a count + a way into the full-pane read
+                          above the stack; it used to get a channel strip instead
+                          of the copy, which is the thing being fixed. */}
+                      {approvalCards.length >= 2 ? (
+                        <DeliverablePackageHead
+                          cards={approvalCards}
+                          statuses={assetStatuses}
+                          onReviewAll={() => onReview(approvalCards)}
+                          onContextMenu={(event) => openMenu(event, packageMenuItems({ cards: approvalCards, statusOf, onOpen: () => onReview(approvalCards), onAssetStatus }))}
+                        />
+                      ) : null}
+                      {approvalCards.map((card, cardIndex) => (
+                        <InlineDeliverable
+                          key={`${card.approval?.assetId ?? card.title}-${cardIndex}`}
+                          card={card}
+                          status={statusOf(card)}
+                          bodies={assetBodies} checks={assetChecks}
+                          onStatus={onAssetStatus}
+                          onOpen={() => onReview([card])}
+                          onContextMenu={(event) => openMenu(event, receiptMenuItems({ card, status: statusOf(card), onOpen: () => onReview([card]), onAssetStatus }))}
+                        />
+                      ))}
                     </ReviewableWork>
                   ) : null}
                 </>
               );
             })() : null}
             {!pending && message.suggestions.length ? <div className="arc-suggestions">{message.suggestions.map((suggestion, index) => <button type="button" key={`${suggestion}-${index}`} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div> : null}
-            {!pending ? <MessageActions message={message} onRegenerate={!awaitingReply && index === lastIndex ? () => onRegenerate(message.id) : undefined} /> : null}
+            {/* No copy/rate row on a stalled turn: there is no answer to copy or
+                rate, and StalledReply already carries the one action worth taking. */}
+            {!pending && !stalled ? <MessageActions message={message} onRegenerate={!awaitingReply && index === lastIndex ? () => onRegenerate(message.id) : undefined} /> : null}
+            {messageNotice?.id === message.id ? <MessageNotice text={messageNotice.text} onDismiss={onDismissMessageNotice} /> : null}
           </AssistantMessage>
         );
       })}
@@ -515,6 +634,8 @@ export function DemoConversation({
   pending,
   includeSeed,
   packageStatuses,
+  assetBodies,
+  assetChecks,
   pendingContract,
   onReview,
   onEditResend,
@@ -525,6 +646,8 @@ export function DemoConversation({
   pending: boolean;
   includeSeed: boolean;
   packageStatuses: Record<string, ArcAssetStatus>;
+  assetBodies: Record<string, ArcAssetBody>;
+  assetChecks: Record<string, ArcDraftFinding[]>;
   pendingContract: ArcRunContract;
   onReview: (cards: ArcActionCard[]) => void;
   onEditResend: (body: string) => void;
@@ -586,12 +709,17 @@ export function DemoConversation({
           </AssistantMessage>
           <AssistantMessage time="9:42 AM" onContextMenu={(event) => openMenu(event, demoArcItems("I built the Pricing-Intent Fast Track package for the 142 highest-urgency accounts."))}>
             <div className="arc-answer"><p>I built the Pricing-Intent Fast Track package for the 142 highest-urgency accounts.</p></div>
-            <ReviewableWork><DraftPackageCard cards={DEMO_PACKAGE_CARDS} statuses={packageStatuses} onReview={() => onReview(DEMO_PACKAGE_CARDS)} onContextMenu={(event) => openMenu(event, packageMenuItems({ cards: DEMO_PACKAGE_CARDS, statusOf, onOpen: () => onReview(DEMO_PACKAGE_CARDS), onAssetStatus }))} /></ReviewableWork>
+            <ReviewableWork>
+              <DeliverablePackageHead cards={DEMO_PACKAGE_CARDS} statuses={packageStatuses} onReviewAll={() => onReview(DEMO_PACKAGE_CARDS)} onContextMenu={(event) => openMenu(event, packageMenuItems({ cards: DEMO_PACKAGE_CARDS, statusOf, onOpen: () => onReview(DEMO_PACKAGE_CARDS), onAssetStatus }))} />
+              {DEMO_PACKAGE_CARDS.map((card, cardIndex) => (
+                <InlineDeliverable key={`${card.approval?.assetId ?? card.title}-${cardIndex}`} card={card} status={statusOf(card)} bodies={assetBodies} checks={assetChecks} onStatus={onAssetStatus} onOpen={() => onReview([card])} onContextMenu={(event) => openMenu(event, receiptMenuItems({ card, status: statusOf(card), onOpen: () => onReview([card]), onAssetStatus }))} />
+              ))}
+            </ReviewableWork>
           </AssistantMessage>
           <OperatorMessage time="9:44 AM" body="Looks good. Draft the email." onEdit={editable} onContextMenu={operatorMenu("Looks good. Draft the email.")} />
           <AssistantMessage time="9:45 AM" onContextMenu={(event) => openMenu(event, demoArcItems("The demo email for the 64 active-trial, high-intent accounts is ready for review."))}>
             <div className="arc-answer"><p>The demo email for the 64 active-trial, high-intent accounts is ready for review.</p></div>
-            <ReviewableWork><DraftReceiptCard card={DEMO_DRAFT_CARD} status={statusOf(DEMO_DRAFT_CARD)} onReview={() => onReview([DEMO_DRAFT_CARD])} onContextMenu={(event) => openMenu(event, receiptMenuItems({ card: DEMO_DRAFT_CARD, status: statusOf(DEMO_DRAFT_CARD), onOpen: () => onReview([DEMO_DRAFT_CARD]), onAssetStatus }))} /></ReviewableWork>
+            <ReviewableWork><InlineDeliverable card={DEMO_DRAFT_CARD} status={statusOf(DEMO_DRAFT_CARD)} bodies={assetBodies} checks={assetChecks} onStatus={onAssetStatus} onOpen={() => onReview([DEMO_DRAFT_CARD])} onContextMenu={(event) => openMenu(event, receiptMenuItems({ card: DEMO_DRAFT_CARD, status: statusOf(DEMO_DRAFT_CARD), onOpen: () => onReview([DEMO_DRAFT_CARD]), onAssetStatus }))} /></ReviewableWork>
           </AssistantMessage>
         </>
       ) : null}

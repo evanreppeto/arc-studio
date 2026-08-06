@@ -1,6 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type AgentTaskTenantFields } from "@/lib/agent-tasks/scope";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 import { notifyArcCampaignTask } from "@/lib/arc-chat/notify";
 import { insertPendingArcMessage } from "@/lib/arc-chat/persistence";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
@@ -53,7 +54,7 @@ export async function queueCampaignDirectiveTask(
 }
 
 async function queueCampaignTask(input: QueueCampaignTaskInput, client: SupabaseClient): Promise<string> {
-  const agentId = await ensureArcAgentId(input.agentName, input.tenant.org_id, client);
+  const agentId = await ensureArcAgentId(input.agentName, input.tenant, client);
   const { data: task, error } = await client
     .from("agent_tasks")
     .insert({
@@ -102,16 +103,20 @@ function taskObjective(input: QueueCampaignTaskInput): string {
   return input.prompt;
 }
 
-// agents is org-scoped but has no workspace_id column, so the tenant cannot be
-// spread here -- org_id is set explicitly. The conflict target must stay
-// (org_id, key) to match the per-org unique; targeting "key" alone would
-// resolve against another tenant's agent row and overwrite it.
-async function ensureArcAgentId(agentName: string, orgId: string, client: SupabaseClient): Promise<string> {
+// agents gained workspace_id in BSR-712, so this now carries the full tenant.
+// The conflict target must stay (org_id, key) to match the per-org unique;
+// targeting "key" alone would resolve against another tenant's agent row and
+// overwrite it.
+async function ensureArcAgentId(
+  agentName: string,
+  tenant: AgentTaskTenantFields,
+  client: SupabaseClient,
+): Promise<string> {
   const { data, error } = await client
     .from("agents")
     .upsert(
       {
-        org_id: orgId,
+        ...workspaceScopeFields(tenant),
         key: "arc",
         name: agentName,
         status: "ready",

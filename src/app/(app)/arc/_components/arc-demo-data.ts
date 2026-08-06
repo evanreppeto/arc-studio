@@ -5,7 +5,8 @@
 //
 // This is illustrative sample content for a demo tenant, not a hardcoded customer.
 
-import type { ArcActionCard, ArcMention, ArcRecall } from "@/domain";
+import type { ArcActionCard, ArcDraftFinding, ArcMention, ArcRecall } from "@/domain";
+import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 import type { ArcAttachment, ArcMessage, ArcStep, ArcToolCall } from "@/lib/arc-chat/persistence";
 import type { ArcRecentConversationVM, ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
 
@@ -37,10 +38,31 @@ export const DEMO_THREADS: ArcThreadGroupVM[] = [
   },
 ];
 
+// Carries `running`/`active` straight off the thread fixtures so the offline
+// preview shows the same rail states a live workspace does — a fixture that
+// flattened them would make the preview lie about a field prod really sets.
+/** Names for the campaigns the demo threads belong to, so the preview shows the
+ *  rail's campaign label and grouping. The live path resolves these from the
+ *  campaigns table; dropping them here left the preview unable to render either,
+ *  which is how a fixture hides a feature rather than demonstrating it. */
+const DEMO_CAMPAIGN_NAMES: Record<string, string> = {
+  "demo-camp": "Pricing-Intent Fast Track",
+  "past-customer": "Past-customer win-back",
+  "property-partners": "Multi-seat expansion",
+};
+
 export const DEMO_RECENT_CONVERSATIONS: ArcRecentConversationVM[] = DEMO_THREADS
   .flatMap((group) => group.items)
-  .slice(0, 3)
-  .map(({ id, title, when }) => ({ id, title, when }));
+  .slice(0, 5)
+  .map(({ id, title, when, running, active, campaignId }) => ({
+    id,
+    title,
+    when,
+    running,
+    defaultActive: active,
+    campaignId: campaignId ?? null,
+    campaignName: campaignId ? DEMO_CAMPAIGN_NAMES[campaignId] ?? null : null,
+  }));
 
 export const DEMO_STEPS: ArcStep[] = [
   { label: "Read the pricing-intent brief", status: "done", at: "9:38 AM", kind: "think" },
@@ -112,8 +134,27 @@ export const DEMO_PACKAGE_CARDS: ArcActionCard[] = [
     status: "draft",
     preview: "Comparing options? The right workflow can save your team hours every week — book a personalized demo while it's top of mind.",
     rows: [{ name: "Headline", meta: "See Meridian tailored to your team" }, { name: "CTA", meta: "Book now" }],
-    flags: [{ tone: "ok", label: "Brand voice" }, { tone: "warn", label: "Needs image" }],
+    flags: [{ tone: "ok", label: "Brand voice" }],
+    // Prod attaches media to a draft card whenever the asset has real creative
+    // (three such cards exist live today, all Supabase storage urls). Without one
+    // here the workspace panel's thumbnail would only ever be exercised in prod.
+    media: { kind: "image", url: "/brand/login-background-v2.png", alt: "Paid social creative", source: "ai_generated", format: "1:1" },
     approval: { kind: "campaign", campaignId: "demo-campaign", assetId: "demo-asset-social" },
+  },
+  {
+    kind: "draft",
+    // Creative with NO copy — the shape prod holds 4 of (asset_type
+    // `image_prompt`, channel `media`). The draft critic grounds claims in text,
+    // so it correctly never runs on these; without one here the preview could
+    // not show the "Creative — not automatically checked" state at all.
+    title: "Service van — driveway, bright morning",
+    channel: "Media",
+    format: "1:1 · generated",
+    status: "draft",
+    rows: [{ name: "Source", meta: "AI generated" }],
+    flags: [],
+    media: { kind: "image", url: "/brand/login-background-v2.png", alt: "Service van in a driveway", source: "ai_generated", format: "1:1" },
+    approval: { kind: "campaign", campaignId: "demo-campaign", assetId: "demo-asset-creative" },
   },
   {
     kind: "draft",
@@ -123,10 +164,132 @@ export const DEMO_PACKAGE_CARDS: ArcActionCard[] = [
     status: "draft",
     preview: "Free personalized walkthrough for teams evaluating Meridian. See how it fits your workflow before your trial winds down.",
     rows: [{ name: "Destination", meta: "Campaign-matched" }],
-    flags: [{ tone: "ok", label: "No overclaim" }],
+    // Deliberately flagless, and it is the COMMON case: a census of prod found
+    // 13 of 16 approval-bearing draft cards carrying no flags at all. With every
+    // fixture flagged, the preview only ever showed "checks passed" and the
+    // state an operator actually meets most often — "no checks recorded" —
+    // could not be reviewed on the one screen where this design gets reviewed.
+    flags: [],
     approval: { kind: "campaign", campaignId: "demo-campaign", assetId: "demo-asset-landing" },
   },
 ];
+
+/**
+ * What the workspace panel holds, which is more than the approval package.
+ *
+ * Arc is told to emit a `result` card whenever it presents records it found, and
+ * prod is full of them — "5 CRM contacts (live read, Aug 3)" sitting beside four
+ * drafts. They are not deliverables and cannot be approved, so the panel lists
+ * them separately; the demo carries one so the preview shows the same split.
+ */
+export const DEMO_WORKSPACE_CARDS: ArcActionCard[] = [
+  ...DEMO_PACKAGE_CARDS,
+  {
+    kind: "result",
+    title: "142 high-intent accounts (live read)",
+    rows: [{ name: "Source", meta: "CRM · companies" }],
+    flags: [],
+    href: "/crm/companies",
+  },
+];
+
+/**
+ * The full copy behind the demo cards, standing in for `getArcAssetBodies`.
+ *
+ * The offline preview is where this design gets reviewed, and without these the
+ * preview only ever exercises the FALLBACK path — every card on its stored
+ * ~280-character `preview`, no lead-in fields parsed, no clamp, no disclosure.
+ * The review would then pass on a card that never rendered a full draft.
+ *
+ * Written in the shape prod actually stores (`SUBJECT:` / `PREHEADER:` lead-in
+ * lines above the copy for email, bare prose for SMS, `Headline:` /
+ * `Primary text:` for a social ad) so the preview exercises the real parse
+ * rather than a tidied-up one. The `preview` on each card stays a genuine prefix
+ * of the body here, exactly as the live pair behaves.
+ *
+ * `demo-asset-landing` is deliberately ABSENT. A conversation can hold a card
+ * whose asset row is gone, out of scope, or simply not fetched yet, and that
+ * card has to still render — so the preview shows one deliverable on the
+ * fallback path next to three on the full path, rather than only ever showing
+ * the happy one.
+ */
+export const DEMO_ASSET_BODIES: Record<string, ArcAssetBody> = {
+  "demo-asset-email": {
+    id: "demo-asset-email",
+    edited: false,
+    title: "Demo follow-up email",
+    body: [
+      "SUBJECT: You looked at pricing — here's a walkthrough",
+      "PREHEADER: Fifteen minutes, no pitch. We'll map Meridian to how your team already works.",
+      "",
+      "Hi {first_name},",
+      "",
+      "Your team spent time on our pricing page this week. We're offering a free, no-pressure walkthrough this week — and if it's a fit, we can help you map Meridian to how your team already works.",
+      "",
+      "Most teams your size use the first fifteen minutes to answer three questions:",
+      "",
+      "- Which of our existing tools does this replace, and which does it sit beside?",
+      "- What does the first month actually look like for the people doing the work?",
+      "- Where does this stop being worth it as we grow?",
+      "",
+      "If those are your questions too, book a time that suits you and we'll work through them with your own data on screen. If they aren't, tell me what is and I'll come prepared for that instead.",
+      "",
+      "— The Meridian team",
+    ].join("\n"),
+  },
+  "demo-asset-sms": {
+    id: "demo-asset-sms",
+    edited: false,
+    // Drifted from the card's frozen "Warm demo check-in", and SMS carries no
+    // lead-in headline — so this is the one fixture that actually exercises the
+    // live-title tier rather than being shadowed by the copy's own headline.
+    title: "Warm demo check-in (revised, opt-out added)",
+    body: "Hi {first_name} — it's the {brand} team. Saw your team exploring Meridian, no charge and no pressure. Want a quick walkthrough? Reply STOP to opt out.",
+  },
+  "demo-asset-social": {
+    id: "demo-asset-social",
+    title: "High-intent awareness — \"See it on your data\"",
+    edited: false,
+    body: [
+      "Headline: See Meridian tailored to your team",
+      "Primary text: Comparing options? The right workflow can save your team hours every week — book a personalized demo while it's top of mind.",
+      "CTA: Book now",
+      "",
+      "Fifteen minutes, your own data on screen, no pitch. We'll show the parts that matter to how your team already works and skip the rest.",
+    ].join("\n"),
+  },
+};
+
+/**
+ * Guardrail findings for the demo cards, standing in for `getArcAssetChecks`.
+ *
+ * Shaped like prod, which is the point: there, 13 of 16 draft cards carry NO
+ * flags while the assets behind them hold 15 open findings — 13 `warning` and
+ * 2 `blocker`. So the landing page carries an open blocker while its card
+ * carries nothing, which is exactly the case that used to render as "nothing
+ * flagged" one click from approval.
+ *
+ * `demo-asset-sms` is present but EMPTY on purpose — that is the "we looked and
+ * found none" answer, which must render differently from "we have not looked".
+ */
+export const DEMO_ASSET_CHECKS: Record<string, ArcDraftFinding[]> = {
+  "demo-asset-landing": [
+    {
+      id: "demo-finding-1",
+      severity: "blocker",
+      message: "Contradicts the documented plan list: the page offers a tier the brand kit does not sell.",
+      matchedText: "every plan includes onboarding",
+      open: true,
+    },
+    {
+      id: "demo-finding-2",
+      severity: "warning",
+      message: "Could not ground the \"15 minutes\" claim in any brain node.",
+      open: true,
+    },
+  ],
+  "demo-asset-sms": [],
+};
 
 export const DEMO_ATTACHMENTS: ArcAttachment[] = [
   { url: "/brand/login-background-v2.png", name: "product-tour-reference.png", contentType: "image/png", objectPath: "demo-ref-1" },
@@ -212,19 +375,19 @@ export const DEMO_WAITING: ArcWaiting = {
       title: "Trial nurture is converting — draft the next iteration",
       urgency: "high",
       prompt:
-        "Draft the next iteration of the Quarterly Nurture Refresh campaign based on what worked: For the next iteration, lead with Email, reuse “Trial-watch SMS nudge”. Keep it approval-gated.",
+        "Draft the next iteration of the Quarterly Nurture Refresh campaign based on what worked: For the next iteration, lead with Email, reuse “Trial-watch SMS nudge”. Keep it a draft for my approval.",
     },
     {
       id: "demo-opp-storm-riverside",
       title: "Usage dropped 40% — Riverside Labs trial at risk",
       urgency: "high",
-      prompt: "Help me act on this opportunity: “Usage dropped 40% — Riverside Labs trial at risk”. What should we draft? Keep it approval-gated.",
+      prompt: "Help me act on this opportunity: “Usage dropped 40% — Riverside Labs trial at risk”. What should we draft? Keep it a draft for my approval.",
     },
     {
       id: "demo-opp-partner-northside",
       title: "Larkfield Partners sent 3 referrals — no co-marketing in place",
       urgency: "medium",
-      prompt: "Help me act on this opportunity: “Larkfield Partners sent 3 referrals — no co-marketing in place”. What should we draft? Keep it approval-gated.",
+      prompt: "Help me act on this opportunity: “Larkfield Partners sent 3 referrals — no co-marketing in place”. What should we draft? Keep it a draft for my approval.",
     },
   ],
 };

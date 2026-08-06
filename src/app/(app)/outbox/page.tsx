@@ -25,7 +25,9 @@ function normChannel(channel: string): OutboxChannel {
 const ACTION: Partial<Record<DispatchStatus, string>> = {
   queued: "Confirm send",
   scheduled: "Send now",
-  sent: "Mark delivered",
+  // Delivery normally arrives from the email provider's webhook; this is the
+  // manual fallback for when it has not been wired for a workspace (BSR-668).
+  sent: "Confirm it arrived",
   failed: "Retry",
 };
 

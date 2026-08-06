@@ -1,8 +1,19 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { resolveCampaignAudience, stampCampaignLinks, type ResolvedRecipient } from "@/domain";
+import {
+  buildUnsubscribeUrl,
+  checkSenderIdentity,
+  describeSenderIdentityProblem,
+  resolveCampaignAudience,
+  stampCampaignLinks,
+  wrapMarketingEmail,
+  type ResolvedRecipient,
+} from "@/domain";
 import { type AgentTaskTenantFields } from "@/lib/agent-tasks/scope";
+import { getUnsubscribeSecret, loadWorkspaceEmailIdentity } from "@/lib/dispatch/email-identity";
 import { buildEmailPayload, loadCampaignTarget, loadCandidateContacts } from "@/lib/dispatch/persistence";
+import { loadSuppressedAddresses } from "@/lib/email-suppression/persistence";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 /**
  * BYO send channel — the outbound half of "use your own tools, keep the
@@ -34,20 +45,32 @@ type ExternalAssetRow = {
   draft_body: string | null;
 };
 
+/**
+ * The merge token the exported body carries where a per-recipient unsubscribe
+ * URL belongs. One static body cannot hold N per-contact links, so the CSV
+ * carries the resolved URL per row and the operator maps this token to that
+ * column in their ESP — the shape every ESP already supports.
+ */
+export const UNSUBSCRIBE_MERGE_TOKEN = "{{unsubscribe_url}}";
+
 export type ExternalSendPackage = {
   campaignId: string;
   assetId: string;
   title: string;
   channel: string;
   subject: string;
-  /** Approved body as simple paragraph HTML, attribution-stamped. */
+  /** Approved body as simple paragraph HTML, attribution-stamped, compliance-wrapped. */
   html: string;
-  /** Approved body as plain text, attribution-stamped. */
+  /** Approved body as plain text, attribution-stamped, compliance-wrapped. */
   text: string;
   recipients: ResolvedRecipient[];
   suppressedCount: number;
-  /** "email,name,persona" rows for a paste-into-your-ESP audience list. */
+  /** How many recipients were dropped specifically for having opted out. */
+  unsubscribedCount: number;
+  /** "email,name,persona,unsubscribe_url" rows for a paste-into-your-ESP audience list. */
   audienceCsv: string;
+  /** The token in `html`/`text` the operator must map to the CSV's unsubscribe_url column. */
+  unsubscribeMergeToken: string;
 };
 
 export type ExternalSendPackageResult = { ok: true; pkg: ExternalSendPackage } | { ok: false; error: string };
@@ -93,13 +116,50 @@ export async function buildExternalSendPackage(
     { campaignId: asset.campaign_id, assetId: asset.id, channel: asset.channel },
   );
 
+  // Compliance is enforced HERE, not left to the operator's ESP. Until BSR-482
+  // this path exported a bare body with no postal address, no unsubscribe link
+  // and no headers, and an audience CSV built from a resolver that never looked
+  // at opt-out state — so the one send path our gate cannot reach was also the
+  // only one with no compliance floor at all.
+  const { identity, brand } = await loadWorkspaceEmailIdentity(input.tenant.org_id, client);
+  const identityProblems = checkSenderIdentity(identity);
+  if (identityProblems.length > 0) {
+    return { ok: false, error: identityProblems.map(describeSenderIdentityProblem).join(" ") };
+  }
+
+  const unsubscribeSecret = getUnsubscribeSecret();
+  if (!unsubscribeSecret) {
+    return { ok: false, error: "No unsubscribe signing secret is configured, so working unsubscribe links can't be generated." };
+  }
+
   const target = await loadCampaignTarget(client, input.campaignId, input.tenant);
   const contacts = await loadCandidateContacts(client, target, input.tenant);
-  const audience = resolveCampaignAudience(target, contacts, "email");
+  const suppressedAddresses = await loadSuppressedAddresses(input.tenant.org_id, client);
+  const audience = resolveCampaignAudience(target, contacts, "email", { suppressedAddresses });
 
+  const wrapped = wrapMarketingEmail({
+    html: stamped.html ?? payload.html,
+    text: stamped.text ?? payload.text,
+    identity: {
+      senderName: identity.senderName ?? "",
+      postalAddress: identity.postalAddress ?? "",
+      permissionReminder: identity.permissionReminder,
+    },
+    brand,
+    unsubscribeUrl: UNSUBSCRIBE_MERGE_TOKEN,
+  });
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://arc-studio.ai";
   const audienceCsv = [
-    "email,name,persona",
-    ...audience.recipients.map((r) => [csvCell(r.address), csvCell(r.fullName ?? ""), csvCell(r.persona ?? "")].join(",")),
+    "email,name,persona,unsubscribe_url",
+    ...audience.recipients.map((r) =>
+      [
+        csvCell(r.address),
+        csvCell(r.fullName ?? ""),
+        csvCell(r.persona ?? ""),
+        csvCell(buildUnsubscribeUrl(siteUrl, { contactId: r.contactId, orgId: input.tenant.org_id }, unsubscribeSecret)),
+      ].join(","),
+    ),
   ].join("\n");
 
   return {
@@ -110,11 +170,13 @@ export async function buildExternalSendPackage(
       title: asset.title,
       channel: asset.channel ?? "email",
       subject: payload.subject,
-      html: stamped.html ?? payload.html,
-      text: stamped.text ?? payload.text,
+      html: wrapped.html ?? stamped.html ?? payload.html,
+      text: wrapped.text ?? stamped.text ?? payload.text,
       recipients: audience.recipients,
       suppressedCount: audience.suppressed.length,
+      unsubscribedCount: audience.suppressed.filter((s) => s.reason === "unsubscribed").length,
       audienceCsv,
+      unsubscribeMergeToken: UNSUBSCRIBE_MERGE_TOKEN,
     },
   };
 }
@@ -139,7 +201,11 @@ export async function recordExternalSend(
 
   const target = await loadCampaignTarget(client, input.campaignId, input.tenant);
   const contacts = await loadCandidateContacts(client, target, input.tenant);
-  const audience = resolveCampaignAudience(target, contacts, "email");
+  // Same filtered audience the export used. If this resolved a wider set than
+  // buildExternalSendPackage did, we would record outbound touches against
+  // people the export never contained.
+  const suppressedAddresses = await loadSuppressedAddresses(input.tenant.org_id, client);
+  const audience = resolveCampaignAudience(target, contacts, "email", { suppressedAddresses });
   if (audience.recipients.length === 0) {
     return { ok: false, error: "No sendable audience resolved for this campaign — nothing to record." };
   }
@@ -168,7 +234,7 @@ export async function recordExternalSend(
   if (engagementError) return { ok: false, error: `engagement_events insert: ${engagementError.message}` };
 
   const { error: eventError } = await client.from("campaign_events").insert({
-    org_id: input.tenant.org_id,
+    ...workspaceScopeFields(input.tenant),
     campaign_id: asset.campaign_id,
     // campaign_event_type is an ENUM on prod; "exported" is its value for
     // content leaving through a non-dispatch path. The detail line carries the

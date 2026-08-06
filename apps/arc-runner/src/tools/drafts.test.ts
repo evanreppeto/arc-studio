@@ -126,6 +126,6 @@ describe("submit_draft", () => {
 
   it("is exposed alongside create_campaign_draft", () => {
     const names = draftWorkProductTools({} as ArcClient, async () => {}, testSink().sink).map((t) => t.name);
-    expect(names).toEqual(["create_campaign_draft", "submit_draft"]);
+    expect(names).toEqual(["create_campaign_draft", "submit_draft", "record_campaign_summary"]);
   });
 });

@@ -54,8 +54,18 @@ export function reportDegraded(error: unknown, context: DegradedContext): void {
     // Always leave a server-log trace too. Sentry may be unconfigured (local,
     // CI, a preview), and that is exactly when someone is most likely to be
     // staring at a mysteriously empty screen.
+    //
+    // WITH the stack. Without it this line names a scope and a message and
+    // nothing else, which for a generic message is not enough to act on: chasing
+    // Studio's dead compose path, the log read `[degraded]
+    // studio.generateStudioAsset: Invalid URL` — true, and it does not say which
+    // of the several URLs that render touches was invalid, or which frame threw.
+    // The stack was in Sentry the whole time; anyone reading the platform log
+    // (local, CI, preview, or an incident where Sentry is not to hand) had the
+    // useless half. `err.stack` already begins with "Name: message", so this
+    // replaces the message rather than repeating it.
     console.warn(
-      `[degraded] ${context.scope}: ${err.message}`,
+      `[degraded] ${context.scope}: ${err.stack || err.message}`,
       context.detail ? JSON.stringify(context.detail) : "",
     );
 

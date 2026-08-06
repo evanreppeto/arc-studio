@@ -10,7 +10,9 @@ import {
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
 import { resolveMediaGeneration } from "@/lib/media/enablement";
 import { renderCreative } from "@/lib/media/compose/renderer";
+import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { storeGeneratedMedia } from "@/lib/media/storage";
+import { listBrandLogos } from "@/lib/brand-kit/logos";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 
 // satori + custom font file reads need the Node runtime, not edge.
@@ -59,12 +61,39 @@ export async function POST(request: Request) {
   const template = selectCreativeTemplate({ hint: str(body.template) || null, seed: str(body.seed) || backgroundUrl });
 
   try {
-    const profile = await getBusinessProfile(allowed.scope.orgId);
-    const brand = toBrandTokens(profile);
+    const [profile, brandLogos] = await Promise.all([
+      getBusinessProfile(allowed.scope.orgId),
+      listBrandLogos(allowed.scope.orgId, allowed.scope.workspaceId),
+    ]);
+    const brand = toBrandTokens(profile, brandLogos);
     const { bytes, contentType } = await renderCreative({ template, format, brand, copy, backgroundUrl });
 
     const objectPath = `arc-composite/${allowed.scope.orgId}/${allowed.scope.workspaceId}/${randomUUID()}.png`;
     const url = await storeGeneratedMedia(objectPath, bytes, contentType);
+
+    // Put it in the Library, exactly as generate-image and generate-video do
+    // (BSR-634). This route was the one storage writer left out, and the gap was
+    // not cosmetic: `media_assets` is where a picture gets a database identity,
+    // and without one nothing can be recorded ABOUT the composite — not a review
+    // state, not a decision. Measured on prod 2026-08-05: of six campaign media
+    // entries, the five generated ones resolved to a row and the one composite
+    // did not, so it was the single image on the whole workspace a reviewer
+    // could not act on. Best-effort like the others: the creative is already
+    // rendered and stored, so a failed row must not turn it into a 502.
+    const assetId = await recordGeneratedMedia({
+      orgId: allowed.scope.orgId,
+      objectPath,
+      publicUrl: url,
+      contentType,
+      kind: "image",
+      byteSize: bytes.byteLength,
+      prompt: copy.headline,
+      format,
+      // The composite's own risk carries onto the Library row, so the flag that
+      // gates approval is on the record the gate actually reads.
+      riskFlags: [COMPOSITE_RISK],
+      source: "composite",
+    });
 
     const media = {
       kind: "image" as const,
@@ -73,7 +102,10 @@ export async function POST(request: Request) {
       format,
       riskFlags: [COMPOSITE_RISK],
     };
-    return NextResponse.json({ ok: true, status: "created", media, objectPath, template }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, status: "created", media, objectPath, template, ...(assetId ? { libraryAssetId: assetId } : {}) },
+      { status: 201 },
+    );
   } catch (error) {
     return fail("failed", error instanceof Error ? error.message : "Creative compositing failed.", 502);
   }

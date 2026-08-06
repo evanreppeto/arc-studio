@@ -2,10 +2,10 @@
 
 ## Working Prompt
 
-Use this prompt when asking an AI agent to enhance the Big Shoulders Growth Engine:
+Use this prompt when asking an AI agent to enhance Arc Studio:
 
 ```text
-You are helping build the Big Shoulders Restoration Growth Engine, a standalone Next.js and Supabase martech application for a restoration company.
+You are helping build the Big Shoulders Restoration Arc Studio, a standalone Next.js and Supabase martech application for a restoration company.
 
 Before proposing or writing code, inspect the current app and preserve its existing product boundaries:
 - The core data foundation is companies, contacts, properties, leads, jobs, and outcomes.
@@ -15,7 +15,7 @@ Before proposing or writing code, inspect the current app and preserve its exist
 - Outbound marketing must remain coverage-neutral. Do not generate or publish copy that promises insurance coverage, claim approval, or payout outcomes.
 
 Goal:
-Enhance the Growth Engine from a static persona CRM into a hyper-personalized marketing operating system. The app should understand each person, company, property, partner, lead, and campaign at a living profile level, then recommend the next best message, channel, offer, and action with human approval before anything external is sent.
+Enhance Arc Studio from a static persona CRM into a hyper-personalized marketing operating system. The app should understand each person, company, property, partner, lead, and campaign at a living profile level, then recommend the next best message, channel, offer, and action with human approval before anything external is sent.
 
 Research and incorporate useful patterns from modern marketing, home-service, and local-service software such as HubSpot, ServiceTitan Marketing Pro, CallRail, Podium, Hatch, Birdeye, HighLevel, ActiveCampaign, Google Business Profile workflows, Google Ads, and weather intelligence tools. Do not copy their generic product model blindly. Translate the useful ideas into a restoration-specific system for Big Shoulders Restoration.
 
@@ -43,7 +43,7 @@ When proposing changes, return:
 
 ## North Star
 
-The Growth Engine should become a restoration-specific persona intelligence and campaign execution system.
+The Arc Studio should become a restoration-specific persona intelligence and campaign execution system.
 
 The app should not stop at assigning a contact to `persona_insurance_agent` or `persona_plumbing_partner`. It should create a living, explainable profile that answers:
 
@@ -58,7 +58,7 @@ The app should not stop at assigning a contact to `persona_insurance_agent` or `
 
 ## Product Thesis
 
-Generic marketing apps automate campaigns. The Big Shoulders Growth Engine should understand restoration context.
+Generic marketing apps automate campaigns. The Arc Studio should understand restoration context.
 
 The differentiator is not "AI marketing." The differentiator is a system that knows the difference between an emergency homeowner with standing water, an insurance agent needing coverage-neutral documentation, a plumbing partner who has not referred in 42 days, and a property manager watching multiple buildings after a storm.
 

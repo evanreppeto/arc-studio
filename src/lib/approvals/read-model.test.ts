@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { WORK_STATE_LABEL } from "@/domain";
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
 import { countActiveApprovals, listApprovalCards, listApprovalHistory } from "./read-model";
@@ -187,7 +188,9 @@ describe("listApprovalCards", () => {
       id: approvalItemRow.id,
       title: "Review plumbing partner outreach draft",
       previewText: "2 partner candidates: Madden Sewer & Drain, Full Circle Plumbing",
-      statusLabel: "Pending owner approval",
+      // `pending_owner_approval` and `pending_approval` collapse to one label:
+      // to the person looking at it, both mean it is on their desk.
+      statusLabel: WORK_STATE_LABEL.needs_you,
       riskLevel: "medium",
       persona: "persona_plumbing_partner",
       channel: "email",

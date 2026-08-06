@@ -1,31 +1,68 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { humanizePersonaLabel as humanizePersona, type AudienceResolution } from "@/domain";
+import {
+  ASSET_NOUN,
+  assetSourceLabel,
+  countOf,
+  composeMediaNote,
+  deriveCampaignSpine,
+  describeRegion,
+  formatTimecode,
+  isMeaningfulRegion,
+  normalizeRegion,
+  type MediaRegion,
+  humanizePersonaLabel as humanizePersona,
+  reviewAgentLabel,
+  reviewVerdictLabel,
+  riskFlagLabel,
+  toWorkState,
+  WORK_STATE_LABEL,
+  type AssetDecision,
+  WORK_STATE_TONE,
+  type AudienceResolution,
+  type WorkStateTone,
+} from "@/domain";
 import { type AttachableMediaItem } from "@/lib/campaigns/attach-media";
 import {
+  type CampaignAssetFinding,
   type CampaignMediaAsset,
   type CampaignWorkspaceAsset,
+  mediaReviewStateFromStatus,
   type CampaignWorkspaceAssetCategory,
   type LiveCampaignWorkspace,
 } from "@/lib/campaigns/read-model";
+import { buildCampaignExport, buildDeliverableExport, exportSlug, isExportable } from "@/lib/campaigns/deliverable-export";
 import { diffLines } from "@/lib/campaigns/revision-diff";
+import { type StalledRevision } from "@/lib/campaigns/revision-recovery";
 import { LOCKED_CLAIMS, MEASUREMENT_PLAN } from "@/lib/performance/measurement-copy";
-import { buildPerformanceLearning, type CampaignPerformancePanel, type PerformanceTrendPoint } from "@/lib/performance/campaign-panel";
+import { buildPerformanceLearning, type CampaignPerformancePanel, type PerformanceKpi, type PerformanceTrendPoint } from "@/lib/performance/campaign-panel";
 
+import { KpiStrip, type KpiCell } from "../../../_components/kpi-strip";
+import { Modal } from "../../../_components/modal";
 import { ShareDialog } from "../../../_components/share-dialog";
+import { DeliverableCopy, markId, ReviewBlock, statusMeta, svg, type Tone } from "./deliverable-review";
+import { CampaignSpine } from "./campaign-spine";
 import { ExternalSendModal } from "./external-send-modal";
-import { attachCampaignMediaAction, decideCampaignAsset, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision } from "../actions";
+import { ReviewQueue } from "./review-queue";
+import {
+  isCleanForBulkApproval,
+  splitSuggestedEdits,
+  summarizeReview,
+  type ReviewSummary,
+} from "./review-summary";
+import { applyFindingFixAction, attachCampaignMediaAction, decideCampaignAsset, decideCampaignMediaAction, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision, retryCampaignRevision } from "../actions";
 import {
   getCampaignSharingStateAction,
   setCampaignSharingAction,
   shareCampaignWithMemberAction,
   unshareCampaignMemberAction,
 } from "../../sharing-actions";
+import { AppImage } from "../../../_components/app-image";
 
-const svg = (d: string, cls?: string) => <svg viewBox="0 0 24 24" className={cls} dangerouslySetInnerHTML={{ __html: d }} />;
 
 const CATEGORY_LABEL: Record<CampaignWorkspaceAssetCategory, string> = {
   physical: "Direct & physical",
@@ -42,21 +79,20 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-type Tone = "ok" | "amber" | "red" | "gray" | "blue";
-
-function statusMeta(status: string): { tone: Tone; label: string } {
-  const s = (status || "").toLowerCase();
-  if (/approved/.test(s)) return { tone: "ok", label: "Approved" };
-  if (/declined|rejected/.test(s)) return { tone: "red", label: "Declined" };
-  if (/archived/.test(s)) return { tone: "gray", label: "Archived" };
-  // A compliance block is not a routine pending item and must not read as one —
-  // it has to be distinguishable at a glance from the amber "Needs review" crowd.
-  if (/compliance|blocked/.test(s)) return { tone: "red", label: "Blocked" };
-  if (/revision/.test(s)) return { tone: "amber", label: "Revision requested" };
-  if (/live|sent|deployed/.test(s)) return { tone: "blue", label: "Live" };
-  if (/pending|review/.test(s)) return { tone: "amber", label: "Needs review" };
-  return { tone: "gray", label: status ? status.replace(/[_-]+/g, " ") : "Draft" };
+/**
+ * Hand the operator a file. Everything exported here is already approved and
+ * already in the browser's hands — this is a save, not a fetch, so it needs no
+ * server round-trip and reveals nothing the page wasn't showing.
+ */
+function downloadMarkdown(filename: string, content: string): void {
+  const url = URL.createObjectURL(new Blob([content], { type: "text/markdown;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
+
 
 // A deliverable still accepts a decision until it's approved, archived, or live.
 function isActionable(status: string): boolean {
@@ -76,33 +112,671 @@ function awaitingClaimsReview(asset: CampaignWorkspaceAsset): boolean {
   return !asset.claimsReviewed && Boolean(asset.body.trim()) && isActionable(asset.status);
 }
 
+/**
+ * The campaign's own state, in the shared vocabulary.
+ *
+ * `launchState.lifecycle` is a parallel set of display words baked into the
+ * domain type — "Drafting" | "In review" | "Ready" | "Live" — which is exactly
+ * what `vocabulary.ts` says not to do: a state is a state, and the label is
+ * decided in one place. Rendering it raw is why this screen said "In review" on
+ * the header pill and in Launch readiness while the asset cards below said
+ * "Needs you", for one campaign, in one viewport.
+ *
+ * The union is left alone (it is a real state machine, used for gating), and
+ * translated here at the display boundary. `toWorkState` already maps all four:
+ * Drafting→draft, In review→needs_you, Ready→approved, Live→sending.
+ */
+function lifecycleLabel(lifecycle: string): string {
+  return WORK_STATE_LABEL[toWorkState(lifecycle)];
+}
+
+const WORK_STATE_TONE_CLASS: Record<WorkStateTone, Tone> = {
+  attention: "amber",
+  ok: "ok",
+  neutral: "gray",
+};
+
 function lifecycleTone(lifecycle: string): Tone {
-  if (lifecycle === "Live") return "blue";
-  if (lifecycle === "Ready") return "ok";
-  if (lifecycle === "In review") return "amber";
+  // "Live" keeps blue: on this screen blue means "out in the world", which is a
+  // stronger statement than the shared `ok` and the one the operator most needs
+  // to spot. Everything else follows the vocabulary's tone.
+  if (toWorkState(lifecycle) === "sending") return "blue";
+  return WORK_STATE_TONE_CLASS[WORK_STATE_TONE[toWorkState(lifecycle)]];
+}
+
+/** Step the lightbox, wrapping at both ends. Exported for test: the demo
+ *  fixtures only ever attach one media per deliverable, so the preview cannot
+ *  exercise the wrap. */
+export function stepMediaIndex(current: number, delta: number, length: number): number {
+  if (length <= 0) return 0;
+  return (((current + delta) % length) + length) % length;
+}
+
+const MEDIA_ORIGIN_LABEL: Record<CampaignMediaAsset["origin"], string> = {
+  generated: "AI generated",
+  attached: "Attached media",
+  referenced: "Referenced elsewhere",
+};
+
+/**
+ * How this asset's own review reads. "Not reviewed" is the common case and the
+ * important one: asset-level approval writes to `approval_items`, and there are
+ * no such rows in prod — the path exists and has never run. An asset nobody has
+ * looked at must not read like one that passed.
+ */
+const MEDIA_REVIEW_LABEL: Record<CampaignMediaAsset["review"]["state"], string> = {
+  // "Not reviewed" is its own state and stays: it means nobody has looked, which
+  // is neither "waiting on you" nor "done" and is the whole point of the note
+  // above. Everything else is the shared vocabulary — a media asset waiting on a
+  // decision is in the same state as a deliverable waiting on one, and used to
+  // say "Awaiting review" two inches from a card saying "Needs you".
+  unreviewed: "Not reviewed",
+  pending: WORK_STATE_LABEL.needs_you,
+  approved: WORK_STATE_LABEL.approved,
+  declined: WORK_STATE_LABEL.declined,
+  needs_revision: WORK_STATE_LABEL.needs_changes,
+  archived: WORK_STATE_LABEL.archived,
+};
+
+function mediaReviewTone(state: CampaignMediaAsset["review"]["state"]): Tone {
+  if (state === "approved") return "ok";
+  if (state === "declined") return "red";
+  if (state === "needs_revision" || state === "pending") return "amber";
   return "gray";
 }
 
-function MediaTile({ media }: { media: CampaignMediaAsset }) {
-  const bg = media.thumbnailUrl || (media.type === "image" ? media.url : null);
-  // First lineage row ("Made in Higgsfield · soul-x") captions the tile; the
-  // full lineage + prompt ride the native tooltip — a 4:3 tile has no room for
-  // a paragraph, but the reviewer hovering an AI tile should get the whole story.
+/**
+ * The declared ratio as a CSS `aspect-ratio`. The read-model has already
+ * rejected anything that isn't `w:h` within sane bounds; this is the render
+ * half of that. Falls back to the old fixed 4:3 when the producer declared
+ * nothing — an undeclared ratio must not silently become a square.
+ */
+function tileAspect(format: string | null): string {
+  const parts = format?.split(":");
+  return parts?.length === 2 ? `${parts[0]} / ${parts[1]}` : "4 / 3";
+}
+
+function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () => void }) {
+  const thumb = media.thumbnailUrl || (media.type === "image" ? media.url : null);
+  const [failed, setFailed] = useState(false);
+  // First lineage row ("Made in Higgsfield · soul-x") captions the tile. The
+  // full lineage + prompt live in the lightbox, not a native tooltip — a
+  // tooltip is invisible to touch and to the keyboard, and the OS truncates a
+  // long prompt anyway.
   const lineageLine = media.lineage[0]?.[1] ?? null;
-  const tooltip = [...media.lineage.map(([, text]) => text), media.prompt ? `Prompt: ${media.prompt}` : null]
+  const flagged = media.riskFlags.length > 0;
+  // A declined asset still sitting on a deliverable is worth seeing without
+  // opening it — same visual weight as a risk flag, for the same reason.
+  const declined = media.review.state === "declined";
+  const label = [
+    `Open ${media.title} at full size`,
+    flagged ? `${media.riskFlags.length} risk flag${media.riskFlags.length === 1 ? "" : "s"}` : null,
+    declined ? "declined" : null,
+  ]
     .filter(Boolean)
-    .join("\n");
+    .join(" — ");
   return (
-    <div className="mediatile" title={tooltip || undefined} style={bg ? { backgroundImage: `url(${bg})` } : undefined}>
-      <div className="mtscrim" />
+    <button
+      type="button"
+      className={`mediatile${flagged || declined ? " flagged" : ""}`}
+      onClick={onOpen}
+      aria-label={label}
+      // The tile letterboxes to the creative's own shape. It used to crop
+      // everything to 4:3, so a 9:16 vertical and a 1:1 square were
+      // indistinguishable from each other and from what would actually ship.
+      style={{ aspectRatio: tileAspect(media.format) }}
+    >
+      {thumb && !failed ? (
+        <AppImage className="mtimg" src={thumb} alt={media.title} onError={() => setFailed(true)} />
+      ) : null}
+      <span className="mtscrim" />
       <span className={`mtbadge ${media.origin === "generated" ? "ai" : "real"}`}>
         {media.origin === "generated" ? "AI" : media.type}
       </span>
+      {/* A flag recorded against THIS image was invisible here until now — the
+          reviewer saw only the deliverable-level guardrail note, if any. */}
+      {flagged && (
+        <span className="mtrisk" aria-hidden>
+          {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
+        </span>
+      )}
       <span className="mttitle">
         {media.title}
         {lineageLine ? <em className="mtlineage">{lineageLine}</em> : null}
       </span>
+      <span className="mtzoom" aria-hidden>
+        {svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M11 8v6M8 11h6"/>')}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * What the reviewer pointed at on a piece of creative.
+ *
+ * A drawn box for a still, a moment for a video — the two ways of saying "this
+ * bit" when there is no text to select. Both end up as words in the note; see
+ * `composeMediaNote`.
+ */
+export type MediaAnnotation = { region?: MediaRegion | null; atSeconds?: number | null };
+
+/** The media itself, full size. Owns its own load-failure state so the parent
+ *  can reset it with a key rather than an effect. */
+function LightboxStage({
+  media,
+  annotation,
+  onAnnotate,
+}: {
+  media: CampaignMediaAsset;
+  annotation: MediaAnnotation | null;
+  onAnnotate: (next: MediaAnnotation | null) => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  /** The box being dragged right now, in normalized coordinates. */
+  const [drawing, setDrawing] = useState<MediaRegion | null>(null);
+  const origin = useRef<{ x: number; y: number } | null>(null);
+
+  if (failed) {
+    return (
+      <p className="lbfail">
+        This file didn&apos;t load. It may have moved, or the link may have expired — open the original to check.
+      </p>
+    );
+  }
+  /** Pointer position as a fraction of the rendered frame. */
+  function at(event: React.PointerEvent): { x: number; y: number } | null {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect || !rect.width || !rect.height) return null;
+    return { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
+  }
+
+  if (media.type === "image") {
+    const shown = drawing ?? annotation?.region ?? null;
+    return (
+      <div
+        ref={frameRef}
+        className={`lbdraw${drawing ? " drawing" : ""}`}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          const start = at(event);
+          if (!start) return;
+          event.preventDefault();
+          origin.current = start;
+          setDrawing({ x: start.x, y: start.y, width: 0, height: 0 });
+
+          // Tracked on the WINDOW, not on the element. Pointer capture makes
+          // the element's own pointerup conditional on the input source
+          // behaving, and a drag that ends outside the picture — which is
+          // exactly how you box something at its edge — then never commits.
+          let latest: MediaRegion | null = null;
+          const rect = frameRef.current?.getBoundingClientRect();
+          const move = (native: PointerEvent) => {
+            if (!rect || !rect.width || !rect.height) return;
+            const point = {
+              x: (native.clientX - rect.left) / rect.width,
+              y: (native.clientY - rect.top) / rect.height,
+            };
+            latest = normalizeRegion({
+              x: Math.min(start.x, point.x),
+              y: Math.min(start.y, point.y),
+              width: Math.abs(point.x - start.x),
+              height: Math.abs(point.y - start.y),
+            });
+            setDrawing(latest);
+          };
+          const up = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+            window.removeEventListener("pointercancel", up);
+            origin.current = null;
+            setDrawing(null);
+            // A click produces a zero-size drag. That is not pointing at
+            // anything, and clearing on it is what lets a stray click dismiss
+            // a box you no longer want.
+            onAnnotate(latest && isMeaningfulRegion(latest) ? { region: latest } : null);
+          };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", up);
+          window.addEventListener("pointercancel", up);
+        }}
+      >
+        <AppImage className="lbimg" src={media.url} alt={media.title} loading="eager" onError={() => setFailed(true)} />
+        {shown && (
+          <span
+            className="lbregion"
+            aria-hidden="true"
+            style={{
+              left: `${shown.x * 100}%`,
+              top: `${shown.y * 100}%`,
+              width: `${shown.width * 100}%`,
+              height: `${shown.height * 100}%`,
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+  if (media.type === "video") {
+    return (
+      <div className="lbvideo">
+        <video
+          ref={videoRef}
+          className="lbimg"
+          src={media.url}
+          poster={media.thumbnailUrl ?? undefined}
+          controls
+          onError={() => setFailed(true)}
+        />
+        {/* No drag layer over a video: the surface belongs to the scrubber, and
+            a box over a moving picture is ambiguous anyway. A moment is the
+            useful unit here — "the logo flickers at 0:07". */}
+        <button
+          type="button"
+          className="cbtn ghost lbframe"
+          onClick={() =>
+            onAnnotate(
+              typeof annotation?.atSeconds === "number"
+                ? null
+                : { atSeconds: videoRef.current?.currentTime ?? 0 },
+            )
+          }
+        >
+          {typeof annotation?.atSeconds === "number"
+            ? `Noting ${formatTimecode(annotation.atSeconds)} — clear`
+            : "Note this moment"}
+        </button>
+      </div>
+    );
+  }
+  // Embeds, files and links are somebody else's page. Show what we already
+  // have and hand over the link, rather than iframing a URL that arrived from
+  // a tool result into an authenticated shell.
+  return (
+    <div className="lbnoprev">
+      {media.thumbnailUrl ? (
+        <AppImage className="lbimg" src={media.thumbnailUrl} alt={media.title} loading="eager" onError={() => setFailed(true)} />
+      ) : null}
+      <p className="lbfail">No inline preview for this {media.type}. Open the original to view it.</p>
     </div>
+  );
+}
+
+/**
+ * Decide one image, from the campaign that carries it.
+ *
+ * Its own component so it can be keyed on the asset: the parent steps through a
+ * list with the arrows, and mounting a fresh panel per picture is what
+ * guarantees a half-typed acknowledgement — or a refusal from the last one —
+ * never follows the reviewer to the next. Resetting that in an effect would fire
+ * a second render pass on every step, for state that only ever needs to start
+ * empty.
+ */
+function MediaDecision({
+  media,
+  onDecide,
+  annotation,
+  onClearAnnotation,
+}: {
+  media: CampaignMediaAsset;
+  onDecide: (
+    media: CampaignMediaAsset,
+    decision: AssetDecision,
+    acknowledgement: string,
+    notes?: string | null,
+  ) => Promise<string | null>;
+  /** What the reviewer pointed at, if anything — a drawn box, or a video frame. */
+  annotation: MediaAnnotation | null;
+  onClearAnnotation: () => void;
+}) {
+  /** The reviewer's written acknowledgement of the risk flags. */
+  const [ack, setAck] = useState("");
+  /** What to change about the part they pointed at. */
+  const [note, setNote] = useState("");
+  /** Which decision is in flight, so only that button says "Recording…". */
+  const [deciding, setDeciding] = useState<AssetDecision | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const flagged = media.riskFlags.length > 0;
+  const pointing = Boolean(annotation?.region || typeof annotation?.atSeconds === "number");
+
+  async function decide(decision: AssetDecision) {
+    setError(null);
+    setDeciding(decision);
+    // Composed the same way copy revisions are: the reviewer's words stay
+    // theirs, and where they pointed is added at submit time. With no
+    // annotation this is exactly the note they typed, or nothing at all.
+    const composed = note.trim()
+      ? composeMediaNote({ region: annotation?.region, atSeconds: annotation?.atSeconds, instruction: note })
+      : null;
+    setError(await onDecide(media, decision, ack, composed));
+    setDeciding(null);
+  }
+
+  return (
+    <div className="lbdecide">
+      {/* Only approval is gated. Declining or asking for another pass is how a
+          reviewer ACTS on a flag, so making them justify that first would push
+          them toward approving as the easier path — see checkAssetApproval. */}
+      {flagged && (
+        <label className="lback">
+          <span>How was the flag addressed?</span>
+          <textarea
+            value={ack}
+            onChange={(event) => setAck(event.target.value)}
+            rows={2}
+            placeholder="Required to approve a flagged image…"
+            disabled={deciding !== null}
+          />
+        </label>
+      )}
+      {/* Appears once the reviewer has pointed at something. The note is
+          optional on every decision — "Needs another pass" with nothing typed
+          behaves exactly as it did — but a drawn box with no words is a gesture
+          Arc cannot act on, so this is where the words go. */}
+      {pointing && (
+        <div className="lbmark">
+          <div className="lbmark-head">
+            <span className="lbmark-where">
+              {annotation?.region ? describeRegion(annotation.region) : null}
+              {annotation?.region && typeof annotation?.atSeconds === "number" ? " · " : null}
+              {typeof annotation?.atSeconds === "number" ? `at ${formatTimecode(annotation.atSeconds)}` : null}
+            </span>
+            <button type="button" className="lbmark-clear" onClick={onClearAnnotation} disabled={deciding !== null}>
+              Clear
+            </button>
+          </div>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            rows={2}
+            placeholder="What should change about it?"
+            disabled={deciding !== null}
+            aria-label="What should change about the part you marked"
+          />
+        </div>
+      )}
+      {error && (
+        <p className="lbdecerr" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="lbdecrow">
+        <button type="button" className="cbtn gold" disabled={deciding !== null} onClick={() => decide("approved")}>
+          {svg('<path d="M5 12l4 4L19 6"/>')}
+          {deciding === "approved" ? "Recording…" : "Approve image"}
+        </button>
+        <button
+          type="button"
+          className="cbtn ghost"
+          disabled={deciding !== null}
+          onClick={() => decide("needs_revision")}
+        >
+          {deciding === "needs_revision" ? "Recording…" : "Needs another pass"}
+        </button>
+        <button type="button" className="cbtn danger" disabled={deciding !== null} onClick={() => decide("declined")}>
+          {deciding === "declined" ? "Recording…" : "Decline"}
+        </button>
+      </div>
+      {/* The same promise the rest of the screen makes, restated where the
+          decision is actually taken. */}
+      <p className="lbdecnote">
+        A decision here is recorded against this image alone. It sends nothing and unlocks nothing.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The creative, at a size you can actually judge.
+ *
+ * The tile is a 96px thumbnail, and Approve is one button below it — reviewing
+ * a campaign image meant squinting at a cropped 4:3 crop of it. This is the
+ * full-size view: uncropped (the tile crops, this letterboxes), with the
+ * provenance the tile has no room for as readable text rather than a hover
+ * tooltip. Built on the app's one Modal so Escape, scroll-lock, and focus
+ * behave the same as every other dialog here.
+ */
+function MediaLightbox({
+  items,
+  index,
+  onClose,
+  onStep,
+  onDecide,
+}: {
+  items: CampaignMediaAsset[];
+  index: number;
+  onClose: () => void;
+  onStep: (delta: number) => void;
+  /** Records a decision against THIS image. Resolves to an error string, or null on success. */
+  onDecide: (
+    media: CampaignMediaAsset,
+    decision: AssetDecision,
+    acknowledgement: string,
+    notes?: string | null,
+  ) => Promise<string | null>;
+}) {
+  const media = items[index];
+  const many = items.length > 1;
+  /**
+   * An annotation belongs to the picture it was drawn on, so it carries that
+   * picture's index and is DERIVED away when the reviewer steps.
+   *
+   * Not reset in an effect: that fires a second render pass on every step, for
+   * state whose only requirement is to start empty — the same reasoning that
+   * keys `MediaDecision` on the asset instead.
+   */
+  const [marked, setMarked] = useState<{ at: number; value: MediaAnnotation } | null>(null);
+  const annotation = marked && marked.at === index ? marked.value : null;
+  const setAnnotation = useCallback(
+    (next: MediaAnnotation | null) => setMarked(next ? { at: index, value: next } : null),
+    [index],
+  );
+
+  useEffect(() => {
+    if (!many) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        onStep(1);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        onStep(-1);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [many, onStep]);
+
+  if (!media) return null;
+
+  // Lineage tuples are [icon key, text] — the key drives the dot, exactly as
+  // the Library card renders it. It is not a label; don't print it as one.
+  //
+  // Origin and review state are NOT in this list: they are the two facts a
+  // reviewer needs before anything else, so they sit in the dialog's subtitle
+  // and in the status block above. A row repeating them would only push the
+  // ones that are genuinely reference material further down.
+  const rows: Array<[string, string]> = [
+    // "Declared" is doing real work: nothing measures the stored file, so this
+    // is the producer's claim about the creative, not a verified dimension.
+    ["Format", media.format ? `${media.format} (declared)` : "Not declared"],
+    ["File type", media.mimeType || media.type],
+    ["Found in", media.source],
+  ];
+  if (media.review.notes) rows.push(["Decision notes", media.review.notes]);
+  if (media.description) rows.push(["Description", media.description]);
+  if (media.virality) {
+    // The score never travels without its disclaimer — a bare "82" reads as a
+    // measurement, and neither of these is one.
+    rows.push(
+      media.virality.kind === "predicted"
+        ? [
+            "Viral potential",
+            `${media.virality.viralPotential}/100 — hook ${media.virality.hookScore}, sustain ${media.virality.sustain}`,
+          ]
+        : [
+            "Creative quality",
+            media.virality.factors.length
+              ? `${media.virality.qualityScore}/100 — ${media.virality.factors.join(", ")}`
+              : `${media.virality.qualityScore}/100`,
+          ],
+      ["Note", media.virality.disclaimer],
+    );
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={media.title}
+      description={[
+        MEDIA_ORIGIN_LABEL[media.origin],
+        media.format ? `${media.format} declared` : null,
+        media.mimeType || media.type,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
+      width={1120}
+      footer={
+        // Same `display: contents` scope wrapper as the body — the footer's
+        // `.cbtn`s and stepper are campaign.css rules too, and the footer is a
+        // sibling of the body inside the portal, not a descendant of it.
+        <div className="arc-campaign lb-scope">
+          {many && (
+            <div className="lbstepper">
+              <button type="button" className="cbtn ghost" onClick={() => onStep(-1)} aria-label="Previous media">
+                {svg('<path d="M15 5l-7 7 7 7"/>')}
+              </button>
+              <span className="lbcount">
+                {index + 1} of {items.length}
+              </span>
+              <button type="button" className="cbtn ghost" onClick={() => onStep(1)} aria-label="Next media">
+                {svg('<path d="M9 5l7 7-7 7"/>')}
+              </button>
+            </div>
+          )}
+          <a className="cbtn ghost" href={media.url} target="_blank" rel="noreferrer noopener">
+            {svg('<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>')}
+            Open original
+          </a>
+          <button type="button" className="cbtn gold" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      }
+    >
+      {/*
+        The dialog is portaled into the shell (overlay-portal.tsx), which takes
+        it out from under `.arc-campaign` — and every rule below is scoped to
+        that ancestor. So the scope travels as a class on a `display: contents`
+        wrapper, exactly as the review queue does it. Without this the whole
+        dialog rendered as raw markup: a full-bleed uncapped image, a
+        stacked-block metadata list, and the risk-flag warning icon at its
+        intrinsic size, taller than the picture it was warning about.
+      */}
+      <div className="arc-campaign lb-scope">
+        <div className="lbgrid">
+          {/* Keyed on the asset so stepping to the next one re-arms the load —
+              a broken file must not leave its error over the working one. */}
+          <div className="lbstage">
+            <LightboxStage key={media.id} media={media} annotation={annotation} onAnnotate={setAnnotation} />
+          </div>
+
+          {/* The creative is the point of this dialog, so it keeps the width and
+              everything written *about* it reads down one rail beside it, in the
+              order a reviewer needs it: what has been decided, what was flagged,
+              then the reference facts. It used to run underneath the image, so
+              judging a picture and reading its provenance were two scroll
+              positions. */}
+          <div className="lbside">
+            <div className="lbstatus">
+              <span className={`pill ${mediaReviewTone(media.review.state)}`}>
+                <span className="pd" />
+                {MEDIA_REVIEW_LABEL[media.review.state]}
+              </span>
+              {media.review.reviewer && (
+                <span className="lbwho">
+                  {media.review.reviewer}
+                  {media.review.reviewedAt ? ` · ${fmtDate(media.review.reviewedAt)}` : ""}
+                </span>
+              )}
+            </div>
+            {/* Rendered even when nothing has reviewed it — especially then.
+                Asset-level approval is its own record, and the deliverable's
+                approve button does not write one. The controls below are what
+                make that sentence actionable instead of just true: until they
+                existed, the only place to decide a picture was /library, so a
+                reviewer looking straight at the creative had to leave to act
+                on it. */}
+            {media.review.state === "unreviewed" && (
+              <p className="lbnote">Approving the deliverable does not record a decision on this image.</p>
+            )}
+
+            {/* Ahead of the controls, not after them: a flag recorded against
+                this image is the reason a reviewer might decline it, and the box
+                below asks them to say how it was addressed. Asking that question
+                above the answer to "addressed what?" reads backwards. */}
+            {media.riskFlags.length > 0 && (
+              <div className="lbrisk">
+                <b>
+                  {svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>')}
+                  {media.riskFlags.length === 1
+                    ? "Risk flag on this image"
+                    : `${media.riskFlags.length} risk flags on this image`}
+                </b>
+                <ul>
+                  {media.riskFlags.map((flag) => (
+                    <li key={flag}>{riskFlagLabel(flag)}</li>
+                  ))}
+                </ul>
+                <p>Recorded when the asset was produced. Nothing has cleared it — that is your call.</p>
+              </div>
+            )}
+
+            {/* Keyed on the asset: stepping to the next image unmounts this and
+                mounts a fresh one, so a half-typed acknowledgement or a refusal
+                from the last picture can never be carried onto the next. */}
+            <MediaDecision
+              key={media.id}
+              media={media}
+              onDecide={onDecide}
+              annotation={annotation}
+              onClearAnnotation={() => setAnnotation(null)}
+            />
+
+
+            <dl className="lbmeta">
+              {rows.map(([label, value], i) => (
+                <div className="lbrow" key={`${label}-${i}`}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {media.lineage.length > 0 && (
+              <div className="lbsec">
+                <b>Provenance lineage</b>
+                <div className="lblineage">
+                  {media.lineage.map(([kind, text], i) => (
+                    <div className="lbstep" key={`${text}-${i}`}>
+                      <span className={`lbdot pv-${kind}`} />
+                      <span>{text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {media.prompt && (
+              <div className="lbsec lbprompt">
+                <b>Generation prompt</b>
+                <p>{media.prompt}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -184,6 +858,24 @@ function TrendChart({ points }: { points: PerformanceTrendPoint[] }) {
   );
 }
 
+/**
+ * The panel's KPI shape, in the shared strip's terms.
+ *
+ * `deltaTone` is a JUDGEMENT, not an arithmetic direction — "Cost / booked job"
+ * ships `-9%` with tone `ok`, because a falling cost is good news. The strip's
+ * `dir` drives colour, so tone maps to it directly (`ok` → green) rather than
+ * the sign of the number, which would paint the best result on the panel red.
+ */
+function toKpiCell(k: PerformanceKpi): KpiCell {
+  const dir = k.deltaTone === "ok" ? "up" : k.deltaTone === "red" ? "dn" : "flat";
+  return {
+    label: k.label,
+    value: k.value,
+    sublabel: k.hint,
+    ...(k.delta ? { delta: { label: k.delta, dir } } : {}),
+  };
+}
+
 function PerformancePanel({ panel, lifecycle, campaignName }: { panel: CampaignPerformancePanel; lifecycle: string; campaignName?: string }) {
   const learning = buildPerformanceLearning(panel, campaignName);
   if (panel.status === "measuring") {
@@ -236,18 +928,7 @@ function PerformancePanel({ panel, lifecycle, campaignName }: { panel: CampaignP
             {panel.source === "demo" ? "Illustrative" : "Attributed"} · {panel.windowLabel}
           </span>
         </h3>
-        <div className="perfkpis">
-          {panel.kpis.map((k) => (
-            <div className="pkpi" key={k.key}>
-              <div className="pkl">{k.label}</div>
-              <div className="pkv">{k.value}</div>
-              <div className="pkh">
-                {k.delta && <span className={`pkd ${k.deltaTone ?? "neutral"}`}>{k.delta}</span>}
-                {k.hint}
-              </div>
-            </div>
-          ))}
-        </div>
+        <KpiStrip className="perfkpis" items={panel.kpis.map(toKpiCell)} />
         <p className="perfnote">{panel.note}</p>
       </div>
 
@@ -359,9 +1040,17 @@ function provTone(source: string): string {
   return "stock";
 }
 
-export function CampaignDetailView({ detail, performance, audience, attachableMedia = [] }: { detail: LiveCampaignWorkspace; performance: CampaignPerformancePanel; audience?: AudienceResolution | null; attachableMedia?: AttachableMediaItem[] }) {
+export function CampaignDetailView({ detail, performance, audience, attachableMedia = [], stalledRevisions = [] }: { detail: LiveCampaignWorkspace; performance: CampaignPerformancePanel; audience?: AudienceResolution | null; attachableMedia?: AttachableMediaItem[]; stalledRevisions?: StalledRevision[] }) {
   const { campaign, launchState, executiveOverview, reasoning, sources, approvalHistory, media } = detail;
   const [assets, setAssets] = useState<CampaignWorkspaceAsset[]>(detail.assets);
+  // Revisions Arc never started, by asset. Seeded from the server read and
+  // trimmed locally as retries succeed, so the notice clears without a reload.
+  const [stalled, setStalled] = useState<StalledRevision[]>(stalledRevisions);
+  const stalledByAsset = useMemo(() => new Map(stalled.map((s) => [s.assetId, s])), [stalled]);
+  // Set when a revision request comes back un-dispatched, so the operator learns
+  // immediately rather than after the 10-minute stale cutoff makes it "stalled".
+  // assetId -> the queued task, so Retry works without waiting for that sweep.
+  const [undispatched, setUndispatched] = useState<Map<string, string>>(new Map());
   const [tab, setTab] = useState("deliverables");
   const [reviseFor, setReviseFor] = useState<string | null>(null);
   const [reviseText, setReviseText] = useState("");
@@ -371,40 +1060,265 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   const [editBody, setEditBody] = useState("");
   // Media attach: which asset's picker is open.
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  // Full-size media preview: the tiles of one deliverable, and which is open.
+  const [lightbox, setLightbox] = useState<{ items: CampaignMediaAsset[]; index: number } | null>(null);
+  // Long copy is clamped so the review above it stays on screen. These hold the
+  // assets the reviewer has opened in full, and the findings they've expanded
+  // (keyed `assetId:findingIndex`).
+  const [fullCopy, setFullCopy] = useState<Set<string>>(new Set());
+  const [openFindings, setOpenFindings] = useState<Set<string>>(new Set());
+  // Which deliverables are expanded. Collapsed is the default so the tab opens
+  // as a list you can triage — except when there is only one, where collapsing
+  // the single thing on the page helps nobody.
+  const [openCards, setOpenCards] = useState<Set<string>>(() =>
+    detail.assets.length === 1 ? new Set([detail.assets[0].id]) : new Set(),
+  );
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  // The mark to jump to once the copy above it has finished un-clamping. A ref,
+  // not state: it is a one-shot instruction to the effect below, and nothing
+  // renders from it.
+  const pendingMark = useRef<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [confirmLaunch, setConfirmLaunch] = useState(false);
   const [launchErr, setLaunchErr] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  const stepLightbox = useCallback((delta: number) => {
+    setLightbox((current) =>
+      current ? { ...current, index: stepMediaIndex(current.index, delta, current.items.length) } : current,
+    );
+  }, []);
+  const closeLightbox = useCallback(() => setLightbox(null), []);
+
+  /**
+   * Record a decision on one image and reflect it in place.
+   *
+   * The new state is applied ONLY after the server confirms it, and from what
+   * the server returned rather than from what was asked for — an optimistic pill
+   * here would tell an operator their picture was approved while the gate was
+   * refusing it for an un-acknowledged risk flag. `revalidatePath` in the action
+   * refreshes the page's own copy; this keeps the open dialog honest in the
+   * meantime, since the reviewer is still looking at it.
+   */
+  const decideMedia = useCallback(
+    async (
+      target: CampaignMediaAsset,
+      decision: AssetDecision,
+      acknowledgement: string,
+      notes?: string | null,
+    ): Promise<string | null> => {
+      const res = await decideCampaignMediaAction({
+        campaignId: campaign.id,
+        libraryAssetId: target.libraryAssetId,
+        storagePath: target.storagePath,
+        decision,
+        acknowledgement,
+        notes: notes ?? null,
+      });
+      if (!res.ok) return res.error;
+
+      const review: CampaignMediaAsset["review"] = {
+        state: mediaReviewStateFromStatus(res.status),
+        reviewer: res.reviewer,
+        reviewedAt: res.reviewedAt,
+        notes: notes?.trim() || null,
+      };
+      const apply = (list: CampaignMediaAsset[]) => list.map((m) => (m.id === target.id ? { ...m, review } : m));
+      // Both copies: the dialog reads `lightbox.items`, while the tiles under the
+      // deliverable and in the Creative rail read `assets`. Updating one would
+      // leave a picture reading "Approved" in the dialog and "Not reviewed"
+      // behind it.
+      setLightbox((current) => (current ? { ...current, items: apply(current.items) } : current));
+      setAssets((current) => current.map((asset) => ({ ...asset, media: apply(asset.media) })));
+      return null;
+    },
+    [campaign.id],
+  );
+
   const persona = humanizePersona(campaign.persona);
   const renderableMediaList = media.filter((m) => m.origin !== "referenced");
 
   // Re-group the (locally owned) assets so optimistic status changes reflect live.
   const grouped = CATEGORY_ORDER.map((cat) => ({ cat, items: assets.filter((a) => a.category === cat) })).filter((g) => g.items.length > 0);
+  // Still open, reviewed, and nothing raised — the ones worth a single decision.
+  const cleanAssets = assets.filter((a) => isActionable(a.status) && isCleanForBulkApproval(a));
+  // Everything still awaiting a decision, in the order the page lists it, so the
+  // queue walks the campaign the same way reading it top to bottom would.
+  const queueAssets = grouped
+    .flatMap((g) => g.items)
+    .filter((a) => isActionable(a.status))
+    .map((asset) => ({ campaignId: campaign.id, campaignName: campaign.name, asset }));
   // BYO send channel: which approved deliverable is open in the export modal.
   const [externalSendFor, setExternalSendFor] = useState<CampaignWorkspaceAsset | null>(null);
+  const router = useRouter();
+
+  // Where this campaign is, in four steps. Derived from the SAME `launchState`
+  // the header counts and the launch panel already read, so the spine cannot
+  // drift from the numbers beside it.
+  //
+  // Deliberately NOT recomputed from the optimistic `assets` state. In the
+  // backend-less preview a decision looks like it does not move the spine —
+  // `decideCampaignAsset` short-circuits at `isSupabaseAdminConfigured()` and
+  // returns `persisted: false` WITHOUT calling `revalidatePath`, so the server
+  // props never change while the card's own pill flips optimistically. That is
+  // a demo artifact, not staleness: on a configured workspace the decision
+  // revalidates and the header, the readiness panel and this all refresh
+  // together.
+  //
+  // Deriving from client state instead would also make `launchState.ready`
+  // optimistic, which gates the Launch button — an approve that failed
+  // server-side would leave a real outbound control enabled.
+  const spine = deriveCampaignSpine({
+    hasBrief: Boolean(
+      campaign.objective?.trim() || campaign.campaignTheme?.trim() || campaign.audienceSummary?.trim(),
+    ),
+    requiredCount: launchState.requiredCount,
+    approvedCount: launchState.approvedCount,
+    pendingCount: launchState.pendingCount,
+    deployedCount: launchState.deployedCount,
+    live: launchState.live,
+    ready: launchState.ready,
+  });
 
   function setAssetStatus(assetId: string, status: string) {
     setAssets((as) => as.map((a) => (a.id === assetId ? { ...a, status, approval: a.approval ? { ...a.approval, status } : a.approval } : a)));
   }
+
+  /**
+   * Fill in the one value a finding is asking for (BSR-743).
+   *
+   * No optimistic update. Everything else here can predict its own result — a
+   * status flips to a value we already know. This one cannot: the substitution
+   * happens server-side against the copy as it stands now, and it legitimately
+   * refuses when the placeholder has been rewritten since the review. Guessing
+   * the new body locally would show the operator an edit that did not happen.
+   */
+  function applyFix(assetId: string, finding: CampaignAssetFinding, value: string) {
+    if (pending) return;
+    setErr(null);
+    startTransition(async () => {
+      const res = await applyFindingFixAction({ campaignId: campaign.id, findingId: finding.id, value });
+      if (!res.ok) {
+        setErr(res.error);
+        return;
+      }
+      if (!res.persisted) {
+        setErr("Not connected to a workspace, so nothing was saved.");
+        return;
+      }
+      // The server revalidates; drop the finding locally so the row does not sit
+      // there asking for a value it already has.
+      setAssets((as) =>
+        as.map((a) => (a.id === assetId ? { ...a, findings: a.findings.filter((f) => f.id !== finding.id) } : a)),
+      );
+    });
+  }
+
+  function toggleCard(assetId: string) {
+    setOpenCards((current) => {
+      const next = new Set(current);
+      if (!next.delete(assetId)) next.add(assetId);
+      return next;
+    });
+  }
+
+  function toggleFullCopy(assetId: string) {
+    setFullCopy((current) => {
+      const next = new Set(current);
+      if (!next.delete(assetId)) next.add(assetId);
+      return next;
+    });
+  }
+
+  /**
+   * Open a finding and take the reviewer to the words it quotes. Clamped copy
+   * has to open too, or the highlight it scrolls to is behind the fold — which
+   * is why the jump waits for the commit below rather than running here.
+   */
+  function focusFinding(assetId: string, index: number) {
+    const key = `${assetId}:${index}`;
+    const opening = !openFindings.has(key);
+    setOpenFindings((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+    if (!opening) return;
+    setFullCopy((current) => new Set(current).add(assetId));
+    pendingMark.current = markId(assetId, index);
+  }
+
+  // Jump only once the clamp has actually lifted, or the target is still behind
+  // the fold and lands in the wrong place. An effect, not requestAnimationFrame:
+  // rAF does not fire in a throttled tab, and a click that silently does nothing
+  // is worse than one that jumps a frame late.
+  useEffect(() => {
+    const id = pendingMark.current;
+    if (!id) return;
+    pendingMark.current = null;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(id)?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+  }, [openFindings, fullCopy]);
 
   function decide(asset: CampaignWorkspaceAsset, decision: "approved" | "declined" | "archived") {
     if (pending) return;
     setErr(null);
     const prev = asset.status;
     setAssetStatus(asset.id, decision);
+    // Decided means done with, so it folds away and the next one is in reach.
+    // Re-opened on failure below, with the card back in the state it was in.
+    setOpenCards((current) => {
+      const next = new Set(current);
+      next.delete(asset.id);
+      return next;
+    });
     startTransition(async () => {
       const res = await decideCampaignAsset(campaign.id, asset.id, decision);
       if (!res.ok) {
         setAssetStatus(asset.id, prev);
+        setOpenCards((current) => new Set(current).add(asset.id));
         setErr(res.error);
       }
     });
   }
 
+  /**
+   * Approve every deliverable a claims review passed with nothing flagged.
+   *
+   * Deliberately narrow: only pieces that were actually reviewed qualify — see
+   * isCleanForBulkApproval. Approving still sends nothing; outbound stays locked
+   * behind launch either way.
+   */
+  function approveAllClean() {
+    if (pending || cleanAssets.length === 0) return;
+    setErr(null);
+    setConfirmBulk(false);
+    const targets = cleanAssets.map((a) => ({ id: a.id, status: a.status }));
+    targets.forEach((t) => setAssetStatus(t.id, "approved"));
+    startTransition(async () => {
+      const results = await Promise.all(targets.map((t) => decideCampaignAsset(campaign.id, t.id, "approved")));
+      const failed = targets.filter((_, i) => !results[i].ok);
+      if (failed.length === 0) return;
+      // Put back only what actually failed — a partial success must not look
+      // like a total one, and must not roll back the approvals that landed.
+      failed.forEach((t) => setAssetStatus(t.id, t.status));
+      const firstError = results.find((r) => !r.ok);
+      setErr(
+        `${failed.length} of ${targets.length} could not be approved${firstError && !firstError.ok ? `: ${firstError.error}` : ""}. The rest went through.`,
+      );
+    });
+  }
+
   function submitRevision(asset: CampaignWorkspaceAsset) {
-    const instruction = reviseText.trim();
+    requestRevisionFor(asset, reviseText);
+  }
+
+  /** The one revision path. The list passes its inline textarea, the queue
+   *  passes its own — neither owns the request. */
+  function requestRevisionFor(asset: CampaignWorkspaceAsset, rawInstruction: string) {
+    const instruction = rawInstruction.trim();
     if (!instruction || pending) return;
     setErr(null);
     const prev = asset.status;
@@ -416,7 +1330,42 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       if (!res.ok) {
         setAssetStatus(asset.id, prev);
         setErr(res.error);
+        return;
       }
+      // The request is recorded either way, so the status stays
+      // revision_requested — but `dispatched: false` means Arc has NOT started,
+      // and nothing will re-surface the task on its own. Saying so now is the
+      // difference between a visible failure and a silent one.
+      setUndispatched((current) => {
+        const next = new Map(current);
+        if (res.persisted && res.dispatched === false && res.agentTaskId) next.set(asset.id, res.agentTaskId);
+        else next.delete(asset.id);
+        return next;
+      });
+    });
+  }
+
+  /** Re-wake a revision Arc never started. Reuses the existing task — never a second one. */
+  function retryRevision(assetId: string, agentTaskId: string) {
+    if (pending) return;
+    setErr(null);
+    startTransition(async () => {
+      const res = await retryCampaignRevision(campaign.id, agentTaskId);
+      if (!res.ok) {
+        setErr(res.error);
+        return;
+      }
+      if (res.persisted && res.dispatched === false) {
+        setErr("Arc still isn't reachable. The request is saved — try again in a few minutes.");
+        return;
+      }
+      // Picked up: clear both notices for this asset.
+      setStalled((current) => current.filter((s) => s.assetId !== assetId));
+      setUndispatched((current) => {
+        const next = new Map(current);
+        next.delete(assetId);
+        return next;
+      });
     });
   }
 
@@ -475,6 +1424,15 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       origin: "attached",
       lineage: [],
       prompt: null,
+      // The optimistic tile knows neither — the read path fills them in on the
+      // next refresh. Guessing here would put an invented ratio on the tile.
+      format: null,
+      riskFlags: [],
+      libraryAssetId: item.id,
+      storagePath: null,
+      // The attach just happened; whatever review the asset carries arrives
+      // with the next read. Claiming one here would be inventing it.
+      review: { state: "unreviewed", reviewer: null, reviewedAt: null, notes: null },
       title: item.fileName,
       url: item.url,
       thumbnailUrl: item.url,
@@ -533,8 +1491,15 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
         </div>
         <div className="crow">
           <div className="cmain">
-            <h1 className="cname">{campaign.name}</h1>
-            <div className="csub">{campaign.objective || campaign.audienceSummary}</div>
+            <h2 className="cname">{campaign.name}</h2>
+            {/* `campaignTheme` joins the chain because it is the only one of the
+                three required at creation — the other two are null on most live
+                campaigns. The whole chain was previously inert: `objective` was
+                never empty, because the read-model substituted a placeholder
+                sentence for a null one. */}
+            {(campaign.objective || campaign.campaignTheme || campaign.audienceSummary) && (
+              <div className="csub">{campaign.objective || campaign.campaignTheme || campaign.audienceSummary}</div>
+            )}
             <div className="cchips">
               {persona && (
                 <span className="chip persona">
@@ -544,7 +1509,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
               )}
               <span className={`pill ${lifecycleTone(launchState.lifecycle)}`}>
                 <span className="pd" />
-                {launchState.lifecycle}
+                {lifecycleLabel(launchState.lifecycle)}
               </span>
               {campaign.owner && (
                 <span className="chip ghost">
@@ -569,10 +1534,44 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
               <i style={{ width: `${launchState.requiredCount ? Math.round((launchState.approvedCount / launchState.requiredCount) * 100) : 0}%` }} />
             </div>
             <div className="csmeta">
-              {launchState.pendingCount} pending · {launchState.deployedCount} live
+              {/* "pending" and "live" were a fifth and sixth word for states the
+                  rest of this screen calls "Needs you" and "Sending". */}
+              {launchState.pendingCount} need you · {launchState.deployedCount} sending
             </div>
           </div>
         </div>
+        {/* The journey, above the work. Every value comes from
+            `deriveCampaignSpine` — this screen must not compute a second answer
+            to "where am I", which is the bug it already had when the board's
+            pill and its own header disagreed. */}
+        <CampaignSpine
+          steps={spine}
+          onSelect={(key) => {
+            setErr(null);
+            if (key === "brief") {
+              // The brief has always existed — "The brief" is the first section
+              // of Overview — but nothing pointed at it, so it went unread by
+              // the person about to approve the work it describes.
+              setTab("overview");
+              return;
+            }
+            if (key === "review") {
+              setTab("deliverables");
+              // Straight into the queue when there is something to decide; the
+              // list is the right landing when there isn't.
+              if (queueAssets.length > 0) setQueueOpen(true);
+              return;
+            }
+            if (key === "launch") {
+              // Launch readiness lives in the right rail beside this tab.
+              setTab("deliverables");
+              return;
+            }
+            // Send is only reachable once launched, and the Outbox owns it —
+            // this screen never confirms a send.
+            router.push("/outbox");
+          }}
+        />
       </div>
 
       <div className="ctabs">
@@ -590,9 +1589,82 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
             <p className="cerr">{err}</p>
           )}
 
+          {/* One decision for the deliverables that were reviewed and raised
+              nothing. Offered from two up — at one, the card's own button is
+              already the shorter path. */}
+          {/* Two ways through the same queue: read the list, or be handed one
+              deliverable at a time. Offered from two up — with one, the card is
+              already the focused view.
+
+              GOLD, not ghost. This is the screen's primary action: the whole
+              page exists so a human can decide these, and the control that
+              walks them through one at a time was the quietest thing on it —
+              quieter than "Approve all clean" below, which is the shortcut, not
+              the path. The hierarchy now matches what the product wants people
+              to do.
+
+              The label deliberately does NOT repeat the count. The sentence
+              beside it already says "6 deliverables need a decision", and a
+              button reading "Review 6 deliverables" next to that is one fact
+              printed twice — the same redundancy `nextActionFor` exists to
+              avoid on the board. "One at a time" says what the mode IS, which
+              the count cannot. */}
+          {tab === "deliverables" && queueAssets.length > 1 && (
+            <div className="rqstart">
+              <span>
+                <b>{queueAssets.length} deliverables</b> need a decision.
+              </span>
+              <button className="cbtn gold" onClick={() => { setErr(null); setQueueOpen(true); }} disabled={pending}>
+                {svg('<path d="M4 6h16M4 12h16M4 18h9"/>')}
+                Review one at a time
+              </button>
+            </div>
+          )}
+
+          {tab === "deliverables" && cleanAssets.length > 1 && (
+            <div className={confirmBulk ? "bulkbar confirming" : "bulkbar"}>
+              {confirmBulk ? (
+                <>
+                  <div className="bulktext">
+                    <b>Approve {cleanAssets.length} deliverables?</b> Nothing sends — approved work stays
+                    locked until you launch the campaign.
+                    <ul className="bulklist">
+                      {cleanAssets.map((a) => (
+                        <li key={a.id}>{a.title}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="bulkacts">
+                    <button className="cbtn ghost" onClick={() => setConfirmBulk(false)} disabled={pending}>
+                      Cancel
+                    </button>
+                    <button className="cbtn gold" onClick={approveAllClean} disabled={pending}>
+                      {svg('<path d="M5 12l4 4L19 6"/>')}
+                      {pending ? "Approving…" : `Approve ${cleanAssets.length}`}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="bulktext">
+                    {cleanAssets.length} deliverables passed their claims review with nothing flagged.
+                  </span>
+                  <button
+                    className="cbtn ghost"
+                    onClick={() => { setErr(null); setConfirmBulk(true); }}
+                    disabled={pending}
+                  >
+                    {svg('<path d="M5 12l4 4L19 6"/>')}
+                    Approve all clean
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {tab === "deliverables" &&
             (grouped.length === 0 ? (
-              <p className="empty-note">No deliverables yet. Arc drafts approval-gated pieces here as it builds the package.</p>
+              <p className="empty-note">Nothing here yet. Arc drafts the assets here as it builds the campaign — each one waits on your approval.</p>
             ) : (
               grouped.map(({ cat, items }) => (
                 <div className="csec" key={cat}>
@@ -603,25 +1675,70 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                     const meta = statusMeta(asset.status);
                     const actionable = isActionable(asset.status);
                     const assetMedia = asset.media.filter((m) => m.origin !== "referenced");
+                    const summary = summarizeReview(asset);
+                    const copyOpen = fullCopy.has(asset.id);
+                    const cardOpen = openCards.has(asset.id);
                     return (
-                      <div className="deliver" key={asset.id}>
-                        <div className="dhead">
-                          <div className="dtitle">{asset.title}</div>
+                      <div className={cardOpen ? "deliver open" : "deliver"} key={asset.id}>
+                        {/* The collapsed row has to carry enough to triage on — status,
+                            what the review found, whether media is attached — or folding
+                            the list just hides the work instead of ordering it. */}
+                        <button
+                          type="button"
+                          className="dsum"
+                          onClick={() => toggleCard(asset.id)}
+                          aria-expanded={cardOpen}
+                        >
+                          <span className="dchev" aria-hidden="true">
+                            {svg('<path d="M9 6l6 6-6 6"/>')}
+                          </span>
+                          <span className="dsumhead">
+                            <span className="dtitle">{asset.title}</span>
+                            <span className="dmeta">
+                              {asset.channel && <span>{asset.channel}</span>}
+                              {assetSourceLabel(asset.toolSource) && <span>· {assetSourceLabel(asset.toolSource)}</span>}
+                              {assetMedia.length > 0 && <span>· {assetMedia.length} attached</span>}
+                              {/* Only when there is a date to print. `updatedAt`
+                                  is empty on every demo asset and nullable on
+                                  the live read, and this rendered the bare word
+                                  "updated" with nothing after it — a label for a
+                                  fact the row didn't have. */}
+                              {fmtDate(asset.updatedAt) && <span>· updated {fmtDate(asset.updatedAt)}</span>}
+                            </span>
+                          </span>
+                          {summary.chip && (
+                            <span className={`dsumrev tone-${summary.tone}`}>
+                              <i aria-hidden="true" />
+                              {summary.chip}
+                            </span>
+                          )}
                           <span className={`pill ${meta.tone}`}>
                             <span className="pd" />
                             {meta.label}
                           </span>
-                        </div>
-                        <div className="dmeta">
-                          {asset.channel && <span>{asset.channel}</span>}
-                          {asset.toolSource && <span>· {asset.toolSource}</span>}
-                          <span>· updated {fmtDate(asset.updatedAt)}</span>
-                        </div>
-                        {asset.preview && <div className="dbody">{asset.preview}</div>}
+                        </button>
+                        {cardOpen && (
+                        <div className="dwrap">
+                        <ReviewBlock
+                          asset={asset}
+                          summary={summary}
+                          awaitingReview={awaitingClaimsReview(asset)}
+                          openFindings={openFindings}
+                          onFocusFinding={focusFinding}
+                          onEditCopy={() => openEdit(asset)}
+                          canEdit={actionable}
+                          onApplyFix={actionable ? (finding, value) => applyFix(asset.id, finding, value) : undefined}
+                          pending={pending}
+                        />
+                        <DeliverableCopy asset={asset} expanded={copyOpen} onToggle={() => toggleFullCopy(asset.id)} />
                         {assetMedia.length > 0 && (
                           <div className="mediagrid">
-                            {assetMedia.map((m) => (
-                              <MediaTile key={m.id} media={m} />
+                            {assetMedia.map((m, mediaIndex) => (
+                              <MediaTile
+                                key={m.id}
+                                media={m}
+                                onOpen={() => setLightbox({ items: assetMedia, index: mediaIndex })}
+                              />
                             ))}
                           </div>
                         )}
@@ -657,56 +1774,34 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                             </button>
                           )
                         )}
-                        {asset.revision && <RevisionDiff revision={asset.revision} />}
-                        {asset.blockedPhrases.length > 0 && (
-                          <div className="dblocked">
-                            <b>Blocked language</b> — this copy contains{" "}
-                            {asset.blockedPhrases.map((p) => `“${p}”`).join(", ")}, which your Brand Kit bans.
-                            Rewrite it before approving.
-                          </div>
-                        )}
-                        {asset.complianceNotes && <div className="dcompliance">Guardrail: {asset.complianceNotes}</div>}
-                        {awaitingClaimsReview(asset) && (
-                          <div className="dunrev">
-                            <b>Not yet reviewed</b> — nothing has checked these claims against your evidence.
-                            On a fresh draft the review usually lands within a minute; until then, an empty
-                            review is not a clean one.
-                          </div>
-                        )}
-                        {asset.recommendation && (
-                          <div className="drec">
-                            <div className="drh">
-                              {asset.recommendation.agent} recommends
-                              <span className="drv">{asset.recommendation.verdict}</span>
+                        {(() => {
+                          // A revision Arc never started. Two ways to get here:
+                          // the wake failed just now (`undispatched`), or the
+                          // task has sat `queued` past the stale cutoff
+                          // (`stalledByAsset`, from the server read). Both mean
+                          // the same thing to the operator and both are fixed
+                          // the same way, so they render as one notice.
+                          const taskId = undispatched.get(asset.id) ?? stalledByAsset.get(asset.id)?.agentTaskId;
+                          if (!taskId) return null;
+                          const instruction = stalledByAsset.get(asset.id)?.instruction;
+                          return (
+                            <div className="dstalled">
+                              <b>Arc hasn&rsquo;t started this yet</b> — your change was saved, but it never
+                              reached Arc, and it will not start on its own.
+                              {instruction ? <q className="dsq">{instruction}</q> : null}
+                              <button
+                                type="button"
+                                className="cbtn"
+                                onClick={() => retryRevision(asset.id, taskId)}
+                                disabled={pending}
+                              >
+                                {svg('<path d="M21 12a9 9 0 11-6.2-8.6"/><path d="M21 4v5h-5"/>')}
+                                Send it again
+                              </button>
                             </div>
-                            {asset.recommendation.rationale && <p className="drb">{asset.recommendation.rationale}</p>}
-                            {asset.findings.length > 0 && (
-                              <ul className="dfind">
-                                {asset.findings.map((f, i) => (
-                                  <li key={i} className={f.severity === "blocker" ? "dfb" : undefined}>
-                                    {f.claim && <q>{f.claim}</q>} {f.message}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                            {asset.recommendation.riskFlags.length > 0 && (
-                              <div className="flags">
-                                {asset.recommendation.riskFlags.map((f) => (
-                                  <span className="flag" key={f}>
-                                    {f}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {asset.recommendation.suggestedEdits && (
-                              <p className="drb">
-                                <b>Suggested edits:</b> {asset.recommendation.suggestedEdits}
-                              </p>
-                            )}
-                            <p className="drn">Advisory only — you decide.</p>
-                          </div>
-                        )}
-
+                          );
+                        })()}
+                        {asset.revision && <RevisionDiff revision={asset.revision} />}
                         {editFor === asset.id ? (
                           <div className="revbox editbox">
                             <input
@@ -726,7 +1821,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                               aria-label="Deliverable copy"
                             />
                             <div className="revactions">
-                              <span className="editnote">Edits stay approval-gated — outbound is untouched.</span>
+                              <span className="editnote">Your edits still need approving. Nothing goes out because of them.</span>
                               <button className="cbtn ghost" onClick={() => setEditFor(null)} disabled={pending}>
                                 Cancel
                               </button>
@@ -784,6 +1879,22 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                                 Send it yourself
                               </button>
                             )}
+                            {isExportable(asset) && (
+                              <button
+                                type="button"
+                                className="cbtn ghost"
+                                onClick={() =>
+                                  downloadMarkdown(
+                                    `${exportSlug(asset.title)}.md`,
+                                    buildDeliverableExport(asset, { campaignName: campaign.name, now: new Date().toLocaleDateString("en-US") }),
+                                  )
+                                }
+                                title="Download this approved deliverable — copy and attached media — to keep or send from your own tool"
+                              >
+                                {svg('<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>')}
+                                Download
+                              </button>
+                            )}
                             {/^(approved|archived)/i.test(asset.status) && (
                               <button type="button" className="cbtn ghost dreopen" onClick={() => reopen(asset)} disabled={pending} title="Send this deliverable back to review">
                                 {svg('<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 00-14-3M4 14a8 8 0 0014 3"/>')}
@@ -791,6 +1902,8 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                               </button>
                             )}
                           </div>
+                        )}
+                        </div>
                         )}
                       </div>
                     );
@@ -871,6 +1984,15 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                       <b>Recommended:</b> {reasoning.recommendedAction}
                     </p>
                   )}
+                  {/* Said once, in the muted voice of an empty state — not twice
+                      in `.rbody`, which is the styling real reasoning uses. The
+                      section stays rather than disappearing: on an Arc-drafted
+                      campaign, "no reasoning was recorded" is itself worth
+                      knowing, and hiding it would make missing provenance
+                      indistinguishable from provenance nobody looked for. */}
+                  {!reasoning.whyBuilt && !reasoning.recommendedAction && (
+                    <p className="empty-note">Arc recorded no reasoning for this campaign.</p>
+                  )}
                   {reasoning.guardrailFlags.length > 0 && (
                     <div className="flags">
                       {reasoning.guardrailFlags.map((f) => (
@@ -947,24 +2069,39 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
           <div className="snsec">
             <h3 className="snh">Launch readiness</h3>
             <div className="lstate">
-              <div className={`lpill ${lifecycleTone(launchState.lifecycle)}`}>{launchState.lifecycle}</div>
-              <div className="lrow">
-                <span>Approved</span>
-                <b>{launchState.approvedCount}</b>
-              </div>
-              <div className="lrow">
-                <span>Pending</span>
-                <b>{launchState.pendingCount}</b>
-              </div>
-              <div className="lrow">
-                <span>Required</span>
-                <b>{launchState.requiredCount}</b>
-              </div>
+              <div className={`lpill ${lifecycleTone(launchState.lifecycle)}`}>{lifecycleLabel(launchState.lifecycle)}</div>
+              {/* Approved / needs-you / required used to be three rows here, and
+                  the header card two inches away already says all three
+                  ("0 of 3 approved · 3 need you · 0 sending") with a progress bar
+                  behind them. This panel is about the one thing the header
+                  can't do — launching — so it states where that stands in a
+                  sentence and gets out of the way. */}
               <div className="lnote">
                 {launchState.ready
                   ? "Every gating piece is approved. Launch is a separate, explicit step."
-                  : "Approve the remaining deliverables to make this campaign launch-ready."}
+                  : `${countOf(launchState.requiredCount - launchState.approvedCount, ASSET_NOUN)} still need approving before this can launch.`}
               </div>
+            </div>
+
+            <div className="lctrl">
+              <button
+                className="cbtn ghost"
+                disabled={launchState.approvedCount === 0}
+                title={
+                  launchState.approvedCount === 0
+                    ? "Approve a deliverable first — the export gate is the same as the send gate"
+                    : "Download every approved deliverable as one file, to keep or send from your own tool"
+                }
+                onClick={() =>
+                  downloadMarkdown(
+                    `${exportSlug(campaign.name)}.md`,
+                    buildCampaignExport(campaign, assets, new Date().toLocaleDateString("en-US")).content,
+                  )
+                }
+              >
+                {svg('<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>')}
+                Download campaign
+              </button>
             </div>
 
             {campaign.launchLocked && (
@@ -1008,8 +2145,14 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
             <div className="snsec">
               <h3 className="snh">Creative</h3>
               <div className="mediagrid">
-                {renderableMediaList.slice(0, 4).map((m) => (
-                  <MediaTile key={m.id} media={m} />
+                {renderableMediaList.slice(0, 4).map((m, mediaIndex) => (
+                  // Opens against the whole list, not the visible four — the
+                  // arrows should reach the creative the strip had to cut.
+                  <MediaTile
+                    key={m.id}
+                    media={m}
+                    onOpen={() => setLightbox({ items: renderableMediaList, index: mediaIndex })}
+                  />
                 ))}
               </div>
             </div>
@@ -1038,6 +2181,32 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
           </div>
         </aside>
       </div>
+
+      {queueOpen ? (
+        <ReviewQueue
+          title={campaign.name}
+          queue={queueAssets}
+          pending={pending}
+          error={err}
+          onDecide={decide}
+          onRevise={requestRevisionFor}
+          onApplyFix={(asset, finding, value) => applyFix(asset.id, finding, value)}
+          // Editing leaves the queue for the list's editor, opened on the piece
+          // that was on screen — one editor, not two that can disagree.
+          onEdit={(asset) => { setQueueOpen(false); setOpenCards((c) => new Set(c).add(asset.id)); openEdit(asset); }}
+          onClose={() => setQueueOpen(false)}
+        />
+      ) : null}
+
+      {lightbox ? (
+        <MediaLightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          onClose={closeLightbox}
+          onStep={stepLightbox}
+          onDecide={decideMedia}
+        />
+      ) : null}
 
       {externalSendFor ? (
         <ExternalSendModal

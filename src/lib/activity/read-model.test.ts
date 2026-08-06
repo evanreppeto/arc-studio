@@ -8,7 +8,6 @@ import {
   groupActivityEntriesByDay,
   mapCampaignEvent,
   mapDecision,
-  mapEvent,
   mapRun,
   mergeActivityEntries,
   sourceLimitForQuery,
@@ -42,6 +41,7 @@ function entry(
     kind: "run",
     tone: "blue",
     title: id,
+    predicate: "logged a run",
     detail: "",
     actor: "Arc",
     actorType: "arc",
@@ -107,7 +107,7 @@ describe("applyActivityFilters", () => {
       title: "Evan approved Launch Email",
       detail: "Approval recorded for Launch Campaign.",
       relatedLabel: "Launch Campaign",
-      insightLabel: "Needs review",
+      insightLabel: "Needs you",
     }),
     entry("risk", "2026-06-11T14:00:00Z", {
       actor: "Arc",
@@ -165,7 +165,7 @@ describe("applyActivityFilters", () => {
     );
     const olderNeedsReviewEntry = entry("older-needs-review", "2026-06-11T12:00:00Z", {
       category: "approval",
-      insightLabel: "Needs review",
+      insightLabel: "Needs you",
       tone: "amber",
     });
     const query = { needsReview: true };
@@ -181,7 +181,7 @@ describe("applyActivityFilters", () => {
       [
         entry("active-review", "2026-06-12T14:00:00Z", {
           category: "asset",
-          insightLabel: "Needs review",
+          insightLabel: "Needs you",
           tone: "amber",
         }),
         entry("declined-history", "2026-06-12T13:00:00Z", {
@@ -207,7 +207,7 @@ describe("buildActivitySummary", () => {
     const summary = buildActivitySummary([
       entry("review", "2026-06-12T14:00:00Z", {
         category: "approval",
-        insightLabel: "Needs review",
+        insightLabel: "Needs you",
         actorType: "human",
       }),
       entry("arc", "2026-06-12T13:00:00Z", {
@@ -240,7 +240,7 @@ describe("buildActivitySummary", () => {
     const summary = buildActivitySummary([
       entry("active-review", "2026-06-12T14:00:00Z", {
         category: "asset",
-        insightLabel: "Needs review",
+        insightLabel: "Needs you",
         tone: "amber",
       }),
       entry("declined-history", "2026-06-12T13:00:00Z", {
@@ -290,15 +290,15 @@ describe("getRecentActivity source resilience", () => {
 
   it("keeps rendering other sources when one source's query fails (schema drift)", async () => {
     const client = fakeClient({
-      events: {
+      campaign_events: {
         data: [
           {
-            id: "e1",
-            actor: "Evan",
-            subject_type: "lead",
-            subject_id: "lead_1",
-            type: "lead.created",
-            payload: { title: "New lead", detail: "Ada entered the workspace." },
+            id: "ce1",
+            campaign_id: "camp_1",
+            event_type: "asset_generated",
+            actor: "Arc",
+            detail: "Arc drafted a hero image.",
+            payload: {},
             occurred_at: "2026-06-12T14:00:00Z",
           },
         ],
@@ -310,7 +310,7 @@ describe("getRecentActivity source resilience", () => {
 
     expect(result.status).toBe("live");
     if (result.status !== "live") return;
-    expect(result.entries.some((entry) => entry.id === "event:e1")).toBe(true);
+    expect(result.entries.some((entry) => entry.id === "campaign:ce1")).toBe(true);
     expect(result.entries.some((entry) => entry.kind === "run")).toBe(false);
   });
 
@@ -358,7 +358,9 @@ describe("getRecentActivity source resilience", () => {
     const result = await getRecentActivity({}, client, "org-9");
     expect(result.status).toBe("live");
 
-    for (const table of ["approval_decisions", "agent_outputs", "campaign_events", "events"]) {
+    // `events` was here until BSR-671 retired it — nothing has ever written it,
+    // so it could only be a query that returns nothing.
+    for (const table of ["approval_decisions", "agent_outputs", "campaign_events"]) {
       expect(calls).toContainEqual([table, "eq", "org_id", "org-9"]);
     }
     // agent_run_logs has no org_id — scoped via its task's org instead.
@@ -435,7 +437,7 @@ describe("mapCampaignEvent", () => {
     expect(mapped).toMatchObject({
       tone: "amber",
       category: "campaign",
-      insightLabel: "Needs review",
+      insightLabel: "Needs you",
       // The campaign detail page is the review surface. `/approvals?item=…` was
       // never a route in this app, and Arc cites these hrefs back to operators.
       href: "/campaigns/camp_1",
@@ -458,9 +460,6 @@ describe("mapCampaignEvent", () => {
     expect(mapRun({ id: "r2", task_id: "task_x", run_status: "completed" }, links).href).toBe("/arc");
     expect(mapRun({ id: "r3", run_status: "completed" }, links).href).toBeNull();
 
-    expect(mapEvent({ id: "e1", subject_type: "approval", subject_id: "approval_9", type: "approval.updated" }, links).href).toBe("/campaigns/camp_9");
-    expect(mapEvent({ id: "e2", subject_type: "agent_task", subject_id: "task_x", type: "task.updated" }, links).href).toBe("/arc");
-    expect(mapEvent({ id: "e3", subject_type: "lead", subject_id: "lead_1", type: "lead.created" }, links).href).toBe("/crm/leads/lead_1");
   });
 });
 
@@ -515,78 +514,3 @@ describe("getRecentActivity — demo gate", () => {
   });
 });
 
-describe("mapEvent", () => {
-  it("maps CRM events to readable activity rows with CRM hrefs", () => {
-    const mapped = mapEvent({
-      id: "evt_1",
-      actor: "Evan",
-      subject_type: "lead",
-      subject_id: "lead_1",
-      type: "lead.created",
-      payload: { title: "New lead created", detail: "Ada Lovelace entered the workspace.", relatedLabel: "Ada Lovelace" },
-      occurred_at: "2026-06-12T14:00:00Z",
-    });
-
-    expect(mapped).toMatchObject({
-      id: "event:evt_1",
-      kind: "event",
-      actor: "Evan",
-      actorType: "human",
-      category: "crm",
-      title: "New lead created",
-      detail: "Ada Lovelace entered the workspace.",
-      relatedLabel: "Ada Lovelace",
-      href: "/crm/leads/lead_1",
-    });
-  });
-
-  it("never exposes raw event names when no title is present", () => {
-    const mapped = mapEvent({
-      id: "evt_2",
-      actor: "system.process.queued_task",
-      subject_type: "campaign",
-      subject_id: "campaign_1",
-      type: "campaign.ready_for_review",
-      payload: {},
-      occurred_at: "2026-06-12T14:00:00Z",
-    });
-
-    expect(mapped.title).toBe("Campaign Ready For Review");
-    expect(mapped.actor).toBe("System");
-    expect(mapped.href).toBe("/campaigns/campaign_1");
-  });
-
-  it("classifies broader subjects, generic agent actors, and unknown insights", () => {
-    const assetEvent = mapEvent({
-      id: "evt_3",
-      actor: "research_agent",
-      subject_type: "marketing_asset_revision",
-      subject_id: "asset_1",
-      type: "record.touched",
-      payload: {},
-      occurred_at: "2026-06-12T14:00:00Z",
-    });
-    const draftEvent = mapEvent({
-      id: "evt_4",
-      actor: "agent.worker",
-      subject_type: "email_draft",
-      subject_id: "draft_1",
-      type: "record.touched",
-      payload: {},
-      occurred_at: "2026-06-12T14:00:00Z",
-    });
-
-    expect(assetEvent).toMatchObject({
-      actor: "Research Agent",
-      actorType: "sub_agent",
-      category: "asset",
-      insightLabel: "Data changed",
-    });
-    expect(draftEvent).toMatchObject({
-      actor: "Agent Worker",
-      actorType: "sub_agent",
-      category: "asset",
-      insightLabel: "Data changed",
-    });
-  });
-});

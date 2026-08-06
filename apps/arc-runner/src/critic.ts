@@ -35,10 +35,18 @@ import type { DraftForReview } from "./types";
 
 export type CriticVerdict = "grounded" | "unsupported" | "fabricated";
 
+export type CriticFix = {
+  target: string;
+  label: string;
+  kind: "text" | "phone" | "url" | "date" | "address";
+};
+
 export type CriticFinding = {
   claim: string;
   verdict: CriticVerdict;
   note: string;
+  /** Set only when the whole problem is one missing value — see submit_review. */
+  fix?: CriticFix | null;
 };
 
 export type CriticReview = {
@@ -66,7 +74,26 @@ HOW TO WORK:
 
 RECOMMENDATION: "approve" only when every checkable claim is grounded. "request revision" when anything is unsupported or fabricated. "decline" when the draft's central premise is fabricated and a rewrite wouldn't save it.
 
-Be specific and short. "The 60-minute response time is not in any proof point; performance shows a 3.2h median" beats "this may be inaccurate". Your rationale is read by a busy operator deciding whether to ship this.
+WHO READS THIS: the owner of the business, or whoever they trust with marketing. Not an engineer, and never you. They are deciding in seconds whether to ship this draft, and everything you write lands on a card in front of that decision.
+
+So write it the way you would say it to them:
+- No internal identifiers. No record ids, learning ids, node keys, or UUIDs. If a proof point matters, name it the way a person would ("the IICRC certification document"), not by its key.
+- No tool names and no account of your own searching. "Searches for 'reply' and 'callback' returned nothing" is you describing your process; "nothing in the workspace describes a call-back workflow" is the finding. Only ever write the second.
+- No column or field names. Say "no response-time commitment is recorded", not "sla_minutes is null".
+- Plain sentences. If a claim is fine, say nothing about it — a grounded claim is the absence of a finding, not a paragraph confirming it.
+
+LENGTH IS PART OF THE JOB. A reviewer who has to read 300 words to find two problems will stop reading, and then your review protects nobody. Every field below has a budget. Stay inside it.
+
+Be specific and short. "The 60-minute response time is not in any proof point; performance shows a 3.2h median" beats "this may be inaccurate".
+
+WHEN THE PROBLEM IS ONE MISSING VALUE, ASK FOR IT. Some findings are judgement — a claim overstates what the evidence supports, and only a person rewriting the sentence can settle it. Others are a blank: the copy says "Call [24/7 line]" and the only thing wrong is that nobody has put the number in. For that second kind, attach a "fix" to the finding naming the exact text to replace and what to ask for, and the reviewer gets a box to type it into instead of a paragraph telling them to go and do it themselves.
+
+Only attach a fix when ALL of these hold, and leave it off otherwise — a fix that cannot be applied by typing one value into a box is worse than no fix at all:
+- the whole problem goes away once one value is supplied;
+- that value replaces a specific, literal run of text you can copy out of the draft character for character;
+- you are not guessing what the value should be. You are not filling it in; you are asking.
+
+"target" is that literal text and nothing more — "[24/7 line]", not the sentence around it. If the placeholder appears more than once, every copy is replaced, so name the placeholder rather than one occurrence of it.
 
 You are ADVISORY. You never approve, decline, send, or unlock anything — you tell the human what you found. Do not comment on style, tone, or formatting unless it creates a factual or compliance risk.`;
 
@@ -96,19 +123,50 @@ function submitReviewTool(collect: (review: CriticReview) => void) {
             verdict: z
               .enum(["grounded", "unsupported", "fabricated"])
               .describe("grounded = you found the evidence; unsupported = you could not; fabricated = it contradicts evidence."),
-            note: z.string().describe("The specific evidence that grounds it, or precisely why it doesn't."),
+            fix: z
+              .object({
+                target: z
+                  .string()
+                  .describe(
+                    "The literal text in the draft to replace, copied out character for character — \"[24/7 line]\", not the sentence containing it. Every occurrence is replaced.",
+                  ),
+                label: z
+                  .string()
+                  .describe("What to ask the operator for, in their words: \"The number to call\". Under 6 words; it labels an input box."),
+                kind: z
+                  .enum(["text", "phone", "url", "date", "address"])
+                  .describe("What sort of value this is. Chooses the keyboard on a phone; never used as validation."),
+              })
+              .optional()
+              .describe(
+                "ONLY when the entire problem is one missing value that replaces a literal run of text — a placeholder phone number, a missing address or date. Omit for anything needing judgement or a rewrite: a fix the operator cannot complete by typing one value is worse than none.",
+              ),
+            note: z
+              .string()
+              .describe(
+                "Why, in one or two plain sentences, under 40 words. THE FIRST SENTENCE IS THE ONLY ONE SHOWN by default — the reviewer sees it on a single line beside the quote, and expands for the rest. So the first sentence states the problem; anything else is detail. No tool names, no record ids, no account of what you searched.",
+              ),
           }),
         )
         .describe("Every checkable claim in the draft. Empty only if the draft makes no factual claims at all."),
       recommendation: z
         .enum(["approve", "request revision", "decline"])
         .describe("approve only when every claim is grounded."),
-      rationale: z.string().describe("Short, specific reasoning a busy operator can act on."),
-      suggested_edits: z.string().optional().describe("Concrete changes that would make this approvable."),
+      rationale: z
+        .string()
+        .describe(
+          "Why you landed where you did, for the business owner approving this. Under 60 words, plain sentences, no identifiers or tool names. It sits behind a fold labelled 'Why Arc says this' — the findings above it already carry the specifics, so do not repeat them here.",
+        ),
+      suggested_edits: z
+        .string()
+        .optional()
+        .describe(
+          "The concrete changes that would make this approvable, as a numbered list — '1) … 2) …' — because each one renders as its own row for the reviewer to work through. One line each, under 25 words. Say what to change, not why; the finding already said why.",
+        ),
     },
     async (args) => {
       collect({
-        findings: args.findings,
+        findings: args.findings.map((f) => ({ ...f, fix: f.fix ?? null })),
         recommendation: args.recommendation,
         rationale: args.rationale,
         suggestedEdits: args.suggested_edits ?? "",
@@ -237,7 +295,12 @@ export async function reviewAndRecordDraft(
       rationale: review.rationale,
       risk_flags: riskFlagsFromFindings(review.findings),
       suggested_edits: review.suggestedEdits,
-      findings: review.findings.map((f) => ({ claim: f.claim, verdict: f.verdict, note: f.note })),
+      findings: review.findings.map((f) => ({
+        claim: f.claim,
+        verdict: f.verdict,
+        note: f.note,
+        fix: f.fix ?? null,
+      })),
     });
   } catch (error) {
     console.error(`[arc-runner] draft critic failed for asset ${draft.assetId}:`, error);

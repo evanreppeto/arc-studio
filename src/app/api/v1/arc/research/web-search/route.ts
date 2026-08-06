@@ -1,6 +1,7 @@
 import { INVALID_JSON, arcGuard, fail, ok, readJson } from "@/app/api/v1/arc/_lib/http";
 import { readConnectorCredential } from "@/lib/connectors/credentials";
 import { resolveConnectorCredentialRef } from "@/lib/connectors/read-model";
+import { meterGeminiTextUsage } from "@/lib/ai-usage/gemini-text";
 import { searchWebWithGemini } from "@/lib/research/gemini-web-search";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -10,15 +11,25 @@ function cleanText(value: unknown, maxLength: number): string {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maxLength).trim() : "";
 }
 
-/** Workspace's own Gemini key (Vault) if connected + enabled; else the global env var. */
-async function resolveGeminiKey(workspaceId: string): Promise<string | null> {
+/**
+ * Workspace's own Gemini key (Vault) if connected + enabled; else the global env var.
+ *
+ * Returns WHICH of the two answered, because the two are different payers: a call
+ * on a workspace's own key is billed to that customer by Google directly and is
+ * not our spend. The usage ledger records the distinction (BSR-502) — without it,
+ * no later query could separate our cost from theirs.
+ */
+async function resolveGeminiKey(
+  workspaceId: string,
+): Promise<{ key: string; source: "workspace_vault" | "platform_env" } | null> {
   const client = getSupabaseAdminClient();
   const ref = await resolveConnectorCredentialRef(client, workspaceId, "gemini-research").catch(() => null);
   if (ref) {
     const key = await readConnectorCredential(client, ref).catch(() => null);
-    if (key) return key;
+    if (key) return { key, source: "workspace_vault" };
   }
-  return process.env.GEMINI_API_KEY?.trim() || null;
+  const envKey = process.env.GEMINI_API_KEY?.trim();
+  return envKey ? { key: envKey, source: "platform_env" } : null;
 }
 
 /**
@@ -29,8 +40,8 @@ export async function POST(request: Request) {
   const allowed = await arcGuard(request);
   if (!allowed.ok) return allowed.response;
 
-  const apiKey = await resolveGeminiKey(allowed.scope.workspaceId);
-  if (!apiKey) {
+  const credential = await resolveGeminiKey(allowed.scope.workspaceId);
+  if (!credential) {
     return fail(
       "not_configured",
       "Gemini web search isn't enabled. Connect a Gemini key in Settings → Connectors, or set GEMINI_API_KEY.",
@@ -49,11 +60,20 @@ export async function POST(request: Request) {
   if (!query) return fail("rejected", "query is required.", 400);
 
   try {
-    const research = await searchWebWithGemini({
+    const { usage, ...research } = await searchWebWithGemini({
       query,
       context,
-      apiKey,
+      apiKey: credential.key,
       model: process.env.GEMINI_WEB_SEARCH_MODEL?.trim() || undefined,
+    });
+    // Metered here rather than inside searchWebWithGemini: this is where tenant
+    // scope and the key source exist. Awaited but non-fatal — a ledger problem
+    // must not turn a successful research call into a 502.
+    await meterGeminiTextUsage(research.model, usage, {
+      orgId: allowed.scope.orgId,
+      workspaceId: allowed.scope.workspaceId,
+      purpose: "arc.web-search",
+      keySource: credential.source,
     });
     return ok({ research });
   } catch (error) {

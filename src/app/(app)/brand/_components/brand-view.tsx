@@ -5,8 +5,14 @@ import { useRef, useState, useTransition } from "react";
 import type { BrandProfileView } from "@/lib/brand-kit/profile-view";
 import type { BrandKnowledgeSyncSummary } from "@/lib/brand-knowledge/sync-summary";
 
-import { analyzeBrandWebsite, removeBrandLogo, resyncBrandSources, saveBrandLogo, updateBrandIdentity, uploadBrandDocuments, type BrandLogoResult, type BrandUploadResult, type BrandWebsiteAnalysis } from "../actions";
+import { DEFAULT_BODY_FONT, DEFAULT_HEADING_FONT, resolveBrandFont, type BrandLogo } from "@/domain";
+
+import { analyzeBrandWebsite, removeBrandLogo, resyncBrandSources, saveBrandLogo, updateBrandIdentity, updateBrandPalette, updateBrandTypography, uploadBrandDocuments, type BrandLogoResult, type BrandUploadResult, type BrandWebsiteAnalysis } from "../actions";
 import { EditIdentityModal } from "./edit-identity-modal";
+import { LogoSet } from "./logo-set";
+import { EditPaletteModal } from "./edit-palette-modal";
+import { EditTypographyModal } from "./edit-typography-modal";
+import { AppImage } from "../../_components/app-image";
 
 const STUDIO = "/studio";
 const BRAIN = "/brain";
@@ -35,9 +41,19 @@ function isLight(hex: string): boolean {
 }
 
 export function BrandView({ view }: { view: BrandProfileView }) {
-  const { identity, palette, tone, voiceGuidance, preferredPhrases, bannedPhrases, proofPoints, services, guardrails, sources } = view;
+  const { identity, palette, paletteSlots, tone, voiceGuidance, preferredPhrases, bannedPhrases, proofPoints, services, guardrails, sources } = view;
   const [active, setActive] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteSaved, setPaletteSaved] = useState<null | "saved" | "not_persisted">(null);
+  // The logo set is held locally so an upload updates every tile without a full
+  // page round trip; the server actions still revalidate /brand, /studio and the
+  // shell so the rail's mirror logo follows.
+  const [logoSet, setLogoSet] = useState<BrandLogo[]>(view.logos);
+  const logoSetRef = useRef<HTMLDivElement>(null);
+  const logoCount = logoSet.length;
+  const [typographyOpen, setTypographyOpen] = useState(false);
+  const [typographySaved, setTypographySaved] = useState<null | "saved" | "not_persisted">(null);
   const [saved, setSaved] = useState(false);
 
   // Brand document intake: one in-flight action at a time, one banner of its
@@ -71,6 +87,9 @@ export function BrandView({ view }: { view: BrandProfileView }) {
   // The workspace logo — one image, shared with the Settings control: it draws
   // in the nav rail AND is stamped on generated creative, so the preview here
   // reflects both.
+  // One picker now: the per-role tiles in the logo set below own every other
+  // upload path, and this header control writes the `primary` variant through
+  // the same action so there is a single writer of the mirror column.
   const logoInput = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(identity.logoUrl);
   const [logoBusy, setLogoBusy] = useState(false);
@@ -131,8 +150,11 @@ export function BrandView({ view }: { view: BrandProfileView }) {
   }
   const accent = palette[active]?.hex ?? palette[0]?.hex ?? "var(--accent)";
   const tagline = identity.tagline ?? "";
-  const headingFont = view.headingFont ?? "Fraunces";
-  const bodyFont = view.bodyFont ?? "Geist";
+  // Resolve through the catalog so the section names — and renders in — the face
+  // the creative renderer will genuinely use, including for a legacy stored value
+  // that names a font we don't bundle.
+  const headingFace = resolveBrandFont(view.headingFont, DEFAULT_HEADING_FONT);
+  const bodyFace = resolveBrandFont(view.bodyFont, DEFAULT_BODY_FONT);
 
   return (
     <div className="arc-brand" style={{ ["--bactive" as string]: accent }}>
@@ -160,12 +182,11 @@ export function BrandView({ view }: { view: BrandProfileView }) {
       <div className="brandhero">
         <div className="mk2">
           {logoUrl
-            ? /* eslint-disable-next-line @next/next/no-img-element -- a tenant-uploaded URL on any host; next/image would need every storage domain allow-listed */
-              <img src={logoUrl} alt={`${identity.name} logo`} />
+            ? <AppImage src={logoUrl} alt={`${identity.name} logo`} />
             : <svg viewBox="0 0 24 24"><path d="M5 8l5 4-5 4M11 16h8" /></svg>}
         </div>
         <div className="bid">
-          <div className="bname"><span>{identity.name}</span> <span className="bstatus">{identity.published ? "Published" : "Draft"}</span></div>
+          <h1 className="bname"><span>{identity.name}</span> <span className="bstatus">{identity.published ? "Published" : "Draft"}</span></h1>
           {tagline && <div className="btag">{tagline}</div>}
           <div className="bmeta">
             {identity.segments.map((s, i) => (
@@ -201,13 +222,12 @@ export function BrandView({ view }: { view: BrandProfileView }) {
         <div className="intakehead">
           <div>
             <div className="ih-title"><span className="sp"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg></span>Teach Arc your brand</div>
-            <div className="ih-sub">Add your website, documents, and logo — Arc parses, reads, and analyzes them with Gemini, then proposes brand details for you to approve. Extracted facts land in your <b>Brain</b> and your Brand profile, gated by review — <b>nothing is auto-applied</b>.</div>
+            <div className="ih-sub">Add your website, documents, and logo. Arc reads them and suggests brand details for you to approve — what it learns lands in your <b>Brain</b> and your Brand profile, and <b>nothing is applied until you say so</b>.</div>
           </div>
           <div className="ih-prog">{sources.length} {sources.length === 1 ? "source" : "sources"} connected</div>
         </div>
         <div className="sources">
           <div className="isrc">
-            <span className="tg ok">wired</span>
             <div className="si"><span className="ic bl"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" /></svg></span><div><div className="nm">Website</div><div className="ds">Reads the page — title, description, icon, and copy for Arc</div></div></div>
             <div className="urow">
               <input
@@ -236,7 +256,6 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             )}
           </div>
           <div className="isrc">
-            <span className="tg ok">wired · Brain</span>
             <div className="si"><span className="ic gd">{DOC}</span><div><div className="nm">Documents</div><div className="ds">.docx · .pdf · .md · .csv · txt — up to 50&nbsp;MB</div></div></div>
             <input
               ref={fileInput}
@@ -257,14 +276,24 @@ export function BrandView({ view }: { view: BrandProfileView }) {
             </button>
           </div>
           <div className="isrc">
-            <span className="tg est">vision · partial</span>
-            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logo &amp; images</div><div className="ds">Arc reads them with Gemini vision</div></div></div>
-            <div className="ucta drop" data-soon="Logo & image upload is coming soon"><svg className="upi" viewBox="0 0 24 24"><path d="M12 16V6M8 10l4-4 4 4" /><path d="M5 16v3a1 1 0 001 1h12a1 1 0 001-1v-3" /></svg><span><b>Drop logo / photos</b></span></div>
+            <div className="si"><span className="ic vi"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M3 17l5-4 4 3 3-2 6 4" /></svg></span><div><div className="nm">Logos</div><div className="ds">Drawn in the sidebar and stamped on creative Arc makes</div></div></div>
+            {/* The upload cards moved into the logo set below, where each variant
+                has its own tile. This points at it rather than offering a second,
+                role-less write path that would race the set for the same primary. */}
+            <button type="button" className="ucta" onClick={() => logoSetRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+              {logoCount > 0
+                ? <><b>{logoCount} logo{logoCount === 1 ? "" : "s"}</b> — manage them below</>
+                : <><b>Add your logos</b> — light, dark, icon and wordmark</>}
+            </button>
           </div>
           <div className="isrc">
-            <span className="tg est">preview</span>
-            <div className="si"><span className="ic mu"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg></span><div><div className="nm">Manual</div><div className="ds">Type a note, or edit any field below</div></div></div>
-            <div className="ucta" data-soon="Brand notes are coming soon">Add a brand note</div>
+            <div className="si"><span className="ic mu"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg></span><div><div className="nm">Write it yourself</div><div className="ds">Set your name, tagline, website and how Arc should sound</div></div></div>
+            {/* Was "Add a brand note", badged "Coming soon". There is no brand-note
+                store — but the rest of what this card offered ("edit any field
+                below") is exactly `updateBrandIdentity`, which the header's Edit
+                identity button already calls. Point at the thing that exists
+                rather than promising a note feature that does not. */}
+            <button type="button" className="ucta" onClick={() => setEditOpen(true)}>Edit brand details</button>
           </div>
         </div>
       </div>
@@ -272,12 +301,27 @@ export function BrandView({ view }: { view: BrandProfileView }) {
       <div className="bbody">
         {/* LEFT */}
         <div className="bcol">
+          {/* LOGOS */}
+          <div className="bsec" ref={logoSetRef}>
+            <div className="bsh"><h3>Logos</h3></div>
+            <div className="bsb">
+              <LogoSet logos={logoSet} onChange={setLogoSet} />
+            </div>
+          </div>
+
           {/* PALETTE */}
           <div className="bsec">
-            <div className="bsh"><h3>Brand palette</h3><span className="tg ok">wired</span><div className="sx"><span className="editlink" data-soon="Editing the palette is coming soon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add color</span></div></div>
+            <div className="bsh"><h3>Brand palette</h3><div className="sx">
+              {paletteSaved === "saved" && <span className="bsaved">Saved ✓</span>}
+              {paletteSaved === "not_persisted" && <span className="blogoerr">Connect a workspace to save</span>}
+              <button type="button" className="editlink" onClick={() => setPaletteOpen(true)}><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg>Edit colors</button>
+            </div></div>
             <div className="bsb">
               {palette.length === 0 ? (
-                <div className="bsnote" style={{ margin: 0 }}>No palette yet — add colors, or let Arc extract them from your website and logo.</div>
+                <button type="button" className="bsempty" onClick={() => setPaletteOpen(true)}>
+                  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+                  <span><b>Set your brand colors</b> — or let Arc extract them from your website and logo.</span>
+                </button>
               ) : (
                 <div className="swrow">
                   {palette.map((p, i) => {
@@ -295,24 +339,37 @@ export function BrandView({ view }: { view: BrandProfileView }) {
               )}
             </div>
             {palette.length > 0 && (
-              <div className="bsnote">Click a color to preview it as the active accent on the generated ad → Arc uses these tokens across every generated ad, landing page, and email render.</div>
+              <div className="bsnote">Click a color to preview it on the ad above. Arc uses these colors on every ad, landing page, and email it makes.</div>
             )}
           </div>
 
           {/* TYPOGRAPHY */}
           <div className="bsec">
-            <div className="bsh"><h3>Typography</h3><span className="tg ok">wired</span><div className="sx"><span className="editlink" data-soon="Editing typography is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Change</span></div></div>
-            <div className="bsb"><div className="typ">
-              <div className="tspec serif"><div className="glyph">Aa</div><div className="ti"><div className="role">Display</div><div className="fam">{headingFont}</div><div className="sample">{tagline || "Your headline, set in the display face."}</div></div></div>
-              <div className="tspec"><div className="glyph">Aa</div><div className="ti"><div className="role">UI / Body</div><div className="fam">{bodyFont}</div><div className="sample">{proofPoints.slice(0, 2).join(". ") || "Body copy for everyday UI and paragraphs."}</div></div></div>
-              <div className="tspec mono"><div className="glyph">Aa</div><div className="ti"><div className="role">Mono / Code</div><div className="fam">{bodyFont} Mono</div><div className="sample">{services[0] ?? "Structured data & labels"}</div></div></div>
+            <div className="bsh"><h3>Typography</h3><div className="sx">
+              {typographySaved === "saved" && <span className="bsaved">Saved ✓</span>}
+              {typographySaved === "not_persisted" && <span className="blogoerr">Connect a workspace to save</span>}
+              <button type="button" className="editlink" onClick={() => setTypographyOpen(true)}><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /><path d="M13 5l4 4" /></svg>Change</button>
             </div></div>
+            {/* Each row renders IN its own face. The third row used to claim a
+                "{bodyFont} Mono" that nothing ever set and no renderer could
+                draw — there is no mono slot in the brand kit, so it has gone
+                rather than being restyled. */}
+            <div className="bsb"><div className="typ">
+              <div className="tspec"><div className="glyph" style={{ fontFamily: headingFace.stack, fontWeight: 700 }}>Aa</div><div className="ti"><div className="role">Headlines</div><div className="fam">{headingFace.label}</div><div className="sample" style={{ fontFamily: headingFace.stack, fontWeight: 700 }}>{tagline || "Your headline, set in the display face."}</div></div></div>
+              <div className="tspec"><div className="glyph" style={{ fontFamily: bodyFace.stack }}>Aa</div><div className="ti"><div className="role">Body copy</div><div className="fam">{bodyFace.label}</div><div className="sample" style={{ fontFamily: bodyFace.stack }}>{proofPoints.slice(0, 2).join(". ") || "Body copy for everyday UI and paragraphs."}</div></div></div>
+            </div></div>
+            <div className="bsnote">Arc renders every ad, email and landing page in these two faces — the samples above are the real thing, not a stand-in.</div>
           </div>
 
           {/* VOICE */}
           {(tone.length > 0 || voiceGuidance || preferredPhrases.length > 0 || bannedPhrases.length > 0) && (
             <div className="bsec">
-              <div className="bsh"><h3>Voice &amp; tone</h3><span className="tg ok">wired · tone · voice_guidance</span><div className="sx"><span className="editlink" data-soon="Editing voice & tone is coming soon"><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Edit</span></div></div>
+              {/* Voice guidance is one of the four fields updateBrandIdentity
+                  writes, so this was never "coming soon" either — the header's
+                  Edit identity button has always saved it. Tone chips and the
+                  phrase lists are NOT editable here yet; those come from the
+                  profile and Arc's reading of your documents. */}
+              <div className="bsh"><h3>Voice &amp; tone</h3><div className="sx"><button type="button" className="editlink" onClick={() => setEditOpen(true)}><svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16z" /></svg>Edit</button></div></div>
               <div className="bsb">
                 {tone.length > 0 && <div className="tone">{tone.map((t) => <span className="tchip" key={t}>{t}</span>)}</div>}
                 {voiceGuidance && <p className="guide">{voiceGuidance}</p>}
@@ -336,17 +393,17 @@ export function BrandView({ view }: { view: BrandProfileView }) {
 
           {/* PROOF / GUARDRAILS / SERVICES */}
           <div className="bsec">
-            <div className="bsh"><h3>Proof, guardrails &amp; offering</h3><span className="tg ok">wired · proof_points · guardrails · services</span></div>
+            <div className="bsh"><h3>Proof, guardrails &amp; offering</h3></div>
             <div className="bsb">
               <div className="twocol">
                 <div>
-                  <div className="pl" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 6px" }}>Proof points</div>
+                  <div className="pl" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 6px" }}>Proof points</div>
                   <div className="flist">{proofPoints.map((t, i) => <div key={i} className="fitem"><span className="fi ok">{CHECK}</span><span>{t}</span></div>)}</div>
-                  <div className="pl" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--muted)", margin: "16px 0 6px" }}>Offering</div>
+                  <div className="pl" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--muted)", margin: "16px 0 6px" }}>Offering</div>
                   <div className="flist">{services.map((t, i) => <div key={i} className="fitem"><span className="fi sv"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /></svg></span><span>{t}</span></div>)}</div>
                 </div>
                 <div>
-                  <div className="pl" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--red-text)", margin: "0 0 6px" }}>Guardrails — Arc will not</div>
+                  <div className="pl" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--red-text)", margin: "0 0 6px" }}>Guardrails — Arc will not</div>
                   <div className="flist">{guardrails.map((t, i) => <div key={i} className="fitem"><span className="fi gd">{BAN}</span><span>{t}</span></div>)}</div>
                 </div>
               </div>
@@ -377,7 +434,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
 
           {/* BRAND SOURCES */}
           <div className="bsec">
-            <div className="bsh"><h3>Brand sources</h3><span className="tg ok">wired · media_assets</span><div className="sx">
+            <div className="bsh"><h3>Brand sources</h3><div className="sx">
               <button type="button" className="resyncall" disabled={intake || sources.length === 0} onClick={() => runIntake("resync", () => resyncBrandSources())}>{RESYNC}{busy === "resync" ? "Re-syncing…" : "Re-sync all"}</button>
               <button type="button" className="gbtn gold sm" disabled={intake} onClick={() => fileInput.current?.click()}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>Upload</button>
             </div></div>
@@ -412,7 +469,7 @@ export function BrandView({ view }: { view: BrandProfileView }) {
                 ))
               )}
             </div>
-            <div className="bsnote">Upload a deck, brief, or guidelines — Arc parses it (docx/pdf/md/csv) and writes what it learns into the <b>Brain</b> as proposed facts you approve. <b>Re-sync</b> re-learns a source when your docs change. Click a source to see its facts.</div>
+            <div className="bsnote">Upload a deck, brief, or guidelines (Word, PDF, Markdown or CSV). Arc reads it and adds what it learns to the <b>Brain</b> as facts waiting on your approval. <b>Re-sync</b> re-reads a source when your documents change. Click a source to see what it learned.</div>
           </div>
 
           {/* ARC USES THIS */}
@@ -422,6 +479,41 @@ export function BrandView({ view }: { view: BrandProfileView }) {
           </div>
         </div>
       </div>
+
+      {/* Keyed on open so each visit starts from what's actually stored rather
+          than a stale draft from a cancelled edit. */}
+      <EditPaletteModal
+        key={paletteOpen ? "palette-open" : "palette-closed"}
+        open={paletteOpen}
+        slots={paletteSlots}
+        onClose={() => setPaletteOpen(false)}
+        onSubmit={async (colors) => {
+          const res = await updateBrandPalette({ colors });
+          if (res.ok) {
+            // `persisted: false` is the backend-less preview. Saying "Saved" there
+            // would be the screen lying about a write that never happened.
+            setPaletteSaved(res.persisted ? "saved" : "not_persisted");
+            setTimeout(() => setPaletteSaved(null), 4000);
+          }
+          return res;
+        }}
+      />
+
+      <EditTypographyModal
+        key={typographyOpen ? "type-open" : "type-closed"}
+        open={typographyOpen}
+        initialHeading={headingFace.id}
+        initialBody={bodyFace.id}
+        onClose={() => setTypographyOpen(false)}
+        onSubmit={async (value) => {
+          const res = await updateBrandTypography(value);
+          if (res.ok) {
+            setTypographySaved(res.persisted ? "saved" : "not_persisted");
+            setTimeout(() => setTypographySaved(null), 4000);
+          }
+          return res;
+        }}
+      />
 
       <EditIdentityModal
         key={editOpen ? "open" : "closed"}

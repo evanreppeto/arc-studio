@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { formatRate } from "@/domain";
 import { ANALYTICS_WINDOWS } from "@/lib/analytics/overview";
 import type { AnalyticsOverview, AnalyticsWindow, TrendKey, TrendSeries } from "@/lib/analytics/overview";
 import type { OpportunityConversionReadModel } from "@/lib/performance/opportunity-conversion";
 import type { CampaignPerformanceRow, ChannelPerformance, PerformanceAnomaly, PerformanceNextMove } from "@/lib/performance/read-model";
+import { KpiStrip } from "../../_components/kpi-strip";
 
 export type ActivityRowVM = { id: string; dot: string; title: string; detail: string; meta: string[]; time: string };
 export type ActivityDayVM = { label: string; rows: ActivityRowVM[] };
@@ -51,15 +52,40 @@ function curve(pts: [number, number][]): string {
   return d;
 }
 
+/** What a day is worth, in the words the readout uses. */
+function readoutValue(metric: TrendKey, v: number): string {
+  if (metric !== "revenue") return Math.round(v).toLocaleString();
+  const d = Math.round(v / 100);
+  return `$${d.toLocaleString()}`;
+}
+
 function TrendChart({ metric, series, labels }: { metric: TrendKey; series: TrendSeries; labels: string[] }) {
   const W = 720, H = 216, padL = 46, padR = 14, padT = 12, padB = 24;
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  // The day the reader is pointing at (or has arrowed to). null = not reading.
+  const [active, setActive] = useState<number | null>(null);
+
   const n = series.cur.length;
-  if (n < 2) return null;
   const cur = smoothed(series.cur);
   const prev = smoothed(series.prev);
   const max = Math.max(1, ...cur, ...prev);
   const x = (i: number) => padL + (i / (n - 1)) * (W - padL - padR);
   const y = (v: number) => padT + (1 - v / max) * (H - padT - padB);
+
+  // Pointer x -> nearest day. Reading the SVG's rendered box rather than assuming
+  // the viewBox scale, because the chart is fluid-width.
+  const dayAt = (clientX: number): number => {
+    const box = svgRef.current?.getBoundingClientRect();
+    if (!box || box.width === 0) return 0;
+    const vx = ((clientX - box.left) / box.width) * W;
+    const i = Math.round(((vx - padL) / (W - padL - padR)) * (n - 1));
+    return Math.min(n - 1, Math.max(0, i));
+  };
+
+  const step = (delta: number) => setActive((a) => Math.min(n - 1, Math.max(0, (a ?? n - 1) + delta)));
+
+  if (n < 2) return null;
+
   const pts = (arr: number[]): [number, number][] => arr.map((v, i) => [x(i), y(v)]);
   const curPath = curve(pts(cur));
   const area = `${curPath} L${x(n - 1).toFixed(1)},${H - padB} L${x(0).toFixed(1)},${H - padB} Z`;
@@ -67,33 +93,111 @@ function TrendChart({ metric, series, labels }: { metric: TrendKey; series: Tren
   // Label roughly every 6th day so the axis isn't crowded.
   const tickEvery = Math.ceil(n / 5);
 
+  // The readout reports the day's ACTUAL value. The line is a 5-day centred mean
+  // — a readability device, stated as such in `smoothed` — so reporting the
+  // smoothed figure would answer a question nobody asked. The marker still sits
+  // on the curve, because that is where the line is.
+  const rawCur = active === null ? 0 : series.cur[active];
+  const rawPrev = active === null ? 0 : series.prev[active];
+  const diff = rawCur - rawPrev;
+  const pct = rawPrev > 0 ? Math.round((diff / rawPrev) * 100) : null;
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${metric} trend, last ${n} days vs previous period`}>
-      <defs>
-        <linearGradient id="trendfill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {gridLines.map((g) => {
-        const gy = padT + g * (H - padT - padB);
-        const val = max * (1 - g);
-        return (
-          <g key={g}>
-            <line className="grid" x1={padL} y1={gy} x2={W - padR} y2={gy} />
-            <text className="axis" x={padL - 8} y={gy + 3} textAnchor="end">{axisValue(metric, val)}</text>
+    // focus/blur sit on the wrapper, not the <svg>: React's onFocus maps to
+    // `focusin`, which does not fire for an SVG root here (verified in the
+    // browser — the handler never ran, so tabbing to the chart showed nothing
+    // until the first arrow key). focusin bubbles, so the parent catches it.
+    <div
+      className="chartwrap"
+      onFocus={() => setActive((a) => a ?? n - 1)}
+      onBlur={() => setActive(null)}
+    >
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        role="application"
+        tabIndex={0}
+        aria-label={`${metric} trend, last ${n} days against the previous period. Use the arrow keys to read a day.`}
+        onPointerMove={(e) => setActive(dayAt(e.clientX))}
+        onPointerLeave={() => setActive(null)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
+          else if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
+          else if (e.key === "Home") { e.preventDefault(); setActive(0); }
+          else if (e.key === "End") { e.preventDefault(); setActive(n - 1); }
+          else if (e.key === "Escape") setActive(null);
+        }}
+      >
+        <defs>
+          <linearGradient id="trendfill" x1="0" y1="0" x2="0" y2="1">
+            {/* Neutral, matching the .cur stroke. This fill was the single largest
+                gold region on the screen, which is what drained the accent of its
+                "needs you" meaning (§4.4). */}
+            <stop offset="0%" stopColor="var(--text-2)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--text-2)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {gridLines.map((g) => {
+          const gy = padT + g * (H - padT - padB);
+          const val = max * (1 - g);
+          return (
+            <g key={g}>
+              <line className="grid" x1={padL} y1={gy} x2={W - padR} y2={gy} />
+              <text className="axis" x={padL - 8} y={gy + 3} textAnchor="end">{axisValue(metric, val)}</text>
+            </g>
+          );
+        })}
+        {labels.map((lab, i) =>
+          i % tickEvery === 0 || i === n - 1 ? (
+            <text key={i} className="axis" x={x(i)} y={H - 8} textAnchor="middle">{lab}</text>
+          ) : null,
+        )}
+        <path className="area" d={area} />
+        <path className="prev" d={curve(pts(prev))} />
+        <path className="cur" d={curPath} />
+        {/* Where the series ends — the reader's "we are here" without a label. */}
+        <circle className="endcap" cx={x(n - 1)} cy={y(cur[n - 1])} r={3} />
+        {active !== null && (
+          <g className="xhair" aria-hidden="true">
+            <line x1={x(active)} y1={padT} x2={x(active)} y2={H - padB} />
+            <circle className="mk prev" cx={x(active)} cy={y(prev[active])} r={3} />
+            <circle className="mk cur" cx={x(active)} cy={y(cur[active])} r={4} />
           </g>
-        );
-      })}
-      {labels.map((lab, i) =>
-        i % tickEvery === 0 || i === n - 1 ? (
-          <text key={i} className="axis" x={x(i)} y={H - 8} textAnchor="middle">{lab}</text>
-        ) : null,
+        )}
+      </svg>
+
+      {active !== null && (
+        <div
+          className={`ctip${x(active) > W * 0.62 ? " flip" : ""}`}
+          style={{ left: `${(x(active) / W) * 100}%` }}
+          aria-hidden="true"
+        >
+          <div className="ctday">{labels[active]}</div>
+          <div className="ctrow">
+            <span className="ctk cur" />
+            <span className="ctv">{readoutValue(metric, rawCur)}</span>
+            <span className="ctl">This period</span>
+          </div>
+          <div className="ctrow">
+            <span className="ctk prev" />
+            <span className="ctv">{readoutValue(metric, rawPrev)}</span>
+            <span className="ctl">Previous</span>
+          </div>
+          {pct !== null && (
+            <div className={`ctd${diff >= 0 ? " up" : " down"}`}>
+              {diff >= 0 ? "+" : ""}{pct}% against the previous period
+            </div>
+          )}
+        </div>
       )}
-      <path className="area" d={area} />
-      <path className="prev" d={curve(pts(prev))} />
-      <path className="cur" d={curPath} />
-    </svg>
+
+      {/* Keyboard and screen-reader path: the tooltip enhances, it never gates. */}
+      <p className="sr-only" role="status">
+        {active === null
+          ? ""
+          : `${labels[active]}: ${readoutValue(metric, rawCur)} this period, ${readoutValue(metric, rawPrev)} previous.`}
+      </p>
+    </div>
   );
 }
 
@@ -120,12 +224,12 @@ function CampaignTable({ rows }: { rows: CampaignPerformanceRow[] }) {
   return (
     <div className="blk camps" style={{ marginTop: 20 }}>
       <h2>
-        Campaign performance <span className="tg wired">wired · attribution</span>
+        Campaign performance
         <span className="camphint">Open a campaign for its full performance breakdown</span>
       </h2>
       <div className="ctbl">
         <div className="cthead">
-          <span>Campaign</span><span>Leads</span><span>Booked</span><span>Revenue</span><span>Conv.</span><span>Trend</span>
+          <span>Campaign</span><span>Leads</span><span>Booked</span><span>Revenue</span><span>Converted</span><span>Trend</span>
         </div>
         {rows.map((c) => (
           <Link className="ctrow" key={c.id} href={`/campaigns/${encodeURIComponent(c.id)}`}>
@@ -196,7 +300,7 @@ function SignalsBlock({ anomalies, nextMoves }: { anomalies: PerformanceAnomaly[
         </div>
       </div>
       <div className="blk">
-        <h2>Recommended next moves <span className="tg sync">Arc · approval-gated</span></h2>
+        <h2>Recommended next moves <span className="tg sync">Drafted by Arc · needs your approval</span></h2>
         <div className="moves">
           {nextMoves.map((m) => (
             <Link className="move" key={m.id} href={m.href}>
@@ -221,9 +325,15 @@ function WhatConverts({ model }: { model: OpportunityConversionReadModel }) {
       <div className="blk" style={{ marginTop: 18 }}>
         <h2>What converts <span className="tg wired">opportunity → booked</span></h2>
         <div className="psub">
+          {/* Three different answers, and they were previously two. `unavailable`
+              means the read FAILED and the panel must not reassure; the banner
+              above names it. `not_configured` is the offline preview. `empty` is
+              a real, healthy workspace with nothing booked yet. */}
           {model.status === "unavailable"
-            ? "Connect a workspace to see which opportunity types convert."
-            : "Not enough data yet — Arc learns which opportunity types convert as campaigns get approved and book work."}
+            ? "This didn’t load, so there is nothing to read into the blank. Reload, and if it persists check your workspace access."
+            : model.status === "not_configured"
+              ? "Connect a workspace to see which opportunity types turn into booked work."
+              : "Not enough data yet — Arc learns which opportunity types convert as campaigns get approved and book work."}
         </div>
       </div>
     );
@@ -381,8 +491,8 @@ export function AnalyticsView({
                   <h1 className="pt">Performance overview</h1>
                   <div className="psub">
                     {overview.dataError
-                      ? `Last ${range} days · org-scoped`
-                      : `Last ${range} days · compared to the prior ${range} · org-scoped, straight from CRM`}
+                      ? `Last ${range} days`
+                      : `Last ${range} days · compared with the previous ${range} days`}
                   </div>
                 </div>
               </div>
@@ -400,19 +510,17 @@ export function AnalyticsView({
                 </div>
               )}
 
-              <div className="kpis">
-                {overview.kpis.map((k) => (
-                  <div className="kpi" key={k.label}>
-                    <div className="kl">
-                      {k.label}
-                      <span className={`tg ${k.tag === "wired" ? "wired" : "sync"}`}>{k.tagLabel}</span>
-                    </div>
-                    <div className="kv">{k.value}</div>
-                    <div className={`kd ${k.dir}`}>{k.dir === "up" ? "▲" : k.dir === "dn" ? "▼" : "—"} {k.deltaLabel}</div>
-                    <div className="kp">{k.prevLabel}</div>
-                  </div>
-                ))}
-              </div>
+              <KpiStrip
+                items={overview.kpis.map((k) => ({
+                  label: k.label,
+                  // An empty metric carries no value and no delta; its prevLabel
+                  // is the sentence saying what to do about that.
+                  value: k.value === "—" ? "" : k.value,
+                  delta: { label: k.deltaLabel, dir: k.dir },
+                  sublabel: k.value === "—" ? undefined : k.prevLabel,
+                  emptyHint: k.value === "—" ? k.prevLabel : undefined,
+                }))}
+              />
 
               <div className="panel">
                 <div className="ph">
@@ -439,7 +547,7 @@ export function AnalyticsView({
               <div className="grid2">
                 <div className="col">
                   <div className="blk">
-                    <h2>Funnel <span className="tg wired">wired · CRM</span></h2>
+                    <h2>Funnel</h2>
                     <div className="funnel">
                       {overview.funnel.map((s) => (
                         <div className="fstage" key={s.label}>
@@ -451,11 +559,11 @@ export function AnalyticsView({
                     </div>
                   </div>
                   <div className="blk">
-                    <h2>Revenue by persona <span className="tg wired">wired · outcomes</span></h2>
+                    <h2>Revenue by persona</h2>
                     <Breakdown rows={overview.revenueByPersona} />
                   </div>
                   <div className="blk">
-                    <h2>Leads by source <span className="tg wired">wired · CRM</span></h2>
+                    <h2>Leads by source</h2>
                     <Breakdown rows={overview.leadsBySource} />
                   </div>
                 </div>
@@ -468,12 +576,18 @@ export function AnalyticsView({
                   )}
                   {overview.arcRead.rec && (
                     <div className="recbox">
-                      <div className="rl">Recommended next iteration · Arc estimate</div>
+                      <div className="rl">What to try next · Arc&rsquo;s estimate</div>
                       <div className="rt">{overview.arcRead.rec}</div>
                     </div>
                   )}
                   <div className="abtns">
-                    <button type="button" className="gbtn gold" data-soon="Arc iteration drafting is coming soon"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Draft the iteration</button>
+                    {/* "Draft it" was inert. Arc already detects the thing it
+                        promised — detectNextIterationOpportunities emits
+                        kind='next_iteration', which the inbox surfaces as
+                        "Repeat a winner", and converting one to a campaign is a
+                        shipped flow. So this points at that rather than at a
+                        drafting endpoint nobody wrote. */}
+                    <Link className="gbtn gold" href="/opportunities"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Repeat a winner</Link>
                     <Link className="gbtn" href="/arc"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" /></svg>Ask Arc</Link>
                   </div>
                   <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)", marginTop: 11, lineHeight: 1.5 }}>
@@ -492,27 +606,23 @@ export function AnalyticsView({
 
           {view === "personas" && (
             <>
-              <div className="vhead"><div><h1 className="pt">By persona</h1><div className="psub">Revenue per persona this period · wired from outcomes</div></div></div>
-              <div className="blk"><h2>Revenue by persona <span className="tg wired">wired · outcomes</span></h2><Breakdown rows={overview.revenueByPersona} /></div>
+              <div className="vhead"><div><h1 className="pt">By persona</h1><div className="psub">Revenue per persona this period</div></div></div>
+              <div className="blk"><h2>Revenue by persona</h2><Breakdown rows={overview.revenueByPersona} /></div>
             </>
           )}
 
           {view === "channels" && (
             <>
               <div className="vhead"><div><h1 className="pt">By channel</h1><div className="psub">Leads, booked work, revenue, spend, and ROAS per channel · attributed from CRM outcomes</div></div></div>
-              <div className="blk"><h2>Channel performance <span className="tg wired">wired · attribution</span></h2><ChannelTable rows={channels} /></div>
-              <div className="blk" style={{ marginTop: 18 }}><h2>Leads by source <span className="tg wired">wired · CRM</span></h2><Breakdown rows={overview.leadsBySource} /></div>
+              <div className="blk"><h2>Channel performance</h2><ChannelTable rows={channels} /></div>
+              <div className="blk" style={{ marginTop: 18 }}><h2>Leads by source</h2><Breakdown rows={overview.leadsBySource} /></div>
             </>
           )}
 
           {view === "activity" && (
             <>
               <div className="vhead"><div><h1 className="pt">Activity</h1><div className="psub">The full audit trail — every Arc action, approval, and signal, merged from your workspace.</div></div></div>
-              <div className="asum">
-                {activitySummary.map((s) => (
-                  <div className="kpi" key={s.label}><div className="kl">{s.label}</div><div className="kv">{s.value}</div></div>
-                ))}
-              </div>
+              <KpiStrip items={activitySummary.map((s) => ({ label: s.label, value: String(s.value) }))} />
               {activityDays.length === 0 ? (
                 <div className="blk"><div className="psub">No activity recorded yet. Arc logs its actions here as it works.</div></div>
               ) : (

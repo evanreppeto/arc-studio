@@ -1,4 +1,4 @@
-import { assessProvenance, describeExternalMediaProvenance } from "@/domain";
+import { assessProvenance, describeExternalMediaProvenance, toWorkState, WORK_STATE_LABEL } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
@@ -11,7 +11,9 @@ import "./library.css";
 
 export const metadata = { title: "Library — Arc Studio" };
 
-const FOLDER_PALETTE = ["#c47055", "#7fb89a", "#c8a24a", "#9678c8", "#88b6d8", "#bd6a58"];
+// Purple-free and red-free: folder colours are decoration, and red is reserved
+// for destructive controls (DESIGN.md §4.2, BSR-661).
+const FOLDER_PALETTE = ["#c8a24a", "#7fb89a", "#88b6d8", "#8fa2ba", "#6fae9e", "#d8935a"];
 
 function provFromSource(source: string): Asset["pv"] {
   switch (source) {
@@ -50,15 +52,15 @@ function addedLabel(iso: string | null): string {
   return months === 1 ? "1mo ago" : `${months}mo ago`;
 }
 
-/** approval_status → the word a reviewer recognises on a card. */
+/**
+ * approval_status → the word a reviewer recognises on a card.
+ *
+ * The same decision as the one on a campaign deliverable, so the same words: an
+ * asset here used to read "In review" while the identical state on /campaigns
+ * read "Needs you" (BSR-656).
+ */
 function reviewLabel(status: string): string {
-  switch (status) {
-    case "approved": return "Approved";
-    case "declined": return "Declined";
-    case "needs_revision": return "Revision requested";
-    case "archived": return "Archived";
-    default: return "In review";
-  }
+  return WORK_STATE_LABEL[toWorkState(status)];
 }
 
 function mapAsset(v: MediaAssetView, i: number): Asset {
@@ -103,16 +105,33 @@ function mapAsset(v: MediaAssetView, i: number): Asset {
         : []),
     ],
     prompt: external.prompt ?? undefined,
+    // The review state as a FIELD, not only as the lineage sentence above. The
+    // risk box needs to know whether this asset has already been decided on:
+    // approving acknowledges a flag, it does not clear it, so without this the
+    // box would keep offering "Resolve & approve" on an asset that was approved
+    // an hour ago and the operator would have no way to tell (BSR-687).
+    approvalStatus: v.approvalStatus ?? undefined,
     uses: v.usedInCount,
   };
 }
 
-/** Flat MediaFolderView[] → the view's nested Folder tree, with the "All assets" root prepended. */
+/**
+ * Flat MediaFolderView[] → the view's nested Folder tree, with the "All assets"
+ * root prepended.
+ *
+ * `buildFolderViews` puts a synthetic `{ id: "all", name: "All media" }` row at
+ * the head of its list, and this used to map it like any other folder — so live
+ * workspaces rendered the root TWICE (an "All media" row under the "All assets"
+ * one) with duplicate React keys, while the backend-less preview, which builds
+ * its tree from a constant, looked perfectly fine. It is dropped here, once, by
+ * the same id the view uses for the root.
+ */
 function mapFolders(views: MediaFolderView[]): Folder[] {
+  const real = views.filter((v) => v.id !== "all");
   const nodes = new Map<string, Folder>();
-  views.forEach((v, i) => nodes.set(v.id, { f: v.id, name: v.name, color: FOLDER_PALETTE[i % FOLDER_PALETTE.length], icon: "folder", children: [] }));
+  real.forEach((v, i) => nodes.set(v.id, { f: v.id, name: v.name, color: FOLDER_PALETTE[i % FOLDER_PALETTE.length], icon: "folder", description: v.description, children: [] }));
   const roots: Folder[] = [];
-  views.forEach((v) => {
+  real.forEach((v) => {
     const node = nodes.get(v.id);
     if (!node) return;
     const parent = v.parentId ? nodes.get(v.parentId) : null;
@@ -137,7 +156,7 @@ export default async function LibraryPage() {
       }),
       // Campaign options for the selection bar's "Add to campaign" picker.
       // Correctly silent (BSR-546): picker options; an empty dropdown is visible.
-      listCampaignNames(ctx.orgId).catch(() => []),
+      listCampaignNames(ctx.orgId, undefined, ctx.workspaceId).catch(() => []),
     ]);
     if (data && data.status === "live") {
       return (

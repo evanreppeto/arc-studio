@@ -17,16 +17,20 @@
  * Pure: no I/O, no view types, no React.
  */
 
-import type { ArcActionCard, ArcStepKind } from "@/domain";
+import { arcToolLabel, summarizeToolPayload, type ArcActionCard, type ArcStepKind } from "@/domain";
 
-import type { ArcMessage } from "./persistence";
-import { formatToolName, getToolKind } from "./tool-labels";
+import type { ArcMessage, ArcToolCall } from "./persistence";
+import { getToolKind } from "./tool-labels";
 
 export type ArcWorkspaceActivityRow = {
   id: string;
   label: string;
+  /** `retried` — this call failed and the same tool succeeded later in the run.
+   *  Distinct from `error` because red means "unresolved, look at this", and a
+   *  call Arc recovered from is resolved. Distinct from `done` because it is
+   *  worth seeing that Arc had to go around. */
+  status: "queued" | "running" | "done" | "retried" | "error";
   detail?: string;
-  status: "queued" | "running" | "done" | "error";
   kind: ArcStepKind;
 };
 
@@ -63,6 +67,46 @@ function settleRow(row: ArcWorkspaceActivityRow, settled: boolean): ArcWorkspace
   return row.status === "running" || row.status === "queued" ? { ...row, status: "done" } : row;
 }
 
+/**
+ * Which errored calls did Arc go on to get right?
+ *
+ * A single errored call used to condemn the whole run, and Arc's normal recovery
+ * makes that reading wrong far more often than right. Arc invokes a deferred MCP
+ * tool before fetching its schema, guesses the arguments, is rejected by
+ * validation, calls `ToolSearch`, and immediately succeeds (BSR-737 is the cause).
+ * Prod run 7631013c is the shape exactly: `emit_card`, `cite_sources` and
+ * `suggest_followups` all failed on "expected …, received undefined", then all
+ * three completed four calls later — the card, the citations and the composited
+ * creative all landed, on a message whose own status is `complete`.
+ *
+ * The panel called that run failed and offered "Retry failed step", whose prompt
+ * asks Arc to redo work that had already succeeded — on a run that had just
+ * composited a creative, so the retry could leave a duplicate approval-gated
+ * asset behind. Censused on prod: of 77 tool calls across 10 runs, every one of
+ * the 3 errors ever recorded was superseded. The indicator had never been right.
+ *
+ * A recovered call is therefore its own state rather than either neighbour. Left
+ * as `error` it keeps a resolved run reading "Completed with limitations · 19/22"
+ * — the same false claim in a quieter voice, which is exactly what shipping only
+ * the run-level half of this left on prod. Folded into `done` it would hide that
+ * Arc had to go around, which is worth seeing.
+ *
+ * Superseded by NAME and order: the retry is a fresh call, so there is no id to
+ * pair on. Two genuinely distinct failures of one tool in a run would collapse
+ * into "recovered" if the last attempt worked — which is the right answer anyway,
+ * since the operator has nothing left to act on.
+ */
+function supersededErrorIndexes(toolCalls: ArcToolCall[]): Set<number> {
+  const out = new Set<number>();
+  toolCalls.forEach((tool, index) => {
+    if (tool.status !== "error") return;
+    const recovered = toolCalls.some((later, laterIndex) =>
+      laterIndex > index && later.name === tool.name && later.status === "complete");
+    if (recovered) out.add(index);
+  });
+  return out;
+}
+
 export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[] {
   const runs: ArcWorkspaceRun[] = [];
   let pendingRequest = "";
@@ -76,6 +120,7 @@ export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[]
 
     const toolCalls = message.toolCalls ?? [];
     const settled = message.status === "complete" || message.status === "failed";
+    const superseded = supersededErrorIndexes(toolCalls);
     const rows: ArcWorkspaceActivityRow[] = [
       ...message.steps.map((step, index) => settleRow({
         id: `${message.id}-step-${index}`,
@@ -86,14 +131,21 @@ export function buildArcWorkspaceRuns(messages: ArcMessage[]): ArcWorkspaceRun[]
       }, settled)),
       ...toolCalls.map((tool, index) => settleRow({
         id: `${message.id}-tool-${index}`,
-        label: formatToolName(tool.name),
-        detail: tool.output ?? tool.input,
-        status: tool.status === "complete" ? "done" : tool.status === "error" ? "error" : "running",
+        label: arcToolLabel(tool.name),
+        // A one-line summary, not the raw payload — the panel is a digest, and
+        // the payload is available on the run page behind a disclosure (BSR-724).
+        detail: summarizeToolPayload(tool.output ?? tool.input) || undefined,
+        status: tool.status === "complete"
+          ? "done"
+          : tool.status === "error"
+            ? (superseded.has(index) ? "retried" : "error")
+            : "running",
         kind: getToolKind(tool.name),
       }, settled && tool.status !== "error")),
     ];
 
-    const failed = message.status === "failed" || toolCalls.some((tool) => tool.status === "error");
+    const unresolvedError = toolCalls.some((tool, index) => tool.status === "error" && !superseded.has(index));
+    const failed = message.status === "failed" || unresolvedError;
     runs.push({
       id: message.id,
       index: runs.length + 1,
@@ -119,25 +171,6 @@ function pushUnique(items: ArcWorkspaceEvidenceItem[], seen: Set<string>, item: 
 
 const AUDIENCE_ROW = /(audience|persona|segment)/i;
 
-/** Strip the MCP transport prefix a tool name carries on the wire.
- *  `mcp__arc__get_workspace_settings` is plumbing spelled out loud; the operator
- *  wants to know Arc read the workspace settings. */
-const ACRONYMS = /\b(crm|sms|url|api|ai|seo|mcp|csv|pdf|id)\b/gi;
-
-function toolLabel(name: string): string {
-  const bare = name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/^mcp__/, "") || name;
-  // A name that is already camelCase or PascalCase was written by a human to be
-  // read — `ToolSearch` is the tool's actual name. Sentence-casing it produced
-  // "Toolsearch", which is just a typo. Only snake_case and dot.case names, which
-  // are identifiers rather than names, get reformatted.
-  if (/[a-z][A-Z]/.test(bare)) return bare;
-  const spaced = formatToolName(bare);
-  // Sentence case, not Title Case: "Get workspace settings" reads as an action,
-  // "Get Workspace Settings" reads as a menu item. Acronyms are restored after,
-  // because lowercasing turns CRM into "Crm", which reads as a typo.
-  const sentence = spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
-  return sentence.replace(ACRONYMS, (match) => match.toUpperCase());
-}
 
 /** Two memories are the same memory if they say the same thing. Prod's brain
  *  holds five separate nodes all stating the CRM is empty (BSR-531 is the fix
@@ -219,7 +252,7 @@ export function buildArcWorkspaceEvidence(
   const toolCounts = new Map<string, number>();
   for (const message of messages) {
     for (const tool of message.toolCalls ?? []) {
-      const label = toolLabel(tool.name);
+      const label = arcToolLabel(tool.name);
       toolCounts.set(label, (toolCounts.get(label) ?? 0) + 1);
     }
   }

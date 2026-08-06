@@ -1,7 +1,8 @@
-import { GoogleGenAI, PersonGeneration } from "@google/genai";
+import { GenerateVideosOperation, GoogleGenAI, PersonGeneration } from "@google/genai";
 import { randomUUID } from "node:crypto";
 
-import type { GeneratedMedia, ImageGenInput, MediaProvider, VideoGenInput, VideoStart, VideoPoll } from "./types";
+import { ImageEditUnsupportedError } from "./types";
+import type { GeneratedMedia, ImageEditInput, ImageGenInput, MediaProvider, VideoGenInput, VideoStart, VideoPoll } from "./types";
 
 // Default to gemini-2.5-flash-image (Nano Banana) for conversational editing
 // and reference-image augmentation. Override with GEMINI_IMAGE_MODEL — e.g.
@@ -15,6 +16,39 @@ const SUPPORTED_ASPECT_RATIOS = new Set(["1:1", "3:4", "4:3", "9:16", "16:9"]);
 
 const DEFAULT_VIDEO_MODEL = "veo-3.1-fast-generate-preview";
 const SUPPORTED_VIDEO_ASPECT = new Set(["16:9", "9:16"]);
+
+/**
+ * Person generation policy for Veo.
+ *
+ * This was hardcoded to ALLOW_ADULT, which made EVERY video call fail with a
+ * 400: "allow_adult for personGeneration is currently not supported."
+ *
+ * Probed against live veo-3.1-fast on 2026-08-03, ALL THREE values were tried
+ * and only one is accepted:
+ *
+ *   ALLOW_ADULT -> 400 rejected
+ *   DONT_ALLOW  -> 400 rejected ("dont_allow ... is currently not supported")
+ *   ALLOW_ALL   -> accepted, operation starts
+ *
+ * So this is not the documented allowlist story (which says allow_adult is the
+ * default and the restricted one) — on this model the enum is effectively
+ * single-valued. Hence ALLOW_ALL as the default: it is the only value that
+ * renders at all. NOTE the consequence — we cannot currently restrict person
+ * generation at the API level, so the human approval gate is the only control
+ * over who appears in a generated video.
+ *
+ * Override with GEMINI_VIDEO_PERSON_GENERATION if a future model revision
+ * accepts the stricter values, with no code change.
+ */
+const DEFAULT_PERSON_GENERATION = "ALLOW_ALL";
+const PERSON_GENERATION_VALUES = new Set(Object.values(PersonGeneration) as string[]);
+
+/** Normalize a person-generation policy to a value the SDK enum accepts. */
+export function resolvePersonGeneration(stored: string | undefined, env: string | undefined): PersonGeneration {
+  const candidate = (stored?.trim() || env?.trim() || DEFAULT_PERSON_GENERATION).toUpperCase();
+  const value = PERSON_GENERATION_VALUES.has(candidate) ? candidate : DEFAULT_PERSON_GENERATION;
+  return value as PersonGeneration;
+}
 
 /** Pick a model: stored pref (if non-empty) -> env -> built-in default. Pure + testable. */
 export function resolveModel(stored: string | undefined, env: string | undefined, fallback: string): string {
@@ -79,6 +113,48 @@ export function createGeminiMediaProvider(
       }
       throw new Error("Gemini returned no image data");
     },
+    /**
+     * Edit an existing image. Same conversational endpoint as generation, with
+     * the picture sent alongside the instruction — which is exactly how the
+     * Gemini *-image models ("Nano Banana") take an edit.
+     *
+     * NO_TEXT_DIRECTIVE is deliberately NOT applied here, and that is the whole
+     * point of this method existing. That directive stops the MODEL inventing a
+     * garbled counterfeit of a brand mark when generating a scene from nothing.
+     * An edit is the opposite situation: the operator is pointing at a picture
+     * they already have and saying what to change about it — including putting
+     * their own real logo on the van door. Hardening the instruction here would
+     * strip the request and hand back the same image, silently.
+     */
+    async editImage(input: ImageEditInput): Promise<GeneratedMedia> {
+      const model = imageModel;
+      // Imagen has no edit endpoint; say which model and why, not "failed".
+      if (model.startsWith("imagen")) throw new ImageEditUnsupportedError(model);
+
+      const response = await ai.models.generateContent({
+        model,
+        contents: [
+          { inlineData: { data: input.bytes.toString("base64"), mimeType: input.contentType } },
+          { text: input.instruction },
+        ],
+      });
+      const parts = response.candidates?.[0]?.content?.parts ?? [];
+      for (const part of parts) {
+        const inline = part.inlineData;
+        if (inline?.data) {
+          return {
+            bytes: Buffer.from(inline.data, "base64"),
+            contentType: inline.mimeType ?? "image/png",
+            model,
+            jobId: randomUUID(),
+          };
+        }
+      }
+      // A refusal comes back as prose with no image part, so report the model's
+      // own words instead of a bare failure.
+      const said = parts.map((p) => p.text).filter(Boolean).join(" ").trim();
+      throw new Error(said ? `The model declined that edit: ${said}` : "Gemini returned no edited image");
+    },
     async startVideo(input: VideoGenInput): Promise<VideoStart> {
       const model = videoModel;
       const aspectRatio =
@@ -86,9 +162,18 @@ export function createGeminiMediaProvider(
       const operation = await ai.models.generateVideos({
         model,
         prompt: input.prompt,
+        // With a still, Veo animates THAT frame instead of inventing a scene from
+        // the words — which is what "animate this image" has always meant and
+        // never did.
+        ...(input.image
+          ? { image: { imageBytes: input.image.bytes.toString("base64"), mimeType: input.image.contentType } }
+          : {}),
         config: {
           numberOfVideos: 1,
-          personGeneration: PersonGeneration.ALLOW_ADULT,
+          personGeneration: resolvePersonGeneration(
+            input.personGeneration,
+            process.env.GEMINI_VIDEO_PERSON_GENERATION,
+          ),
           ...(aspectRatio ? { aspectRatio } : {}),
           ...(input.durationSeconds ? { durationSeconds: input.durationSeconds } : {}),
         },
@@ -98,9 +183,15 @@ export function createGeminiMediaProvider(
       return { operationName, model, jobId: randomUUID() };
     },
     async pollVideo(operationName: string): Promise<VideoPoll> {
-      const operation = await ai.operations.getVideosOperation({
-        operation: { name: operationName } as Awaited<ReturnType<typeof ai.models.generateVideos>>,
-      });
+      // The SDK calls `operation._fromAPIResponse(...)` on whatever it is handed,
+      // so it needs a REAL GenerateVideosOperation, not an object literal wearing
+      // its type. The old `as` cast satisfied the compiler and then threw
+      // "t._fromAPIResponse is not a function" on every single poll — start and
+      // poll are separate stateless HTTP requests here, so we cannot keep the
+      // instance the way the SDK's own example does; we rebuild it by name.
+      const handle = new GenerateVideosOperation();
+      handle.name = operationName;
+      const operation = await ai.operations.getVideosOperation({ operation: handle });
       if (!operation.done) return { status: "running" };
       const video = operation.response?.generatedVideos?.[0]?.video;
       if (!video) throw new Error("Veo finished but returned no video (it may have been safety-filtered)");

@@ -3,8 +3,9 @@
 import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
-import { type MediaConfig, parseMediaConfig } from "@/domain";
-import { requireOperator } from "@/lib/auth/operator";
+import { type MediaConfig, normalizeEmailAddress, parseMediaConfig } from "@/domain";
+import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
+import { recordEmailSuppression } from "@/lib/email-suppression/persistence";
 import { sendWorkspaceInviteEmail } from "@/lib/auth/send-invite-email";
 import {
   changeWorkspaceMemberRole,
@@ -26,6 +27,7 @@ import {
   DEFAULT_APP_SETTINGS,
   isValidSupportEmail,
   normalizeDisplayLabel,
+  normalizeObjectLabels,
   saveAppSettings,
 } from "@/lib/settings/store";
 import { saveWorkspaceMediaConfig } from "@/lib/media-config/persistence";
@@ -402,6 +404,61 @@ export async function saveEmailIdentitySettings(input: {
 }
 
 /**
+ * Add an address to the suppression register by hand.
+ *
+ * The compliance case for this: an opt-out given by phone, by reply, or in
+ * person is legally identical to one given by clicking the link, and before this
+ * existed an operator had no way to honor it short of editing the database. The
+ * gap was quiet, because the only visible opt-out path worked fine.
+ *
+ * Suppression is an outbound REFUSAL, so this needs no approval gate — it can
+ * only ever reduce what gets sent.
+ */
+export async function suppressEmailAddress(input: { address: string; note?: string }): Promise<SettingsWriteResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const address = normalizeEmailAddress(input.address);
+  if (!address) return { ok: false, error: "Enter an email address to suppress." };
+  // Same permissive shape check the audience resolver uses — a typo'd address in
+  // the register is harmless, but an obviously malformed one is a mistake worth
+  // catching at the point of entry.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+    return { ok: false, error: `"${input.address.trim()}" doesn't look like an email address.` };
+  }
+
+  const org = await resolveOrgForSave();
+  if (!org.ok) return org;
+
+  const client = getSupabaseAdminClient();
+  // Link the CRM contact when one shares the address, so the contact-level flag
+  // is mirrored too and the CRM doesn't keep showing them as emailable.
+  const { data: contact } = await client
+    .from("contacts")
+    .select("id")
+    .eq("org_id", org.orgId)
+    .ilike("email", address)
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+
+  const recorded = await recordEmailSuppression(
+    {
+      orgId: org.orgId,
+      address,
+      reason: "manual",
+      source: await getOperatorActor(),
+      detail: input.note?.trim().slice(0, 300) || null,
+      contactId: contact?.id ?? null,
+    },
+    client,
+  );
+  if (!recorded.ok) return { ok: false, error: recorded.error };
+
+  revalidatePath("/settings");
+  return { ok: true, persisted: true };
+}
+
+/**
  * Built-in (Gemini/Veo) generation default. This is the only media-model default
  * that's actually consumed — the /api/v1/arc/media/generate-* routes read
  * settings.imageModel/videoModel. "" = Auto (inherit the level mapping / env
@@ -499,6 +556,41 @@ export async function saveGeneralSettings(input: {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save general settings." };
   }
 
+  revalidatePath("/", "layout");
+  return { ok: true, persisted: true, message: "Saved." };
+}
+
+/**
+ * The workspace's own CRM object names.
+ *
+ * Industry templates cover nine trades; everyone else gets `general`'s neutral
+ * nouns. This is the escape hatch for a workspace whose words are close but
+ * wrong — a law firm calling `properties` "Matters".
+ *
+ * Both forms per object are required, and `normalizeObjectLabels` drops any
+ * entry missing one: a half-filled row would render a "Matters" tab above an
+ * "Add site" button. Clearing both fields removes the override and returns that
+ * object to its industry label, which is how a workspace undoes a rename.
+ */
+export async function saveObjectLabelSettings(input: {
+  section: string;
+  objects: Record<string, { plural: string; singular: string }>;
+}): Promise<SettingsWriteResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const org = await resolveOrgForSave();
+  if (!org.ok) return org;
+
+  const normalized = normalizeObjectLabels({ section: input.section, objects: input.objects });
+
+  try {
+    await saveAppSettings(getSupabaseAdminClient(), org.orgId, { crm_object_labels: normalized });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save object names." };
+  }
+
+  // Layout-wide: the CRM section name is in the nav rail on every screen.
   revalidatePath("/", "layout");
   return { ok: true, persisted: true, message: "Saved." };
 }

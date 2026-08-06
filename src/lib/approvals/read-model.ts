@@ -1,7 +1,9 @@
+import { toWorkState, WORK_STATE_LABEL } from "@/domain";
 import { requireCount } from "@/lib/supabase/count";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { buildDemoCampaignWorkspaceList } from "../campaigns/read-model";
+import { type CorrectionInput } from "@/domain";
 import { isDemoDataEnabled } from "../demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 
@@ -11,6 +13,35 @@ const ACTIVE_APPROVAL_STATUSES = [
   "pending_owner_approval",
   "revision_requested",
 ] as const;
+
+/**
+ * The subset of the above that is genuinely waiting on the OPERATOR (BSR-753).
+ *
+ * `revision_requested` is active but not blocked on a human: the vocabulary
+ * defines that state as "You asked for changes. Arc is reworking it." Counting
+ * it in a badge headed "needs you" overstates the queue — on the live workspace
+ * it was 3 of 7.
+ *
+ * `needs_compliance` IS one of them (BSR-755). It looked ambiguous — three
+ * surfaces read it three ways — but the state machine settles it rather than
+ * taste: the guardrail that sets it raises "Human review required", Arc "may
+ * READ approvals and ADD a recommendation, but never decides", and nothing
+ * redrafts the item. It sits untouched until a person approves, revises or
+ * declines it, which is what blocked-on-the-operator means.
+ *
+ * A literal list because the query needs enum values. `approvals-desk.test.ts`
+ * pins it against `toWorkState` so it cannot drift from the vocabulary.
+ */
+export const OPERATOR_BLOCKED_APPROVAL_STATUSES = [
+  "needs_compliance",
+  "pending_approval",
+  "pending_owner_approval",
+] as const;
+
+/** Is this approval item waiting on a person, as opposed to on Arc? */
+export function isWaitingOnOperator(status: string | null | undefined): boolean {
+  return (OPERATOR_BLOCKED_APPROVAL_STATUSES as readonly string[]).includes((status ?? "").trim());
+}
 
 export type ApprovalQueueFilter = {
   statuses?: string[];
@@ -204,13 +235,56 @@ export async function countActiveApprovals(
   orgId?: string,
   client: SupabaseClient = getSupabaseAdminClient(),
 ): Promise<number> {
+  return countApprovalsByStatus([...ACTIVE_APPROVAL_STATUSES], orgId, client, "countActiveApprovals");
+}
+
+/**
+ * Count of approvals genuinely waiting on the operator — what a "needs you"
+ * badge should show (BSR-753).
+ *
+ * A COUNT, not a list length. The nav badge previously read
+ * `summary.approvals.length`, and that list is fetched with `limit: 5` — so the
+ * badge was structurally incapable of exceeding 5 however much work was
+ * waiting. On the live workspace it read 5 beside 7 active items, which looked
+ * like a table mismatch and was really a page size.
+ */
+export async function countApprovalsWaitingOnOperator(
+  orgId?: string,
+  providedClient?: SupabaseClient,
+): Promise<number> {
+  // The live path was fixed; the OFFLINE path still wore the bug this comment
+  // describes, and wore it at the very number it names. With no admin client,
+  // resolving one threw, every caller caught to `null`, and the fallback was
+  // `approvalsNeedingYou.length` — a list fetched with `limit: 5`. So the demo
+  // rail read "Campaigns 5" beside a Campaigns page that said "Arc wrote 6
+  // assets for you to check": not a data disagreement, a page size. Count the
+  // demo queue the same way the live one is counted — uncapped, same statuses.
+  if (!providedClient && !isSupabaseAdminConfigured()) {
+    if (!isDemoDataEnabled()) return 0;
+    const cards = buildDemoApprovalCards({ limit: Number.MAX_SAFE_INTEGER });
+    return cards.filter((card) => isWaitingOnOperator(card.status)).length;
+  }
+  return countApprovalsByStatus(
+    [...OPERATOR_BLOCKED_APPROVAL_STATUSES],
+    orgId,
+    providedClient ?? getSupabaseAdminClient(),
+    "countApprovalsWaitingOnOperator",
+  );
+}
+
+async function countApprovalsByStatus(
+  statuses: string[],
+  orgId: string | undefined,
+  client: SupabaseClient,
+  label: string,
+): Promise<number> {
   const { count, error } = await applyOrgScope(
     client.from("approval_items").select("id", { count: "exact", head: true }),
     orgId,
-  ).in("status", [...ACTIVE_APPROVAL_STATUSES]);
+  ).in("status", statuses);
 
   if (error) {
-    throw new Error(`countActiveApprovals failed: ${error.message}`);
+    throw new Error(`${label} failed: ${error.message}`);
   }
 
   // null count = missing/inaccessible relation, not zero rows (BSR-575).
@@ -240,7 +314,7 @@ function buildDemoApprovalCards(filter: ApprovalQueueFilter = {}): ApprovalCard[
         title: deliverable.title,
         previewText: campaign.previewText ?? deliverable.title,
         status: "pending_approval",
-        statusLabel: "Pending approval",
+        statusLabel: WORK_STATE_LABEL.needs_you,
         riskLevel: "low",
         persona: campaign.persona,
         channel: campaign.previewLabel ?? deliverable.kind,
@@ -946,12 +1020,12 @@ function buildEvidence(leadMetadata: JsonObject, sourceData: JsonObject, structu
   return [...evidence];
 }
 
+/** The stored status in the product's one vocabulary — see the twin in
+ *  `campaigns/read-model.ts`. Approval items and campaign assets describe the
+ *  same decision, so they must not describe it in different words. */
 function statusLabel(status: string) {
-  if (status === "pending_owner_approval") return "Pending owner approval";
-  if (status === "pending_approval") return "Pending approval";
-  if (status === "needs_compliance") return "Needs compliance";
-  if (status === "revision_requested") return "Revision requested";
-  return humanize(status);
+  if (status === "needs_compliance") return "Blocked by a rule";
+  return WORK_STATE_LABEL[toWorkState(status)];
 }
 
 function humanize(value: string) {
@@ -1109,4 +1183,70 @@ export async function listApprovalHistory(
       riskLevel: item?.risk_level ?? null,
     };
   });
+}
+
+/**
+ * The operator's recent corrections, for Arc's per-turn context (BSR-685).
+ *
+ * Reads the decision log rather than the items, because a correction is an
+ * EVENT: the same asset can be sent back twice with different notes, and the
+ * item only remembers the last one. `item_type` comes from a second read so a
+ * note about a creative is not presented to Arc as copy guidance.
+ *
+ * Org-scoped, and that scoping is load-bearing rather than routine. The
+ * archived demo org carries nine identical "Nightly smoke check — no action
+ * needed" notes from the prod smoke workflow, one per night. Unscoped, those
+ * would be nine-twelfths of everything Arc learned about being corrected.
+ *
+ * Fails soft to an empty list: this feeds a per-turn prompt, and a degraded
+ * read must not take a turn down with it.
+ */
+export async function getRecentCorrections(
+  orgId: string,
+  client?: SupabaseClient,
+  limit = 25,
+): Promise<CorrectionInput[]> {
+  if (!client && !isSupabaseAdminConfigured()) return [];
+  try {
+    const db = client ?? getSupabaseAdminClient();
+    const { data: decisions, error } = await db
+      .from("approval_decisions")
+      .select("approval_item_id,decision,decided_at,decision_notes")
+      .eq("org_id", orgId)
+      .in("decision", ["revision_requested", "declined"])
+      .not("decision_notes", "is", null)
+      .order("decided_at", { ascending: false })
+      .limit(limit);
+    if (error || !decisions) return [];
+
+    const rows = decisions as Array<{
+      approval_item_id: string | null;
+      decision: string;
+      decided_at: string;
+      decision_notes: string | null;
+    }>;
+    if (rows.length === 0) return [];
+
+    const itemIds = [...new Set(rows.map((r) => r.approval_item_id).filter((v): v is string => Boolean(v)))];
+    const typeById = new Map<string, string>();
+    if (itemIds.length > 0) {
+      const { data: items } = await db
+        .from("approval_items")
+        .select("id,item_type")
+        .eq("org_id", orgId)
+        .in("id", itemIds);
+      for (const item of (items ?? []) as Array<{ id: string; item_type: string | null }>) {
+        if (item.item_type) typeById.set(item.id, item.item_type);
+      }
+    }
+
+    return rows.map((r) => ({
+      decision: r.decision,
+      note: r.decision_notes,
+      itemType: r.approval_item_id ? typeById.get(r.approval_item_id) ?? null : null,
+      decidedAt: r.decided_at,
+    }));
+  } catch {
+    return [];
+  }
 }

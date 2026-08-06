@@ -6,7 +6,7 @@ import { type AssetDecision } from "@/domain";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { removeMediaRecordFromBrain, syncMediaRecordToBrain } from "@/lib/brain-ingestion/sync";
-import { createFolder, deleteAsset, deleteFolder, insertAssetWithUrl, renameAsset, renameFolder, setAssetTags, setAvailableToArc } from "@/lib/media-library/persistence";
+import { createFolder, deleteAsset, deleteFolder, insertAssetWithUrl, moveAsset, moveFolder, renameAsset, reorderFolders, setAssetTags, setAvailableToArc, updateFolder } from "@/lib/media-library/persistence";
 import { decideAssetApproval } from "@/lib/media-library/approval";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import { promoteAssetToCampaign } from "@/lib/campaigns/create";
@@ -27,7 +27,14 @@ export type CreateFolderResult =
   | { ok: true; persisted: boolean; id?: string }
   | { ok: false; error: string };
 
-export async function createLibraryFolder(name: string): Promise<CreateFolderResult> {
+/**
+ * `parentId` files the new folder INSIDE an existing one — the write behind the
+ * rail's per-folder "New subfolder". `media_folders.parent_id` and the read
+ * model's recursive walk have supported nesting since the table shipped; the
+ * only thing missing was a caller, so every folder an operator made landed at
+ * the root however deep they were standing.
+ */
+export async function createLibraryFolder(name: string, parentId?: string | null): Promise<CreateFolderResult> {
   await requireOperator();
 
   const trimmed = name?.trim();
@@ -37,7 +44,19 @@ export async function createLibraryFolder(name: string): Promise<CreateFolderRes
 
   try {
     const orgId = await getCurrentOrgId();
-    const id = await createFolder({ orgId, name: trimmed });
+    const parent = parentId?.trim() || null;
+    // Re-checked org-scoped: an id from the browser must not parent this
+    // workspace's folder into another tenant's tree.
+    if (parent) {
+      const { data: found } = await getSupabaseAdminClient()
+        .from("media_folders")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("id", parent)
+        .maybeSingle<{ id: string }>();
+      if (!found) return { ok: false, error: "That parent folder isn't in this workspace." };
+    }
+    const id = await createFolder({ orgId, name: trimmed, parentId: parent });
     revalidatePath("/library");
     return { ok: true, persisted: true, id };
   } catch (error) {
@@ -45,24 +64,108 @@ export async function createLibraryFolder(name: string): Promise<CreateFolderRes
   }
 }
 
-export type FolderMutationResult = { ok: true; persisted: boolean } | { ok: false; error: string };
-
-/** Rename a folder. Org-scoped (renameFolder returns false when the id isn't this
- *  workspace's row). Internal organization — never outbound. */
-export async function renameLibraryFolder(folderId: string, name: string): Promise<FolderMutationResult> {
+/**
+ * Re-parent a folder — dragging one folder onto another in the rail, or picking
+ * a destination from its row menu.
+ *
+ * `parentId: null` is the root and a real destination: a folder that could only
+ * ever move deeper would make the tree a one-way trip, the same reason
+ * `moveLibraryAssets` accepts a null folder. The cycle refusal comes back as its
+ * own sentence rather than a generic failure, because "you can't put a folder
+ * inside itself" is something the operator can act on and "could not move that
+ * folder" is not. Internal organization — never outbound.
+ */
+export async function moveLibraryFolder(input: {
+  folderId: string;
+  parentId: string | null;
+}): Promise<FolderMutationResult> {
   await requireOperator();
-  const trimmed = name?.trim();
-  if (!folderId?.trim()) return { ok: false, error: "A folder id is required." };
-  if (!trimmed) return { ok: false, error: "A folder name is required." };
+  const folderId = input.folderId?.trim();
+  const parentId = input.parentId?.trim() || null;
+  if (!folderId) return { ok: false, error: "A folder id is required." };
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
   try {
     const orgId = await getCurrentOrgId();
-    const matched = await renameFolder(folderId, trimmed, orgId);
+    const result = await moveFolder(folderId, parentId, orgId);
+    if (result === "cycle") return { ok: false, error: "A folder can't be moved inside itself." };
+    if (result === "not_found") return { ok: false, error: "That folder isn't in this workspace." };
+    revalidatePath("/library");
+    return { ok: true, persisted: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not move the folder." };
+  }
+}
+
+export type FolderMutationResult = { ok: true; persisted: boolean } | { ok: false; error: string };
+
+/**
+ * Edit a folder's name and/or its description. Org-scoped (`updateFolder`
+ * returns false when the id isn't this workspace's row).
+ *
+ * One action for both fields rather than a rename action beside a description
+ * action: they are the same row, the same gate and the same revalidation, and
+ * the inline rename in the rail simply omits `description`. An explicit empty
+ * description clears it; an omitted one is left alone. Internal organization —
+ * never outbound.
+ */
+export async function updateLibraryFolder(input: {
+  folderId: string;
+  name?: string;
+  description?: string | null;
+}): Promise<FolderMutationResult> {
+  await requireOperator();
+  const folderId = input.folderId?.trim();
+  if (!folderId) return { ok: false, error: "A folder id is required." };
+
+  const patch: { name?: string; description?: string | null } = {};
+  if (input.name !== undefined) {
+    const trimmed = input.name.trim();
+    if (!trimmed) return { ok: false, error: "A folder name is required." };
+    patch.name = trimmed;
+  }
+  if (input.description !== undefined) patch.description = input.description?.trim() || null;
+  if (patch.name === undefined && patch.description === undefined) return { ok: true, persisted: false };
+
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+  try {
+    const orgId = await getCurrentOrgId();
+    const matched = await updateFolder(folderId, patch, orgId);
     if (!matched) return { ok: false, error: "That folder isn't in this workspace." };
     revalidatePath("/library");
     return { ok: true, persisted: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not rename the folder." };
+    return { ok: false, error: error instanceof Error ? error.message : "Could not update the folder." };
+  }
+}
+
+/** The rail's inline rename (F2), which is just the name half of the above. */
+export async function renameLibraryFolder(folderId: string, name: string): Promise<FolderMutationResult> {
+  return updateLibraryFolder({ folderId, name });
+}
+
+/**
+ * Persist the order of one parent's children — dragging a folder between two
+ * others in the rail, or Move up / Move down from its menu.
+ *
+ * `parentId: null` is the top level. The caller sends the full ordered list it
+ * is showing rather than a delta, so what gets stored is what the operator
+ * sees; the server still decides membership (see `reorderFolders`).
+ */
+export async function reorderLibraryFolders(input: {
+  parentId: string | null;
+  orderedIds: string[];
+}): Promise<FolderMutationResult> {
+  await requireOperator();
+  const orderedIds = (input.orderedIds ?? []).map((id) => id?.trim()).filter(Boolean) as string[];
+  if (orderedIds.length === 0) return { ok: false, error: "Nothing to reorder." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+  try {
+    const orgId = await getCurrentOrgId();
+    await reorderFolders(orgId, input.parentId?.trim() || null, orderedIds);
+    revalidatePath("/library");
+    return { ok: true, persisted: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not reorder the folders." };
   }
 }
 
@@ -413,6 +516,71 @@ export async function addLibraryAssetsToCampaign(input: {
     return { ok: true, persisted: true, added, campaignName: campaign.name };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not add those assets to the campaign." };
+  }
+}
+
+export type MoveAssetsResult =
+  | { ok: true; persisted: boolean; moved: number; folderName: string | null }
+  | { ok: false; error: string };
+
+/**
+ * File selected assets into a folder, or back out to the Library root (BSR-707).
+ *
+ * The Library's folder tree was read-only in practice: folders could be created,
+ * renamed and deleted, but `media_assets.folder_id` was only ever set at upload,
+ * so an asset stayed wherever it first landed. "Move to folder" sat in the
+ * selection bar as a dead <span> because there was nothing to wire it to.
+ *
+ * `folderId: null` means the root, and is a real destination rather than a
+ * missing argument — moving something OUT of a folder has to be possible or the
+ * tree becomes a one-way trip.
+ *
+ * Both sides are re-checked org-scoped rather than trusted from the browser:
+ * the assets (so a foreign id cannot be dragged into this workspace) and the
+ * destination (so this workspace's asset cannot be filed into another tenant's
+ * folder). `moveAsset` scopes the write to the asset's org, which stops the
+ * first but cannot stop the second — the destination check is not redundant.
+ */
+export async function moveLibraryAssets(input: {
+  assetIds: string[];
+  folderId: string | null;
+}): Promise<MoveAssetsResult> {
+  await requireOperator();
+
+  const assetIds = [...new Set((input.assetIds ?? []).map((id) => id?.trim()).filter(Boolean))] as string[];
+  const folderId = input.folderId?.trim() || null;
+  if (assetIds.length === 0) return { ok: false, error: "Select at least one asset." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, moved: assetIds.length, folderName: null };
+
+  try {
+    const orgId = await getCurrentOrgId();
+    const client = getSupabaseAdminClient();
+
+    let folderName: string | null = null;
+    if (folderId) {
+      const { data: folder } = await client
+        .from("media_folders")
+        .select("id,name")
+        .eq("org_id", orgId)
+        .eq("id", folderId)
+        .maybeSingle<{ id: string; name: string }>();
+      if (!folder) return { ok: false, error: "That folder isn't in this workspace." };
+      folderName = folder.name;
+    }
+
+    let moved = 0;
+    for (const assetId of assetIds) {
+      // eslint-disable-next-line no-await-in-loop -- a handful of ids; sequential keeps the count honest
+      if (await moveAsset(assetId, folderId, orgId, client)) moved += 1;
+    }
+    // Every id was rejected: the selection is not this workspace's, and saying
+    // "moved 0" as a success would read as "done".
+    if (moved === 0) return { ok: false, error: "Those assets aren't in this workspace." };
+
+    revalidatePath("/library");
+    return { ok: true, persisted: true, moved, folderName };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not move those assets." };
   }
 }
 

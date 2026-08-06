@@ -30,6 +30,7 @@ import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { getWaitlistView } from "@/lib/waitlist/read-model";
 import { getHealthConsoleView } from "@/lib/observability/health-console";
+import { getSuppressionView } from "@/lib/email-suppression/read-model";
 
 import { SettingsView } from "./_components/settings-view";
 import { reportDegraded } from "@/lib/observability/report-degraded";
@@ -101,6 +102,17 @@ export default async function SettingsPage() {
   // server-side inside the read-model, so a non-admin never reads a connector row
   // and the section never reaches their browser.
   const health = await getHealthConsoleView().catch(() => null);
+  // PRIMARY: an empty suppression list and a failed read look identical, and one
+  // of them says "nobody has opted out" about a compliance register. The panel
+  // renders `failed` as an explicit unknown rather than a clean list.
+  const suppression = await getSuppressionView().catch((error) => {
+    reportDegraded(error, { scope: "settings.getSuppressionView", surface: "primary" });
+    return {
+      entries: [],
+      total: 0,
+      failed: error instanceof Error ? error.message : "Could not read the suppression list.",
+    };
+  });
   // The workspace's own personas, for the connector "Default persona" picker.
   // Correctly silent (BSR-546): picker options; an empty dropdown is visible.
   const personaOptions = await getOrgPersonaOptions(ctx?.orgId ?? undefined).catch(() => []);
@@ -175,12 +187,19 @@ export default async function SettingsPage() {
         >,
       ] as [Record<PipelineObjectKey, PipelineStage[]>, Record<PipelineObjectKey, Record<string, number>>]);
 
-  const language = getProductLanguage(settings.industry || businessProfile?.industry);
+  const industryValue = settings.industry || businessProfile?.industry;
+  // Two resolutions on purpose. `language` is what this workspace calls things —
+  // it labels the fields and stages panels. `industryLanguage` is what its
+  // industry would call them, and it is what the rename panel shows as
+  // placeholders: an operator needs to see the default they'd fall back to, not
+  // their own override echoed at them.
+  const language = getProductLanguage(industryValue, settings.objectLabels);
+  const industryLanguage = getProductLanguage(industryValue);
   const crmObjectLabels = Object.fromEntries(
     CUSTOM_FIELD_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<CustomFieldObjectKey, string>;
   const pipelineObjectLabels = Object.fromEntries(
     PIPELINE_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<PipelineObjectKey, string>;
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} />;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
 }

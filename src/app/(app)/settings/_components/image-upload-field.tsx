@@ -9,6 +9,7 @@ import {
 } from "@/domain/branding-image";
 
 import type { BrandingResult } from "../branding-actions";
+import { AppImage } from "../../_components/app-image";
 
 type Props = {
   /** Current image URL, or null to show the initials fallback. */
@@ -85,8 +86,7 @@ export function ImageUploadField({ currentUrl, fallback, shape = "square", uploa
       <div className="imgup-row">
         <span className={`imgup-pv${shape === "circle" ? " circle" : ""}${url ? " has-image" : ""}`}>
           {url ? (
-            // eslint-disable-next-line @next/next/no-img-element -- user-uploaded URL; next/image would need per-host remotePatterns
-            <img src={url} alt={`Current ${subject}`} />
+            <AppImage src={url} alt={`Current ${subject}`} />
           ) : (
             <span className="imgup-fb">{fallback}</span>
           )}

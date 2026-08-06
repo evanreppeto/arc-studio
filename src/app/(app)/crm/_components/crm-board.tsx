@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, statusTone } from "@/domain";
+import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, isPipelineObjectKey, personaAccent, statusTone } from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
-import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord } from "../actions";
+import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord, searchCrmRecords } from "../actions";
 import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-record-modal";
+import { pageRangeLabel, pageWindow } from "./pagination";
+import { createStoredPreference } from "./stored-preference";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
 import type { CustomFieldDefinition } from "@/domain";
 
@@ -28,12 +31,15 @@ function FilterMenu({
   options,
   value,
   onChange,
+  footer,
 }: {
   icon: React.ReactNode;
   label: string;
   options: FilterOption[];
   value: string;
   onChange: (value: string) => void;
+  /** Optional link below the choices — where the choices themselves are defined. */
+  footer?: { href: string; label: string };
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -81,6 +87,13 @@ function FilterMenu({
               <span className="fmenu-c">{o.count}</span>
             </button>
           ))}
+          {footer && (
+            // Reading the list of stages is when you notice one is missing or
+            // misnamed. Nothing else in CRM says where they come from.
+            <Link className="fmenu-foot" href={footer.href}>
+              {footer.label}
+            </Link>
+          )}
         </div>
       )}
     </span>
@@ -89,6 +102,226 @@ function FilterMenu({
 
 type SortKey = "recent" | "name" | "score";
 const SORT_LABELS: Record<SortKey, string> = { recent: "Recent", name: "Name", score: "Score" };
+
+/** Rows-per-page choices. The largest is the old hard display cap, so the most
+ *  rows we ever render at once is unchanged from before paging existed. */
+const PAGE_SIZES = [25, 50, 100] as const;
+
+/**
+ * Row height. Was a `data-soon` placeholder; a table that routinely holds 243
+ * contacts is exactly where this earns its place, and it needs no backend —
+ * which is what made it worth building rather than leaving marked (BSR-748).
+ */
+export type Density = "comfortable" | "compact";
+const DENSITY_LABELS: Record<Density, string> = { comfortable: "Comfortable", compact: "Compact" };
+/** Survives navigation and reload; a display preference the operator sets once. */
+const DENSITY_KEY = "arc.crm.density";
+
+export function readStoredDensity(raw: string | null): Density {
+  return raw === "compact" || raw === "comfortable" ? raw : "comfortable";
+}
+
+const densityPref = createStoredPreference<Density>({
+  key: DENSITY_KEY,
+  fallback: "comfortable",
+  parse: readStoredDensity,
+  // A bare string, not JSON — it predates this helper and is already in real
+  // browsers' localStorage.
+  serialize: (value) => value,
+});
+
+/**
+ * Column visibility, per object (BSR-749).
+ *
+ * Per object because the columns differ per object: hiding "Tier" on companies
+ * says nothing about leads, which has no such column. Stored as the HIDDEN set
+ * rather than the visible one, so a column added to `COLS` later shows up by
+ * default instead of being invisible to everyone who ever opened this menu.
+ */
+const COLUMNS_KEY = "arc.crm.hiddenColumns";
+export type HiddenColumns = Record<string, string[]>;
+
+/**
+ * Columns that structure the row rather than describe the record: the select
+ * checkbox, the name, and the trailing chevron. Hiding any of them breaks the
+ * row rather than simplifying it, so they are never offered.
+ */
+export const LOCKED_COLUMNS = new Set(["sel", "primary", "act"]);
+
+/** Total: any stored shape, including one written by an older build, yields a map. */
+export function readStoredColumns(raw: string | null): HiddenColumns {
+  if (!raw) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const out: HiddenColumns = {};
+  for (const [objectKey, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!Array.isArray(value)) continue;
+    // A locked column in storage would silently break the row; drop it on read
+    // rather than trusting a value a user can edit by hand.
+    const keys = value.filter((k): k is string => typeof k === "string" && !LOCKED_COLUMNS.has(k));
+    if (keys.length > 0) out[objectKey] = keys;
+  }
+  return out;
+}
+
+const columnsPref = createStoredPreference<HiddenColumns>({
+  key: COLUMNS_KEY,
+  fallback: {},
+  parse: readStoredColumns,
+});
+
+/** The columns actually rendered, given what this object has hidden. */
+export function visibleColumns(cols: Col[], hidden: readonly string[]): Col[] {
+  if (hidden.length === 0) return cols;
+  return cols.filter((c) => LOCKED_COLUMNS.has(c.k) || !hidden.includes(c.k));
+}
+
+/**
+ * Which columns to show. Multi-select, so unlike every other menu here it stays
+ * open on choose — hiding three columns should be three clicks, not three
+ * round-trips through the trigger.
+ */
+function ColumnsMenu({
+  cols,
+  hidden,
+  onToggle,
+  onShowAll,
+  fieldsHref,
+}: {
+  cols: Col[];
+  hidden: readonly string[];
+  onToggle: (key: string) => void;
+  onShowAll: () => void;
+  /** Where this object's fields are DEFINED — the columns here are only which
+   *  of them show. Same footer idea as the Status menu's "Edit stages". */
+  fieldsHref?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const optional = cols.filter((c) => !LOCKED_COLUMNS.has(c.k) && c.t);
+  // Nothing to choose between — every column on this object is structural.
+  if (optional.length === 0) return null;
+
+  const hiddenHere = optional.filter((c) => hidden.includes(c.k)).length;
+  return (
+    <span className="fbtn-wrap" ref={ref}>
+      <button
+        type="button"
+        className={`iconf${hiddenHere > 0 ? " active" : ""}`}
+        title={hiddenHere > 0 ? `Columns: ${optional.length - hiddenHere} of ${optional.length} shown` : "Columns"}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 4v16" /></svg>
+      </button>
+      {open && (
+        <div className="fmenu fmenu-right" role="menu">
+          {optional.map((c) => {
+            const shown = !hidden.includes(c.k);
+            return (
+              <button
+                key={c.k}
+                type="button"
+                className={`fmenu-item${shown ? " on" : ""}`}
+                role="menuitemcheckbox"
+                aria-checked={shown}
+                onClick={() => onToggle(c.k)}
+              >
+                <span>{c.t}</span>
+              </button>
+            );
+          })}
+          {hiddenHere > 0 && (
+            <button type="button" className="fmenu-foot" onClick={onShowAll}>
+              Show all columns
+            </button>
+          )}
+          {/* Reading the column list is when you notice the thing you track
+              isn't one of them. This menu can only hide and show what already
+              exists; adding or removing a field happens on the fields editor,
+              and nothing else on this screen said where that is. */}
+          {fieldsHref && (
+            <Link className="fmenu-foot" href={fieldsHref}>
+              Add or remove fields
+            </Link>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+function DensityMenu({ value, onChange }: { value: Density; onChange: (v: Density) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <span className="fbtn-wrap" ref={ref}>
+      <button
+        type="button"
+        className={`iconf${value !== "comfortable" ? " active" : ""}`}
+        title={`Row height: ${DENSITY_LABELS[value]}`}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+      </button>
+      {open && (
+        <div className="fmenu fmenu-right" role="menu">
+          {(Object.keys(DENSITY_LABELS) as Density[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              className={`fmenu-item${k === value ? " on" : ""}`}
+              role="menuitemradio"
+              aria-checked={k === value}
+              onClick={() => { onChange(k); setOpen(false); }}
+            >
+              <span>{DENSITY_LABELS[k]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
 
 function SortMenu({ value, onChange }: { value: SortKey; onChange: (v: SortKey) => void }) {
   const [open, setOpen] = useState(false);
@@ -202,7 +435,18 @@ function cellContent(k: string, r: CrmRowVM) {
         <div className="pcell">
           <span className={`pav${r.isCompany ? " co" : ""}`}>{r.initials}</span>
           <div style={{ minWidth: 0 }}>
-            <div className="pnm">{r.name}</div>
+            {/* The row's own onClick is a convenience target, not the control.
+                Opening a record was previously ONLY possible by clicking the
+                <tr>, which no keyboard can reach, no screen reader announces as
+                a link, and no cmd-click can open in a new tab. The name is the
+                link; the row just forwards to it. */}
+            {r.id.startsWith("local-") ? (
+              <div className="pnm">{r.name}</div>
+            ) : (
+              <Link className="pnm pnmlink" href={recordHref(r)} onClick={(e) => e.stopPropagation()}>
+                {r.name}
+              </Link>
+            )}
             {r.detail && <div className="psub">{r.detail}</div>}
           </div>
         </div>
@@ -289,17 +533,6 @@ function bumpTasksLabel(current: string, delta: number): string {
   return total > 0 ? `${total} open` : "";
 }
 
-function personaDotOf(persona: string): string {
-  const p = (persona || "").toLowerCase();
-  if (/emergency|urgent|storm|hail|flood|fire|burst|water\s*damage/.test(p)) return "#cc6a6a";
-  if (/insurance|adjuster|agent/.test(p)) return "#88b6d8";
-  if (/plumb|partner|contractor|referral|vendor|trade|sub/.test(p)) return "#7fb89a";
-  if (/preventative|preventive|maintenance|monitor|inspection/.test(p)) return "#6fae9e";
-  if (/rebuild|restoration|reconstruct|remodel|renov/.test(p)) return "#d8a24a";
-  if (/hoa|board|association|landlord|tenant/.test(p)) return "#9678c8";
-  if (/past|repeat|existing|customer|reactivat/.test(p)) return "#b58fd0";
-  return "#c8a24a";
-}
 function titleCase(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -329,7 +562,7 @@ function buildOptimisticRow(
     statusLabel: label || "—",
     statusTone: statusTone(label),
     persona: personaLabelOf(v.persona || ""),
-    dot: personaDotOf(v.persona || ""),
+    dot: personaAccent(v.persona || ""),
     score: null,
     scoreColor: "var(--muted)",
     owner: "You",
@@ -379,8 +612,23 @@ export function CrmBoard({
   /** Full definitions per object, for the Add-record form. */
   customFieldDefsByKey?: Record<string, CustomFieldDefinition[]>;
 }) {
+  const router = useRouter();
   const [activeKey, setActiveKey] = useState(defaultKey);
   const [q, setQ] = useState("");
+  /**
+   * Rows the SERVER matched, for the case the browser cannot answer (BSR-633).
+   *
+   * The board holds a 1,000-row recency window. Past that, a record is not in
+   * the browser at all, so filtering locally returns nothing while the counter —
+   * a real COUNT — says it exists. When the window is incomplete the term goes
+   * to the server instead. Null means "the local set is authoritative".
+   */
+  const [serverRows, setServerRows] = useState<CrmRowVM[] | null>(null);
+  const [serverCapped, setServerCapped] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [personaMenuOpen, setPersonaMenuOpen] = useState(false);
   // Optimistic persona overlay by row id — a bulk assign flips the chips at once,
@@ -403,12 +651,18 @@ export function CrmBoard({
   const [statusF, setStatusF] = useState("");
   const [ownerF, setOwnerF] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("recent");
+  const density = useSyncExternalStore(densityPref.subscribe, densityPref.getSnapshot, densityPref.getServerSnapshot);
+  const hiddenColumns = useSyncExternalStore(
+    columnsPref.subscribe,
+    columnsPref.getSnapshot,
+    columnsPref.getServerSnapshot,
+  );
 
   const active = objects.find((o) => o.key === activeKey) ?? objects[0];
   const localRows = localByKey[active.key] ?? [];
   const totalRows = localRows.length + (rowsByKey[active.key] ?? []).length;
   // Splice the tenant's custom columns in just before the trailing actions cell.
-  const cols = (() => {
+  const allCols = (() => {
     const base = COLS[active.key] ?? COLS.contacts;
     const custom = customColumnsByKey[active.key] ?? [];
     if (custom.length === 0) return base;
@@ -417,6 +671,22 @@ export function CrmBoard({
     if (actIdx < 0) return [...base, ...extra];
     return [...base.slice(0, actIdx), ...extra, ...base.slice(actIdx)];
   })();
+  // What the operator chose to hide on THIS object. Both <thead> and <tbody>
+  // map over `cols`, so filtering here is the whole of column visibility.
+  const hiddenHere = hiddenColumns[active.key] ?? [];
+  const cols = visibleColumns(allCols, hiddenHere);
+  const toggleColumn = (key: string) => {
+    const next = hiddenHere.includes(key) ? hiddenHere.filter((k) => k !== key) : [...hiddenHere, key];
+    const merged = { ...hiddenColumns };
+    if (next.length > 0) merged[active.key] = next;
+    else delete merged[active.key];
+    columnsPref.set(merged);
+  };
+  const showAllColumns = () => {
+    const merged = { ...hiddenColumns };
+    delete merged[active.key];
+    columnsPref.set(merged);
+  };
   // o.count is the server's row count for the object; archived rows are soft-deleted
   // so they're netted out of the headline count and tab badges the same way they're
   // hidden from the list. Subtracting (rather than recomputing) keeps the count intact
@@ -425,6 +695,49 @@ export function CrmBoard({
     o.count -
     (rowsByKey[o.key] ?? []).filter((r) => r.statusLabel === ARCHIVED_LABEL).length +
     (localByKey[o.key]?.length ?? 0);
+
+  // True when the browser holds every record of the active object, so a local
+  // filter can answer honestly. False once the 1,000-row window is exceeded.
+  const loadedComplete = (rowsByKey[active.key] ?? []).length >= active.count;
+
+  useEffect(() => {
+    const term = q.trim();
+    if (loadedComplete || term.length < 2) {
+      // Drop back to the local set. Guarded so this is a no-op on the common
+      // render where there was never a server result to clear.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- returning to the local set the moment the term or object stops needing a server search
+      if (serverRows !== null) setServerRows(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a stale error must not outlive the query that caused it
+      if (searchError !== null) setSearchError(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- an in-flight flag must not survive a cancelled search
+      if (searching) setSearching(false);
+      return;
+    }
+    // Debounced: the window being incomplete means every keystroke would
+    // otherwise be a round trip.
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the search IS starting; the spinner must reflect that before the await
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      const res = await searchCrmRecords(active.key, term);
+      if (cancelled) return;
+      setSearching(false);
+      if (!res.ok) {
+        // A failed search is NOT "no matches" — saying so is the difference
+        // between an outage and an empty result.
+        setSearchError(res.error);
+        setServerRows(null);
+        return;
+      }
+      setSearchError(null);
+      setServerRows(res.rows);
+      setServerCapped(res.capped);
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [q, active.key, active.count, loadedComplete, rowsByKey, serverRows, searchError, searching]);
 
   const allActiveRows = useMemo(
     () =>
@@ -448,7 +761,7 @@ export function CrmBoard({
     setPersonaMenuOpen(false);
     if (ids.length === 0) return;
     setError(null);
-    const dot = personaDotOf(opt.label);
+    const dot = personaAccent(opt.label);
     const prev = personaEdits;
     setPersonaEdits((e) => {
       const next = { ...e };
@@ -539,13 +852,17 @@ export function CrmBoard({
 
   const filteredAll = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    let filtered = allActiveRows.filter((r) => {
+    // When the server answered, IT is the match set — the local rows are only a
+    // window and re-filtering them would drop the very records it went to find.
+    // The other facets still apply, and the text term is already satisfied.
+    const source = serverRows ?? allActiveRows;
+    let filtered = source.filter((r) => {
       // Soft-deleted records stay out of the default list; Status → Archived opts in.
       if (r.statusLabel === ARCHIVED_LABEL && statusF !== ARCHIVED_LABEL) return false;
       // Custom field values are searchable too — a tenant that tracks a matter
       // number expects to find the record by typing it.
       const customHay = r.customFields ? Object.values(r.customFields).join(" ") : "";
-      if (needle && !`${r.name} ${r.detail} ${r.persona} ${r.owner} ${customHay}`.toLowerCase().includes(needle)) return false;
+      if (!serverRows && needle && !`${r.name} ${r.detail} ${r.persona} ${r.owner} ${customHay}`.toLowerCase().includes(needle)) return false;
       if (personaF && r.persona !== personaF) return false;
       if (statusF && r.statusLabel !== statusF) return false;
       if (ownerF && r.owner !== ownerF) return false;
@@ -554,10 +871,35 @@ export function CrmBoard({
     if (sortBy === "name") filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
     else if (sortBy === "score") filtered = [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     return filtered;
-  }, [allActiveRows, q, personaF, statusF, ownerF, sortBy]);
-  // Display caps at 100 rows for perf; Export writes the WHOLE filtered set (never
-  // a silent 100-row slice).
-  const visible = useMemo(() => filteredAll.slice(0, 100), [filteredAll]);
+  }, [allActiveRows, serverRows, q, personaF, statusF, ownerF, sortBy]);
+  // Any change to WHICH rows are in play sends the pager back to page 1, so the
+  // operator never lands on a stale page 4 of a set that now has two pages. Done
+  // as a render-phase adjustment rather than an effect (same pattern as the
+  // Brain fact pager) — it applies before paint, so there is no flash of the
+  // wrong page. `q` is in the key because the debounced search swaps the whole
+  // set from under us; `pageSize` because 25→100 makes the old index meaningless.
+  const pageKey = `${active.key}|${q.trim()}|${personaF}|${statusF}|${ownerF}|${sortBy}|${pageSize}`;
+  const [seenPageKey, setSeenPageKey] = useState(pageKey);
+  if (pageKey !== seenPageKey) {
+    setSeenPageKey(pageKey);
+    setPage(1);
+  }
+
+  // Paged display. This used to be a flat `filteredAll.slice(0, 100)` with a
+  // pager whose buttons had no handler and whose rows-per-page select had no
+  // onChange — so on prod (254 contacts) the footer read "1–100 of 254" and the
+  // remaining 154 could not be reached by browsing at all (BSR-683).
+  //
+  // Paging is client-side because the board already holds the server's whole
+  // bundle for the object (CRM_TABLE_BUNDLE_LIMIT = 1,000 rows). Past that
+  // window a record is not in the browser and the search term goes to the
+  // server instead — that path is untouched here, and `serverCapped` still
+  // says so in the footer. Export writes the WHOLE filtered set, never a page.
+  // `safePage` guards a stale index when the set shrinks under us (a filter
+  // narrowed it, a search returned fewer rows) without needing an extra effect
+  // to chase it. Math lives in ./pagination so it can be unit-tested.
+  const { totalPages, safePage, start: pageStart, end: pageEnd } = pageWindow(filteredAll.length, page, pageSize);
+  const visible = useMemo(() => filteredAll.slice(pageStart, pageEnd), [filteredAll, pageStart, pageEnd]);
 
   const exportCsv = () => {
     if (filteredAll.length === 0) return;
@@ -634,11 +976,11 @@ export function CrmBoard({
         <div>
           <h1 className="ct">{active.label}</h1>
           <div className="csub">
-            {countFor(active).toLocaleString()} {active.noun} · org-scoped · synced with Arc
+            {countFor(active).toLocaleString()} {active.noun} · kept up to date by Arc
           </div>
         </div>
         <div className="sp">
-          <Link className="gbtn" href="/settings?s=connections&c=csv-import" title="Import contacts from a CSV">
+          <Link className="gbtn" href="/crm/import" title="Import contacts from a CSV">
             <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
             Import
           </Link>
@@ -708,6 +1050,15 @@ export function CrmBoard({
           options={options.status}
           value={statusF}
           onChange={setStatusF}
+          // Only the three pipeline objects draw their status from editable
+          // stages. For the rest it is a fixed field, so pointing at the stage
+          // editor would send you somewhere that cannot change what you're
+          // looking at.
+          footer={
+            isPipelineObjectKey(active.key)
+              ? { href: `/settings?s=records&t=Stages&o=${encodeURIComponent(active.key)}`, label: "Edit stages" }
+              : undefined
+          }
         />
         <FilterMenu
           icon={<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" /></svg>}
@@ -724,12 +1075,14 @@ export function CrmBoard({
         )}
         <span className="gspacer" />
         <SortMenu value={sortBy} onChange={setSortBy} />
-        <span className="iconf" title="Columns" data-soon="Column settings are coming soon">
-          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 4v16" /></svg>
-        </span>
-        <span className="iconf" title="Density" data-soon="Density settings are coming soon">
-          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
-        </span>
+        <ColumnsMenu
+          cols={allCols}
+          hidden={hiddenHere}
+          onToggle={toggleColumn}
+          onShowAll={showAllColumns}
+          fieldsHref={`/settings?s=records&t=Fields&o=${encodeURIComponent(active.key)}`}
+        />
+        <DensityMenu value={density} onChange={densityPref.set} />
       </div>
 
       <div className={`selbar${selected.size ? " show" : ""}${personaMenuOpen || taskMenuOpen || campaignMenuOpen ? " menuopen" : ""}`}>
@@ -755,7 +1108,7 @@ export function CrmBoard({
             )}
           </div>
         ) : (
-          <span className="sa" data-soon="Add contacts to a campaign from the People tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign</span>
+          <span className="sa is-inapplicable" title="Add contacts to a campaign from the People tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign</span>
         )}
         <div className="sa-wrap">
           <button type="button" className="sa" onClick={() => setPersonaMenuOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={personaMenuOpen}>
@@ -798,11 +1151,10 @@ export function CrmBoard({
             </>
           )}
         </div>
-        <span className="sa" data-soon="Arc enrichment is coming soon"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-6.2-8.6" /><path d="M21 4v5h-5" /></svg>Ask Arc to enrich</span>
-        <span className="clr" onClick={() => setSelected(new Set())}>Clear</span>
+        <button type="button" className="clr" onClick={() => setSelected(new Set())}>Clear</button>
       </div>
 
-      <div className="tablewrap">
+      <div className="tablewrap" data-density={density}>
         <table className="dt">
           <thead>
             <tr>
@@ -838,8 +1190,12 @@ export function CrmBoard({
                       <strong>No {active.noun} yet.</strong> Arc works from these — it scans them for opportunities
                       worth acting on.
                       <div style={{ marginTop: 8 }}>
+                        {/* addLabel carries the workspace's own singular. Stripping a
+                            trailing "s" off the plural instead produced "Add peopl"
+                            for any irregular noun, and free-text object names make
+                            irregulars reachable rather than hypothetical. */}
                         <button type="button" className="gbtn gold" onClick={() => setAddOpen(true)}>
-                          Add {active.noun.replace(/s$/, "")}
+                          {active.addLabel}
                         </button>
                       </div>
                     </>
@@ -855,7 +1211,10 @@ export function CrmBoard({
                   className={r.id.startsWith("local-") ? "freshrow" : undefined}
                   onClick={() => {
                     // Optimistic (unsaved) rows have no live record page yet.
-                    if (!r.id.startsWith("local-")) window.location.href = recordHref(r);
+                    // router.push, not window.location: a document reload here
+                    // threw away the client cache and the nav progress bar on
+                    // the app's most-used interaction.
+                    if (!r.id.startsWith("local-")) router.push(recordHref(r));
                   }}
                 >
                   {cols.map((c) => (
@@ -885,24 +1244,46 @@ export function CrmBoard({
       <div className="gfoot">
         <span className="arcnote">
           <i />
-          Arc keeps {active.noun} enriched and lead scores current
+          Arc keeps {active.noun} up to date, and keeps their lead scores current
         </span>
         <div className="pager">
           <span className="rpp">
-            Rows{" "}
-            <select defaultValue="25">
-              <option>25</option>
-              <option>50</option>
-              <option>100</option>
+            <label htmlFor="crm-rows-per-page">Rows</label>{" "}
+            <select
+              id="crm-rows-per-page"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
             </select>
           </span>
           <span className="pgnum">
-            {visible.length === 0 ? "0" : `1–${visible.length}`} of {countFor(active).toLocaleString()}
+            {/* The range is the page's real position in the set, not "1–N" of
+                whatever happens to be on screen. The total stays the object's
+                own COUNT unless a server search replaced the set, in which case
+                the match count IS the total. */}
+            {pageRangeLabel(pageStart, visible.length, serverRows ? filteredAll.length : countFor(active))}
+            {searching ? " · searching…" : ""}
+            {serverCapped && serverRows ? ` · first ${serverRows.length}, narrow to see more` : ""}
           </span>
-          <button className="pgbtn" type="button" aria-label="Previous page">
+          <button
+            className="pgbtn"
+            type="button"
+            aria-label="Previous page"
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, Math.min(p, totalPages) - 1))}
+          >
             <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" /></svg>
           </button>
-          <button className="pgbtn" type="button" aria-label="Next page">
+          <button
+            className="pgbtn"
+            type="button"
+            aria-label="Next page"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, Math.min(p, totalPages) + 1))}
+          >
             <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg>
           </button>
         </div>

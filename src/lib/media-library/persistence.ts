@@ -3,6 +3,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { syncMediaRecordToBrain } from "@/lib/brain-ingestion/sync";
 import { getSupabaseAdminClient, type TypedSupabaseClient } from "@/lib/supabase/server";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 const BUCKET = "campaign-media";
 
@@ -53,9 +54,30 @@ export function defaultUploader(client: SupabaseClient): ImageUploader {
   };
 }
 
+/**
+ * The next free slot among a parent's children.
+ *
+ * `media_folders.sort_order` is `not null default 0`, and `createFolder` never
+ * set it — so every folder an operator or Arc made landed on 0, tying with
+ * whichever seeded folder also holds 0. A tie on the only ORDER BY column means
+ * Postgres may return those rows in either order, so the rail's folder order
+ * was not stable across reads. Verified on the live tenant: "AI-generated"
+ * (created 2026-07-31) and "Logos & Brand" (seeded) both sat at 0.
+ */
+async function nextSortOrder(client: SupabaseClient, orgId: string, parentId: string | null): Promise<number> {
+  let query = client.from("media_folders").select("sort_order").eq("org_id", orgId);
+  query = parentId ? query.eq("parent_id", parentId) : query.is("parent_id", null);
+  const { data, error } = await query;
+  if (error) throw new Error(`media_folders read failed: ${error.message}`);
+  const orders = (data ?? []).map((row) => (row as { sort_order: number | null }).sort_order ?? 0);
+  return orders.length ? Math.max(...orders) + 1 : 0;
+}
+
 export type CreateFolderInput = { orgId: string; name: string; parentId?: string | null; description?: string | null; client?: SupabaseClient };
 export async function createFolder({ orgId, name, parentId = null, description = null, client = getSupabaseAdminClient() }: CreateFolderInput): Promise<string> {
-  return insertGetId(client, "media_folders", { org_id: orgId, name, parent_id: parentId, description });
+  const workspaceFields = await workspaceIdFields(client, orgId);
+  const sortOrder = await nextSortOrder(client, orgId, parentId);
+  return insertGetId(client, "media_folders", { org_id: orgId, ...workspaceFields, name, parent_id: parentId, description, sort_order: sortOrder });
 }
 
 /** Generic starter folders seeded for a new workspace. Names/descriptions are
@@ -81,8 +103,10 @@ export async function seedDefaultMediaFolders(
   // Fail closed — see personas/persistence: a null count would re-seed (BSR-575).
   if (requireCount("media_folders", { count, error: countError }) > 0) return 0;
 
+  const workspaceFields = await workspaceIdFields(client, orgId);
   const rows = DEFAULT_MEDIA_FOLDERS.map((folder, index) => ({
     org_id: orgId,
+    ...workspaceFields,
     name: folder.name,
     description: folder.description,
     sort_order: index,
@@ -96,16 +120,142 @@ export async function seedDefaultMediaFolders(
 // so the org_id filter is the ONLY thing between an operator and another tenant's
 // row (same posture as setAvailableToArc). Each is org-scoped and returns whether
 // a row actually matched, so the caller can report "not in this workspace".
-export async function renameFolder(id: string, name: string, orgId: string, client: SupabaseClient = getSupabaseAdminClient()): Promise<boolean> {
-  const { data, error } = await client.from("media_folders").update({ name }).eq("id", id).eq("org_id", orgId).select("id");
+/**
+ * Edit a folder's own fields.
+ *
+ * Replaces the old rename-only write. `description` has been on the table since
+ * the baseline and every seeded folder on the live tenant carries one, but
+ * nothing could ever change it — the column was write-once at seed time. An
+ * explicit `null` clears it; omitting the key leaves it alone, which is why the
+ * patch is assembled rather than spread.
+ */
+export async function updateFolder(
+  id: string,
+  patch: { name?: string; description?: string | null },
+  orgId: string,
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<boolean> {
+  const values: Record<string, unknown> = {};
+  if (patch.name !== undefined) values.name = patch.name;
+  if (patch.description !== undefined) values.description = patch.description;
+  if (Object.keys(values).length === 0) return true;
+  const { data, error } = await client.from("media_folders").update(values).eq("id", id).eq("org_id", orgId).select("id");
   if (error) throw new Error(`media_folders update failed: ${error.message}`);
   return (data ?? []).length > 0;
+}
+
+/**
+ * Rewrite the sort order of one parent's children.
+ *
+ * Takes the full ordered list rather than a single "move this one up", so the
+ * result is whatever the caller displayed rather than an increment applied to a
+ * value nobody could see. Ids that are not this org's children of this parent
+ * are dropped rather than trusted — the browser supplies the order, so it does
+ * not get to decide membership.
+ */
+export async function reorderFolders(
+  orgId: string,
+  parentId: string | null,
+  orderedIds: string[],
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<number> {
+  let query = client.from("media_folders").select("id").eq("org_id", orgId);
+  query = parentId ? query.eq("parent_id", parentId) : query.is("parent_id", null);
+  const { data, error } = await query;
+  if (error) throw new Error(`media_folders read failed: ${error.message}`);
+  const allowed = new Set((data ?? []).map((row) => (row as { id: string }).id));
+
+  const ids = orderedIds.filter((id) => allowed.has(id));
+  let written = 0;
+  for (const [index, id] of ids.entries()) {
+    // eslint-disable-next-line no-await-in-loop -- a handful of siblings; sequential keeps the count honest
+    const { error: updateError } = await client
+      .from("media_folders")
+      .update({ sort_order: index })
+      .eq("id", id)
+      .eq("org_id", orgId);
+    if (updateError) throw new Error(`media_folders update failed: ${updateError.message}`);
+    written += 1;
+  }
+  return written;
 }
 
 export async function deleteFolder(id: string, orgId: string, client: SupabaseClient = getSupabaseAdminClient()): Promise<boolean> {
   const { data, error } = await client.from("media_folders").delete().eq("id", id).eq("org_id", orgId).select("id");
   if (error) throw new Error(`media_folders delete failed: ${error.message}`);
   return (data ?? []).length > 0;
+}
+
+/**
+ * Would filing `id` under `parentId` make the folder its own ancestor?
+ *
+ * Pure, and separated from the write so it can be tested without a database.
+ * Walks UP from the proposed parent: if the chain reaches the folder being
+ * moved, the move would close a loop.
+ *
+ * A chain that revisits a node it has already seen means the stored data is
+ * *already* cyclic. That answers "true" — refusing to move anything deeper into
+ * a subtree that is broken is the conservative call, and it keeps this function
+ * total rather than letting it spin.
+ */
+export function createsFolderCycle(
+  rows: { id: string; parent_id: string | null }[],
+  id: string,
+  parentId: string,
+): boolean {
+  const parents = new Map(rows.map((row) => [row.id, row.parent_id]));
+  const seen = new Set<string>();
+  let cursor: string | null = parentId;
+  while (cursor) {
+    if (cursor === id) return true;
+    if (seen.has(cursor)) return true;
+    seen.add(cursor);
+    cursor = parents.get(cursor) ?? null;
+  }
+  return false;
+}
+
+/**
+ * Re-parent a folder — the write behind dragging one folder onto another.
+ *
+ * Org-scoped like its siblings above, plus one invariant they don't need: a
+ * folder may not become its own descendant. That is not cosmetic. Both
+ * `buildFolderViews` and the rail's renderer walk children recursively, so a
+ * folder made its own ancestor either disappears from the tree (the read
+ * model's `visited` set halts the walk) or recurses without end in the browser.
+ *
+ * `parentId: null` is the root and a real destination — the same reason
+ * `moveAsset` accepts it. Distinct return values rather than a boolean, because
+ * "that folder isn't in this workspace" and "that would nest it inside itself"
+ * need different sentences on screen.
+ */
+export async function moveFolder(
+  id: string,
+  parentId: string | null,
+  orgId: string,
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<"moved" | "not_found" | "cycle"> {
+  if (parentId === id) return "cycle";
+
+  const { data, error } = await client.from("media_folders").select("id, parent_id").eq("org_id", orgId);
+  if (error) throw new Error(`media_folders read failed: ${error.message}`);
+  const rows = (data ?? []) as { id: string; parent_id: string | null }[];
+
+  // Both ends re-checked against the org's own rows: the folder being moved so
+  // a foreign id can't be re-filed, and the destination so this workspace's
+  // folder can't be parented into another tenant's tree.
+  if (!rows.some((row) => row.id === id)) return "not_found";
+  if (parentId && !rows.some((row) => row.id === parentId)) return "not_found";
+  if (parentId && createsFolderCycle(rows, id, parentId)) return "cycle";
+
+  const { data: updated, error: updateError } = await client
+    .from("media_folders")
+    .update({ parent_id: parentId })
+    .eq("id", id)
+    .eq("org_id", orgId)
+    .select("id");
+  if (updateError) throw new Error(`media_folders update failed: ${updateError.message}`);
+  return (updated ?? []).length > 0 ? "moved" : "not_found";
 }
 
 export type InsertAssetInput = {
@@ -150,7 +300,7 @@ export async function insertAssetWithUrl(input: InsertAssetInput): Promise<Inser
   const client = input.client ?? getSupabaseAdminClient();
   const upload = input.uploader ?? defaultUploader(client);
   const id = await insertGetId(client, "media_assets", {
-    org_id: input.orgId, folder_id: input.folderId, file_name: input.fileName,
+    org_id: input.orgId, ...(await workspaceIdFields(client, input.orgId)), folder_id: input.folderId, file_name: input.fileName,
     storage_path: "pending", public_url: "pending", content_type: input.contentType, kind: input.kind,
     width: input.width ?? null, height: input.height ?? null, byte_size: input.byteSize,
     source: input.source ?? "uploaded", provenance: input.provenance ?? {},
@@ -164,6 +314,94 @@ export async function insertAssetWithUrl(input: InsertAssetInput): Promise<Inser
   // Best-effort: mirror the asset into the Brain so Arc can recall/prefer it.
   await syncMediaRecordToBrain(id, { client: client as unknown as TypedSupabaseClient, orgId: input.orgId }).catch(() => undefined);
   return { id, url };
+}
+
+/** Find or create a folder by name for this org. Idempotent, so a generation
+ *  path can call it on every run without accumulating duplicates. */
+export async function ensureNamedFolder(
+  orgId: string,
+  name: string,
+  description: string | null = null,
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<string | null> {
+  const { data } = await client
+    .from("media_folders" as string)
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("name", name)
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+  if (data?.id) return data.id;
+  try {
+    return await createFolder({ orgId, name, description, client });
+  } catch {
+    // A folder is organisation, not correctness — never fail the caller over it.
+    return null;
+  }
+}
+
+export type RecordStoredAssetInput = {
+  orgId: string;
+  folderId?: string | null;
+  fileName: string;
+  /** Path of the object ALREADY in the bucket. */
+  storagePath: string;
+  /** Public URL of that object. */
+  publicUrl: string;
+  contentType: string;
+  kind: string;
+  byteSize: number;
+  width?: number | null;
+  height?: number | null;
+  source?: string;
+  provenance?: Record<string, unknown>;
+  riskFlags?: string[];
+  tags?: string[];
+  uploadedBy: string;
+  availableToArc?: boolean;
+  client?: SupabaseClient;
+};
+
+/**
+ * Record a library row for bytes that are ALREADY stored (BSR-634).
+ *
+ * `insertAssetWithUrl` owns the upload, which is right for an operator dropping a
+ * file on `/library`. Generation is the other way round: the media route stores
+ * the object under `arc-generated/{org}/{workspace}/…` and hands back a URL, and
+ * until now nothing wrote a row for it. The image existed in the bucket, was
+ * attached to a campaign asset, and was invisible to `/library`, to Studio's
+ * background picker, and to every provenance surface that reads the table.
+ *
+ * So this takes the path and URL rather than the bytes, and writes the row those
+ * surfaces need. It does NOT re-upload and it does NOT move the object — the
+ * `arc-generated/` prefix stays exactly where the generator put it.
+ */
+export async function recordStoredAsset(input: RecordStoredAssetInput): Promise<string> {
+  const client = input.client ?? getSupabaseAdminClient();
+  const id = await insertGetId(client, "media_assets", {
+    org_id: input.orgId,
+    ...(await workspaceIdFields(client, input.orgId)),
+    folder_id: input.folderId ?? null,
+    file_name: input.fileName,
+    storage_path: input.storagePath,
+    public_url: input.publicUrl,
+    content_type: input.contentType,
+    kind: input.kind,
+    width: input.width ?? null,
+    height: input.height ?? null,
+    byte_size: input.byteSize,
+    source: input.source ?? "ai_generated",
+    provenance: input.provenance ?? {},
+    risk_flags: input.riskFlags ?? [],
+    tags: input.tags ?? [],
+    // Default false, exactly as an operator upload does. A generated image is an
+    // approval-gated draft; letting Arc reuse it before a human has looked would
+    // route unreviewed AI creative straight back into the next campaign.
+    available_to_arc: input.availableToArc ?? false,
+    uploaded_by: input.uploadedBy,
+  });
+  await syncMediaRecordToBrain(id, { client: client as unknown as TypedSupabaseClient, orgId: input.orgId }).catch(() => undefined);
+  return id;
 }
 
 export async function insertAsset(input: InsertAssetInput): Promise<string> {
@@ -231,8 +469,38 @@ export async function loadAssetForLearning(
   };
 }
 
-export async function moveAsset(id: string, folderId: string | null, client: SupabaseClient = getSupabaseAdminClient()) {
-  await updateRow(client, "media_assets", { folder_id: folderId }, id);
+/**
+ * File an asset into a folder, or to the Library root when `folderId` is null.
+ *
+ * Org-scoped like every other mutator here, and it was the one that wasn't
+ * (BSR-707). It used to take no orgId and update on `id` alone. That was safe
+ * only because its single caller — Arc's `arcFileAsset` — checks the asset's
+ * and the target folder's owner before calling. Safe by external convention is
+ * not the same as safe, and the second caller is where that runs out; this
+ * function now refuses a row it does not own on its own terms.
+ *
+ * Note the ORDER of the two conditions on the target folder: the caller must
+ * still verify the folder belongs to the org. Scoping the UPDATE to the asset's
+ * org stops you writing another tenant's asset, not writing YOUR asset into
+ * their folder.
+ *
+ * Returns false when nothing matched, so a caller can tell "not yours" from
+ * "done" rather than reporting a silent no-op as success.
+ */
+export async function moveAsset(
+  id: string,
+  folderId: string | null,
+  orgId: string,
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<boolean> {
+  const { data, error } = await client
+    .from("media_assets" as string)
+    .update({ folder_id: folderId })
+    .eq("id", id)
+    .eq("org_id", orgId)
+    .select("id");
+  if (error) throw new Error(`media_assets update failed: ${error.message}`);
+  return ((data ?? []) as unknown[]).length > 0;
 }
 
 export async function setAssetTags(id: string, tags: string[], orgId: string, client: SupabaseClient = getSupabaseAdminClient()): Promise<boolean> {

@@ -77,7 +77,11 @@ describe("buildArcWorkspaceRuns", () => {
 
     expect(runs[0]).toMatchObject({ stepCount: 2, toolCount: 1, durationMs: 38_400, state: "complete" });
     expect(runs[0]!.rows).toHaveLength(3);
-    expect(runs[0]!.rows[2]).toMatchObject({ label: "Crm Lookup", kind: "search", status: "done" });
+    // "CRM lookup", not the "Crm Lookup" this asserted before. Two spellings of
+    // the same tool used to reach this file — the run rows title-cased and read
+    // "Crm", the evidence rows sentence-cased and read "CRM" — so the panel
+    // disagreed with itself about the same call. One mapper now (BSR-709).
+    expect(runs[0]!.rows[2]).toMatchObject({ label: "CRM lookup", kind: "search", status: "done" });
   });
 
   it("settles rows a finished run left running, but never a failed tool", () => {
@@ -92,6 +96,89 @@ describe("buildArcWorkspaceRuns", () => {
 
     expect(runs[0]!.rows[0]!.status).toBe("done");
     expect(runs[0]!.rows[1]!.status).toBe("error");
+    expect(runs[0]!.state).toBe("failed");
+  });
+
+  it("does not condemn a run for a tool Arc retried and got right", () => {
+    // Prod run 7631013c, verbatim in shape: Arc called three deferred MCP tools
+    // before fetching their schemas, was rejected by argument validation, called
+    // ToolSearch, and completed all three. The card, the citations and the
+    // composited creative all landed; the message's own status is "complete".
+    const runs = buildArcWorkspaceRuns([
+      message("m1", "operator", { body: "add our logo to the side of the truck" }),
+      message("m2", "arc", {
+        status: "complete",
+        toolCalls: [
+          { name: "mcp__arc__compose_creative", status: "complete", output: "{…}" },
+          { name: "mcp__arc__emit_card", status: "error", output: "MCP error -32602: expected one of \"result\"|\"draft\"|\"navigate\"" },
+          { name: "mcp__arc__cite_sources", status: "error", output: "MCP error -32602: expected string, received undefined" },
+          { name: "ToolSearch", status: "complete", output: "[…]" },
+          { name: "mcp__arc__emit_card", status: "complete", output: "Attached draft card" },
+          { name: "mcp__arc__cite_sources", status: "complete", output: "Cited 3 source(s)." },
+        ],
+      }),
+    ]);
+
+    // The panel used to call this failed and offer "Retry failed step", whose
+    // prompt asks Arc to redo work that already succeeded — on a run that had
+    // just composited a creative, so the retry risked a duplicate asset.
+    expect(runs[0]!.state).toBe("complete");
+    // The rows stay honest without staying red: those calls did error, and Arc
+    // got past them. `error` would keep the run reading "Completed with
+    // limitations · 19/22"; `done` would hide that Arc had to go around.
+    expect(runs[0]!.rows.filter((row) => row.status === "retried")).toHaveLength(2);
+    expect(runs[0]!.rows.filter((row) => row.status === "error")).toHaveLength(0);
+  });
+
+  it("keeps an error red when that tool never recovered", () => {
+    const runs = buildArcWorkspaceRuns([
+      message("m1", "operator", { body: "Go" }),
+      message("m2", "arc", {
+        status: "complete",
+        toolCalls: [
+          { name: "mcp__arc__emit_card", status: "error", output: "boom" },
+          { name: "mcp__arc__cite_sources", status: "error", output: "boom" },
+          { name: "mcp__arc__cite_sources", status: "complete", output: "Cited 3 source(s)." },
+        ],
+      }),
+    ]);
+
+    expect(runs[0]!.rows.map((row) => row.status)).toEqual(["error", "retried", "done"]);
+  });
+
+  it("still condemns a run when only SOME of a tool's retries succeeded", () => {
+    // `cite_sources` recovers; `emit_card` never does. One unresolved error is
+    // enough — the operator has something to act on.
+    const runs = buildArcWorkspaceRuns([
+      message("m1", "operator", { body: "Go" }),
+      message("m2", "arc", {
+        status: "complete",
+        toolCalls: [
+          { name: "mcp__arc__emit_card", status: "error", output: "boom" },
+          { name: "mcp__arc__cite_sources", status: "error", output: "boom" },
+          { name: "mcp__arc__cite_sources", status: "complete", output: "Cited 3 source(s)." },
+        ],
+      }),
+    ]);
+
+    expect(runs[0]!.state).toBe("failed");
+  });
+
+  it("trusts the runner when it says the run failed, however the tools ended", () => {
+    // The case this must never swallow: Arc abandons a tool, finishes with a
+    // caveat, and the runner marks the message failed. A later success by the
+    // same name does not overrule that.
+    const runs = buildArcWorkspaceRuns([
+      message("m1", "operator", { body: "Go" }),
+      message("m2", "arc", {
+        status: "failed",
+        toolCalls: [
+          { name: "mcp__arc__emit_card", status: "error", output: "boom" },
+          { name: "mcp__arc__emit_card", status: "complete", output: "Attached draft card" },
+        ],
+      }),
+    ]);
+
     expect(runs[0]!.state).toBe("failed");
   });
 

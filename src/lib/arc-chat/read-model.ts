@@ -1,11 +1,14 @@
 import "server-only";
+import { decideArcRunStalled, flattenArcMarkdown } from "@/domain";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
 import { getOperatorActor } from "@/lib/auth/operator";
-import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { notConfigured } from "@/lib/observability/unavailable";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import {
   listActiveArcRunConversationIds,
+  listArcRunTaskStates,
   listConversationsForViewer,
   listMessages,
   type ArcConversation,
@@ -28,8 +31,9 @@ const RUN_FRESHNESS_MS = 120_000;
  *                   (fresh workspace) → the UI shows its illustrative mock.
  * - "error"       — a configured workspace could not load chat history. Keep
  *                   the real composer visible; never masquerade as demo data.
- * - "unavailable" — no Supabase backend (local demo preview) → the UI shows
- *                   its illustrative mock.
+ * - "not_configured" — no Supabase backend (local demo preview) → the UI shows
+ *                   its illustrative mock. Named apart from a failure on
+ *                   purpose: nothing broke, so nothing should be reported.
  */
 export type ArcChatModel =
   | {
@@ -44,13 +48,52 @@ export type ArcChatModel =
     }
   | { status: "empty"; operator: string }
   | { status: "error"; message: string }
-  | { status: "unavailable" };
+  /** No backend configured (the local backend-less preview). An answer, not
+   *  an outage — `/arc` reads this to fall back to the mock conversation. */
+  | { status: "not_configured" };
+
+/**
+ * Flag in-flight replies whose run has actually died.
+ *
+ * Without this a stranded turn renders `pending` forever — and because the row
+ * really is `pending`, reloading the page reproduces the spinner rather than
+ * clearing it. Marking it here is read-side only: the row is untouched, so if a
+ * slow reply does eventually land it simply renders as the reply it is.
+ *
+ * Best-effort by design. A failed task lookup means we can't prove a run is
+ * dead, and the safe reading of "no evidence" is to leave the messages alone —
+ * a spinner is a smaller lie than a false "Arc stopped responding" on a run
+ * that is still working.
+ */
+async function markStalledRuns(messages: ArcMessage[], nowMs: number): Promise<ArcMessage[]> {
+  const pending = messages.filter((message) => message.role === "arc" && message.status === "pending");
+  if (pending.length === 0) return messages;
+
+  const taskStates = await listArcRunTaskStates(
+    pending.map((message) => message.agentTaskId).filter((id): id is string => Boolean(id)),
+  ).catch((error) => {
+    reportDegraded(error, { scope: "arc-chat.markStalledRuns", surface: "secondary" });
+    return null;
+  });
+  if (!taskStates) return messages;
+
+  return messages.map((message) => {
+    if (message.role !== "arc" || message.status !== "pending") return message;
+    const verdict = decideArcRunStalled({
+      status: message.status,
+      createdAt: message.createdAt,
+      task: message.agentTaskId ? taskStates.get(message.agentTaskId) ?? null : null,
+      nowMs,
+    });
+    return verdict.stalled ? { ...message, stalled: true, stalledReason: verdict.reason } : message;
+  });
+}
 
 export async function getArcChatModel(
   requestedConversationId?: string | null,
   opts?: { startBlank?: boolean },
 ): Promise<ArcChatModel> {
-  if (!isSupabaseAdminConfigured()) return { status: "unavailable" };
+  if (!isSupabaseAdminConfigured()) return notConfigured();
 
   try {
     const [viewer, operator] = await Promise.all([getShareViewer(), getOperatorActor()]);
@@ -85,7 +128,7 @@ export async function getArcChatModel(
         ? conversations.find((c) => c.id === requestedConversationId)
         : undefined) ?? conversations[0];
 
-    const messages = await listMessages(active.id);
+    const messages = await markStalledRuns(await listMessages(active.id), nowMs);
     return {
       status: "live",
       operator,
@@ -128,6 +171,17 @@ export type ArcRecentConversationVM = {
   id: string;
   title: string;
   when: string;
+  /** True while an Arc run is genuinely in flight for this thread. The rail is
+   *  on every screen, so this is what makes "Arc is still working" survive
+   *  navigating away from /arc. */
+  running: boolean;
+  /** The thread `/arc` opens when the URL names no conversation, so the rail can
+   *  mark the current chat the way it marks the current destination. */
+  defaultActive: boolean;
+  /** The campaign this chat belongs to, when it has one. 5 of prod's 25
+   *  conversations do, so the rail groups on it rather than assuming it. */
+  campaignId?: string | null;
+  campaignName?: string | null;
 };
 
 const DAY_MS = 86_400_000;
@@ -152,7 +206,7 @@ function relativeWhen(iso: string, nowMs: number): string {
  */
 export async function getRecentArcConversations(
   {
-    limit = 3,
+    limit = 5,
     nowMs = Date.now(),
     orgId,
     workspaceId,
@@ -167,10 +221,26 @@ export async function getRecentArcConversations(
 
   try {
     const [viewer, operator] = await Promise.all([getShareViewer(), getOperatorActor()]);
-    const conversations = await listConversationsForViewer(viewer, operator);
+    const [conversations, activeRuns] = await Promise.all([
+      listConversationsForViewer(viewer, operator),
+      // Never let the "working" indicator take the rail down with it: a failed
+      // run read means no dots, not a shell without recent chats.
+      listActiveArcRunConversationIds().catch(() => []),
+    ]);
     const safeLimit = Math.max(0, Math.min(limit, 5));
+    // Mirrors getArcChatModel's own fallback: with no `?c=` in the URL, /arc
+    // opens listConversationsForViewer's first row (pinned first, then newest).
+    // Read from the unsorted list so the two screens can never disagree.
+    const defaultActiveId = conversations[0]?.id ?? null;
+    // Same freshness cap the /arc thread rail applies — past it a task is stuck,
+    // not live, and a permanent spinner in the shell is worse than no spinner.
+    const runningIds = new Set(
+      activeRuns
+        .filter((run) => nowMs - Date.parse(run.since) < RUN_FRESHNESS_MS)
+        .map((run) => run.conversationId),
+    );
 
-    return [...conversations]
+    const rows = [...conversations]
       .filter((conversation) => !orgId || conversation.orgId === orgId)
       .filter((conversation) => !workspaceId || !conversation.workspaceId || conversation.workspaceId === workspaceId)
       .sort((left, right) => Date.parse(right.lastMessageAt) - Date.parse(left.lastMessageAt))
@@ -179,7 +249,28 @@ export async function getRecentArcConversations(
         id: conversation.id,
         title: conversation.title.trim() || "Untitled chat",
         when: relativeWhen(conversation.lastMessageAt, nowMs),
+        running: runningIds.has(conversation.id),
+        defaultActive: conversation.id === defaultActiveId,
+        campaignId: conversation.campaignId,
+        campaignName: null as string | null,
       }));
+
+    // Names for the handful of campaigns actually referenced — one query, and
+    // only when a row needs it. A failed lookup leaves the label off rather than
+    // dropping the chat: the link still works without knowing the campaign.
+    const campaignIds = [...new Set(rows.map((row) => row.campaignId).filter((id): id is string => Boolean(id)))];
+    if (campaignIds.length > 0) {
+      const { data } = await getSupabaseAdminClient()
+        .from("campaigns")
+        .select("id, name")
+        .in("id", campaignIds);
+      const names = new Map((data ?? []).map((row: { id: string; name: string | null }) => [row.id, row.name]));
+      for (const row of rows) {
+        if (row.campaignId) row.campaignName = names.get(row.campaignId) ?? null;
+      }
+    }
+
+    return rows;
   } catch {
     return [];
   }
@@ -201,11 +292,8 @@ const GROUP_ORDER = ["Pinned", "Today", "Yesterday", "Previous 7 days", "Earlier
 
 function summaryPreview(summary: string | null) {
   if (!summary) return null;
-  const clean = summary
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/[#>*_`[\]()]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Shared with message search so the two can't quote the same text differently.
+  const clean = flattenArcMarkdown(summary, { dropCodeBlocks: true });
   if (!clean) return null;
   const sentence = clean.split(/(?<=[.!?])\s+/)[0] ?? clean;
   return sentence.length <= 96 ? sentence : `${sentence.slice(0, 95).trimEnd()}…`;

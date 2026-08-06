@@ -1,4 +1,5 @@
 import { runArcCampaignTask, runArcOpportunityDraft, runArcOpportunityScan, runArcTurn } from "./arc";
+import { describeRailStop, isRailStop } from "./inference";
 import { captureRunnerError } from "./observability";
 import type { Config } from "./config";
 import type { ArcClient } from "./arc-client";
@@ -38,20 +39,30 @@ export async function handleChatMessage(
       model: result.usage.model,
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
+      detail: result.usage.detail,
       actorUser: payload.operator ?? null,
       taskId: payload.agentTaskId,
     });
     console.log(`[arc-runner] replied to task ${payload.agentTaskId} in ${Date.now() - started}ms`);
   } catch (error) {
     console.error("[arc-runner] Arc run failed:", error);
-    // The operator only sees "Arc hit an error… check the runner logs" — this is
-    // what makes the cause reach someone without them going to look.
-    captureRunnerError(error, { run: "chat", agentTaskId: payload.agentTaskId });
+    // A rail we set ourselves is not a crash, and the operator's next move is
+    // different: retry or escalate, not report a bug. Arc salvages a partial
+    // answer when it has one; reaching here means it had nothing to show, and
+    // even then the reason is worth naming (BSR-721).
+    const rail = isRailStop(error);
+    if (!rail) {
+      // Only a genuine fault is worth an alert — a rail firing as designed is
+      // not an incident, and paging on it teaches people to ignore the channel.
+      captureRunnerError(error, { run: "chat", agentTaskId: payload.agentTaskId });
+    }
     await client
       .postChatReply({
         agentTaskId: payload.agentTaskId,
         status: "failed",
-        body: "Arc hit an error generating a reply. Check the runner logs.",
+        body: rail
+          ? describeRailStop(payload.route, { partial: false, reason: error instanceof Error ? error.message : "" })
+          : "Arc hit an error generating a reply. Check the runner logs.",
       })
       .catch(() => undefined);
   }
@@ -84,6 +95,7 @@ export async function handleOpportunityDraft(
       model: result.usage.model,
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
+      detail: result.usage.detail,
       actorUser: payload.operator ?? null,
       taskId: payload.agentTaskId,
     });
@@ -91,6 +103,35 @@ export async function handleOpportunityDraft(
     console.error(`[arc-runner] opportunity-draft run failed for ${payload.opportunityId}:`, error);
     captureRunnerError(error, { run: "opportunity-draft", opportunityId: payload.opportunityId });
   }
+}
+
+/** Longest of Arc's own words to inline in the task summary; the full text is kept in outputs. */
+const SCAN_REASON_CHARS = 400;
+
+/**
+ * One line describing what a scan did, for the task record.
+ *
+ * A scan that proposes nothing is the case this exists for. On 2026-08-04 Arc
+ * read the CRM, personas, activity, companies and settings, proposed nothing,
+ * and wrote 1,471 characters explaining why — which the runner then discarded,
+ * because only `actions.length` was ever recorded. From the outside that is
+ * indistinguishable from a scan that crashed, and working out which took an hour
+ * of log archaeology. Arc's reason belongs on the record.
+ *
+ * Pure and exported so the wording is assertable.
+ */
+export function scanCompletionSummary(cardCount: number, body: string | null | undefined): string {
+  const count = `Opportunity scan complete — proposed ${cardCount} opportunity(ies).`;
+  if (cardCount > 0) return count;
+
+  const reason = (body ?? "").trim().replace(/\s+/g, " ");
+  if (!reason) {
+    // Silence here is itself the finding: nothing was proposed AND nothing was
+    // said, which is a different problem from a considered "nothing to add".
+    return `${count} Arc gave no reason.`;
+  }
+  const clipped = reason.length > SCAN_REASON_CHARS ? `${reason.slice(0, SCAN_REASON_CHARS - 1).trim()}…` : reason;
+  return `${count} Arc's reason: ${clipped}`;
 }
 
 /**
@@ -113,6 +154,7 @@ export async function handleOpportunityScan(
       model: result.usage.model,
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
+      detail: result.usage.detail,
       actorUser: payload.operator ?? null,
       taskId: payload.agentTaskId,
     });
@@ -121,15 +163,23 @@ export async function handleOpportunityScan(
     // `/complete` never unlocks outbound. Mirrors handleCampaignTask's background
     // (no-conversation) branch.
     await client.apiPost(`/api/v1/arc/tasks/${payload.agentTaskId}/complete`, {
-      summary: `Opportunity scan complete — proposed ${result.actions.length} opportunity(ies).`,
-      outputs: { actions: result.actions },
+      summary: scanCompletionSummary(result.actions.length, result.body),
+      // `reply` is Arc's full account of the pass — the part that used to be
+      // thrown away. `toolCalls` says what it actually looked at, which is how
+      // you tell "read everything, judged there was nothing new" apart from
+      // "barely looked".
+      outputs: { actions: result.actions, reply: result.body ?? "", toolCalls: result.toolCalls },
     });
   } catch (error) {
     console.error(`[arc-runner] opportunity-scan run failed (task ${payload.agentTaskId}):`, error);
     captureRunnerError(error, { run: "opportunity-scan", agentTaskId: payload.agentTaskId });
+    // Name the error on the record. "Check the runner logs" is what this said
+    // before, and on 2026-08-04 that sent the diagnosis to Cloud Logging for an
+    // hour to recover one line that was already in hand here.
+    const detail = error instanceof Error ? error.message : String(error);
     await client
       .apiPost(`/api/v1/arc/tasks/${payload.agentTaskId}/block`, {
-        reason: "Arc hit an error running the opportunity scan. Check the runner logs.",
+        reason: `Arc hit an error running the opportunity scan: ${detail}`,
       })
       .catch(() => undefined);
   }
@@ -149,6 +199,47 @@ export async function handleCampaignTask(
     `[arc-runner] campaign-task wake received -> ${payload.taskType} for campaign ${payload.campaignId} (task ${payload.agentTaskId})`,
   );
   const started = Date.now();
+
+  // Claim first, always. Two reasons, and the second is the load-bearing one:
+  //
+  //  1. It de-duplicates. A wake racing an operator's Retry both point at this
+  //     task; the claim is a compare-and-set, so exactly one wins and the loser
+  //     drops out here instead of running the instruction a second time.
+  //  2. It makes `queued` mean something. Campaign tasks used to run without
+  //     ever leaving `queued` — only the final /complete moved them — so a task
+  //     mid-run looked identical to one whose wake was dropped. Nothing could
+  //     tell the two apart, which is why stranded revisions were unrecoverable
+  //     rather than merely retryable (BSR-695).
+  //
+  // ONLY "another worker holds it" is a reason to skip. Everything else — the
+  // app refusing the claim, the app being unreachable — means nobody is running
+  // this, so skipping loses the operator's work.
+  //
+  // The first version of this treated any 409 as "already claimed", and
+  // `arcGuard` returns 409 for `workspace_required` / `workspace_mismatch` too.
+  // Two campaign tasks were dropped on prod under a log line reading "skipping
+  // duplicate run" when there was no duplicate — the same shape of lie this
+  // whole fix exists to remove.
+  try {
+    const claim = await client.claimTask(payload.agentTaskId);
+    if (!claim.claimed && claim.reason === "already-claimed") {
+      console.log(`[arc-runner] campaign task ${payload.agentTaskId} is already running elsewhere — skipping duplicate`);
+      return;
+    }
+    if (!claim.claimed) {
+      // Loud: this is a misconfiguration, and the run's own callbacks are likely
+      // to fail the same way. Running anyway leaves the task `queued` and
+      // retryable rather than silently consumed.
+      console.error(`[arc-runner] claim REFUSED for campaign task ${payload.agentTaskId} (${claim.detail}) — running anyway`);
+      captureRunnerError(new Error(`claim refused: ${claim.detail}`), {
+        run: "campaign-task",
+        agentTaskId: payload.agentTaskId,
+      });
+    }
+  } catch (error) {
+    console.warn(`[arc-runner] could not claim campaign task ${payload.agentTaskId}, running anyway:`, error);
+  }
+
   try {
     const result = await runArcCampaignTask(payload, client);
     const reply = result.body || "(Arc returned an empty campaign update.)";

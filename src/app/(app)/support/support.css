@@ -10,7 +10,7 @@
 
 /* header */
 .arc-app .support .sup-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }
-.arc-app .support h1 { font-family: var(--serif); font-weight: 500; font-size: 25px; letter-spacing: -0.02em; margin: 0; color: var(--text); }
+.arc-app .support .sup-head h1 { font-family: var(--serif); font-weight: 500; font-size: 25px; letter-spacing: -0.02em; margin: 0; color: var(--text); }
 .arc-app .support .sup-lede { font-size: 13px; color: var(--muted); margin-top: 5px; max-width: 64ch; }
 .arc-app .support .sup-mailbtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 
@@ -18,7 +18,7 @@
 .arc-app .support .sup-cols { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr); gap: 16px; align-items: start; }
 
 /* panels */
-.arc-app .support .sup-panel { border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.arc-app .support .sup-panel { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
 .arc-app .support .sup-panel + .sup-panel { margin-top: 16px; }
 .arc-app .support .sup-panel-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 17px; border-bottom: 1px solid var(--line); }
 .arc-app .support .sup-panel-h h2 { font-size: 13.5px; font-weight: 600; margin: 0; color: var(--text); }
@@ -34,9 +34,9 @@
 .arc-app .support .sup-form input,
 .arc-app .support .sup-form textarea,
 .arc-app .support .sup-form select {
-  width: 100%; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 9px;
+  width: 100%; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: var(--r-md);
   background: var(--inset); color: var(--text); font: inherit; font-size: 13px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
 }
 .arc-app .support .sup-form textarea { resize: vertical; min-height: 120px; line-height: 1.55; }
 .arc-app .support .sup-form input::placeholder,
@@ -53,9 +53,9 @@
 /* category chips */
 .arc-app .support .sup-cats { display: flex; flex-wrap: wrap; gap: 7px; }
 .arc-app .support .sup-cat {
-  height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2);
+  height: 30px; padding: 0 12px; border-radius: var(--r-md); border: 1px solid var(--line-2);
   background: transparent; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 500;
-  cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s;
+  cursor: pointer; transition: border-color var(--dur-base), color var(--dur-base), background var(--dur-base);
 }
 .arc-app .support .sup-cat:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .support .sup-cat.on { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
@@ -64,8 +64,8 @@
 .arc-app .support .sup-impacts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .arc-app .support .sup-impact {
   display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px;
-  border: 1px solid var(--line-2); border-radius: 10px; background: transparent;
-  color: var(--text-2); font: inherit; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent;
+  color: var(--text-2); font: inherit; cursor: pointer; transition: border-color var(--dur-base), background var(--dur-base);
 }
 .arc-app .support .sup-impact:hover { border-color: var(--accent-border); }
 .arc-app .support .sup-impact b { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
@@ -78,11 +78,11 @@
 .arc-app .support .sup-impact.on.slowing b { color: var(--warn-text); }
 
 /* what gets attached */
-.arc-app .support .sup-diag { border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--canvas-deep) 30%, transparent); }
+.arc-app .support .sup-diag { border: 1px solid var(--line); border-radius: var(--r-md); background: color-mix(in srgb, var(--canvas-deep) 30%, transparent); }
 .arc-app .support .sup-diag > summary { display: flex; align-items: center; gap: 9px; padding: 10px 13px; font-size: 12px; color: var(--text-2); cursor: pointer; list-style: none; }
 .arc-app .support .sup-diag > summary::-webkit-details-marker { display: none; }
 .arc-app .support .sup-diag > summary:hover { color: var(--text); }
-.arc-app .support .sup-diagn { font-family: var(--mono); font-size: 9.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 6px; }
+.arc-app .support .sup-diagn { font-family: var(--mono); font-size: 9.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 1px 6px; }
 .arc-app .support .sup-diag ul { list-style: none; margin: 0; padding: 2px 13px 4px; display: flex; flex-direction: column; gap: 6px; }
 .arc-app .support .sup-diag li { display: flex; justify-content: space-between; gap: 16px; font-size: 11.5px; }
 .arc-app .support .sup-diag li span { color: var(--muted); flex-shrink: 0; }
@@ -96,11 +96,11 @@
 .arc-app .support .sup-acts .btn[disabled] { opacity: 0.6; cursor: default; transform: none; }
 .arc-app .support .sup-err,
 .arc-app .support .sup-note {
-  padding: 10px 13px; border-radius: 9px; font-size: 12px; line-height: 1.5;
+  padding: 10px 13px; border-radius: var(--r-md); font-size: 12px; line-height: 1.5;
 }
 .arc-app .support .sup-err { color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); }
 .arc-app .support .sup-note { color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); }
-.arc-app .support .sup-warn { color: var(--warn-text); font-size: 12px; line-height: 1.5; background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 9px; padding: 10px 13px; }
+.arc-app .support .sup-warn { color: var(--warn-text); font-size: 12px; line-height: 1.5; background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: var(--r-md); padding: 10px 13px; }
 
 /* success state */
 .arc-app .support .sup-done { padding: 30px 22px 26px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 11px; }
@@ -117,12 +117,12 @@
 .arc-app .support .sup-faq summary {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 11px; font-size: 12.5px; font-weight: 500; color: var(--text-2);
-  cursor: pointer; list-style: none; transition: color 0.15s;
+  cursor: pointer; list-style: none; transition: color var(--dur-base);
 }
 .arc-app .support .sup-faq summary::-webkit-details-marker { display: none; }
 .arc-app .support .sup-faq summary:hover { color: var(--text); }
 .arc-app .support .sup-faq details[open] summary { color: var(--text); }
-.arc-app .support .sup-plus { color: var(--muted); font-size: 15px; line-height: 1; transition: transform 0.2s var(--ease); flex-shrink: 0; }
+.arc-app .support .sup-plus { color: var(--muted); font-size: 15px; line-height: 1; transition: transform var(--dur-slow) var(--ease); flex-shrink: 0; }
 .arc-app .support .sup-faq details[open] .sup-plus { transform: rotate(45deg); color: var(--accent); }
 .arc-app .support .sup-a { padding: 0 11px 14px; font-size: 12px; line-height: 1.65; color: var(--muted); }
 .arc-app .support .sup-a b { color: var(--text-2); font-weight: 600; }
@@ -130,11 +130,11 @@
 /* other ways to reach us */
 .arc-app .support .sup-ways { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
 .arc-app .support .sup-way {
-  display: flex; align-items: flex-start; gap: 11px; padding: 11px; border-radius: 10px;
-  border: 1px solid transparent; text-decoration: none; transition: border-color 0.15s, background 0.15s;
+  display: flex; align-items: flex-start; gap: 11px; padding: 11px; border-radius: var(--r-md);
+  border: 1px solid transparent; text-decoration: none; transition: border-color var(--dur-base), background var(--dur-base);
 }
 .arc-app .support a.sup-way:hover { border-color: var(--accent-border); background: rgba(255, 255, 255, 0.03); }
-.arc-app .support .sup-waymk { width: 26px; height: 26px; flex-shrink: 0; border-radius: 8px; display: grid; place-items: center; font-size: 13px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border); }
+.arc-app .support .sup-waymk { width: 26px; height: 26px; flex-shrink: 0; border-radius: var(--r-md); display: grid; place-items: center; font-size: 13px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-app .support .sup-way b { display: block; font-size: 12.5px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 .arc-app .support .sup-way i { display: block; font-style: normal; font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
 
@@ -146,14 +146,14 @@
 .arc-app .support .sup-list > li:last-child { border-bottom: 0; }
 .arc-app .support .sup-list summary {
   display: grid; grid-template-columns: 88px minmax(0, 1fr) auto auto; align-items: center; gap: 14px;
-  padding: 12px 17px; cursor: pointer; list-style: none; transition: background 0.15s;
+  padding: 12px 17px; cursor: pointer; list-style: none; transition: background var(--dur-base);
 }
 .arc-app .support .sup-list summary::-webkit-details-marker { display: none; }
 .arc-app .support .sup-list summary:hover { background: rgba(255, 255, 255, 0.02); }
 .arc-app .support .sup-subj { font-size: 12.5px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arc-app .support .sup-meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .arc-app .support .sup-ref { font-family: var(--mono); font-size: 10px; color: var(--muted); }
-.arc-app .support .sup-pill { display: inline-flex; align-items: center; justify-content: center; height: 21px; padding: 0 9px; border-radius: 6px; font-size: 10.5px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.arc-app .support .sup-pill { display: inline-flex; align-items: center; justify-content: center; height: 21px; padding: 0 9px; border-radius: var(--r-sm); font-size: 10.5px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
 .arc-app .support .sup-pill.t-warn { color: var(--warn-text); background: var(--warn-soft); border-color: var(--warn-border); }
 .arc-app .support .sup-pill.t-blue { color: #a8cbe4; background: rgba(136, 182, 216, 0.13); border-color: rgba(136, 182, 216, 0.4); }
 .arc-app .support .sup-pill.t-ok { color: var(--ok-text); background: var(--ok-soft); border-color: var(--ok-border); }
@@ -161,7 +161,7 @@
 .arc-app .support .sup-detail { padding: 2px 17px 16px 119px; }
 .arc-app .support .sup-body { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--text-2); white-space: pre-wrap; max-width: 80ch; }
 .arc-app .support .sup-detailmeta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 9px; font-size: 11px; color: var(--muted); }
-.arc-app .support .sup-res { margin: 10px 0 0; padding: 9px 12px; border-radius: 8px; font-size: 12px; line-height: 1.55; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); max-width: 80ch; }
+.arc-app .support .sup-res { margin: 10px 0 0; padding: 9px 12px; border-radius: var(--r-md); font-size: 12px; line-height: 1.55; color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); max-width: 80ch; }
 
 @media (max-width: 1080px) {
   .arc-app .support .sup-cols { grid-template-columns: minmax(0, 1fr); }

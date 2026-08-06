@@ -2,6 +2,8 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import {
   DEFAULT_PLAN_TIER,
+  MICROCENTS_PER_CENT,
+  centsFromMicrocents,
   TRIAL_CAP_CENTS,
   TRIAL_TIER,
   normalizePlanTier,
@@ -125,14 +127,23 @@ export async function getMonthToDateUsageCents(orgId: string, client?: SupabaseC
     const start = startOfUtcMonth(new Date());
     const { data, error } = await db
       .from("ai_usage_events")
-      .select("cost_estimate_cents")
+      .select("cost_estimate_cents,cost_microcents")
       .eq("org_id", orgId)
       .gte("occurred_at", start.toISOString());
     if (error || !data) return 0;
-    return (data as Array<{ cost_estimate_cents: number | null }>).reduce(
-      (sum, row) => sum + (row.cost_estimate_cents ?? 0),
+    // Sum in MICROCENTS and round ONCE (BSR-502 Finding 5). Summing the rounded
+    // per-event `cost_estimate_cents` floors every sub-half-cent call to zero
+    // before it is ever added, and that floor only rounds down — so the more small
+    // calls an org makes, the further under cap this reads. It is the cap check;
+    // it has to sum the precise number.
+    //
+    // `cost_microcents` is null on rows written before it existed; those never had
+    // the precision, so cents * 1000 is the honest reading of them.
+    const microcents = (data as Array<{ cost_estimate_cents: number | null; cost_microcents: number | null }>).reduce(
+      (sum, row) => sum + (row.cost_microcents ?? (row.cost_estimate_cents ?? 0) * MICROCENTS_PER_CENT),
       0,
     );
+    return centsFromMicrocents(microcents);
   } catch {
     return 0;
   }

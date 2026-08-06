@@ -62,14 +62,18 @@ export function workPanelOpenOnConversationChange(): boolean {
  *
  * The panel replaced its tab rail with sections, so this replaces the stored
  * tab. Deliverables are never collapsible — they are the reason the panel
- * exists. Evidence opens by default because it answers "where did that come
- * from"; run history stays closed because it is reference, not the point.
+ * exists. Evidence and run history both start closed: they answer "where did
+ * that come from", which is a question asked about a deliverable, after seeing
+ * it. Evidence used to open by default, and on a real prod turn that put 65
+ * rows — every record read and every fact recalled — directly beneath the
+ * campaign work the operator opened the panel for. The header still carries the
+ * count, so nothing is hidden; it is one click instead of a scroll.
  *
  * `sessionStorage` for the same reason as the open/closed preference above.
  */
 export type WorkSectionId = "evidence" | "runs";
 
-export const DEFAULT_WORK_SECTIONS: Record<WorkSectionId, boolean> = { evidence: true, runs: false };
+export const DEFAULT_WORK_SECTIONS: Record<WorkSectionId, boolean> = { evidence: false, runs: false };
 
 const SECTIONS_KEY = "arc.workPanel.sections";
 

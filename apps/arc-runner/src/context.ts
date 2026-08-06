@@ -90,11 +90,17 @@ function modeBlock(mode: "ask" | "act" | "draft" | "scan"): string {
     return [
       "MODE: scan — survey the read tools (CRM, personas, brand, activity, the opportunity inbox) and propose source-backed opportunities by calling propose_opportunity. Each proposal lands status=pending for human approval.",
       "You may ONLY read and call propose_opportunity. Do NOT draft campaigns, generate media, edit records, log interactions, or take any outbound action.",
+      // What Arc reads with and what the owner reads are two different registers,
+      // and scan output goes straight onto a card in the owner's inbox. Left
+      // unsaid, Arc narrated its own tool calls there: live cards cited
+      // "query_brain(campaign_ref)", named campaigns by UUID, and reported
+      // "mediaAvailable is 0" to a restoration contractor.
+      "VOICE: every opportunity you propose is read by the business owner, on a card, in their words. How you found something is your business, not theirs — never write a tool name, a record id, or a database field name into a title, summary, evidence key/value, or recommended action. Name things as they'd be named in the business: the campaign's title, the customer's name, the county, the persona's label. If a fact only makes sense as an id, leave it out and give the count or the name instead.",
     ].join("\n");
   }
   if (mode === "act") {
     return [
-      "MODE: act — do the work. You may read; create and edit CRM records (create_lead, update_record); log CRM interactions (notes / follow-up tasks / timeline activity); record brain observations; and create approval-gated draft campaigns, assets, and media (create_campaign_draft, generate_image, generate_video).",
+      "MODE: act — do the work. You may read; create and edit CRM records (create_lead, update_record); log CRM interactions (notes / follow-up tasks / timeline activity); record brain observations; and create approval-gated draft campaigns, assets, and media (create_campaign_draft, generate_image, generate_video, edit_image).",
       "Act has the SAME capabilities as draft mode — when the operator asks you to build or draft a campaign or asset, do it here; never tell them to switch to draft mode first.",
       "Everything you create is a draft pending human approval and stays dispatch-locked. Nothing you do goes outbound.",
     ].join("\n");
@@ -198,6 +204,11 @@ function workspaceStateBlock(s: WorkspaceSummary | null | undefined): string | n
       : s.brandKit === "draft"
         ? "Brand Kit in draft — not yet active; tell the operator to activate it in Settings"
         : "no Brand Kit yet — running on neutral defaults";
+  // "unknown" rather than 0 when a count could not be read: reporting an
+  // unreadable table as empty is how this block would recreate the bug it exists
+  // to prevent.
+  const count = (n: number | null | undefined) => (typeof n === "number" ? String(n) : "unknown");
+  const r = s.records;
   return [
     "WORKSPACE STATE (live snapshot — use for situational awareness; call get_workspace_settings for detail):",
     `- ${brand}`,
@@ -205,6 +216,38 @@ function workspaceStateBlock(s: WorkspaceSummary | null | undefined): string | n
     `- Library: ${s.mediaAvailable} approved media available to you`,
     `- Approvals: ${s.pendingApprovals} pending`,
     `- Personas: ${s.personas} configured`,
+    ...(r
+      ? [
+          `- Records: ${count(r.contacts)} contacts, ${count(r.companies)} companies, ${count(r.leads)} leads, ${count(r.campaigns)} campaigns`,
+          // The counts above are read live this turn. Arc once told an operator
+          // the CRM was empty 85 minutes after 243 contacts landed, sourcing it
+          // from memory and citing a tool that carries no CRM data (BSR-678).
+          // Saying which wins is the point of putting them here at all.
+          "  These counts are LIVE, read this turn. They override any remembered figure — if a memory disagrees, the memory is stale, and say so.",
+          "  They are counts only: to name or use specific records, read them with the CRM tools.",
+        ]
+      : []),
+    // What this operator keeps saying no to (BSR-686). Only repeated patterns
+    // reach here — a single dismissal is an opinion about one record, and
+    // treating it as a rule would make Arc skittish rather than better.
+    ...(s.dismissalPatterns && s.dismissalPatterns.length > 0
+      ? [
+          "- This operator has repeatedly dismissed:",
+          ...s.dismissalPatterns.map((line) => `  · ${line}`),
+          "  Treat these as standing guidance for what to propose next, not as a ban: the pattern says what has not been worth their time, and a genuinely stronger signal of the same kind is still worth raising.",
+        ]
+      : []),
+    // What the operator sent back, in their own words (BSR-685). Unaggregated
+    // and verbatim: these are specific enough to act on directly, and
+    // paraphrasing them would lose the detail that makes them useful — a phone
+    // number, a logo placement, a thing that must appear in the shot.
+    ...(s.recentCorrections && s.recentCorrections.length > 0
+      ? [
+          "- Recent corrections from this operator, in their words:",
+          ...s.recentCorrections.map((line) => `  · ${line}`),
+          "  Apply these to comparable work before it reaches them again. They are the operator's stated preferences for THIS workspace, not general rules — and they describe what to change, not permission to send anything.",
+        ]
+      : []),
   ].join("\n");
 }
 

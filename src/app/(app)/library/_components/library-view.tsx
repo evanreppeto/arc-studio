@@ -1,13 +1,21 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { formatByteSize } from "@/domain";
+import { formatByteSize, WORK_STATE_LABEL } from "@/domain";
 
-import { createLibraryFolder, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, renameLibraryAsset, renameLibraryFolder, setLibraryAssetArcAvailability, setLibraryAssetTags, uploadLibraryAsset } from "../actions";
+import { createLibraryFolder, decideLibraryAsset, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, moveLibraryAssets, moveLibraryFolder, renameLibraryAsset, renameLibraryFolder, reorderLibraryFolders, setLibraryAssetArcAvailability, setLibraryAssetTags, updateLibraryFolder, uploadLibraryAsset } from "../actions";
 import { addLibraryAssetsToCampaign } from "../actions";
+import { FolderDetailsModal } from "./folder-details-modal";
 import { ImportUrlModal } from "./import-url-modal";
 import { NewFolderModal } from "./new-folder-modal";
+import { DRAG_ASSETS, FolderTree, ROOT_FOLDER, type Folder } from "./folder-tree";
+import { RAIL_MAX, RAIL_MIN, TILE_SIZES, getLibraryPrefs, getServerLibraryPrefs, setLibraryPrefs, subscribeLibraryPrefs, type TileSize } from "./library-prefs";
+import { Define } from "../../_components/define";
+import { OverlayPortal } from "../../_components/overlay-portal";
+import { AppImage } from "../../_components/app-image";
 
 type Kind = "image" | "video" | "logo" | "document";
 type Prov = "real" | "ai" | "comp" | "upload" | "logo" | "doc";
@@ -31,6 +39,12 @@ export type Asset = {
   added: string;
   recent: number;
   risk?: string;
+  /**
+   * The asset's recorded approval state, when it has one. Approving a flagged
+   * asset acknowledges the flag rather than clearing it, so `risk` alone cannot
+   * say whether anyone has reviewed it.
+   */
+  approvalStatus?: string;
   /** Generation prompt from stored provenance — shown on the detail card. */
   prompt?: string;
   img?: string;
@@ -38,7 +52,7 @@ export type Asset = {
   uses: number;
 };
 
-export type Folder = { f: string; name: string; color: string; icon: string; children?: Folder[] };
+export type { Folder } from "./folder-tree";
 
 // Inline SVG placeholders (verbatim from the mockup) — used when no CDN image is set.
 const SC: Record<string, string> = {
@@ -54,7 +68,46 @@ const SC: Record<string, string> = {
   doc: '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice"><rect width="100" height="100" fill="#1b1b20"/><rect x="34" y="24" width="32" height="44" rx="3" fill="#26262d" stroke="#3a3a42"/><path d="M40 36h20M40 44h20M40 52h14" stroke="#83838c" stroke-width="2"/><path d="M58 24v8h8" fill="none" stroke="#3a3a42" stroke-width="2"/></svg>',
   beforeafter: '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice"><rect width="50" height="100" fill="#34302a"/><rect x="50" width="50" height="100" fill="#2a3b34"/><path d="M8 72 L25 56 L42 72 Z" fill="#4a443a"/><path d="M58 72 L75 56 L92 72 Z" fill="#3e5a4c"/><rect x="48" width="4" height="100" fill="rgba(200,162,74,.5)"/></svg>',
 };
-const PVL: Record<Prov, string> = { real: "Real", ai: "AI", comp: "Composite", upload: "Imported", logo: "Logo", doc: "Doc" };
+/** What a shape is good for. The pixel count is still on the detail panel for
+ *  anyone who needs it; the card says where the thing can go. */
+function shapeUse(dim: string): string | null {
+  const [w, h] = dim.split("×").map((n) => Number.parseInt(n.replace(/\D/g, ""), 10));
+  if (!Number.isFinite(w) || !Number.isFinite(h) || h === 0) return null;
+  const ratio = w / h;
+  if (ratio > 1.6) return "wide — web banner";
+  if (ratio > 1.15) return "landscape";
+  if (ratio > 0.9) return "square — feed post";
+  if (ratio > 0.7) return "tall — feed post";
+  return "story / reel";
+}
+
+const PVL: Record<Prov, string> = { real: "Real", ai: "AI", comp: "Photo + text", upload: "Imported", logo: "Logo", doc: "Doc" };
+const SORTS: readonly (readonly ["recent" | "name" | "used", string])[] = [
+  ["recent", "Recently added"],
+  ["name", "Name (A–Z)"],
+  ["used", "Most used"],
+] as const;
+/**
+ * The collection chips, in order.
+ *
+ * The first four are the readiness axis and are mutually exclusive — every
+ * asset is in exactly one of Arc-ready / needs you / not reviewed, and they sum
+ * to All. "Unused" and "Recent" are a separate axis: an asset can be Arc-ready
+ * and still never used.
+ *
+ * `untouched` is new here only in the sense that it is now reachable. Its count
+ * was already rendered in the header band, wedged between two clickable
+ * siblings and clickable by neither, so the one readiness state you could not
+ * ask to see was the one holding the assets Arc has never been told about.
+ */
+const COLLECTIONS: readonly (readonly [string, string])[] = [
+  ["all", "All"],
+  ["arc", "Arc-ready"],
+  ["review", WORK_STATE_LABEL.needs_you],
+  ["untouched", "Not reviewed"],
+  ["unused", "Unused"],
+  ["recent", "Recent"],
+] as const;
 const IMGBASE = "https://d8j0ntlcm91z4.cloudfront.net/user_3FaOq1cCR2Izxa2haYxVnIrhIBK/";
 const IMG = {
   team: IMGBASE + "hf_20260625_205928_522fa33a-3aa6-4e05-8a8b-db2bd83a688d_min.webp",
@@ -65,25 +118,12 @@ const IMG = {
 };
 const SC2IMG: Record<string, string> = { photo: IMG.team, crew: IMG.team, ui: IMG.dash, ai: IMG.gold, ai2: IMG.net, comp: IMG.net, beforeafter: IMG.gold, video: IMG.dash };
 
-const ICONS: Record<string, string> = {
-  grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
-  shield: '<path d="M12 3l8 4v6c0 4-3.5 7-8 8-4.5-1-8-4-8-8V7z"/>',
-  mark: '<path d="M12 3l2.2 6L20 11l-5.8 2L12 19l-2.2-6L4 11l5.8-2z"/>',
-  photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 4"/>',
-  sparkle: '<path d="M11 3l1.6 4.4L17 9l-4.4 1.6L11 15l-1.6-4.4L5 9l4.4-1.6z"/><path d="M18.5 13l.6 1.8 1.9.7-1.9.7-.6 1.8-.6-1.8-1.9-.7 1.9-.7z"/>',
-  layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
-  import: '<path d="M12 3v11M8 10l4 4 4-4"/><path d="M5 20h14"/>',
-  video: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
-  folder: '<path d="M4 7h6l2 2h8v10H4z"/>',
-  chev: '<path d="M9 6l6 6-6 6"/>',
-};
-
 const TREE: Folder[] = [
   { f: "all", name: "All assets", color: "#c8a24a", icon: "grid" },
   { f: "brand", name: "Brand kit", color: "#c47055", icon: "shield", children: [{ f: "logos", name: "Logos & marks", color: "#9aa0ac", icon: "mark" }] },
   { f: "real", name: "Real photos", color: "#7fb89a", icon: "photo", children: [{ f: "customers", name: "Customer photos", color: "#7fb89a", icon: "photo" }] },
   { f: "ai", name: "AI-generated", color: "#c8a24a", icon: "sparkle" },
-  { f: "comp", name: "Composites", color: "#9678c8", icon: "layers" },
+  { f: "comp", name: "Photo + text mockups", color: "#8fa2ba", icon: "layers" },
   { f: "upload", name: "Imported", color: "#88b6d8", icon: "import" },
   { f: "video", name: "Videos", color: "#bd6a58", icon: "video" },
 ];
@@ -155,7 +195,7 @@ function ThumbMedia({ a }: { a: Asset }) {
     <>
       <Svg markup={SC[a.sc] || SC.photo} />
       {url && !failed ? (
-        <img src={url} loading="lazy" alt="" onError={() => setFailed(true)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+        <AppImage src={url} alt="" onError={() => setFailed(true)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
       ) : null}
     </>
   );
@@ -164,12 +204,20 @@ function Ico({ d }: { d: string }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} dangerouslySetInnerHTML={{ __html: d }} />;
 }
 
-function descKeys(key: string): string[] {
+/**
+ * A folder plus every folder inside it — what "show me this folder" means.
+ *
+ * Takes the tree it should search. It used to close over the demo constant, so
+ * on a live workspace (whose folders are uuids the constant has never heard of)
+ * every lookup missed and returned just the key: selecting a parent folder
+ * showed its own assets and hid everything filed in its children.
+ */
+function descKeys(tree: Folder[], key: string): string[] {
   const find = (k: string, arr: Folder[]): Folder | null => {
     for (const n of arr) { if (n.f === k) return n; if (n.children) { const r = find(k, n.children); if (r) return r; } }
     return null;
   };
-  const node = find(key, TREE);
+  const node = find(key, tree);
   if (!node) return [key];
   const out: string[] = [];
   const rec = (n: Folder) => { out.push(n.f); n.children?.forEach(rec); };
@@ -177,10 +225,79 @@ function descKeys(key: string): string[] {
   return out;
 }
 
+// Pure tree ops backing the rail's optimistic edits. At module scope because
+// none of them touch component state, and because a folder move is three of
+// them composed (find → remove → add) — inline copies drift.
+function renameInTree(nodes: Folder[], id: string, name: string): Folder[] {
+  return nodes.map((n) => (n.f === id ? { ...n, name } : n.children ? { ...n, children: renameInTree(n.children, id, name) } : n));
+}
+function removeFromTree(nodes: Folder[], id: string): Folder[] {
+  return nodes.filter((n) => n.f !== id).map((n) => (n.children ? { ...n, children: removeFromTree(n.children, id) } : n));
+}
+function addToTree(nodes: Folder[], parentId: string, node: Folder): Folder[] {
+  return nodes.map((n) =>
+    n.f === parentId
+      ? { ...n, children: [...(n.children ?? []), node] }
+      : n.children
+        ? { ...n, children: addToTree(n.children, parentId, node) }
+        : n,
+  );
+}
+function setDetailsInTree(nodes: Folder[], id: string, name: string, description: string | null): Folder[] {
+  return nodes.map((n) =>
+    n.f === id
+      ? { ...n, name, description }
+      : n.children
+        ? { ...n, children: setDetailsInTree(n.children, id, name, description) }
+        : n,
+  );
+}
+/** Re-sequence one parent's children to `orderedIds`. `parentId: null` is the
+ *  top level, which in this tree is every root node except the "All assets"
+ *  row — that row is a filter, not a folder, and must stay at the head. */
+function reorderInTree(nodes: Folder[], parentId: string | null, orderedIds: string[]): Folder[] {
+  const sort = (list: Folder[]): Folder[] => {
+    const rank = new Map(orderedIds.map((id, i) => [id, i]));
+    return [...list].sort((a, b) => (rank.get(a.f) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.f) ?? Number.MAX_SAFE_INTEGER));
+  };
+  if (parentId === null) {
+    const root = nodes.filter((n) => n.f === ROOT_FOLDER);
+    return [...root, ...sort(nodes.filter((n) => n.f !== ROOT_FOLDER))];
+  }
+  return nodes.map((n) =>
+    n.f === parentId
+      ? { ...n, children: sort(n.children ?? []) }
+      : n.children
+        ? { ...n, children: reorderInTree(n.children, parentId, orderedIds) }
+        : n,
+  );
+}
+function findInTree(nodes: Folder[], id: string): Folder | undefined {
+  for (const n of nodes) {
+    if (n.f === id) return n;
+    const found = n.children ? findInTree(n.children, id) : undefined;
+    if (found) return found;
+  }
+  return undefined;
+}
+function folderName(nodes: Folder[], id: string): string | undefined {
+  return findInTree(nodes, id)?.name;
+}
+
 // The campaigns board is the real create surface (New campaign opens a modal);
 // the old /campaigns/new static builder is no longer linked.
-const NEW_CAMPAIGN = "/campaigns";
 const STUDIO = "/studio";
+/** The campaigns LIST. Named for what it is — it was called NEW_CAMPAIGN while
+ *  pointing here, which is how a button came to say "Add to campaign" and add
+ *  nothing. `used` carries campaign NAMES only (and the live read leaves it
+ *  empty), so a usage row has no id to deep-link to. */
+const CAMPAIGNS = "/campaigns";
+
+/** Studio, opened on a specific asset when it is a real stored one. Session/demo
+ *  rows have no `rid`, so they fall back to Studio's own default selection. */
+function a_studioHref(asset: { rid?: string | null } | null): string {
+  return asset?.rid ? `${STUDIO}?asset=${encodeURIComponent(asset.rid)}` : STUDIO;
+}
 
 export function LibraryView({
   assets,
@@ -189,27 +306,48 @@ export function LibraryView({
   totalBytes,
   campaigns = [],
 }: { assets?: Asset[]; folders?: Folder[]; live?: boolean; totalBytes?: number; campaigns?: { id: string; name: string }[] } = {}) {
-  const [curFolder, setCurFolder] = useState("all");
+  const [curFolder, setCurFolder] = useState(ROOT_FOLDER);
   const [curKind, setCurKind] = useState("all");
   const [curColl, setCurColl] = useState("all");
-  const [sortBy, setSortBy] = useState<"recent" | "name" | "used">("recent");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  // View shape — how this operator likes the shelf arranged. Persisted per
+  // browser rather than held for the session: rearranging the Library every
+  // time you open it is the kind of small friction that makes a tool feel
+  // borrowed rather than yours.
+  const prefs = useSyncExternalStore(subscribeLibraryPrefs, getLibraryPrefs, getServerLibraryPrefs);
+  const { viewMode, tile, sortBy, expanded } = prefs;
+  const setViewMode = (value: "grid" | "list") => setLibraryPrefs({ viewMode: value });
+  const setSortBy = (value: "recent" | "name" | "used") => setLibraryPrefs({ sortBy: value });
+  const setTile = (value: TileSize) => setLibraryPrefs({ tile: value });
+  const toggleExpanded = (id: string) => setLibraryPrefs({ expanded: { ...expanded, [id]: !expanded[id] } });
+  // While the rail handle is held, the width is local: committing every
+  // pointermove would write localStorage sixty times a second.
+  const [liveRail, setLiveRail] = useState<number | null>(null);
+  const railWidth = liveRail ?? prefs.railWidth;
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Set<number>>(new Set());
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ brand: true, real: true });
   const [detail, setDetail] = useState<Asset | null>(null);
+  const [sortOpen, setSortOpen] = useState(false);
+  /** A drag is in flight, so every folder row can advertise itself as a target. */
+  const [assetDrag, setAssetDrag] = useState(false);
   const [arcState, setArcState] = useState<Record<number, boolean>>({});
   // Assets deleted this session — hidden optimistically before the refetch.
   const [deletedIds, setDeletedIds] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Risk-flag review, per asset id. `ackOpen` is the inline acknowledgement form
+  // (the risk box's own confirm step, mirroring `confirmDelete` below it);
+  // `approvedIds` reflects a decision locally so the box updates without a reload.
+  const [ackOpen, setAckOpen] = useState(false);
+  const [ackText, setAckText] = useState("");
+  const [approving, setApproving] = useState(false);
+  const [approvedIds, setApprovedIds] = useState<Set<number>>(new Set());
+  const [downloading, setDownloading] = useState(false);
   // In-session name/tag edits, overlaid on the immutable base assets.
-  const [edits, setEdits] = useState<Record<number, { nm?: string; tags?: string[] }>>({});
+  // Optimistic per-asset overlay. `folder` joined nm/tags for BSR-707 so a moved
+  // asset re-files in the grid immediately instead of after the refetch.
+  const [edits, setEdits] = useState<Record<number, { nm?: string; tags?: string[]; folder?: string }>>({});
   const [renaming, setRenaming] = useState(false);
   const [tagEditing, setTagEditing] = useState(false);
-  // Folder management: which folder is being renamed / pending a delete confirm.
-  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
-  const [folderConfirmDelete, setFolderConfirmDelete] = useState<string | null>(null);
   const [suggDismissed, setSuggDismissed] = useState(false);
   // Folders + uploads created this session. Folders persist via createLibraryFolder;
   // uploads are held client-side (real media-store persistence lands with the
@@ -217,11 +355,20 @@ export function LibraryView({
   const [tree, setTree] = useState<Folder[]>(folders ?? TREE);
   const [uploaded, setUploaded] = useState<Asset[]>([]);
   const [folderOpen, setFolderOpen] = useState(false);
+  /** Which folder the next "New folder" lands in — null is the top level. */
+  const [newFolderParent, setNewFolderParent] = useState<string | null>(null);
+  /** The folder whose name + description are being edited, if any. */
+  const [detailsFolder, setDetailsFolder] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // "Add to campaign" picker. The control used to be a bare link to /campaigns,
   // which navigated away and silently discarded the selection.
+  const router = useRouter();
   const [campaignPickOpen, setCampaignPickOpen] = useState(false);
+  const [movePickOpen, setMovePickOpen] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const selbarRef = useRef<HTMLDivElement>(null);
+  const sortRef = useRef<HTMLSpanElement>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -231,7 +378,7 @@ export function LibraryView({
   const allAssets = useMemo(
     () => [...uploaded, ...baseAssets]
       .filter((a) => !deletedIds.has(a.id))
-      .map((a) => (edits[a.id] ? { ...a, ...(edits[a.id].nm !== undefined ? { nm: edits[a.id].nm! } : {}), ...(edits[a.id].tags !== undefined ? { tags: edits[a.id].tags! } : {}) } : a)),
+      .map((a) => (edits[a.id] ? { ...a, ...(edits[a.id].nm !== undefined ? { nm: edits[a.id].nm! } : {}), ...(edits[a.id].tags !== undefined ? { tags: edits[a.id].tags! } : {}), ...(edits[a.id].folder !== undefined ? { folder: edits[a.id].folder! } : {}) } : a)),
     [uploaded, baseAssets, deletedIds, edits],
   );
 
@@ -261,10 +408,116 @@ export function LibraryView({
     if (res.persisted) setSel(new Set());
   };
 
+  /**
+   * File the selection into a folder, or back out to the root (BSR-707).
+   *
+   * `folderId: null` is the root and a real destination — an asset that could
+   * only ever move deeper would make the tree a one-way trip.
+   *
+   * Session-only rows have no `rid` and so no database row to move; they are
+   * counted out and reported rather than silently dropped from the total.
+   */
+  const moveSelectionToFolder = async (folderId: string | null, folderName: string) => {
+    await moveAssetsToFolder([...sel], folderId, folderName);
+  };
+
+  const moveAssetsToFolder = async (assetKeys: number[], folderId: string | null, folderName: string) => {
+    const keys = new Set(assetKeys);
+    const chosen = allAssets.filter((a) => keys.has(a.id));
+    const ids = chosen.map((a) => a.rid).filter(Boolean) as string[];
+    setMovePickOpen(false);
+    if (ids.length === 0) {
+      setNotice("Those items aren't saved assets yet, so they can't be moved.");
+      return;
+    }
+    setMoving(true);
+    const res = await moveLibraryAssets({ assetIds: ids, folderId }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    setMoving(false);
+    if (!res.ok) { setNotice(res.error); return; }
+    // Reflect the move locally so the grid re-files without waiting for the
+    // refetch; the folder counts read from the same overlay.
+    for (const a of chosen) if (a.rid) applyEdit(a.id, { folder: folderId ?? "" });
+    const skipped = chosen.length - ids.length;
+    setNotice(
+      !res.persisted
+        ? "Connect a workspace to move assets between folders."
+        : `Moved ${res.moved} ${res.moved === 1 ? "asset" : "assets"} to ${res.folderName ?? folderName}.${skipped > 0 ? ` ${skipped} skipped (not saved assets).` : ""}`,
+    );
+    if (res.persisted) setSel(new Set());
+  };
+
+  /**
+   * Close either selection-bar picker on an outside click or Escape.
+   *
+   * Replaces a pair of click-catching scrim overlays. A scrim span cannot be
+   * tabbed to and ignored Escape, so a keyboard user who opened a picker was
+   * stuck with it — and BSR-664's ratchet counts each one. Covering both
+   * pickers here removes the existing scrim as well as the one this change
+   * would have added, so the file's baseline drops rather than holds.
+   *
+   * (Prose avoids naming the old markup literally: that ratchet greps raw
+   * source without stripping comments.)
+   */
+  useEffect(() => {
+    if (!campaignPickOpen && !movePickOpen) return;
+    const close = () => { setCampaignPickOpen(false); setMovePickOpen(false); };
+    function onDown(e: MouseEvent) {
+      if (selbarRef.current && !selbarRef.current.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [campaignPickOpen, movePickOpen]);
+
+  /** Same dismissal contract for the sort menu — outside click or Escape. */
+  useEffect(() => {
+    if (!sortOpen) return;
+    const close = () => setSortOpen(false);
+    function onDown(e: MouseEvent) {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [sortOpen]);
+
+  /**
+   * Folder choices for the move picker, flattened depth-first so nesting reads
+   * as indentation rather than being lost. "All assets" is the root and maps to
+   * a null folder_id — moving OUT has to be reachable or the tree is one-way.
+   */
+  const moveTargets = useMemo(() => {
+    const out: Array<{ id: string | null; name: string }> = [];
+    const walk = (nodes: Folder[], depth: number) => {
+      for (const n of nodes) {
+        if (n.f === "all") out.push({ id: null, name: "All assets (no folder)" });
+        else out.push({ id: n.f, name: `${"— ".repeat(depth)}${n.name}` });
+        if (n.children?.length) walk(n.children, depth + 1);
+      }
+    };
+    walk(tree, 0);
+    return out;
+  }, [tree]);
+
   // Folder counts over the live asset set (base assets + this session's uploads).
   const rcountLive = (f: string): number => {
-    if (f === "all") return allAssets.length;
-    const ks = descKeys(f);
+    if (f === ROOT_FOLDER) return allAssets.length;
+    const ks = descKeys(tree, f);
     return allAssets.filter((a) => ks.includes(a.folder) || a.folder === f).length;
   };
 
@@ -334,16 +587,47 @@ export function LibraryView({
   async function handleCreateFolder(name: string): Promise<{ ok: boolean; error?: string }> {
     const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "folder";
     const key = `${base}-${-(uidRef.current--)}`;
-    setTree((prev) => [...prev, { f: key, name, color: "#88b6d8", icon: "folder" }]);
+    const parent = newFolderParent;
+    const node: Folder = { f: key, name, color: "#88b6d8", icon: "folder" };
+    setTree((prev) => (parent ? addToTree(prev, parent, node) : [...prev, node]));
+    // A subfolder created into a collapsed parent would be invisible the moment
+    // it appeared, which reads as "nothing happened".
+    if (parent && !expanded[parent]) toggleExpanded(parent);
     setNotice(null);
-    const res = await createLibraryFolder(name);
+    const res = await createLibraryFolder(name, parent);
     if (!res.ok) {
-      setTree((prev) => prev.filter((t) => t.f !== key));
+      setTree((prev) => removeFromTree(prev, key));
       return { ok: false, error: res.error };
     }
     setCurFolder(key);
     return { ok: true };
   }
+
+  /**
+   * Re-parent a folder — the drop target in the rail, and its row menu.
+   *
+   * Optimistic like every other tree edit here, and restored from a snapshot on
+   * failure. The server's refusals are surfaced verbatim: "a folder can't be
+   * moved inside itself" is actionable, and a generic failure is not.
+   */
+  const handleMoveFolder = async (folderId: string, parentId: string | null) => {
+    const snapshot = tree;
+    const node = findInTree(tree, folderId);
+    if (!node) return;
+    const detached = removeFromTree(tree, folderId);
+    setTree(parentId ? addToTree(detached, parentId, node) : [...detached, node]);
+    if (parentId && !expanded[parentId]) toggleExpanded(parentId);
+    const res = await moveLibraryFolder({ folderId, parentId }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    if (!res.ok) {
+      setTree(snapshot);
+      setNotice(res.error);
+      return;
+    }
+    if (!res.persisted) setNotice("Connect a workspace to rearrange folders.");
+  };
 
   async function handleImportUrl(value: { url: string; name?: string }): Promise<{ ok: boolean; error?: string }> {
     const clean = value.url.trim();
@@ -392,16 +676,28 @@ export function LibraryView({
 
   const isArc = (a: Asset) => (a.id in arcState ? arcState[a.id] : a.arc);
   const needsReview = (a: Asset) => !!a.risk || (a.pv === "upload" && !isArc(a));
+  // Readiness: exclusive, and sums to the total. `needsReview` wins over
+  // `isArc` because a risk flag on an approved asset still needs a look — the
+  // same precedence `totals` uses, and it has to be the SAME rule.
+  //
+  // It was not. The count said `!needsReview(a) && isArc(a)` while this filter
+  // said `isArc(a)`, so a risk-flagged asset that was also marked Arc-available
+  // was counted under "need you" and listed under "Arc-ready": click a 39 and
+  // get 40 items. No fixture happens to contain one, which is exactly why it
+  // survived — the two definitions agree until the day they don't.
+  const isArcReady = (a: Asset) => !needsReview(a) && isArc(a);
+  const isUnreviewed = (a: Asset) => !needsReview(a) && !isArc(a);
   const inColl = (a: Asset) => {
-    if (curColl === "arc") return isArc(a);
+    if (curColl === "arc") return isArcReady(a);
     if (curColl === "review") return needsReview(a);
+    if (curColl === "untouched") return isUnreviewed(a);
     if (curColl === "unused") return a.uses === 0;
     if (curColl === "recent") return a.recent === 1;
     return true;
   };
 
   const list = useMemo(() => {
-    const dk = curFolder === "all" ? null : descKeys(curFolder);
+    const dk = curFolder === ROOT_FOLDER ? null : descKeys(tree, curFolder);
     let out = allAssets.filter((a) => (curFolder === "all" || dk!.includes(a.folder) || a.folder === curFolder) && (curKind === "all" || a.kind === curKind) && inColl(a));
     out = [...out].sort((x, y) => (sortBy === "name" ? (x.nm < y.nm ? -1 : 1) : sortBy === "used" ? y.uses - x.uses : x.id - y.id));
     const needle = q.trim().toLowerCase();
@@ -415,24 +711,57 @@ export function LibraryView({
     allAssets.forEach((a) => { byk[a.kind]++; });
     return {
       total: allAssets.length,
-      arc: allAssets.filter(isArc).length,
+      // Through the SAME predicates the filter uses (see `isArcReady`), so a
+      // chip's number and the list it produces cannot drift apart.
       rev: allAssets.filter(needsReview).length,
+      arc: allAssets.filter(isArcReady).length,
+      untouched: allAssets.filter(isUnreviewed).length,
+      // Usage — a separate axis entirely.
       un: allAssets.filter((a) => a.uses === 0).length,
       byk,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arcState, allAssets]);
 
+  // The collection chips, and the count each one carries. `null` means the chip
+  // shows no number — "Recent" is a rolling window rather than a pile of work,
+  // so a count on it would read as a backlog to clear.
+  const collectionCount: Record<string, number | null> = {
+    all: totals.total,
+    arc: totals.arc,
+    review: totals.rev,
+    untouched: totals.untouched,
+    unused: totals.un,
+    recent: null,
+  };
+
   const toggleSel = (id: number) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const selmode = sel.size > 0;
 
-  const sortLabel = sortBy === "recent" ? "Recent" : sortBy === "name" ? "Name" : "Most used";
-  const cycleSort = () => setSortBy((s) => (s === "recent" ? "name" : s === "name" ? "used" : "recent"));
+  // Select-all acts on what's on screen — the current folder, filter chips and
+  // search — never the whole library. Selecting 400 hidden assets from a view
+  // showing 6 is how someone makes 400 of them Arc-available by accident.
+  const shownIds = useMemo(() => list.map((a) => a.id), [list]);
+  const allShownSelected = shownIds.length > 0 && shownIds.every((id) => sel.has(id));
+  const someShownSelected = !allShownSelected && shownIds.some((id) => sel.has(id));
+  const toggleSelectAllShown = () =>
+    setSel((prev) => {
+      const next = new Set(prev);
+      // Clearing drops only what's shown, so a selection made under a different
+      // filter survives — the count in the bar would otherwise lie.
+      if (shownIds.every((id) => next.has(id))) shownIds.forEach((id) => next.delete(id));
+      else shownIds.forEach((id) => next.add(id));
+      return next;
+    });
 
-  const openDetail = (a: Asset) => { setConfirmDelete(false); setRenaming(false); setTagEditing(false); setDetail(a); };
+  const sortLabel = SORTS.find(([key]) => key === sortBy)?.[1] ?? "Recent";
+
+  // Every transient bit of the inspector resets here, so opening asset B never
+  // shows a confirm step — or a half-typed risk acknowledgement — left over from A.
+  const openDetail = (a: Asset) => { setConfirmDelete(false); setRenaming(false); setTagEditing(false); setAckOpen(false); setAckText(""); setDetail(a); };
 
   // Apply a name/tag edit to the overlay (for the grid) and the open inspector.
-  const applyEdit = (id: number, patch: { nm?: string; tags?: string[] }) => {
+  const applyEdit = (id: number, patch: { nm?: string; tags?: string[]; folder?: string }) => {
     setEdits((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
     setDetail((cur) => (cur && cur.id === id ? { ...cur, ...patch } : cur));
   };
@@ -508,20 +837,123 @@ export function LibraryView({
 
   const toggleArc = (a: Asset) => applyArc([a], !isArc(a));
 
-  const CHECK = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M5 12l4 4 10-10" /></svg>;
-
-  // Pure tree ops for optimistic folder rename/delete (folders live in `tree`).
-  const renameInTree = (nodes: Folder[], id: string, name: string): Folder[] =>
-    nodes.map((n) => (n.f === id ? { ...n, name } : n.children ? { ...n, children: renameInTree(n.children, id, name) } : n));
-  const removeFromTree = (nodes: Folder[], id: string): Folder[] =>
-    nodes.filter((n) => n.f !== id).map((n) => (n.children ? { ...n, children: removeFromTree(n.children, id) } : n));
-  const folderName = (nodes: Folder[], id: string): string | undefined => {
-    for (const n of nodes) { if (n.f === id) return n.name; if (n.children) { const r = folderName(n.children, id); if (r) return r; } }
-    return undefined;
+  /**
+   * Download the actual file (BSR-687 — this was a <span> with no handler).
+   *
+   * Fetched to a blob rather than given to `<a download href={a.img}>`, because
+   * the URL is a Supabase storage public URL on another origin and browsers
+   * ignore the `download` attribute cross-origin: the tag would navigate to the
+   * image instead of saving it, which looks like a broken button. If the fetch
+   * is refused (CORS, an expired object) we open it in a new tab rather than
+   * failing silently — the operator still gets to the file.
+   */
+  const downloadAsset = async (a: Asset): Promise<boolean> => {
+    if (!a.img) return false;
+    try {
+      const res = await fetch(a.img);
+      if (!res.ok) throw new Error(`${res.status}`);
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const el = document.createElement("a");
+      el.href = href;
+      // Keep the operator's name for the asset, but never drop the extension —
+      // a file called "Warranty card" with no suffix opens in nothing.
+      const ext = new URL(a.img).pathname.split(".").pop();
+      el.download = ext && !a.nm.toLowerCase().endsWith(`.${ext.toLowerCase()}`) ? `${a.nm}.${ext}` : a.nm;
+      document.body.appendChild(el);
+      el.click();
+      el.remove();
+      URL.revokeObjectURL(href);
+      return true;
+    } catch {
+      window.open(a.img, "_blank", "noopener,noreferrer");
+      return false;
+    }
   };
 
+  /** One asset, from the inspector. */
+  const handleDownload = async (a: Asset) => {
+    if (downloading) return;
+    setDownloading(true);
+    setNotice(null);
+    await downloadAsset(a);
+    setDownloading(false);
+  };
+
+  /**
+   * The selection bar's Download. Sequential on purpose: firing N concurrent
+   * saves trips browsers' multiple-download blocking, and the failure mode there
+   * is silent. Assets with no stored file (session rows, or an upload still
+   * processing) are skipped and reported rather than counted as downloaded.
+   */
+  const handleDownloadSelection = async () => {
+    if (downloading) return;
+    const chosen = list.filter((a) => sel.has(a.id));
+    const withFile = chosen.filter((a) => a.img);
+    const skipped = chosen.length - withFile.length;
+    if (withFile.length === 0) {
+      setNotice(
+        chosen.length === 0
+          ? "Nothing selected."
+          : `Nothing to download — ${chosen.length === 1 ? "that asset has" : "those assets have"} no stored file yet.`,
+      );
+      return;
+    }
+    setDownloading(true);
+    setNotice(null);
+    let failed = 0;
+    for (const a of withFile) {
+      // eslint-disable-next-line no-await-in-loop -- sequential is the point; see above
+      if (!(await downloadAsset(a))) failed += 1;
+    }
+    setDownloading(false);
+    const parts: string[] = [];
+    if (failed) parts.push(`${failed} opened in a new tab instead`);
+    if (skipped) parts.push(`${skipped} had no stored file`);
+    if (parts.length) setNotice(`Downloaded ${withFile.length - failed} of ${chosen.length} — ${parts.join("; ")}.`);
+  };
+
+  const isApproved = (a: Asset) => approvedIds.has(a.id) || a.approvalStatus === "approved";
+
+  /**
+   * Approve a flagged asset (BSR-687 — also a <span> with no handler, and the
+   * only control offered for clearing a flag, so an operator could believe they
+   * had resolved something that recorded nothing).
+   *
+   * Routed through the existing `decideLibraryAsset` → `decideAssetApproval`
+   * path, which is the same `approval_items` table and vocabulary campaigns use.
+   * That path REQUIRES a written acknowledgement to approve a flagged asset —
+   * deliberately, so a flag has to be weighed rather than clicked past — which
+   * is why this is a two-step control and not a one-tap button. The gate lives
+   * in the domain and reads flags from the row, so the form cannot talk its way
+   * around it; we surface the server's own message when it refuses.
+   */
+  const handleApproveRisk = async (a: Asset) => {
+    if (approving) return;
+    const ack = ackText.trim();
+    if (!a.rid) {
+      setNotice("This asset isn't saved to the workspace yet, so a decision can't be recorded against it.");
+      return;
+    }
+    setApproving(true);
+    setNotice(null);
+    const res = await decideLibraryAsset({ assetId: a.rid, decision: "approved", acknowledgement: ack }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    setApproving(false);
+    if (!res.ok) {
+      setNotice(res.error);
+      return;
+    }
+    setApprovedIds((prev) => new Set(prev).add(a.id));
+    setAckOpen(false);
+    setAckText("");
+  };
+
+  const CHECK = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M5 12l4 4 10-10" /></svg>;
+
   const saveFolderRename = (id: string, value: string) => {
-    setRenamingFolder(null);
     const name = value.trim();
     const current = folderName(tree, id);
     if (!name || name === current) return;
@@ -529,68 +961,83 @@ export function LibraryView({
     renameLibraryFolder(id, name).then((res) => { if (!res.ok) { setTree((t) => renameInTree(t, id, current ?? name)); setNotice(res.error); } });
   };
   const handleFolderDelete = (id: string) => {
-    setFolderConfirmDelete(null);
     const snapshot = tree;
     // Assets fall back to "All assets" (FK ON DELETE SET NULL); remove the node here.
     setTree((t) => removeFromTree(t, id));
-    if (curFolder === id) setCurFolder("all");
+    if (curFolder === id) setCurFolder(ROOT_FOLDER);
     deleteLibraryFolder(id).then((res) => { if (!res.ok) { setTree(snapshot); setNotice(res.error); } });
   };
 
-  const renderFolder = (F: Folder, sub = false) => {
-    const hasKids = !!F.children?.length;
-    const open = !!expanded[F.f];
-    const rows = [
-      <div key={F.f} className={`folder${F.f === curFolder ? " on" : ""}`} onClick={() => setCurFolder(F.f)}>
-        <span
-          className={`tchev${hasKids ? (open ? " open" : "") : " leaf"}`}
-          onClick={(e) => { e.stopPropagation(); if (hasKids) setExpanded((p) => ({ ...p, [F.f]: !p[F.f] })); }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} dangerouslySetInnerHTML={{ __html: ICONS.chev }} />
-        </span>
-        <span className="ficon" style={{ background: `${F.color}22`, border: `1px solid ${F.color}55`, color: F.color }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} dangerouslySetInnerHTML={{ __html: ICONS[F.icon] }} />
-        </span>
-        {renamingFolder === F.f ? (
-          <input
-            className="fn-edit"
-            autoFocus
-            defaultValue={F.name}
-            aria-label="Folder name"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") saveFolderRename(F.f, e.currentTarget.value); if (e.key === "Escape") setRenamingFolder(null); }}
-            onBlur={(e) => saveFolderRename(F.f, e.currentTarget.value)}
-          />
-        ) : (
-          <span className="fn">{F.name}</span>
-        )}
-        <span className="fc">{rcountLive(F.f)}</span>
-        {F.f !== "all" && renamingFolder !== F.f && (
-          folderConfirmDelete === F.f ? (
-            <span className="fmanage" onClick={(e) => e.stopPropagation()}>
-              <button type="button" className="ficonbtn danger" title="Delete — assets move to All assets" onClick={() => handleFolderDelete(F.f)}>
-                <svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6" /></svg>
-              </button>
-              <button type="button" className="ficonbtn" title="Cancel" onClick={() => setFolderConfirmDelete(null)}>
-                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
-              </button>
-            </span>
-          ) : (
-            <span className="fmanage" onClick={(e) => e.stopPropagation()}>
-              <button type="button" className="ficonbtn" title="Rename folder" onClick={() => { setRenamingFolder(F.f); setFolderConfirmDelete(null); }}>
-                <svg viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z" /></svg>
-              </button>
-              <button type="button" className="ficonbtn" title="Delete folder" onClick={() => setFolderConfirmDelete(F.f)}>
-                <svg viewBox="0 0 24 24"><path d="M4 7h16M6 7l1 13h10l1-13M10 7V4h4v3" /></svg>
-              </button>
-            </span>
-          )
-        )}
-      </div>,
-    ];
-    if (hasKids && open) rows.push(<div key={`${F.f}-kids`} className="tchildren">{F.children!.map((c) => renderFolder(c, true))}</div>);
-    return sub ? <div key={`${F.f}-w`}>{rows}</div> : <div key={`${F.f}-w`}>{rows}</div>;
+  const openNewFolder = (parentId: string | null) => {
+    setNewFolderParent(parentId);
+    setFolderOpen(true);
   };
+
+  /**
+   * Save the folder-details editor. Both fields go in one write — same row,
+   * same gate — and the tree updates optimistically so the rail reflects the
+   * new name before the refetch.
+   */
+  const saveFolderDetails = async (id: string, value: { name: string; description: string }): Promise<{ ok: boolean; error?: string }> => {
+    const snapshot = tree;
+    setTree((t) => setDetailsInTree(t, id, value.name, value.description || null));
+    const res = await updateLibraryFolder({ folderId: id, name: value.name, description: value.description }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    if (!res.ok) {
+      setTree(snapshot);
+      return { ok: false, error: res.error };
+    }
+    if (!res.persisted) setNotice("Connect a workspace to save folder details.");
+    return { ok: true };
+  };
+
+  /**
+   * Persist a sibling order — the drop-between gesture, and Move up / Down.
+   *
+   * The whole ordered list is sent rather than a delta, so what lands in
+   * `sort_order` is exactly the sequence the operator was looking at.
+   */
+  const handleReorderFolders = async (parentId: string | null, orderedIds: string[]) => {
+    const snapshot = tree;
+    setTree((t) => reorderInTree(t, parentId, orderedIds));
+    const res = await reorderLibraryFolders({ parentId, orderedIds }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    if (!res.ok) {
+      setTree(snapshot);
+      setNotice(res.error);
+      return;
+    }
+    if (!res.persisted) setNotice("Connect a workspace to save the folder order.");
+  };
+
+  /**
+   * The rail's drop handler. Assets dropped on a folder go through the same
+   * org-scoped move the selection bar uses — one path, so a drag can't quietly
+   * become a second way to file media that skips the workspace check.
+   */
+  const handleDropAssets = (assetIds: number[], folderId: string | null) => {
+    setAssetDrag(false);
+    void moveAssetsToFolder(assetIds, folderId, folderId ? folderName(tree, folderId) ?? "that folder" : "All assets");
+  };
+
+  /** Begin dragging an asset. A drag that starts on a selected item carries the
+   *  whole selection; one that starts elsewhere carries just that item — the
+   *  behaviour every file manager has, and the one people already expect. */
+  const assetDragProps = (a: Asset) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      const ids = sel.has(a.id) ? [...sel] : [a.id];
+      e.dataTransfer.setData(DRAG_ASSETS, JSON.stringify(ids));
+      e.dataTransfer.effectAllowed = "move";
+      setAssetDrag(true);
+    },
+    onDragEnd: () => setAssetDrag(false),
+  });
+
 
   // Arc-approved assets that have never been used in a campaign. Counted over the
   // live set (not the demo constant) so the nudge can't claim assets the library
@@ -600,7 +1047,7 @@ export function LibraryView({
   const arcSugg = !suggDismissed && !q && unshipped > 0 ? (
     <div className="arcsugg">
       <span className="am">A</span>
-      <span className="at"><b>{unshipped} approved {unshipped === 1 ? "asset has" : "assets have"} never shipped.</b> Want Arc to draft ad variants from your best unused photos?</span>
+      <span className="at"><b>{unshipped} approved {unshipped === 1 ? "photo has" : "photos have"} never been used.</b> Want Arc to draft ad variants from your best unused photos?</span>
       <span className="ab">
         <a className="miniabtn" href={STUDIO}>Draft in Studio</a>
         <span className="miniabtn ghost" onClick={() => setSuggDismissed(true)}>Dismiss</span>
@@ -623,56 +1070,231 @@ export function LibraryView({
         </div>
       </div>
 
+      {/* This band used to be the filter toolbar again, wearing statistics.
+          It carried eleven numbers: the total, a four-way kind breakdown
+          (images / videos / logos / docs), a three-way readiness split
+          (Arc-ready / need you / not reviewed) and "never used" — and the
+          toolbar forty pixels below it already had a chip for nearly every
+          one. Clicking "39 Arc-ready" up here and clicking the "Arc-ready"
+          chip down there ran the same `setCurColl("arc")`.
+
+          So it was the same control surface twice, and only the copy that
+          looked like a control was styled like one: these were `<span
+          role="button">`, indistinguishable from the two stats beside them
+          that did nothing.
+
+          The counts moved onto the chips that already act on them — nothing is
+          lost, and each number now sits on the thing that filters by it. What
+          stays here is what the toolbar cannot say: how much you have, what
+          the dot on each card means, and what it occupies on disk. */}
       <div className="oband">
-        <div className="obig"><span className="ov">{totals.total}</span><span className="ol">assets</span></div>
-        <div className="obars">
-          <span className="obar"><i style={{ background: "#7fb89a" }} />{totals.byk.image} images</span>
-          <span className="obar"><i style={{ background: "#bd6a58" }} />{totals.byk.video} videos</span>
-          <span className="obar"><i style={{ background: "#9aa0ac" }} />{totals.byk.logo} logos</span>
-          <span className="obar"><i style={{ background: "#9aa0ac" }} />{totals.byk.document} docs</span>
-        </div>
+        {/* `obigv`, not `ov`: `.ov` is the card hover OVERLAY (absolute, inset 0,
+            opacity 0). It applied to this number too, so the headline asset count
+            rendered invisible AND stretched a 1204x58 transparent box across the
+            band that swallowed clicks on the Arc-ready / need-you filters. */}
+        <div className="obig"><span className="obigv">{totals.total}</span><span className="ol">assets</span></div>
+        {/* The legend sits next to the count, not flung to the far right by a
+            spacer. With the filters gone from this band those were the only two
+            things left in it, and `ospacer` put a thousand pixels between them —
+            one line reading as two unrelated islands. */}
+        <span className="pvlegend" aria-label="What the dot on each item means">
+          {(["real", "ai", "comp"] as const).map((k) => (
+            <span key={k}><i className={`pdot pv-${k}`} />{PVL[k]}</span>
+          ))}
+        </span>
         <div className="ospacer" />
-        <span className="ostat ok" onClick={() => setCurColl("arc")}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3d0b8" strokeWidth={2}><path d="M5 12l4 4 10-10" /></svg><b>{totals.arc}</b> Arc-ready</span>
-        <span className="ostat warn" onClick={() => setCurColl("review")}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e7c486" strokeWidth={2}><path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z" /></svg><b>{totals.rev}</b> need review</span>
-        <span className="ostat" onClick={() => setCurColl("unused")}><b>{totals.un}</b> unused</span>
         {/* Real bytes stored. There is no storage quota in the backend, so this
             reports usage rather than a meter against an invented limit. */}
-        {totalBytes != null ? <span className="ostat"><b>{formatByteSize(totalBytes)}</b> stored</span> : null}
+        {totalBytes != null ? <span className="ostat is-fact"><b>{formatByteSize(totalBytes)}</b> stored</span> : null}
       </div>
 
-      <div className={`lib${detail ? " detail" : ""}${selmode ? " selmode" : ""}`}>
+      <div
+        className={`lib${detail ? " detail" : ""}${selmode ? " selmode" : ""}${assetDrag ? " dragging" : ""}`}
+        style={{ ["--rail" as string]: `${railWidth}px` }}
+      >
         <aside className="tree">
-          <div className="treeh">Folders <span className="add" title="New folder" onClick={() => setFolderOpen(true)}>＋</span></div>
-          <div>
-            {renderFolder(tree[0])}
-            <div className="treesec" />
-            {tree.slice(1).map((F) => renderFolder(F))}
-            <div className="newfolder" onClick={() => setFolderOpen(true)}><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>New folder</div>
-          </div>
+          <FolderTree
+            tree={tree}
+            current={curFolder}
+            onSelect={setCurFolder}
+            countOf={rcountLive}
+            expanded={expanded}
+            onToggleExpanded={toggleExpanded}
+            onRename={saveFolderRename}
+            onDelete={handleFolderDelete}
+            onNewFolder={openNewFolder}
+            onMoveFolder={(id, parentId) => void handleMoveFolder(id, parentId)}
+            onReorder={(parentId, orderedIds) => void handleReorderFolders(parentId, orderedIds)}
+            onEditDetails={setDetailsFolder}
+            onDropAssets={handleDropAssets}
+            dragging={assetDrag}
+          />
         </aside>
 
+        {/* The rail's width is the thing standing between a folder called
+            "Before & After / Proof" and reading as "Before & After / Pr…", so
+            it is the operator's to set, not a constant someone picked once. */}
+        <div
+          className="railgrip"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the folder rail"
+          aria-valuenow={railWidth}
+          aria-valuemin={RAIL_MIN}
+          aria-valuemax={RAIL_MAX}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 32 : 8;
+            if (e.key === "ArrowLeft") { e.preventDefault(); setLibraryPrefs({ railWidth: railWidth - step }); }
+            if (e.key === "ArrowRight") { e.preventDefault(); setLibraryPrefs({ railWidth: railWidth + step }); }
+          }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            const el = e.currentTarget;
+            el.setPointerCapture(e.pointerId);
+            const startX = e.clientX;
+            const startWidth = railWidth;
+            let width = startWidth;
+            const onMove = (move: PointerEvent) => {
+              width = Math.min(RAIL_MAX, Math.max(RAIL_MIN, startWidth + (move.clientX - startX)));
+              setLiveRail(width);
+            };
+            const onUp = (up: PointerEvent) => {
+              el.releasePointerCapture(up.pointerId);
+              el.removeEventListener("pointermove", onMove);
+              el.removeEventListener("pointerup", onUp);
+              setLiveRail(null);
+              setLibraryPrefs({ railWidth: width });
+            };
+            el.addEventListener("pointermove", onMove);
+            el.addEventListener("pointerup", onUp);
+          }}
+          onDoubleClick={() => setLibraryPrefs({ railWidth: 276 })}
+        />
+
         <section className="gallery">
+          {/* TWO deliberate lines, not one line that wraps.
+              Filters on top, controls beneath. With the header band's counts
+              moved down here the single row overflowed into three ragged ones —
+              "Recent" orphaned from the collection it belongs to, the view
+              toggles alone on a line of their own. Wrapping decided the
+              grouping, and it grouped by whatever happened to fit. */}
           <div className="gtoolbar">
-            <span className="lsearch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter assets…" /></span>
-            {([["all", "All"], ["arc", "Arc-ready"], ["review", "Needs review"], ["unused", "Unused"], ["recent", "Recent"]] as const).map(([k, label]) => (
-              <span key={k} className={`chip${curColl === k ? " on" : ""}`} onClick={() => setCurColl(k)}>
-                {label}
-                {k === "review" ? <span className="cn">{totals.rev}</span> : k === "unused" ? <span className="cn">{totals.un}</span> : null}
-              </span>
-            ))}
-            <span className="cdiv" />
-            {([["image", "Images"], ["video", "Videos"], ["logo", "Logos"], ["document", "Docs"]] as const).map(([k, label]) => (
-              <span key={k} className={`chip${curKind === k ? " on" : ""}`} onClick={() => setCurKind((c) => (c === k ? "all" : k))}>{label}</span>
-            ))}
-            <span className="gspacer" />
-            <span className="sortbtn" onClick={cycleSort}><svg viewBox="0 0 24 24"><path d="M7 4v16M7 20l-3-3M7 4l3 3M17 20V4M17 4l3 3M17 20l-3-3" /></svg>{sortLabel}</span>
-            <span className="selwrap">
-              <span className={`sb${viewMode === "grid" ? " on" : ""}`} title="Grid" onClick={() => setViewMode("grid")}><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></span>
-              <span className={`sb${viewMode === "list" ? " on" : ""}`} title="List" onClick={() => setViewMode("list")}><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg></span>
+            <div className="gtrow gtrow-filters">
+            {/* Every chip carries its own count, which is where the header band's
+                eleven numbers went. Two of the four readiness states were
+                filterable and the third ("not reviewed") was a dead number in
+                the band, even though it sat inside a group captioned "every
+                item is in exactly one of these" — so the caption was true and
+                only two thirds of it was actionable. All three filter now.
+
+                "Recent" is deliberately countless: it is a recency window, not
+                a set the operator is working through, and a number on it would
+                read as a backlog. */}
+            {/* Each axis is its own group, so when the row runs out of width the
+                break lands BETWEEN the two rather than through the middle of
+                one — "Logos" and "Docs" stranded on a line under "Recent" reads
+                as a third category of filter that isn't there. */}
+            <span className="chipgrp" role="group" aria-label="Readiness">
+              {COLLECTIONS.map(([k, label]) => (
+                <span key={k} className={`chip${curColl === k ? " on" : ""}`} onClick={() => setCurColl(k)}>
+                  {k === "arc" ? <>{label}<Define term="arc_ready" /></> : label}
+                  {collectionCount[k] != null ? <span className="cn">{collectionCount[k]}</span> : null}
+                </span>
+              ))}
             </span>
+            <span className="cdiv" />
+            <span className="chipgrp" role="group" aria-label="Type">
+              {([["image", "Images"], ["video", "Videos"], ["logo", "Logos"], ["document", "Docs"]] as const).map(([k, label]) => (
+                <span key={k} className={`chip${curKind === k ? " on" : ""}`} onClick={() => setCurKind((c) => (c === k ? "all" : k))}>
+                  {label}<span className="cn">{totals.byk[k]}</span>
+                </span>
+              ))}
+            </span>
+            </div>
+            <div className="gtrow gtrow-controls">
+            <span className="lsearch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter assets…" /></span>
+            <span className="gspacer" />
+            {/* Selecting many assets at once was already wired end to end — bulk
+                Arc-availability, add-to-campaign, move-to-folder — but the only
+                way in was a checkbox that appears on hover, so on a trackpad you
+                had to find it by accident and on a touch screen not at all.
+                This states the capability, and acts on exactly what's filtered
+                rather than the whole library. */}
+            <button
+              type="button"
+              className={`selall${allShownSelected ? " on" : ""}`}
+              disabled={list.length === 0}
+              onClick={toggleSelectAllShown}
+              title={allShownSelected ? "Clear the selection" : `Select all ${list.length} assets shown`}
+            >
+              <span className={`selall-box${allShownSelected ? " on" : someShownSelected ? " some" : ""}`} aria-hidden="true">
+                {allShownSelected ? CHECK : someShownSelected ? <span className="selall-dash" /> : null}
+              </span>
+              {allShownSelected ? "Clear" : `Select all${list.length ? ` (${list.length})` : ""}`}
+            </button>
+            {/* Was a button that cycled Recent → Name → Most used with nothing
+                to say what came next, so finding a sort meant clicking until it
+                appeared. The options are simply listed. */}
+            <span className="fbtn-wrap" ref={sortRef}>
+              <button type="button" className="sortbtn" aria-haspopup="menu" aria-expanded={sortOpen} onClick={() => setSortOpen((o) => !o)}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 4l3 3M17 20V4M17 4l3 3M17 20l-3-3" /></svg>
+                {sortLabel}
+              </button>
+              {sortOpen && (
+                <div className="fmenu fmenu-right" role="menu">
+                  <span className="fmenu-hd">Sort by</span>
+                  {SORTS.map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={sortBy === key}
+                      className={`fmenu-item${sortBy === key ? " on" : ""}`}
+                      onClick={() => { setSortBy(key); setSortOpen(false); }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
+            {/* Tile size. A shelf of 400 assets and a shelf of 8 do not want the
+                same tile, and which one you are looking at changes hour to hour. */}
+            {viewMode === "grid" ? (
+              <span className="selwrap" role="group" aria-label="Tile size">
+                {(Object.keys(TILE_SIZES) as TileSize[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`sb${tile === key ? " on" : ""}`}
+                    aria-pressed={tile === key}
+                    aria-label={`${TILE_SIZES[key].label} tiles`}
+                    title={`${TILE_SIZES[key].label} tiles`}
+                    onClick={() => setTile(key)}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="4" width={key === "s" ? 5 : key === "m" ? 7 : 9} height={key === "s" ? 5 : key === "m" ? 7 : 9} rx="1.4" />
+                      <rect x={key === "s" ? 11 : key === "m" ? 13 : 15} y="4" width={key === "s" ? 5 : key === "m" ? 7 : 9} height={key === "s" ? 5 : key === "m" ? 7 : 9} rx="1.4" />
+                      <rect x="4" y={key === "s" ? 11 : key === "m" ? 13 : 15} width={key === "s" ? 5 : key === "m" ? 7 : 9} height={key === "s" ? 5 : key === "m" ? 7 : 9} rx="1.4" />
+                    </svg>
+                  </button>
+                ))}
+              </span>
+            ) : null}
+            <span className="selwrap" role="group" aria-label="View">
+              <button type="button" className={`sb${viewMode === "grid" ? " on" : ""}`} aria-label="Grid view" aria-pressed={viewMode === "grid"} title="Grid" onClick={() => setViewMode("grid")}><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></button>
+              <button type="button" className={`sb${viewMode === "list" ? " on" : ""}`} aria-label="List view" aria-pressed={viewMode === "list"} title="List" onClick={() => setViewMode("list")}><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg></button>
+            </span>
+            </div>
           </div>
 
-          <div className={`selbar${selmode ? " show" : ""}`}>
+          {/* `menuopen` lifts the bar's `overflow: hidden` so a picker can escape
+              it. The rule has existed since the port and was never applied, so
+              "Add to campaign" opened a menu that was clipped out of sight —
+              verified by hit-testing its centre, which returned a different
+              element (BSR-707). It affects both pickers, so both drive it. */}
+          <div className={`selbar${selmode ? " show" : ""}${campaignPickOpen || movePickOpen ? " menuopen" : ""}`} ref={selbarRef}>
             <span className="sc">{sel.size} selected</span>
             <span className="sa" onClick={() => { applyArc(allAssets.filter((a) => sel.has(a.id)), true); setSel(new Set()); }}><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" /></svg>Make available to Arc</span>
             <span className="sa sa-pick" style={{ position: "relative" }}>
@@ -685,7 +1307,6 @@ export function LibraryView({
               </span>
               {campaignPickOpen && campaigns.length > 0 && (
                 <>
-                  <span className="pickscrim" onClick={() => setCampaignPickOpen(false)} />
                   <span className="pickmenu" role="menu">
                     <span className="pickhd">Add {sel.size} to…</span>
                     {campaigns.map((c) => (
@@ -695,8 +1316,44 @@ export function LibraryView({
                 </>
               )}
             </span>
-            <span className="sa"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>Move to folder</span>
-            <span className="sa"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>Download</span>
+            {/* Real <button>s, unlike the campaign picker beside it: this file is
+                already baselined at 23 keyboard-unreachable click-spans
+                (keyboard-reachable.test.ts) and a new control should not add
+                the 24th. */}
+            <span className="sa sa-pick" style={{ position: "relative" }}>
+              <button
+                type="button"
+                className="sa-pick-trigger"
+                aria-haspopup="menu"
+                aria-expanded={movePickOpen}
+                disabled={moving}
+                onClick={() => { setMovePickOpen((o) => !o); setCampaignPickOpen(false); }}
+              >
+                <svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z" /></svg>
+                {moving ? "Moving…" : "Move to folder"}
+              </button>
+              {movePickOpen && (
+                <>
+                  <span className="pickmenu" role="menu">
+                    <span className="pickhd">Move {sel.size} to…</span>
+                    {moveTargets.map((f) => (
+                      <button
+                        key={f.id ?? "root"}
+                        type="button"
+                        className="pickopt"
+                        role="menuitem"
+                        onClick={() => moveSelectionToFolder(f.id, f.name)}
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                  </span>
+                </>
+              )}
+            </span>
+            <button type="button" className="sa" onClick={handleDownloadSelection} disabled={downloading}>
+              <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>{downloading ? "Downloading…" : "Download"}
+            </button>
             <span className="clr" onClick={() => setSel(new Set())}>Clear</span>
           </div>
 
@@ -720,52 +1377,145 @@ export function LibraryView({
                 <div style={{ padding: "44px 16px", textAlign: "center", color: "var(--muted)", fontSize: "12.5px" }}>No assets match “{q}”</div>
               )
             ) : viewMode === "grid" ? (
-              <div className="agrid">
+              <div
+                className="agrid"
+                style={{ ["--tile" as string]: `${TILE_SIZES[tile].min}px`, ["--thumb" as string]: `${TILE_SIZES[tile].thumb}px` }}
+              >
                 {list.map((a) => (
-                  <div key={a.id} className={`acard${sel.has(a.id) ? " sel" : ""}`} onClick={() => openDetail(a)}>
+                  <div
+                    key={a.id}
+                    className={`acard${sel.has(a.id) ? " sel" : ""}`}
+                    title={a.nm}
+                    onClick={() => openDetail(a)}
+                    {...assetDragProps(a)}
+                  >
                     <div className="athumb">
                       <ThumbMedia a={a} />
                       {a.kind === "video" && <span className="vbadge"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></span>}
                       {a.risk && <span className="risk" title="Risk flag"><Ico d='<path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z"/>' /></span>}
                       <div className="ov">
-                        <span className={`ck${sel.has(a.id) ? " on" : ""}`} onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}>{CHECK}</span>
+                        {/* A button, not a span: this was the only way to select
+                            an asset and it was unreachable by keyboard and
+                            invisible to a screen reader. */}
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={sel.has(a.id)}
+                          aria-label={`Select ${a.nm}`}
+                          className={`ck${sel.has(a.id) ? " on" : ""}`}
+                          onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}
+                        >{CHECK}</button>
                         <div className="qa">
-                          <button title="Add to campaign" onClick={(e) => { e.stopPropagation(); window.location.href = NEW_CAMPAIGN; }}><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /></button>
-                          <button title="Edit in Studio" onClick={(e) => { e.stopPropagation(); window.location.href = STUDIO; }}><Ico d='<path d="M4 5h16v14H4z"/><path d="M4 14l5-4 4 3 3-2 4 3"/>' /></button>
+                          {/* Was `window.location.href = "/campaigns"`. The button
+                              said "Add to campaign" and added nothing — it
+                              full-reloaded to the campaigns LIST, discarding the
+                              selection on the way, while addLibraryAssetsToCampaign
+                              sat wired to the bulk bar a few lines below. It now
+                              selects this asset and opens that same picker. */}
+                          <button
+                            title="Add to campaign"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (campaigns.length === 0) { setNotice("Create a campaign first, then you can add media to it."); return; }
+                              setSel(new Set([a.id]));
+                              setCampaignPickOpen(true);
+                            }}
+                          ><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /></button>
+                          {/* Was a full reload to /studio that dropped the asset.
+                              Studio now takes ?asset=<id> and opens on it. */}
+                          <button
+                            title="Edit in Studio"
+                            onClick={(e) => { e.stopPropagation(); router.push(a.rid ? `${STUDIO}?asset=${encodeURIComponent(a.rid)}` : STUDIO); }}
+                          ><Ico d='<path d="M4 5h16v14H4z"/><path d="M4 14l5-4 4 3 3-2 4 3"/>' /></button>
                           <button title="Open" onClick={(e) => { e.stopPropagation(); openDetail(a); }}><Ico d='<path d="M7 17L17 7M9 7h8v8"/>' /></button>
                         </div>
                       </div>
                     </div>
-                    <div className="ainfo">
-                      <div className="an"><span className={`pdot pv-${a.pv}`} />{a.nm}</div>
-                      <div className="am">
-                        <span>{a.kind}</span><span>·</span><span>{a.dim.split(" · ")[0]}</span>
-                        {isArc(a) ? <span className="arcok"><Ico d='<path d="M5 12l4 4 10-10"/>' /> Arc</span> : a.uses === 0 ? <span className="unused">unused</span> : null}
+                    {/* The info block is anchored to the bottom of a
+                        fixed-height well, so on hover the name can un-clamp and
+                        grow UP over the thumbnail without the card changing
+                        size or the grid reflowing. Two clipped lines were the
+                        whole story an operator got — "Before / after — storm r…"
+                        and "Insurance-claim one-pa…" are not names you can tell
+                        apart. */}
+                    <div className="ainfowell">
+                      <div className="ainfo">
+                        <div className="an"><span className={`pdot pv-${a.pv}`} title={`${PVL[a.pv]} — where this came from`} />{a.nm}</div>
+                        <div className="am">
+                          <span>{PVL[a.pv]}</span>
+                          {shapeUse(a.dim.split(" · ")[0]) ? <><span>·</span><span title={a.dim.split(" · ")[0]}>{shapeUse(a.dim.split(" · ")[0])}</span></> : null}
+                          {isArc(a) ? <span className="arcok"><Ico d='<path d="M5 12l4 4 10-10"/>' /> Arc</span> : a.uses === 0 ? <span className="unused">unused</span> : null}
+                        </div>
                       </div>
                     </div>
                   </div>
                 ))}
-                <div className="uptile"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><div className="ut">Upload assets</div><div className="ud">or drag files here</div></div>
+                <button type="button" className="uptile" onClick={() => fileRef.current?.click()}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg>
+                  <span className="ut">Upload assets</span>
+                  <span className="ud">{curFolder === ROOT_FOLDER ? "or drag files here" : `into ${folderName(tree, curFolder) ?? "this folder"}`}</span>
+                </button>
               </div>
             ) : (
               <table className="ltbl">
-                <thead><tr><th>Asset</th><th>Provenance</th><th>Kind</th><th>Dimensions</th><th>Arc</th><th>Used in</th><th>Added</th></tr></thead>
+                <thead><tr><th className="lcolname">Asset</th><th>Provenance</th><th>Kind</th><th>Dimensions</th><th>Size</th><th>Arc</th><th>Used in</th><th>Added</th><th className="lcolact"><span className="lvh">Actions</span></th></tr></thead>
                 <tbody>
                   {list.map((a) => (
-                    <tr key={a.id} className={sel.has(a.id) ? "sel" : ""} onClick={() => openDetail(a)}>
-                      <td>
+                    <tr key={a.id} className={sel.has(a.id) ? "sel" : ""} onClick={() => openDetail(a)} {...assetDragProps(a)}>
+                      <td className="lcolname">
                         <div className="lname">
-                          <span className={`ck-l${sel.has(a.id) ? " on" : ""}`} onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}>{sel.has(a.id) ? CHECK : null}</span>
+                          <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={sel.has(a.id)}
+                            aria-label={`Select ${a.nm}`}
+                            className={`ck-l${sel.has(a.id) ? " on" : ""}`}
+                            onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }}
+                          >{sel.has(a.id) ? CHECK : null}</button>
                           <span className="lthumb"><ThumbMedia a={a} /></span>
-                          <span className="ln">{a.nm}</span>
+                          {/* The list is where you go when the grid's tiles are
+                              too small to read a name — so this one wraps to
+                              two lines rather than running off the column. */}
+                          <span className="ln" title={a.nm}>{a.nm}</span>
                         </div>
                       </td>
                       <td><span className={`pvtag pvc-${a.pv}`}><span className={`pdot pv-${a.pv}`} />{PVL[a.pv]}</span></td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: "11px" }}>{a.kind}</td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: "11px" }}>{a.dim}</td>
+                      <td className="lmono">{a.kind}</td>
+                      <td className="lmono">{a.dim}</td>
+                      <td className="lmono">{a.size}</td>
                       <td>{isArc(a) ? <span className="arcok" style={{ color: "var(--ok-text)", fontSize: "11px" }}>✓ Arc</span> : a.risk ? <span style={{ color: "var(--warn-text)", fontSize: "11px" }}>review</span> : <span style={{ color: "var(--muted)", fontSize: "11px" }}>—</span>}</td>
-                      <td style={{ fontSize: "11px" }}>{a.uses ? `${a.used[0]}${a.uses > 1 ? ` +${a.uses - 1}` : ""}` : <span style={{ color: "var(--muted)" }}>unused</span>}</td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: "10.5px", color: "var(--muted)" }}>{a.added}</td>
+                      <td className="lcolused" title={a.used.join(", ")}>{a.uses ? `${a.used[0]}${a.uses > 1 ? ` +${a.uses - 1}` : ""}` : <span style={{ color: "var(--muted)" }}>unused</span>}</td>
+                      <td className="lmono" style={{ color: "var(--muted)" }}>{a.added}</td>
+                      {/* The same three actions the grid's tiles carry. The list
+                          used to offer none of them, so choosing the readable
+                          view meant giving up every per-asset control. */}
+                      <td className="lcolact">
+                        <span className="lacts">
+                          <button
+                            type="button"
+                            aria-label={`Add ${a.nm} to a campaign`}
+                            title="Add to campaign"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (campaigns.length === 0) { setNotice("Create a campaign first, then you can add media to it."); return; }
+                              setSel(new Set([a.id]));
+                              setCampaignPickOpen(true);
+                            }}
+                          ><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /></button>
+                          <button
+                            type="button"
+                            aria-label={`Edit ${a.nm} in Studio`}
+                            title="Edit in Studio"
+                            onClick={(e) => { e.stopPropagation(); router.push(a_studioHref(a)); }}
+                          ><Ico d='<path d="M4 5h16v14H4z"/><path d="M4 14l5-4 4 3 3-2 4 3"/>' /></button>
+                          <button
+                            type="button"
+                            aria-label={`Open ${a.nm}`}
+                            title="Open"
+                            onClick={(e) => { e.stopPropagation(); openDetail(a); }}
+                          ><Ico d='<path d="M7 17L17 7M9 7h8v8"/>' /></button>
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -828,7 +1578,37 @@ export function LibraryView({
                   <div className="riskbox">
                     <div className="rt"><Ico d='<path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z"/>' />Risk flag</div>
                     <div className="rd">{detail.risk}</div>
-                    <div className="rfix"><span className="gbtn" style={{ height: 30, fontSize: "11.5px" }}>Resolve &amp; approve</span></div>
+                    {/* The flag stays on the record after approval — approving
+                        acknowledges it, it does not erase it — so the resolved
+                        state says "reviewed", not "no longer flagged". */}
+                    {isApproved(detail) ? (
+                      <div className="rdone">Reviewed and approved, with this flag on the record.</div>
+                    ) : ackOpen ? (
+                      <div className="rack">
+                        <label className="rackl" htmlFor="risk-ack">How was this addressed?</label>
+                        <textarea
+                          id="risk-ack"
+                          className="racki"
+                          rows={2}
+                          autoFocus
+                          value={ackText}
+                          onChange={(e) => setAckText(e.target.value)}
+                          placeholder="e.g. the claim is backed by the 2026 warranty terms"
+                        />
+                        <div className="rackb">
+                          <button type="button" className="gbtn" onClick={() => { setAckOpen(false); setAckText(""); }} disabled={approving}>Cancel</button>
+                          <button type="button" className="gbtn gold" onClick={() => void handleApproveRisk(detail)} disabled={approving || ackText.trim().length < 3}>
+                            {approving ? "Recording…" : "Approve"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rfix">
+                        <button type="button" className="gbtn" style={{ height: 30, fontSize: "11.5px" }} onClick={() => setAckOpen(true)}>
+                          Resolve &amp; approve
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="isec">Provenance lineage</div>
@@ -842,7 +1622,7 @@ export function LibraryView({
                 {detail.used.length ? (
                   <>
                     <div className="isec">Used in {detail.used.length}</div>
-                    {detail.used.map((u, i) => <a key={i} className="usedrow" href={NEW_CAMPAIGN}><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /><span>{u}</span><span className="go">→</span></a>)}
+                    {detail.used.map((u, i) => <Link key={i} className="usedrow" href={CAMPAIGNS}><Ico d='<path d="M4 5h16v6H4z"/><path d="M4 15h10v4H4z"/>' /><span>{u}</span><span className="go">→</span></Link>)}
                   </>
                 ) : (
                   <>
@@ -851,10 +1631,27 @@ export function LibraryView({
                   </>
                 )}
                 <div className="iacts">
-                  <a className="gbtn gold full" href={STUDIO}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>Generate a variation</a>
-                  <a className="gbtn" href={STUDIO}><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M4 14l5-4 4 3 3-2 4 3" /></svg>Edit in Studio</a>
-                  <a className="gbtn" href={NEW_CAMPAIGN}><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add to campaign</a>
-                  <span className="gbtn full"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>Download</span>
+                  <Link className="gbtn gold full" href={a_studioHref(detail)}><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /><path d="M19 15l.9 2.6L22 18.5l-2.1.9L19 22l-.9-2.6L16 18.5l2.1-.9z" /></svg>Make an ad from this</Link>
+                  <Link className="gbtn" href={a_studioHref(detail)}><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M4 14l5-4 4 3 3-2 4 3" /></svg>Edit in Studio</Link>
+                  <button
+                    type="button"
+                    className="gbtn"
+                    onClick={() => {
+                      if (campaigns.length === 0) { setNotice("Create a campaign first, then you can add media to it."); return; }
+                      setSel(new Set([detail.id]));
+                      setDetail(null);
+                      setCampaignPickOpen(true);
+                    }}
+                  ><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>Add to campaign</button>
+                  <button
+                    type="button"
+                    className="gbtn full"
+                    onClick={() => void handleDownload(detail)}
+                    disabled={!detail.img || downloading}
+                    title={detail.img ? undefined : "No stored file for this asset yet"}
+                  >
+                    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>{downloading ? "Downloading…" : "Download"}
+                  </button>
                   {confirmDelete ? (
                     <div className="idelconfirm">
                       <span className="idelwarn">
@@ -879,21 +1676,41 @@ export function LibraryView({
         </aside>
       </div>
 
+      {/* Portaled for the same reason the modals are: `.lib-notice` is
+          `position: fixed; left: 50%`, which inside `.page-enter` centers it on
+          the content pane rather than the window — 118px off-centre at a 1080px
+          viewport. See overlay-portal.tsx. */}
       {notice && (
-        <div className="lib-notice" role="status">
-          <span>{notice}</span>
-          <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>
-            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
-        </div>
+        <OverlayPortal>
+          <div className="lib-notice" role="status">
+            <span>{notice}</span>
+            <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>
+              <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+        </OverlayPortal>
       )}
 
       <NewFolderModal
-        key={folderOpen ? "open" : "closed"}
+        key={folderOpen ? `open-${newFolderParent ?? "root"}` : "closed"}
         open={folderOpen}
-        onClose={() => setFolderOpen(false)}
+        onClose={() => { setFolderOpen(false); setNewFolderParent(null); }}
         onSubmit={handleCreateFolder}
+        parentName={newFolderParent ? folderName(tree, newFolderParent) ?? null : null}
       />
+
+      {/* Keyed by folder id so reopening on a different folder resets the form
+          to that folder's own values rather than the last one's. */}
+      {detailsFolder && (
+        <FolderDetailsModal
+          key={`details-${detailsFolder}`}
+          open
+          folderName={findInTree(tree, detailsFolder)?.name ?? ""}
+          description={findInTree(tree, detailsFolder)?.description ?? null}
+          onClose={() => setDetailsFolder(null)}
+          onSubmit={(value) => saveFolderDetails(detailsFolder, value)}
+        />
+      )}
 
       <ImportUrlModal
         key={importOpen ? "import-open" : "import-closed"}

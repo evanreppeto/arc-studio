@@ -18,7 +18,10 @@ const ENABLED_RESEND = { enabled: true, env_var: "RESEND_API_KEY", config: { fro
 // and a workspace sender identity with the postal address CAN-SPAM requires.
 // Without these the executor now refuses — see the dedicated gate tests below.
 const COMPLIANCE_ROWS = {
-  contacts: { data: { email_unsubscribed_at: null }, error: null },
+  contacts: { data: { email_unsubscribed_at: null, status: "active" }, error: null },
+  // The address-keyed half of the gate. maybeSingle() returns null for "no such
+  // row" on a real client; the mock's unmapped default is [], so state it.
+  email_suppressions: { data: null, error: null },
   app_settings: {
     data: [
       { key: "email_sender_name", value: "Big Shoulders Restoration" },
@@ -298,6 +301,32 @@ describe("executeResendDispatch", () => {
 
     expect(result.ok).toBe(false);
     expect(result.message).toMatch(/disabled/i);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  /**
+   * BSR-757. `!connection?.enabled` covered "no row" and "row disabled" alike,
+   * so a workspace that had never connected Resend was told it was "connected
+   * but disabled" — false, and it points at a toggle that does not exist for
+   * them. This is the first error a workspace hits on its first send.
+   */
+  it("says Resend is NOT CONNECTED when the workspace has no connection row", async () => {
+    const send = vi.fn();
+    const supabase = createSupabaseQueryMock({
+      ...COMPLIANCE_ROWS,
+      campaign_dispatches: { data: queuedDispatch(), error: null },
+      approval_items: { data: APPROVED, error: null },
+      campaign_assets: { data: DEPLOYED_ASSET, error: null },
+      // maybeSingle() with no matching row.
+      connections: { data: null, error: null },
+    });
+
+    const result = await executeResendDispatch({ dispatchId: "d1", operator: "Operator" }, supabase, { apiKey: "re_test", send });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/isn't connected/i);
+    // The remedy has to be "connect", not "enable" — the toggle isn't there yet.
+    expect(result.message).not.toMatch(/connected but disabled/i);
     expect(send).not.toHaveBeenCalled();
   });
 

@@ -140,13 +140,18 @@ describe("parseActions — one asset, one card", () => {
   });
 
   // The real hazard beyond the miscount: bulk-approve reads the same card list.
+  // The context here is what makes the asset eligible at all — a recorded pass
+  // and loaded, empty findings — so what this asserts is the DEDUPE: one asset
+  // comes back once, not twice.
   it("stops bulk-approve seeing one asset twice", () => {
     const cards = parseActions([
       draft("Send-pipeline verification email"),
       draft("Send-pipeline verification email — pending approval"),
-    ]);
+    ]).map((card) => ({ ...card, flags: [{ tone: "ok" as const, label: "No banned phrase detected" }] }));
 
-    expect(cleanApprovableDrafts(cards)).toEqual([{ campaignId: "camp-1", assetId: ASSET }]);
+    expect(cleanApprovableDrafts(cards, { checks: { [ASSET]: [] } })).toEqual([
+      { campaignId: "camp-1", assetId: ASSET },
+    ]);
   });
 });
 

@@ -1,20 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { derivedShortLabel, type BillingNotice } from "@/domain";
 import type { ArcRecentConversationVM } from "@/lib/arc-chat/read-model";
-import { getProductLanguage } from "@/lib/product-language";
+import { getProductLanguage, type ObjectLabelSettings } from "@/lib/product-language";
 
 import { AccountMenu } from "./account-menu";
 import { BillingNoticeBar } from "./billing-notice";
+import { DemoDataBar } from "./demo-data-bar";
 import { ComingSoonToasts } from "./coming-soon";
 import { CommandPalette, type CommandItem } from "./command-palette";
+import { IdentifierLeakCheck } from "./identifier-leak-check";
 import { NavProgress } from "./nav-progress";
+import { OVERLAY_ROOT_ID } from "./overlay-portal";
+import { RailRecents } from "./rail-recents";
 import { RoutePrewarm } from "./route-prewarm";
 import { WorkspaceSwitcher, type WorkspaceOption } from "./workspace-switcher";
+import { AppImage } from "./app-image";
 
 function initials(name: string): string {
   return (
@@ -51,33 +56,37 @@ const IconLibrary = <NavIcon src="/brand/nav-icons/sidebar-v2/library.png" />;
 const IconBrand = <NavIcon src="/brand/nav-icons/sidebar-v2/brand.png" />;
 const IconOutbox = <NavIcon src="/brand/nav-icons/sidebar-v2/outbox.png" />;
 
-type NavGroup = { group: string; items: { label: string; href: string; icon: React.ReactNode }[] };
+type NavItem = { label: string; href: string; icon: React.ReactNode; hint: string };
+type NavGroup = { group: string; items: NavItem[] };
 
-const PRIMARY_NAV_ITEMS: NavGroup["items"] = [
-  { label: "Arc Chat", href: "/arc", icon: IconArc },
-  { label: "Home", href: "/home", icon: IconHome },
-  { label: "Campaigns", href: "/campaigns", icon: IconCampaigns },
-  { label: "Relationships", href: "/crm", icon: IconCrm },
-  { label: "Opportunities", href: "/opportunities", icon: IconOpp },
+const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { label: "Arc Chat", href: "/arc", icon: IconArc, hint: "Ask Arc to find work or draft something" },
+  { label: "Home", href: "/home", icon: IconHome, hint: "What needs you today" },
+  { label: "Campaigns", href: "/campaigns", icon: IconCampaigns, hint: "Everything Arc has drafted, and its approval state" },
+  { label: "Relationships", href: "/crm", icon: IconCrm, hint: "Your contacts, companies and leads" },
+  { label: "Opportunities", href: "/opportunities", icon: IconOpp, hint: "Chances Arc found, with the evidence behind them" },
 ];
 
 const ADVANCED_NAV_GROUPS: NavGroup[] = [
-  { group: "Measure", items: [{ label: "Analytics", href: "/analytics", icon: IconAnalytics }] },
   {
-    group: "Intelligence",
+    group: "Performance",
+    items: [{ label: "Analytics", href: "/analytics", icon: IconAnalytics, hint: "Leads, jobs and revenue over time" }],
+  },
+  {
+    group: "Knowledge",
     items: [
-      { label: "Journeys", href: "/journeys", icon: IconJourneys },
-      { label: "Brain", href: "/brain", icon: IconBrain },
-      { label: "Personas", href: "/personas", icon: IconPersonas },
+      { label: "Journeys", href: "/journeys", icon: IconJourneys, hint: "How each customer got to you" },
+      { label: "Brain", href: "/brain", icon: IconBrain, hint: "What Arc knows about your business" },
+      { label: "Personas", href: "/personas", icon: IconPersonas, hint: "The customer types you sell to" },
     ],
   },
   {
-    group: "Create & manage",
+    group: "Create & send",
     items: [
-      { label: "Studio", href: "/studio", icon: IconStudio },
-      { label: "Library", href: "/library", icon: IconLibrary },
-      { label: "Brand", href: "/brand", icon: IconBrand },
-      { label: "Outbox", href: "/outbox", icon: IconOutbox },
+      { label: "Studio", href: "/studio", icon: IconStudio, hint: "Design ads and images" },
+      { label: "Library", href: "/library", icon: IconLibrary, hint: "Your photos, logos and files" },
+      { label: "Brand", href: "/brand", icon: IconBrand, hint: "Your colours, voice and proof points" },
+      { label: "Outbox", href: "/outbox", icon: IconOutbox, hint: "Approved messages waiting to go out" },
     ],
   },
 ];
@@ -140,6 +149,8 @@ function badgeLabel(href: string, count: number): string {
 }
 
 export function AppShell({
+  workspaceId = null,
+  orgSlug = null,
   workspaceName,
   orgName,
   workspaceSubtitle,
@@ -150,12 +161,34 @@ export function AppShell({
   logoUrl = null,
   avatarUrl = null,
   industry = "general",
+  objectLabels = null,
   workspaces = [],
   navBadges = {},
   recentConversations = [],
   billingNotice = null,
+  demoData = false,
   children,
 }: {
+  /**
+   * Which tenant this render actually belongs to, stamped onto the shell root as
+   * `data-workspace-id` / `data-org-slug`.
+   *
+   * Display identity cannot answer that question. Prod holds two organizations
+   * whose workspaces are BOTH named "Big Shoulders Restoration" — the rail, the
+   * page chrome and a screenshot are byte-identical between them, so the wrong
+   * tenant looks exactly like the right one. That is not hypothetical: the
+   * deployed guardrail signed into the drained org for days and reported "the
+   * Opportunity inbox is empty" rather than "this is the wrong workspace"
+   * (BSR-708 was the same mix-up in the nightly smoke).
+   *
+   * The ids are the only thing that distinguishes them, so they belong in the
+   * DOM: it lets an e2e check assert the tenant of the very page it is asserting
+   * about, and it gives a human something to read when two screenshots disagree.
+   * Nothing is exposed — the viewer is an authenticated member of this workspace
+   * and these are the ids of their own tenant.
+   */
+  workspaceId?: string | null;
+  orgSlug?: string | null;
   workspaceName: string;
   orgName: string;
   /** Resolved rail identity — see resolveWorkspaceIdentity in @/domain. */
@@ -167,14 +200,28 @@ export function AppShell({
   logoUrl?: string | null;
   avatarUrl?: string | null;
   industry?: string | null;
+  /** The workspace's own object names. Renames the CRM section in the rail. */
+  objectLabels?: ObjectLabelSettings | null;
   workspaces?: WorkspaceOption[];
   navBadges?: Record<string, number>;
   recentConversations?: ArcRecentConversationVM[];
   billingNotice?: BillingNotice | null;
+  /** Console-wide: the numbers on screen are illustrative, not the viewer's. */
+  demoData?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const language = getProductLanguage(industry);
+  const searchParams = useSearchParams();
+  const language = getProductLanguage(industry, objectLabels);
+  // Which recent chat is on screen. Only /arc can have one open, and `?new=1`
+  // means a blank composer — so neither of those marks a row. Everywhere else
+  // the rail shows recents as plain links, which is what they are.
+  const openConversationId = (() => {
+    if (pathname !== "/arc" || searchParams.get("new") === "1") return null;
+    const requested = searchParams.get("c");
+    if (requested) return requested;
+    return recentConversations.find((conversation) => conversation.defaultActive)?.id ?? null;
+  })();
   const navGroups = navGroupsFor(language.crmLabel);
   // Mobile nav drawer. Below the shell breakpoint the rail is an off-canvas
   // drawer toggled from the top bar; on desktop `navOpen` is inert (the rail is
@@ -273,7 +320,16 @@ export function AppShell({
     <div className={embedded ? "arc-app is-embedded" : "arc-app"}>
       <NavProgress />
       <RoutePrewarm hrefs={PREWARM_HREFS} />
-      <div className="app" data-nav-open={navOpen}>
+      {/* First thing in the tab order, invisible until focused. Without it a
+          keyboard user tabs through the whole rail on every page before
+          reaching content. */}
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <div
+        className="app"
+        data-nav-open={navOpen}
+        data-workspace-id={workspaceId ?? undefined}
+        data-org-slug={orgSlug ?? undefined}
+      >
         {/* Backdrop behind the mobile drawer — tap to dismiss. Inert on desktop
             (the rail is docked, so this never covers content there). */}
         <button
@@ -338,6 +394,7 @@ export function AppShell({
                       href={it.href}
                       className={`nav${active ? " on" : ""}`}
                       aria-current={active ? "page" : undefined}
+                      title={it.hint}
                       onClick={() => closeMobileNav(false)}
                     >
                       {active && <span className="tick" />}
@@ -366,6 +423,7 @@ export function AppShell({
                       href={it.href}
                       className={`nav${active ? " on" : ""}`}
                       aria-current={active ? "page" : undefined}
+                      title={it.hint}
                       onClick={() => closeMobileNav(false)}
                     >
                       {active && <span className="tick" />}
@@ -379,34 +437,28 @@ export function AppShell({
             ))}
             <section className="rail-recents" aria-labelledby="rail-recents-title">
               <div className="rail-recents-head">
-                <h2 id="rail-recents-title">Recent chats</h2>
+                {/* A div, not an h2. As a heading this opened the document
+                    outline on EVERY route — a sidebar label announced before the
+                    page's own h1 — so "jump to the first heading" landed in the
+                    chat list. `aria-labelledby` on the section still names the
+                    region, so nothing is lost to a screen reader. */}
+                <div id="rail-recents-title" className="rail-recents-title">Recent chats</div>
                 <Link
                   href="/arc?new=1"
+                  className="rail-recents-new"
+                  title="Start a new Arc chat"
                   prefetch={false}
                   onClick={() => closeMobileNav(false)}
                 >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                   New
                 </Link>
               </div>
-              {recentConversations.length > 0 ? (
-                <div className="rail-recents-list">
-                  {recentConversations.map((conversation) => (
-                    <Link
-                      key={conversation.id}
-                      href={`/arc?c=${encodeURIComponent(conversation.id)}`}
-                      className="rail-recent"
-                      prefetch={false}
-                      onClick={() => closeMobileNav(false)}
-                    >
-                      <span className="rail-recent-dot" aria-hidden="true" />
-                      <span className="rail-recent-title">{conversation.title}</span>
-                      <time>{conversation.when}</time>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="rail-recents-empty">Start a chat to keep active work close by.</p>
-              )}
+              <RailRecents
+                conversations={recentConversations}
+                openConversationId={openConversationId}
+                onNavigate={() => closeMobileNav(false)}
+              />
             </section>
           </nav>
           {/* Pinned above the account control: when something is broken, the way
@@ -454,7 +506,13 @@ export function AppShell({
             >
               <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
             </button>
-            <span className="crumb">{crumb}</span>
+            {/* A div, not an h1. This small top-bar label was the document's only h1 on
+                every route, while the page's real title sat below it as an h2 —
+                so /campaigns announced "Campaigns" twice and the visible
+                hierarchy disagreed with the semantic one. Each route now owns
+                its own h1. Tailwind preflight already zeroes heading margins,
+                so nothing moves. */}
+            <div className="crumb">{crumb}</div>
             <button
               type="button"
               className="search"
@@ -472,8 +530,7 @@ export function AppShell({
               onClick={openAccountMenu}
             >
               {avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- user-uploaded avatar; next/image would need per-host remotePatterns
-                <img src={avatarUrl} alt={displayName} />
+                <AppImage src={avatarUrl} alt={displayName} />
               ) : (
                 initials(displayName)
               )}
@@ -481,10 +538,24 @@ export function AppShell({
           </header>
           <CommandPalette items={commandItems} />
           <BillingNoticeBar banner={billingNotice} />
-          {children}
+          <DemoDataBar show={demoData} />
+          {/* Dev/preview only — no-op in production. Warns when a stored value
+              reaches the screen as text (BSR-709). */}
+          <IdentifierLeakCheck />
+          {/* The app had no <main> on any route, so assistive tech had no way to
+              skip the rail and the header on every single page. This is the one
+              main landmark; Arc's own scroll region is a <div> beneath it. */}
+          <main id="main-content" tabIndex={-1}>
+            {children}
+          </main>
         </div>
       </div>
       <ComingSoonToasts />
+      {/* Host for every overlay that means to cover the whole shell (see
+          overlay-portal.tsx). It has to live here — inside `.arc-app` for the
+          design tokens, outside `.app` and `.page-enter` so no transformed
+          ancestor turns `position: fixed` into "fixed to the content pane". */}
+      <div id={OVERLAY_ROOT_ID} />
     </div>
   );
 }

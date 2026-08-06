@@ -5,12 +5,13 @@ import { getCampaignAudiencePreview } from "@/lib/audience/campaign-audience";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { listAttachableMedia, type AttachableMediaItem } from "@/lib/campaigns/attach-media";
 import { getCampaignWorkspaceDetail } from "@/lib/campaigns/read-model";
+import { listStalledRevisions, type StalledRevision } from "@/lib/campaigns/revision-recovery";
 import { getCampaignPerformancePanel } from "@/lib/performance/campaign-panel";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import { CampaignDetailView } from "./_components/campaign-detail-view";
 import { reportDegraded } from "@/lib/observability/report-degraded";
-import "./campaign.css";
+import "../campaign.css";
 
 export const metadata = { title: "Campaign — Arc Studio" };
 
@@ -25,8 +26,8 @@ const DEMO_ATTACHABLE_MEDIA: AttachableMediaItem[] = [
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ campaignId: string }> }) {
   const { campaignId } = await params;
-  const orgId = (await getCurrentWorkspaceContext()).orgId;
-  const detail = await getCampaignWorkspaceDetail(decodeURIComponent(campaignId), undefined, "Arc", orgId);
+  const { orgId, workspaceId } = await getCurrentWorkspaceContext();
+  const detail = await getCampaignWorkspaceDetail(decodeURIComponent(campaignId), undefined, "Arc", orgId, workspaceId);
 
   if (detail.status === "not_found") notFound();
   if (detail.status !== "live") {
@@ -71,7 +72,30 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       ? await listAttachableMedia(orgId).catch(() => [])
       : DEMO_ATTACHABLE_MEDIA;
 
+  // Revisions the operator asked for that Arc never started. PRIMARY, not
+  // decorative: the whole point is that the operator currently has no way to
+  // learn a revision was dropped, so failing this read to `[]` would restore
+  // exactly the silence it exists to break — hence reportDegraded rather than a
+  // bare catch.
+  const stalledRevisions: StalledRevision[] =
+    orgId && isSupabaseAdminConfigured()
+      ? await listStalledRevisions({ campaignId: decodeURIComponent(campaignId), orgId }).catch((error) => {
+          reportDegraded(error, {
+            scope: "campaigns.listStalledRevisions",
+            surface: "primary",
+            detail: { campaignId: decodeURIComponent(campaignId) },
+          });
+          return [];
+        })
+      : [];
+
   return (
-    <CampaignDetailView detail={detail} performance={performance} audience={audience} attachableMedia={attachableMedia} />
+    <CampaignDetailView
+      detail={detail}
+      performance={performance}
+      audience={audience}
+      attachableMedia={attachableMedia}
+      stalledRevisions={stalledRevisions}
+    />
   );
 }

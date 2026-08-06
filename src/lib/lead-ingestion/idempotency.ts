@@ -32,6 +32,38 @@ type LeadRow = {
  * import) or the id is blank. Best-effort: a query error resolves to null so a
  * lookup blip degrades to "insert a new row" rather than throwing the whole batch.
  */
+/**
+ * The lead row as it stands right now, for an import to record before it
+ * overwrites it (BSR-643). Without this an undo can only delete what a run
+ * created; it cannot put back what the run changed.
+ *
+ * Deliberately `select("*")`: a hand-listed column set would silently stop
+ * capturing any column added later, and the failure would be invisible until
+ * someone tried to restore and got a partial row back.
+ *
+ * Best-effort — a snapshot we cannot take must not stop the import. The run then
+ * records the update with an empty snapshot, and reversal reports it as
+ * non-restorable rather than pretending.
+ */
+export async function snapshotLeadRow(
+  client: SupabaseClient,
+  orgId: string,
+  leadId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await client
+      .from("leads")
+      .select("*")
+      .eq("id", leadId)
+      .eq("org_id", orgId)
+      .maybeSingle<Record<string, unknown>>();
+    if (error || !data) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export async function findExistingLeadByExternalId(
   client: SupabaseClient,
   orgId: string,

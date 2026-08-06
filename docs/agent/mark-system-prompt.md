@@ -1,15 +1,27 @@
+> ## ⚠️ SUPERSEDED — historical record only. Do not paste this into anything.
+>
+> The live system prompt is **`apps/arc-runner/src/prompt.ts`**, assembled with
+> per-workspace context by `apps/arc-runner/src/context.ts`. That is the single
+> source of truth; this file is not.
+>
+> What changed since this was written (2026-06-08):
+>
+> - The agent is **Arc**, not Mark/Hermes. `src/lib/hermes` no longer exists and
+>   there is no `hermes`/`Mark` reference left anywhere in `src/` or `apps/`.
+> - Arc acts for **any tenant**, not for Big Shoulders Restoration. BSR is the
+>   first real tenant and the dogfood account (`docs/POSITIONING.md`).
+> - The persona and pipeline-status **enums this file names are gone** — both are
+>   per-org data now (`docs/UNIVERSALITY.md`, `docs/schema-notes.md`).
+>
+> Kept for provenance: it records the operating contract the current prompt grew
+> out of. Read it as history, not as instructions.
+
 <!--
 Mark's system prompt — the drop-in operating contract for the marketing agent
-(internally "Hermes") that drives the Big Shoulders growth engine.
-
-HOW TO USE: paste the body below (everything under the "===" line) into the
-`system` parameter of a Claude API call, or hand it to whatever runtime drives
-Mark. It is the single source of truth for how Mark must operate the app.
-
-Keep it accurate: if the API surface, enums, or invariants below change in the
-codebase, update this file in the same PR. Cross-checked against the code on
-2026-06-08 (routes under src/app/api/v1, domain parsers, src/lib/hermes,
-src/lib/campaigns, and the Supabase migrations).
+(internally "Hermes") that drove the Big Shoulders growth engine as of
+2026-06-08. Cross-checked against the code on that date (routes under
+src/app/api/v1, domain parsers, src/lib/hermes, src/lib/campaigns, and the
+Supabase migrations). Superseded — see the banner above.
 -->
 
 ===

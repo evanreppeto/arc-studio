@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { type ArcActionCard, type ArcMedia, type ArcMention, type ArcMode, type ArcQuestion, type ArcRecall, type ArcRoute, type ArcStepKind, parseActions, parseMedia, parseMentions, parseQuestions, parseRecall } from "@/domain";
+import { type ArcActionCard, type ArcMedia, type ArcMention, type ArcMode, type ArcQuestion, type ArcRecall, type ArcRoute, type ArcRunTaskState, type ArcStalledReason, type ArcStepKind, parseActions, parseMedia, parseMentions, parseQuestions, parseRecall } from "@/domain";
 import { type ArcSkillId } from "@/lib/arc-skills/catalog";
 import { type InferredArcSkill } from "@/lib/arc-skills/routing";
 
@@ -92,6 +92,14 @@ export type ArcMessage = {
    * completion so the receipt does not infer duration from two insert times. */
   runDurationMs?: number | null;
   createdAt: string;
+  /**
+   * DERIVED, not persisted: this reply is still `pending` but its run is gone
+   * (see `decideArcRunStalled`). Set by the read model, never stored — the row
+   * keeps its real status, and the moment a reply actually lands this clears on
+   * its own. The UI reads this to stop spinning and offer Try again.
+   */
+  stalled?: boolean;
+  stalledReason?: ArcStalledReason;
 };
 
 type ConversationRow = {
@@ -316,22 +324,30 @@ async function taskBelongsToScope(
 }
 
 /**
- * A message belongs to the org that owns its conversation. Derived rather than
- * passed in by callers: arc_messages.org_id has a DEFAULT hardcoded to one org's
- * slug, so an omitted org_id silently misfiles the row into that tenant instead
- * of failing. Total by construction — arc_messages.conversation_id and
- * arc_conversations.org_id are both NOT NULL, so every message has exactly one
- * conversation with exactly one org.
+ * A message belongs to the org AND workspace that own its conversation. Derived
+ * rather than passed in by callers: arc_messages.org_id has a DEFAULT hardcoded to
+ * one org's slug, so an omitted org_id silently misfiles the row into that tenant
+ * instead of failing.
+ *
+ * Total by construction for the org — arc_messages.conversation_id and
+ * arc_conversations.org_id are both NOT NULL. The workspace is derived the same
+ * way (BSR-716): arc_conversations.workspace_id is populated on every row on prod,
+ * so all 128 unstamped arc_messages resolve through their conversation rather than
+ * needing the org fallback. That makes these rows correct under any future
+ * org/workspace topology, not just today's.
  */
-async function conversationOrgId(client: SupabaseClient, conversationId: string): Promise<string> {
+async function conversationTenant(
+  client: SupabaseClient,
+  conversationId: string,
+): Promise<{ org_id: string; workspace_id: string | null }> {
   const { data, error } = await client
     .from("arc_conversations")
-    .select("org_id")
+    .select("org_id,workspace_id")
     .eq("id", conversationId)
-    .single<{ org_id: string }>();
-  assertOk("arc_conversations org lookup", error);
+    .single<{ org_id: string; workspace_id: string | null }>();
+  assertOk("arc_conversations tenant lookup", error);
   if (!data?.org_id) throw new Error(`arc_conversations ${conversationId} has no org_id`);
-  return data.org_id;
+  return { org_id: data.org_id, workspace_id: data.workspace_id };
 }
 
 /**
@@ -665,6 +681,28 @@ export async function listMessages(
 }
 
 /**
+ * The queue state behind a set of in-flight replies, keyed by task id.
+ *
+ * Used to tell a run that is genuinely working from one the runner abandoned —
+ * see `decideArcRunStalled`. Only ever called with the task ids of `pending`
+ * messages, so this is a handful of rows on a primary key, not a scan.
+ */
+export async function listArcRunTaskStates(
+  taskIds: string[],
+  client: SupabaseClient = getSupabaseAdminClient(),
+): Promise<Map<string, ArcRunTaskState>> {
+  const ids = [...new Set(taskIds.filter(Boolean))];
+  if (ids.length === 0) return new Map();
+  const { data, error } = await client
+    .from("agent_tasks")
+    .select("id, status, started_at, created_at")
+    .in("id", ids);
+  assertOk("agent_tasks run states", error);
+  const rows = (data ?? []) as { id: string; status: string; started_at: string | null; created_at: string | null }[];
+  return new Map(rows.map((row) => [row.id, { status: row.status, startedAt: row.started_at, createdAt: row.created_at }]));
+}
+
+/**
  * The single in-flight (pending) Arc reply for a conversation — the newest one.
  * Powers the SSE live-stream that pushes the growing body/steps/reasoning to the
  * browser. Null when nothing is in flight (the reply has completed, or none was
@@ -809,11 +847,12 @@ export async function insertOperatorMessage(
   if (input.skillId) metadata.skill_id = input.skillId;
   if (input.inferredSkill) metadata.inferred_skill = input.inferredSkill;
   if (input.contextScopes && input.contextScopes.length > 0) metadata.context_scopes = input.contextScopes;
+  const tenant = await conversationTenant(client, input.conversationId);
   const { data, error } = await client
     .from("arc_messages")
     .insert({
       conversation_id: input.conversationId,
-      org_id: await conversationOrgId(client, input.conversationId),
+      ...tenant,
       role: "operator",
       body: input.body,
       status: "sent",
@@ -832,11 +871,12 @@ export async function insertPendingArcMessage(
   input: { conversationId: string; agentTaskId: string },
   client: SupabaseClient = getSupabaseAdminClient(),
 ): Promise<ArcMessage> {
+  const tenant = await conversationTenant(client, input.conversationId);
   const { data, error } = await client
     .from("arc_messages")
     .insert({
       conversation_id: input.conversationId,
-      org_id: await conversationOrgId(client, input.conversationId),
+      ...tenant,
       role: "arc",
       body: "",
       status: "pending",
@@ -853,10 +893,10 @@ export async function insertFailedArcMessage(
   input: { conversationId: string; body: string },
   client: SupabaseClient = getSupabaseAdminClient(),
 ): Promise<ArcMessage> {
-  const orgId = await conversationOrgId(client, input.conversationId);
+  const tenant = await conversationTenant(client, input.conversationId);
   const { data, error } = await client
     .from("arc_messages")
-    .insert({ conversation_id: input.conversationId, org_id: orgId, role: "arc", body: input.body, status: "failed" })
+    .insert({ conversation_id: input.conversationId, ...tenant, role: "arc", body: input.body, status: "failed" })
     .select(MESSAGE_COLUMNS)
     .single<MessageRow>();
   assertOk("arc_messages failed insert", error);

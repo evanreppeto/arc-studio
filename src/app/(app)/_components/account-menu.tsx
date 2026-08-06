@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { AppImage } from "./app-image";
 
 type AccountMenuProps = {
   firstName: string;
@@ -14,8 +15,7 @@ type AccountMenuProps = {
 };
 
 function Avatar({ url, initials, alt }: { url: string | null | undefined; initials: string; alt: string }) {
-  // eslint-disable-next-line @next/next/no-img-element -- user-uploaded avatar; next/image would need per-host remotePatterns
-  return <span className="av">{url ? <img src={url} alt={alt} /> : initials}</span>;
+  return <span className="av">{url ? <AppImage src={url} alt={alt} /> : initials}</span>;
 }
 
 /**

@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdminClient } from "../supabase/server";
 import { type AgentTaskTenantFields } from "../agent-tasks/scope";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 export type ApprovalDecision = "approved" | "declined" | "archived";
 
@@ -58,7 +59,7 @@ export async function decideApprovalItem(
   }
 
   const { error: decisionError } = await client.from("approval_decisions").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     approval_item_id: item.id,
     decision,
     decided_by: operator,
@@ -93,7 +94,7 @@ export async function decideApprovalItem(
     assertOk("campaigns update", campaignError);
 
     const { error: eventError } = await client.from("campaign_events").insert({
-      ...orgTenantFields(tenant),
+      ...workspaceScopeFields(tenant),
       campaign_id: item.campaign_id,
       campaign_asset_id: item.campaign_asset_id,
       approval_item_id: item.id,
@@ -156,7 +157,7 @@ export async function decideAsset(
   assertOk("campaign_assets decide", assetError);
 
   const { error: eventError } = await client.from("campaign_events").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId || null,
     campaign_asset_id: assetId,
     event_type: decision === "archived" ? "archived" : "approval_decided",
@@ -167,6 +168,50 @@ export async function decideAsset(
   assertOk("campaign_events insert", eventError);
 
   return { assetId, decision, status: decision };
+}
+
+export type UndoAssetDecisionInput = {
+  assetId: string;
+  operator: string;
+  tenant?: AgentTaskTenantFields;
+};
+
+/**
+ * Undo the last decision on a deliverable by ASSET id — the unit operators act
+ * on, mirroring `decideAsset`'s lookup so the two are symmetric.
+ *
+ * `undoDecision` is keyed by approval item, which the chat has never held: a
+ * card carries `{ campaignId, assetId }`. Verified against prod before wiring —
+ * all 13 asset ids referenced by Arc chat cards have an approval_items row, so
+ * this reaches the real path rather than being another entry point onto nothing.
+ *
+ * The asset-only branch of `decideAsset` (no gate, status written straight onto
+ * campaign_assets) has no approval_decisions row to reverse, so it is refused
+ * explicitly rather than silently doing nothing. Outbound stays locked either
+ * way — undo restores a status, it never sends.
+ */
+export async function undoAssetDecision(
+  input: UndoAssetDecisionInput,
+  client: SupabaseClient = getSupabaseAdminClient(),
+) {
+  const { assetId, operator, tenant } = input;
+
+  const { data: approval, error: approvalError } = await applyOrgScope(
+    client
+      .from("approval_items")
+      .select("id")
+      .eq("campaign_asset_id", assetId)
+      .order("submitted_at", { ascending: false })
+      .limit(1),
+    tenant,
+  ).maybeSingle<{ id: string }>();
+  assertOk("approval_items (asset) lookup", approvalError);
+
+  if (!approval) {
+    throw new Error("This deliverable was decided without an approval record, so there is nothing to undo.");
+  }
+
+  return undoDecision({ approvalItemId: approval.id, operator, tenant }, client);
 }
 
 export type ReopenAssetInput = {
@@ -203,7 +248,7 @@ export async function reopenAsset(
 
   if (approval) {
     const { error: decisionError } = await client.from("approval_decisions").insert({
-      ...orgTenantFields(tenant),
+      ...workspaceScopeFields(tenant),
       approval_item_id: approval.id,
       decision: "reverted",
       decided_by: operator,
@@ -234,7 +279,7 @@ export async function reopenAsset(
   assertOk("campaign_assets update (reopen)", assetError);
 
   const { error: eventError } = await client.from("campaign_events").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId || null,
     campaign_asset_id: assetId,
     approval_item_id: approval?.id ?? null,
@@ -299,7 +344,7 @@ export async function undoDecision(
   }
 
   const { error: decisionError } = await client.from("approval_decisions").insert({
-    ...orgTenantFields(tenant),
+    ...workspaceScopeFields(tenant),
     approval_item_id: approvalItemId,
     decision: "reverted",
     decided_by: operator,
@@ -334,7 +379,7 @@ export async function undoDecision(
     assertOk("campaigns update (revert)", campaignError);
 
     const { error: eventError } = await client.from("campaign_events").insert({
-      ...orgTenantFields(tenant),
+      ...workspaceScopeFields(tenant),
       campaign_id: item.campaign_id,
       campaign_asset_id: item.campaign_asset_id,
       approval_item_id: approvalItemId,
@@ -360,6 +405,3 @@ function applyOrgScope<Query>(query: Query, tenant?: AgentTaskTenantFields): Que
   return (query as { eq(column: string, value: string): Query }).eq("org_id", tenant.org_id);
 }
 
-function orgTenantFields(tenant?: AgentTaskTenantFields): Record<string, string> {
-  return tenant ? { org_id: tenant.org_id } : {};
-}

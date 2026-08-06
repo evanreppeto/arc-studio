@@ -68,6 +68,42 @@ export function draftWorkProductTools(
       title: z.string().describe("Short title for the asset"),
       body: z.string().optional().describe("The draft copy/content"),
       media_url: z.string().optional().describe("Optional reference media URL"),
+      // Without these three, a package drafted in chat lost its provenance: the
+      // campaign recorded no objective, no audience, and no link to the signal it
+      // came from, so the opportunity stayed `pending` and the next scan
+      // re-proposed work that was already done (BSR-675/677).
+      opportunity_id: z
+        .string()
+        .optional()
+        .describe(
+          "The opportunity this campaign is being drafted FROM, when you know it (e.g. from list_opportunities). Links the campaign to the signal that justified it and marks the opportunity drafted, so it stops being re-proposed. Pass it whenever you are acting on an opportunity.",
+        ),
+      objective: z
+        .string()
+        .optional()
+        .describe("One line: what this campaign is for. Recorded on the campaign so the package reads complete."),
+      audience_summary: z
+        .string()
+        .optional()
+        .describe("One line: who this targets and why they were grouped."),
+      handoff_note: z
+        .string()
+        .optional()
+        .describe(
+          "The sales/partner handoff note — what a human picking this up needs to know. Recorded on the campaign and shown on its page.",
+        ),
+      considered_audiences: z
+        .array(
+          z.object({
+            label: z.string().describe("The audience you weighed, in this workspace's own words"),
+            reason: z.string().describe("Why it was NOT chosen — a label with no reason explains nothing"),
+            size_estimate: z.number().optional().describe("Rough size, only when you actually know it"),
+          }),
+        )
+        .optional()
+        .describe(
+          "Audiences you considered and set aside, each with the reason. Say what you rejected and why, not just what you picked.",
+        ),
     },
     async (args) => {
       const label = "Creating campaign draft";
@@ -148,5 +184,37 @@ export function draftWorkProductTools(
       ),
   );
 
-  return [createCampaignDraft, submitDraft];
+  /**
+   * Metadata only. Exists because `create_campaign_draft` used to be the only
+   * way to write these fields onto an existing campaign, so documenting a
+   * campaign meant minting a deliverable to carry the note — an asset nobody
+   * would ever send, sitting in the approval queue as work to review.
+   */
+  const recordCampaignSummary = tool(
+    "record_campaign_summary",
+    "Record what a campaign IS — its objective, audience summary, sales/partner handoff note, and the audiences you considered and set aside. Metadata only: creates no asset and no approval item, so use this rather than create_campaign_draft when you are documenting a campaign rather than adding a deliverable to it. Additive — omit a field to leave it as it is. Needs the campaign's FULL uuid, not a short prefix.",
+    {
+      campaign_id: z.string().describe("The campaign's full uuid"),
+      objective: z.string().optional().describe("One line: what this campaign is for"),
+      audience_summary: z.string().optional().describe("One line: who it targets and why they were grouped"),
+      handoff_note: z
+        .string()
+        .optional()
+        .describe("What a human picking this up needs to know — including anything unfinished or wrong with it"),
+      considered_audiences: z
+        .array(
+          z.object({
+            label: z.string().describe("The audience you weighed, in this workspace's own words"),
+            reason: z.string().describe("Why it was NOT chosen — a label with no reason explains nothing"),
+            size_estimate: z.number().optional().describe("Rough size, only when you actually know it"),
+          }),
+        )
+        .optional()
+        .describe("Audiences considered and set aside, each with its reason"),
+    },
+    async (args) =>
+      runTool(step, "Recording campaign summary", () => client.apiPost("/api/v1/arc/campaigns/summary", args)),
+  );
+
+  return [createCampaignDraft, submitDraft, recordCampaignSummary];
 }

@@ -1,7 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+/**
+ * Per-table exact counts, keyed by table name. `null` simulates a count that
+ * cannot be read — which must surface as unknown, never as 0 (BSR-678).
+ */
+let countByTable: Record<string, number | null> = {};
+
+/** Minimal stand-in for `.from(t).select(_, {count,head}).eq(col, id)`. */
+function makeDbStub() {
+  return {
+    from: (table: string) => ({
+      select: () => ({
+        eq: async () =>
+          countByTable[table] === null
+            ? { count: null, error: { message: `count failed for ${table}` } }
+            : { count: countByTable[table] ?? 0, error: null },
+      }),
+    }),
+  };
+}
+
 vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseAdminClient: vi.fn(() => ({})),
+  getSupabaseAdminClient: vi.fn(() => makeDbStub()),
   isSupabaseAdminConfigured: vi.fn(() => true),
 }));
 vi.mock("@/lib/brand-kit/persistence", () => ({
@@ -36,6 +56,7 @@ beforeEach(() => {
   ] as never);
   approvalsMock.mockResolvedValue(4);
   mediaMock.mockResolvedValue([{ id: "m1" }, { id: "m2" }] as never);
+  countByTable = { contacts: 243, companies: 12, leads: 0, campaigns: 3 };
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -48,6 +69,9 @@ describe("getWorkspaceSummary", () => {
       mediaAvailable: 2,
       pendingApprovals: 4,
       personas: 2,
+      records: { contacts: 243, companies: 12, leads: 0, campaigns: 3 },
+      dismissalPatterns: [],
+      recentCorrections: [],
     });
   });
 
@@ -75,7 +99,46 @@ describe("getWorkspaceSummary", () => {
       mediaAvailable: 0,
       pendingApprovals: 0,
       personas: 0,
+      // Unconfigured means unknown, not empty.
+      records: { contacts: null, companies: null, leads: null, campaigns: null },
+      dismissalPatterns: [],
+      recentCorrections: [],
     });
     expect(getBusinessProfile).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * BSR-678: Arc told an operator the CRM was empty 85 minutes after 243 contacts
+ * were imported. This snapshot is injected into the prompt every turn and
+ * carried no record counts, so the only CRM figure available to the model was a
+ * remembered one.
+ */
+describe("live record counts", () => {
+  it("reads counts for the tenancy column each table actually uses", async () => {
+    const s = await getWorkspaceSummary("org_1", "ws_1");
+    expect(s.records).toEqual({ contacts: 243, companies: 12, leads: 0, campaigns: 3 });
+  });
+
+  it("reports an unreadable count as null, not as zero", async () => {
+    countByTable = { contacts: null, companies: 12, leads: null, campaigns: 3 };
+    const s = await getWorkspaceSummary("org_1", "ws_1");
+    // The whole point: "we could not read it" must not render as "there are none".
+    expect(s.records.contacts).toBeNull();
+    expect(s.records.leads).toBeNull();
+    expect(s.records.companies).toBe(12);
+  });
+
+  it("keeps a genuine zero as zero", async () => {
+    countByTable = { contacts: 0, companies: 0, leads: 0, campaigns: 0 };
+    const s = await getWorkspaceSummary("org_1", "ws_1");
+    expect(s.records).toEqual({ contacts: 0, companies: 0, leads: 0, campaigns: 0 });
+  });
+
+  it("still returns the rest of the snapshot when every count fails", async () => {
+    countByTable = { contacts: null, companies: null, leads: null, campaigns: null };
+    const s = await getWorkspaceSummary("org_1", "ws_1");
+    expect(s.brandKit).toBe("draft");
+    expect(s.pendingApprovals).toBe(4);
   });
 });

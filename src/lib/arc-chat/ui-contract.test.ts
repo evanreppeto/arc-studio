@@ -17,8 +17,12 @@ describe("Arc UI accessibility contract", () => {
     expect(VIEW_SOURCE).toContain('aria-label={composerMenu === "commands" ? "Skills menu" : composerMenu === "mode" ? "Capability menu"');
   });
 
-  it("keeps the icon-only mobile review action named", () => {
-    expect(VIEW_SOURCE).toContain('aria-label={`${needsReviewCards.length} items need review`}');
+  it("keeps the icon-only mobile review action named, in the shared vocabulary", () => {
+    // The visible chip and its accessible name must agree, and both must use the
+    // one label for this state — the chip said "need review" while every pill it
+    // pointed at said "Needs you" (BSR-656).
+    expect(VIEW_SOURCE).toContain('aria-label={`${needsReviewCards.length} items need you`}');
+    expect(VIEW_SOURCE).toContain('<span>{needsReviewCards.length} need you</span>');
   });
 
   it("does not steal the global Command-K shortcut for drawer search", () => {
@@ -100,6 +104,15 @@ describe("Arc UI accessibility contract", () => {
     // Innermost first, in both the menu and the drawer body.
     expect(VIEW_SOURCE).toContain("if (confirmDelete) setConfirmDelete(false);");
     expect(VIEW_SOURCE).toContain('if (view === "skills" && skillsMode === "library") { setSkillsMode("installed"); return true; }');
+  });
+
+  it("never hides a search hit inside a collapsed campaign folder", () => {
+    // A folder only appears in a filtered list because it holds a match. If the
+    // operator's own collapse — or the row cap — survived the search, the
+    // folder would show a count with nothing under it, which reads as a bug in
+    // search rather than a closed folder.
+    expect(VIEW_SOURCE).toContain("const open = searching || (campaignOpen[folder.id] ??");
+    expect(VIEW_SOURCE).toContain("const capped = !searching &&");
   });
 
   it("does not clamp connector copy into an unreadable stub", () => {

@@ -15,7 +15,7 @@ import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
 import { ArcView } from "./_components/arc-view";
 import "./arc.css";
 
-export const metadata = { title: "Arc" };
+export const metadata = { title: "Arc Chat — Arc Studio" };
 
 export default async function ArcPage({
   searchParams,
@@ -47,7 +47,7 @@ export default async function ArcPage({
     // Cheap here: getWorkspaceSummary is request-cached and the nav rail already
     // computes it, so this is a cache hit. Best-effort — no summary just hides the
     // launcher's "waiting on you" strip.
-    ctx?.orgId ? getWorkspaceSummary(ctx.orgId).catch(() => null) : Promise.resolve(null),
+    ctx?.orgId ? getWorkspaceSummary(ctx.orgId, "Arc", ctx.workspaceId).catch(() => null) : Promise.resolve(null),
     getSettingsConnectorsView().catch(() => ({ configured: false, connectors: [] })),
     getEmailConnection().catch(() => null),
     getInstalledArcSkillKeys(ctx?.orgId).catch(() => []),
@@ -56,9 +56,11 @@ export default async function ArcPage({
   ]);
 
   // `live` = a real backend is present (conversations may still be empty on a
-  // fresh workspace — the composer works either way). Only "unavailable" (no
-  // Supabase, e.g. the local backend-less preview) falls back to the mock.
-  const live = chat.status !== "unavailable";
+  // fresh workspace — the composer works either way). Only "not_configured"
+  // (no Supabase, e.g. the local backend-less preview) falls back to the mock.
+  // A genuine failure is "error", which keeps the real composer rather than
+  // quietly showing mock data in place of a broken workspace.
+  const live = chat.status !== "not_configured";
   const waiting = summary
     ? {
         approvals: summary.approvals.length,

@@ -1,5 +1,8 @@
 import {
   type ApprovalDecision,
+  type DedupCandidate,
+  appendMergeRecord,
+  decideBrainDedup,
   type KnowledgeEdgeInput,
   type KnowledgeNodeInput,
   type NodeAuthor,
@@ -14,6 +17,9 @@ import {
 import { getCurrentOrgId } from "@/lib/auth/org";
 import { embedText } from "@/lib/embeddings/gemini-embeddings";
 import { type TypedSupabaseClient, getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+
+import { type SupabaseClient } from "@supabase/supabase-js";
+import { workspaceIdFields } from "@/lib/tenancy/resolve-workspace";
 
 export type WriteResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -48,11 +54,33 @@ export async function createNode(input: KnowledgeNodeInput, deps: WriteDeps = {}
   const trustTier = resolveInitialTrustTier({ kind: value.kind, createdBy });
   const approvedBy = trustTier === "trusted" && createdBy === "operator" ? deps.actor ?? "Operator" : null;
 
+  // Embedded ONCE and shared. Dedup and the stored vector need the same
+  // embedding of the same text; computing it twice would double the embedding
+  // cost and latency of every fact Arc learns.
+  const embedding = await embedNodeTextBestEffort(value, orgId, "brain.node-create");
+
+  // Same fact, different words? Fold it into the node that already says it
+  // rather than adding a fifth phrasing (BSR-531). Best-effort: any failure
+  // here falls through to a normal insert — a duplicate is a far cheaper
+  // outcome than a lost write.
+  const mergedInto = await mergeRestatementBestEffort(client, orgId, value, createdBy, embedding);
+  if (mergedInto) return { ok: true, id: mergedInto };
+
   const { data, error } = await client
     .from("knowledge_nodes")
     .insert({
       org_id: orgId,
+      ...(await workspaceIdFields(client as unknown as SupabaseClient, orgId)),
       kind: value.kind,
+      // NOT normalised, deliberately. Prod holds `crm_contacts_empty`,
+      // `crm-empty-state` and `CRM state` for one fact, so normalising here is
+      // tempting — but keys are also STRUCTURED identifiers built and matched
+      // exactly elsewhere (`media_asset:<uuid>:<category>` in
+      // brand-knowledge/brain-sync, compared against a Set of stored keys).
+      // Rewriting them on the way in silently breaks that exact-match dedup and
+      // re-inserts the same node on every sync. Collapsing key styles needs a
+      // backfill that migrates readers too; semantic dedup above is what
+      // actually catches the restatements.
       key: value.key,
       label: value.label,
       body: value.body,
@@ -76,19 +104,125 @@ export async function createNode(input: KnowledgeNodeInput, deps: WriteDeps = {}
   if (!data?.id) return { ok: false, error: MISSING_WRITE_ID };
   // Best-effort: make the node semantically searchable. A failure here must
   // never fail node creation (recall degrades to keyword/graph without it).
-  await embedNodeBestEffort(client, orgId, data.id, value);
+  await storeEmbeddingBestEffort(client, orgId, data.id, embedding);
   return { ok: true, id: data.id };
 }
 
-async function embedNodeBestEffort(
+/** How many neighbours to consider. Only the nearest can win, so this is small. */
+const DEDUP_CANDIDATES = 5;
+
+/**
+ * Merge a restatement into the node that already holds the fact, and return
+ * that node's id. Null means "insert normally".
+ *
+ * Everything here degrades to null. Embeddings unavailable, RPC missing, update
+ * failed — all end in a plain insert. A duplicate fact is a known, tolerable
+ * cost; a dropped one is not, and this runs on the write path for every fact
+ * Arc learns.
+ */
+async function mergeRestatementBestEffort(
+  client: TypedSupabaseClient,
+  orgId: string,
+  value: { kind: string; key?: string | null; label: string; summary?: string | null; body?: string | null; refId?: string | null },
+  createdBy: NodeAuthor,
+  embedding: number[] | null,
+): Promise<string | null> {
+  try {
+    // Record mirrors are identified by what they point at, not by wording.
+    if (value.refId) return null;
+    if (!embedding) return null;
+
+    const { data, error } = await (
+      client as unknown as {
+        rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+      }
+    ).rpc("match_knowledge_nodes", {
+      query_embedding: JSON.stringify(embedding),
+      match_org_id: orgId,
+      match_count: DEDUP_CANDIDATES,
+      // `proposed` included on purpose: a fact awaiting review should absorb its
+      // own restatement rather than queue a second copy for the same decision.
+      tiers: ["trusted", "observed", "proposed"],
+    });
+    if (error || !Array.isArray(data)) return null;
+
+    const candidates: DedupCandidate[] = (
+      data as Array<{ id: string; kind: string; label: string; summary: string | null; trust_tier: string; distance: number | null }>
+    ).map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      label: row.label,
+      summary: row.summary,
+      trustTier: row.trust_tier,
+      // The RPC orders by pgvector's `<=>` — cosine distance, 0 = identical.
+      ...(typeof row.distance === "number" ? { similarity: 1 - row.distance } : {}),
+    }));
+
+    const decision = decideBrainDedup({ kind: value.kind, label: value.label, summary: value.summary }, candidates);
+    if (decision.action !== "merge") return null;
+
+    // Read the winner's props so the merged wording is retained rather than
+    // dropped — a merge has to stay recoverable.
+    const existing = await client
+      .from("knowledge_nodes")
+      .select("props")
+      .eq("id", decision.into)
+      .eq("org_id", orgId)
+      .maybeSingle<{ props: Record<string, unknown> | null }>();
+    if (existing.error) return null;
+
+    const props = existing.data?.props ?? {};
+    const merges = appendMergeRecord((props as { brainMerges?: unknown }).brainMerges, {
+      label: value.label,
+      summary: value.summary ?? null,
+      key: value.key ?? null,
+      similarity: decision.similarity,
+      at: new Date().toISOString(),
+      source: createdBy,
+    });
+
+    const { error: updateError } = await client
+      .from("knowledge_nodes")
+      // `updated_at` is the "latest confirmation": a fact restated today is
+      // fresher than the same fact last asserted in March, and recency is what
+      // decay will rank on.
+      .update({ props: { ...props, brainMerges: merges }, updated_at: new Date().toISOString() } as never)
+      .eq("id", decision.into)
+      .eq("org_id", orgId);
+    if (updateError) return null;
+
+    return decision.into;
+  } catch {
+    return null; // best-effort by design — see the doc comment
+  }
+}
+
+/** The node's text as one vector, or null when embeddings are unavailable. */
+async function embedNodeTextBestEffort(
+  value: {
+    label: string;
+    summary?: string | null;
+    body?: string | null;
+  },
+  orgId: string,
+  purpose: string,
+): Promise<number[] | null> {
+  try {
+    const text = [value.label, value.summary, value.body].filter(Boolean).join("\n").trim();
+    if (!text) return null;
+    return (await embedText(text, { orgId, purpose })) ?? null;
+  } catch {
+    return null; // swallow — best-effort
+  }
+}
+
+async function storeEmbeddingBestEffort(
   client: TypedSupabaseClient,
   orgId: string,
   id: string,
-  value: { label: string; summary?: string | null; body?: string | null },
+  embedding: number[] | null,
 ): Promise<void> {
   try {
-    const text = [value.label, value.summary, value.body].filter(Boolean).join("\n").trim();
-    const embedding = await embedText(text);
     if (!embedding) return;
     await client.from("knowledge_nodes").update({ embedding: JSON.stringify(embedding) } as never).eq("id", id).eq("org_id", orgId);
   } catch {
@@ -109,6 +243,7 @@ export async function createEdge(input: KnowledgeEdgeInput, deps: WriteDeps = {}
     .from("knowledge_edges")
     .insert({
       org_id: orgId,
+      ...(await workspaceIdFields(client as unknown as SupabaseClient, orgId)),
       from_node_id: parsed.value.fromNodeId,
       to_node_id: parsed.value.toNodeId,
       relation: parsed.value.relation,
@@ -172,14 +307,20 @@ export async function decideNode(
  */
 export async function updateNode(
   nodeId: string,
-  fields: { label?: string; body?: string | null },
+  fields: { label?: string; summary?: string | null; body?: string | null },
   deps: WriteDeps = {},
 ): Promise<WriteResult> {
-  const patch: { label?: string; body?: string | null } = {};
+  const patch: { label?: string; summary?: string | null; body?: string | null } = {};
   if (fields.label !== undefined) {
     const label = fields.label.trim();
     if (!label) return { ok: false, error: "A node needs a label." };
     patch.label = label;
+  }
+  // `summary` is the fact in Arc's own words — what every recall surface shows
+  // and what recall's own text is built from. Leaving it out of the patch meant
+  // the only correctable field was one nobody reads (BSR-531).
+  if (fields.summary !== undefined) {
+    patch.summary = (fields.summary ?? "").trim() || null;
   }
   if (fields.body !== undefined) {
     patch.body = (fields.body ?? "").trim() || null;
@@ -192,12 +333,24 @@ export async function updateNode(
   const { data, error } = await client
     .from("knowledge_nodes")
     .update(patch)
+    // Re-select the whole text, not just the id: the embedding has to be
+    // rebuilt from the node's FULL content, and only some of it was patched.
     .eq("id", nodeId)
     .eq("org_id", orgId)
-    .select("id")
-    .single<{ id: string }>();
+    .select("id, label, summary, body")
+    .single<{ id: string; label: string; summary: string | null; body: string | null }>();
   if (error) return { ok: false, error: error.message };
   if (!data?.id) return { ok: false, error: MISSING_WRITE_ID };
+
+  // Re-embed, or the correction never reaches Arc.
+  //
+  // The stored vector is built from label+summary+body. Editing the text
+  // without rebuilding it leaves the node semantically searchable under its OLD
+  // wording — so a corrected fact would keep surfacing for the question it no
+  // longer answers, and stop surfacing for the one it now does. The operator
+  // would see their fix on screen and Arc would carry on saying the old thing,
+  // which is the exact class of silent failure this milestone exists to remove.
+  await storeEmbeddingBestEffort(client, orgId, data.id, await embedNodeTextBestEffort(data, orgId, "brain.node-update"));
   return { ok: true, id: data.id };
 }
 
@@ -307,6 +460,7 @@ export async function upsertReferenceNode(input: KnowledgeNodeInput, deps: Write
     .from("knowledge_nodes")
     .insert({
       org_id: orgId,
+      ...(await workspaceIdFields(client as unknown as SupabaseClient, orgId)),
       kind: value.kind,
       key,
       label: value.label,
@@ -381,6 +535,7 @@ export async function upsertReferenceEdge(
     .from("knowledge_edges")
     .insert({
       org_id: orgId,
+      ...(await workspaceIdFields(client as unknown as SupabaseClient, orgId)),
       from_node_id: from,
       to_node_id: to,
       relation: rel,
@@ -415,7 +570,7 @@ export async function upsertReferenceEdge(
 /** Embed pre-joined text; never throws (recall degrades to keyword/graph). */
 async function embedReferenceBestEffort(client: TypedSupabaseClient, orgId: string, id: string, text: string): Promise<void> {
   try {
-    const embedding = await embedText(text);
+    const embedding = await embedText(text, { orgId, purpose: "brain.reference-node" });
     if (!embedding) return;
     await client.from("knowledge_nodes").update({ embedding: JSON.stringify(embedding) } as never).eq("id", id).eq("org_id", orgId);
   } catch {

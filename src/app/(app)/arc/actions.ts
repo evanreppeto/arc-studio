@@ -12,12 +12,14 @@ import {
   type ArcMention,
   type ArcMode,
   type ArcRoute,
+  isSearchableArcQuery,
   type CampaignAssetType,
   type ArcAssetStatus,
+  type ArcDraftFinding,
 } from "@/domain";
 import { getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
-import { decideAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
-import { getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
+import { decideAsset, undoAssetDecision, type ApprovalDecision } from "@/lib/campaigns/decisions";
+import { type ArcAssetBody, getArcAssetBodies, getArcAssetChecks, getArcAssetStatuses, listCampaignNames } from "@/lib/campaigns/read-model";
 import { requestAssetRevision } from "@/lib/campaigns/revisions";
 import { getArcDisplayName } from "@/lib/arc-chat/agent-config";
 import { isAcceptedAttachment } from "@/lib/arc-chat/attachment-types";
@@ -31,11 +33,13 @@ import {
   deleteConversation,
   deleteMessagesAfter,
   getArcMessage,
+  listMessages,
   getConversation,
   getMessageConversationId,
   getPrecedingOperatorMessage,
   insertOperatorMessage,
   listArchivedConversations,
+  listConversationsForViewer,
   parseArcAttachmentsJson,
   renameConversation,
   unarchiveConversation,
@@ -49,8 +53,10 @@ import {
 import { listSavedItems, removeSavedItem, saveItem, type SavedItem, type SavedKind } from "@/lib/arc-chat/saved";
 import { createNode } from "@/lib/knowledge-graph/persistence";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
-import { assertConversationAccess } from "@/lib/arc-chat/sharing";
+import { assertConversationAccess, getShareViewer } from "@/lib/arc-chat/sharing";
+import { searchArcMessages, type ArcMessageSearchHit } from "@/lib/arc-chat/message-search";
 import { logArcChatStatus } from "@/lib/arc-chat/status-log";
+import { toArcThreadMedia, type ArcThreadMedia } from "@/lib/arc-chat/thread-media";
 import { ALL_ARC_SKILLS, ARC_SKILL_LIBRARY, skillIdForArcCommand } from "@/lib/arc-skills/catalog";
 import { instructionForWorkspaceSkill, parseWorkspaceArcSkills, type WorkspaceArcSkill } from "@/lib/arc-skills/custom";
 import { ARC_CUSTOM_SKILLS_SETTING, getWorkspaceArcSkills, previewGithubArcSkill } from "@/lib/arc-skills/github";
@@ -77,6 +83,26 @@ import { saveAppSettings } from "@/lib/settings/store";
 const MAX_MESSAGE_LENGTH = 8000;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const CONTEXT_SCOPES = new Set(["workspace", "brand", "crm", "campaigns"]);
+
+/** One message as an inline surface needs it.
+ *
+ *  Deliberately narrower than ArcMessage: Studio's panel is not the chat view and
+ *  should not start carrying recall, feedback and step traces. It DOES carry
+ *  `media` and `suggestions`, because without them a creative tool's copilot can
+ *  generate a picture and show the operator a paragraph about it — Studio's own
+ *  empty state promised the render would appear, and it never did. */
+export type ArcThreadMessage = {
+  id: string;
+  role: "operator" | "arc" | string;
+  body: string;
+  status: string;
+  createdAt: string;
+  /** Creative attached to this reply. Empty on operator messages and on replies
+   *  that made nothing. */
+  media: ArcThreadMedia[];
+  /** Follow-ups Arc offered after this reply (agent-provided; usually empty). */
+  suggestions: string[];
+};
 
 export type SendArcMessageResult =
   | { ok: true; conversationId: string }
@@ -478,8 +504,8 @@ export async function assignArcConversationCampaignAction(input: {
   try {
     await assertConversationAccess(input.conversationId, "collaborate");
     if (campaignId) {
-      const orgId = await getCurrentOrgId();
-      const campaign = (await listCampaignNames(orgId)).find((candidate) => candidate.id === campaignId);
+      const { orgId, workspaceId } = await getCurrentWorkspaceContext();
+      const campaign = (await listCampaignNames(orgId, undefined, workspaceId)).find((candidate) => candidate.id === campaignId);
       if (!campaign) return { ok: false, error: "That campaign is not available in this workspace." };
     }
     await assignConversationToCampaign(input.conversationId, campaignId);
@@ -587,7 +613,13 @@ export async function setArcMessageFeedbackAction(input: {
 }
 
 export type ArcDraftDecisionResult =
-  | { ok: true; persisted: boolean; status?: string }
+  | {
+      ok: true;
+      persisted: boolean;
+      status?: string;
+      /** Revision requests only — false when Arc has not actually started (see BSR-695). */
+      dispatched?: boolean;
+    }
   | { ok: false; error: string };
 
 const DRAFT_DECISIONS: ReadonlySet<string> = new Set(["approved", "declined"]);
@@ -622,6 +654,91 @@ export async function getArcAssetStatusesAction(
   }
 }
 
+/**
+ * The readable copy behind a conversation's approval-gated cards.
+ *
+ * The inline deliverable card renders the draft itself, and the card's own
+ * `preview` is only the first ~280 characters of it. Fetched lazily per message
+ * so a long thread doesn't pull every body it has ever mentioned, and failing
+ * soft: an empty map leaves each card on its stored preview.
+ */
+export async function getArcAssetBodiesAction(
+  assetIds: string[],
+): Promise<Record<string, ArcAssetBody>> {
+  await requireOperator();
+  if (!Array.isArray(assetIds) || assetIds.length === 0) return {};
+  if (!isSupabaseAdminConfigured()) return {};
+  try {
+    const ctx = await getCurrentWorkspaceContext();
+    return await getArcAssetBodies(assetIds, ctx.orgId);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The guardrail findings recorded against a conversation's approval-gated cards.
+ *
+ * A card's `flags` are frozen at draft time and on prod are usually empty, while
+ * the assets behind them hold open findings — including blockers. Fetched
+ * alongside the bodies so the chat reports what was actually found rather than
+ * what the card happened to freeze.
+ */
+export async function getArcAssetChecksAction(
+  assetIds: string[],
+): Promise<Record<string, ArcDraftFinding[]>> {
+  await requireOperator();
+  if (!Array.isArray(assetIds) || assetIds.length === 0) return {};
+  if (!isSupabaseAdminConfigured()) return {};
+  try {
+    const ctx = await getCurrentWorkspaceContext();
+    return await getArcAssetChecks(assetIds, ctx.orgId);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The tail of a conversation, for a surface that renders Arc inline without
+ * owning the whole chat view — Studio's copilot panel (BSR-681).
+ *
+ * Studio's panel used to be a permanent empty state: `askArc` sent the message
+ * and then pushed the router at /arc, so the reply arrived on a different page
+ * and the operator lost the canvas they were editing. It needs the messages
+ * themselves, and it has no server component to refetch through.
+ *
+ * Access-checked like every other conversation read: being able to open Studio
+ * is not permission to read someone else's thread.
+ */
+export async function getArcConversationTailAction(input: {
+  conversationId: string;
+  limit?: number;
+}): Promise<{ ok: true; messages: ArcThreadMessage[] } | { ok: false; error: string }> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Arc chat needs a connected backend." };
+  const conversationId = input.conversationId?.trim();
+  if (!conversationId) return { ok: false, error: "No conversation." };
+  try {
+    await assertConversationAccess(conversationId, "view");
+    const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
+    const all = await listMessages(conversationId);
+    return {
+      ok: true,
+      messages: all.slice(-limit).map((message) => ({
+        id: message.id,
+        role: message.role,
+        body: message.body,
+        status: message.status,
+        createdAt: message.createdAt,
+        media: toArcThreadMedia(message),
+        suggestions: message.suggestions ?? [],
+      })),
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not load the conversation." };
+  }
+}
+
 export async function decideArcDraftAction(input: {
   campaignId: string;
   assetId: string;
@@ -640,6 +757,33 @@ export async function decideArcDraftAction(input: {
     return { ok: true, persisted: true, status: result.status };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Couldn't record that decision." };
+  }
+}
+
+/**
+ * Take back the last decision on a drafted deliverable.
+ *
+ * Approving from the chat was irreversible, and the card collapses once decided
+ * — so a misclick both committed the decision and hid the thing it was made
+ * about. The revert itself is append-only (`undoDecision` writes a `reverted`
+ * row and restores the previous status); it never deletes history and never
+ * unlocks outbound, so this cannot send anything.
+ */
+export async function undoArcDraftDecisionAction(input: {
+  assetId: string;
+}): Promise<ArcDraftDecisionResult> {
+  await requireOperator();
+  if (!input.assetId.trim()) return { ok: false, error: "This draft is missing its asset reference." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, status: "draft" };
+
+  try {
+    const operator = await getOperatorActor();
+    const tenant = await getCurrentAgentTaskTenantFields();
+    const result = await undoAssetDecision({ assetId: input.assetId, operator, tenant });
+    revalidatePath("/arc");
+    return { ok: true, persisted: true, status: result.restoredStatus };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Couldn't undo that decision." };
   }
 }
 
@@ -665,9 +809,14 @@ export async function requestArcDraftRevisionAction(input: {
 
   try {
     const operator = await getOperatorActor();
-    await requestAssetRevision({ campaignId: input.campaignId, assetId: input.assetId, instruction: cleaned, operator });
+    const { dispatched } = await requestAssetRevision({
+      campaignId: input.campaignId,
+      assetId: input.assetId,
+      instruction: cleaned,
+      operator,
+    });
     revalidatePath("/arc");
-    return { ok: true, persisted: true, status: "revision_requested" };
+    return { ok: true, persisted: true, status: "revision_requested", dispatched };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Couldn't request that revision." };
   }
@@ -937,7 +1086,7 @@ export async function generateExemplarSkillAction(input: {
       sourceAssetIds: result.sourceAssetIds,
       counterExampleAssetIds: result.counterExampleAssetIds,
       generatedAt: new Date().toISOString(),
-    }, client);
+    }, client, context.workspaceId);
 
     const skills = await listGeneratedSkills(context.orgId, client);
     revalidatePath("/arc");
@@ -960,5 +1109,44 @@ export async function removeGeneratedSkillAction(input: { skillKey: string }): P
     return { ok: true, skills: await listGeneratedSkills(context.orgId, client) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not remove that voice skill." };
+  }
+}
+
+export type ArcMessageSearchResult =
+  | { ok: true; hits: ArcMessageSearchHit[] }
+  | { ok: false; error: string };
+
+/**
+ * Search message bodies across the conversations the viewer can already open.
+ *
+ * Thread search matched only titles, previews and date labels, so anything an
+ * operator actually wanted to find again — a number Arc quoted, a segment it
+ * described — was unreachable once a workspace had more than a screenful of
+ * chats.
+ *
+ * Scoping is deliberately derivative: the candidate ids come from
+ * `listConversationsForViewer`, the same call the screen uses to decide what
+ * the viewer may see. This action therefore cannot widen access, and never
+ * needs its own tenancy rules to keep in step with that one.
+ */
+export async function searchArcMessagesAction(query: string): Promise<ArcMessageSearchResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Search needs a connected backend." };
+  if (!isSearchableArcQuery(query)) return { ok: true, hits: [] };
+
+  try {
+    const [viewer, operator] = await Promise.all([getShareViewer(), getOperatorActor()]);
+    const conversations = await listConversationsForViewer(viewer, operator);
+    const titles = new Map(conversations.map((conversation) => [conversation.id, conversation.title]));
+    const hits = await searchArcMessages(conversations.map((conversation) => conversation.id), query);
+    return {
+      ok: true,
+      hits: hits.map((hit) => ({
+        ...hit,
+        conversationTitle: titles.get(hit.conversationId)?.trim() || "Untitled chat",
+      })),
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Couldn't search your conversations." };
   }
 }

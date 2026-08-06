@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { WORK_STATE_LABEL } from "@/domain";
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
 import { getAgentOperationsDashboard, getAgentTaskDetail } from "./read-model";
@@ -156,7 +157,9 @@ describe("getAgentOperationsDashboard", () => {
     expect(dashboard.status).toBe("live");
     if (dashboard.status !== "live") return;
 
-    expect(dashboard.metrics).toContainEqual({ label: "Awaiting approval", value: 1, delta: "Human gate" });
+    // One name per state: this metric is the same "on your desk" the rest of the
+    // app calls "Needs you" (BSR-656).
+    expect(dashboard.metrics).toContainEqual({ label: WORK_STATE_LABEL.needs_you, value: 1, delta: "Human gate" });
     expect(dashboard.agents[0]).toMatchObject({
       key: "arc-demo",
       name: "Arc Demo Orchestrator",
@@ -196,12 +199,19 @@ describe("getAgentOperationsDashboard", () => {
     expect(supabase.calls).toContainEqual(["eq", "org_id", "org-1"]);
     expect(supabase.calls).toContainEqual(["eq", "workspace_id", "workspace-1"]);
     expect(supabase.calls).toContainEqual(["from", "approval_items"]);
-    // 5, not 4: the `agents` list is org-scoped too. It used to be the one query
-    // here that wasn't, which was survivable only while `unique (key)` meant a
-    // single `arc` row existed database-wide. Agent keys are now unique per org
-    // (20260716150000), so an unscoped list returns every tenant's agents.
-    expect(supabase.calls.filter((call) => call[0] === "eq" && call[1] === "org_id" && call[2] === "org-1")).toHaveLength(5);
-    expect(supabase.calls.filter((call) => call[0] === "eq" && call[1] === "workspace_id" && call[2] === "workspace-1")).toHaveLength(1);
+    // Every one of the five dashboard queries is scoped to BOTH columns, and the
+    // counts must match each other (BSR-713). Four of them used to filter org_id
+    // alone via a second, weaker `applyOrgScope` helper — including three tables
+    // Wave 1 had already locked. The service role bypasses RLS, so this app-layer
+    // filter is the only thing separating one workspace's dashboard from another's.
+    //
+    // Asserted as "org count === workspace count === 5" rather than two fixed
+    // numbers on purpose: a future query that scopes one column and forgets the
+    // other fails here, which a pair of independent literals would not catch.
+    const orgFilters = supabase.calls.filter((c) => c[0] === "eq" && c[1] === "org_id" && c[2] === "org-1");
+    const workspaceFilters = supabase.calls.filter((c) => c[0] === "eq" && c[1] === "workspace_id" && c[2] === "workspace-1");
+    expect(orgFilters).toHaveLength(5);
+    expect(workspaceFilters).toHaveLength(orgFilters.length);
   });
 
   it("returns unavailable when a Supabase lookup fails", async () => {

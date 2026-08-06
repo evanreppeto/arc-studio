@@ -45,7 +45,13 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import {
+  arcToolLabel,
+  redactToolPayload,
+  summarizeToolPayload,
+  ASSET_NOUN,
+  countOf,
   summarizeSteps,
+  WORK_STATE_LABEL,
   type ArcActionCard,
   type ArcAssetStatus,
   type ArcMention,
@@ -65,7 +71,8 @@ import { visibleStepNarration } from "@/lib/arc-chat/step-narration";
 import { collapseTraceRows } from "@/lib/arc-chat/trace-rows";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import { resolveArcRunViewState } from "@/lib/arc-chat/run-view-state";
-import { formatToolName, getToolKind } from "@/lib/arc-chat/tool-labels";
+import { getToolKind } from "@/lib/arc-chat/tool-labels";
+import { AppImage } from "../../_components/app-image";
 import {
   buildArcWorkspaceEvidence,
   buildArcWorkspaceRuns,
@@ -73,7 +80,7 @@ import {
   type ArcWorkspaceActivityRow,
   type ArcWorkspaceRun,
 } from "@/lib/arc-chat/workspace-digest";
-import { collectArcWorkspaceCards } from "@/lib/arc-chat/workspace-scope";
+import { collectArcWorkspaceCards, isDecidedAssetStatus, partitionArcWorkspaceCards } from "@/lib/arc-chat/workspace-scope";
 import {
   DEFAULT_WORK_SECTIONS,
   readWorkSectionPreference,
@@ -90,9 +97,10 @@ import {
 } from "../actions";
 import { LiveReasoning, ReasoningMarkdown } from "./arc-markdown";
 import { buildDemoLiveWork, DEMO_STEPS, DEMO_TOOLS, DEMO_WORKSPACE_MESSAGES } from "./arc-demo-data";
-import type { RunKind, RunRow } from "./arc-view.types";
+import type { PaneBox, RunKind, RunRow } from "./arc-view.types";
+import { OverlayPortal } from "../../_components/overlay-portal";
 
-export { formatToolName, getToolKind };
+export { getToolKind };
 
 export function formatMessageTime(iso: string) {
   const value = new Date(iso);
@@ -125,9 +133,15 @@ export function RunIcon({ kind, size = 15 }: { kind: RunKind; size?: number }) {
 
 /** One anchor per evidence group. The section used to be five identical stacks
  *  of uppercase text, which made scanning it work the reader had to do. */
-/** How many memories the panel shows before asking. Long enough to be useful,
- *  short enough that the section stays scannable next to the deliverables. */
-const MEMORY_PREVIEW = 6;
+/** How much of an evidence group the panel shows before asking.
+ *
+ *  Every group is capped, not just memory. A real prod turn recalls dozens of
+ *  facts and references every contact it read, and the section rendered all of
+ *  it: 65 rows under the deliverables, which is what made an operator scroll
+ *  past the campaign work to reach the end of the panel. Memories get a smaller
+ *  budget than the rest because each one is a wrapped sentence, not a line. */
+const EVIDENCE_PREVIEW = 5;
+const MEMORY_PREVIEW = 3;
 
 function EvidenceIcon({ group }: { group: string }) {
   if (group === "memory") return <Brain size={12} />;
@@ -166,6 +180,17 @@ export function RunContract({ contract, outcome = "complete" }: { contract: ArcR
       {contractGrid}
     </div>
   );
+}
+
+/**
+ * A tool label dropped into the middle of a sentence. Blanket `.toLowerCase()`
+ * turned "CRM search" into "Running crm search", one line under a label reading
+ * "CRM search" — so an acronym keeps its case and everything else lowers.
+ */
+function midSentence(label: string): string {
+  const first = label.split(" ")[0] ?? "";
+  if (first && first === first.toUpperCase()) return label;
+  return label.charAt(0).toLowerCase() + label.slice(1);
 }
 
 export function RunTrace({
@@ -245,9 +270,18 @@ export function RunTrace({
     }),
     ...toolCalls.map((tool, index) => ({
       id: `tool-${index}`,
-      label: tool.name,
-      detail: tool.input ?? `Running ${formatToolName(tool.name).toLowerCase()}`,
-      result: tool.output,
+      // The raw name here rendered `mcp__arc__weather_lookup` straight into the
+      // trace — the protocol prefix is how Arc reaches the tool, not what it did.
+      // Found by the dev identifier check, not by reading the screen (BSR-709).
+      label: arcToolLabel(tool.name),
+      // One line by default, the payload behind a disclosure. This used to print
+      // the tool's raw input and output into the row — `{"limit":0} ·
+      // {"contacts":[],"total":243}` — and two of prod's payloads carried a
+      // phone number, because a tool that reads contacts returns contact rows
+      // (BSR-724).
+      detail: summarizeToolPayload(tool.input) || `Running ${midSentence(arcToolLabel(tool.name))}`,
+      result: summarizeToolPayload(tool.output) || undefined,
+      payload: [tool.input, tool.output].filter(Boolean).map((p) => redactToolPayload(p!)).join("\n\n") || undefined,
       isTool: true,
       status: tool.status === "complete" ? "done" as const : tool.status === "error" ? "error" as const : "running" as const,
       kind: getToolKind(tool.name),
@@ -324,7 +358,20 @@ export function RunTrace({
             {sourceRows.map((row) => (
               <div className={`arc-run-row is-${row.status}`} key={row.id}>
                 <span className="arc-run-kind"><RunIcon kind={row.kind} /></span>
-                <span className="arc-run-copy"><b>{row.label}</b>{row.detail || row.result ? <small>{[row.detail, row.result].filter(Boolean).join(" · ")}</small> : null}</span>
+                {/* The summary line is ours and stays checked by the dev
+                    identifier check. The raw payload inside the disclosure is
+                    the tool's own text — ids and argument names — so it carries
+                    the same exemption the run page's <pre> gets (BSR-709/724). */}
+                <span className="arc-run-copy">
+                  <b>{row.label}</b>
+                  {row.detail || row.result ? <small>{[row.detail, row.result].filter(Boolean).join(" · ")}</small> : null}
+                  {row.payload ? (
+                    <details className="arc-run-raw">
+                      <summary>Show raw</summary>
+                      <pre data-identifiers-ok>{row.payload}</pre>
+                    </details>
+                  ) : null}
+                </span>
                 {row.status === "error" ? <X size={14} className="arc-run-state" aria-label="Failed" /> : <Check size={14} className="arc-run-state" aria-label="Complete" />}
               </div>
             ))}
@@ -446,8 +493,7 @@ export function ThinkingIndicator({ label }: { label: string }) {
 /** A tiny image thumbnail (composer chip). Attachment URLs are arbitrary signed
  *  URLs, so next/image (which needs configured remote patterns) doesn't fit. */
 export function ChipThumb({ url }: { url: string }) {
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={url} alt="" className="arc-chip-thumb" />;
+  return <AppImage src={url} alt="" className="arc-chip-thumb" />;
 }
 
 /** Renders a message's attachments — image uploads as clickable thumbnails, other
@@ -460,8 +506,7 @@ export function MessageAttachments({ attachments }: { attachments: ArcAttachment
     <div className="arc-attachments">
       {images.map((attachment) => (
         <a key={attachment.objectPath} href={attachment.url} target="_blank" rel="noopener noreferrer" className="arc-attachment-image" title={attachment.name}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={attachment.url} alt={attachment.name} loading="lazy" />
+          <AppImage src={attachment.url} alt={attachment.name} />
         </a>
       ))}
       {files.map((attachment) => (
@@ -473,10 +518,27 @@ export function MessageAttachments({ attachments }: { attachments: ArcAttachment
   );
 }
 
-export function OperatorMessage({ body, time, timeIso, attachments, onEdit, onContextMenu }: { body: string; time?: string; timeIso?: string; attachments?: ArcAttachment[]; onEdit?: (newBody: string) => void; onContextMenu?: (event: React.MouseEvent, helpers: { startEdit: (() => void) | null }) => void }) {
+export function OperatorMessage({ body, time, timeIso, attachments, onEdit, onContextMenu, startEditSignal = 0 }: { body: string; time?: string; timeIso?: string; attachments?: ArcAttachment[]; onEdit?: (newBody: string) => void; onContextMenu?: (event: React.MouseEvent, helpers: { startEdit: (() => void) | null }) => void;
+  /**
+   * Bumped by the parent to open this message's editor from outside — the ↑ key
+   * in the composer. A monotonic token rather than a boolean so pressing ↑,
+   * cancelling, and pressing ↑ again re-opens it; a boolean would already be
+   * `true` and the second press would do nothing.
+   */
+  startEditSignal?: number }) {
   const reduceMotion = useReducedMotion();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(body);
+
+  useEffect(() => {
+    if (!startEditSignal || !onEdit) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- opening the editor IS this signal's only job
+    setText(body);
+    setEditing(true);
+    // Intentionally keyed on the signal alone: re-running when `body` changes
+    // would reopen the editor after a successful resend.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startEditSignal]);
 
   const cancel = () => { setText(body); setEditing(false); };
   const submit = () => {
@@ -567,48 +629,36 @@ export function assetStatusMeta(status: ArcAssetStatus | null) {
   return DRAFT_STATUS_META[status ?? "review"] ?? DRAFT_STATUS_META.review;
 }
 
-/** An asset the operator has already ruled on, either way — it is no longer
- *  waiting on them, so the workspace stops counting it as work to do. */
-export function isDecidedAssetStatus(status: ArcAssetStatus | null) {
-  return status === "approved" || status === "rejected";
-}
+/**
+ * A deliverable's own creative, at row size.
+ *
+ * Cards have carried `media` since the provenance work, and no surface in the
+ * chat ever rendered it — so the panel listed a campaign's image assets as a
+ * generic document glyph and a title, and the one way to see what Arc actually
+ * made was to open each one. Falls back to the channel glyph when there is no
+ * image, and when the image fails to load: a broken thumbnail says less than
+ * the icon it replaced.
+ */
+function DeliverableThumb({ card }: { card: ArcActionCard }) {
+  const [failed, setFailed] = useState(false);
+  const media = card.media;
+  const src = media
+    ? media.kind === "video"
+      ? media.poster ?? media.thumbnailUrl
+      : media.thumbnailUrl ?? media.url
+    : undefined;
 
-/** The compact package summary shown inline when Arc drafts a multi-asset
- *  campaign — a channel overview + a button into the review workspace. */
-export function DraftPackageCard({ cards, statuses, onReview, onContextMenu }: { cards: ArcActionCard[]; statuses: Record<string, ArcAssetStatus>; onReview: () => void; onContextMenu?: (event: React.MouseEvent) => void }) {
-  const statusOf = (card: ArcActionCard) => statuses[card.approval?.assetId ?? ""] ?? card.status ?? null;
-  const approvedCount = cards.filter((card) => statusOf(card) === "approved").length;
+  if (!src || failed) {
+    return <span className="arc-created-icon"><ChannelIcon channel={card.channel} size={15} /></span>;
+  }
   return (
-    <div className="arc-package" onContextMenu={onContextMenu}>
-      <div className="arc-package-kicker">Campaign package · {approvedCount}/{cards.length} approved</div>
-      <div className="arc-package-row">
-        <span className="arc-package-icon"><MessageSquareText size={18} /></span>
-        <span className="arc-package-title"><b>{cards.length} assets ready for review</b><small>Review each channel in the workspace</small></span>
-        <div className="arc-package-channels">
-          {cards.slice(0, 4).map((card, index) => {
-            const meta = assetStatusMeta(statusOf(card));
-            return <span key={`${card.title}-${index}`} data-tone={meta.tone}><i />{card.channel ?? card.title}<small>{meta.label}</small></span>;
-          })}
-        </div>
-        <button type="button" className="arc-review-button" data-arc-review-trigger="true" onClick={onReview}>Review package <PanelRightOpen size={15} /></button>
-      </div>
-    </div>
+    <span className="arc-created-icon has-media">
+      <AppImage src={src} alt="" onError={() => setFailed(true)} />
+    </span>
   );
 }
 
-/** Approval-gated assets stay compact in the conversation; the Workspace owns
- * the detailed preview and decision flow so the same content is not repeated. */
-export function DraftReceiptCard({ card, status, onReview, onContextMenu }: { card: ArcActionCard; status: ArcAssetStatus | null; onReview: () => void; onContextMenu?: (event: React.MouseEvent) => void }) {
-  const meta = assetStatusMeta(status);
-  return (
-    <button type="button" className="arc-created-receipt" data-arc-review-trigger="true" onClick={onReview} onContextMenu={onContextMenu}>
-      <span className="arc-created-receipt-icon"><ChannelIcon channel={card.channel} size={16} /></span>
-      <span><b>{card.title}</b><small>{[card.channel, card.format].filter(Boolean).join(" · ") || "Created by Arc"}</small></span>
-      <em className={`is-${meta.tone}`}><i />{meta.label}</em>
-      <ArrowRight size={14} />
-    </button>
-  );
-}
+export { isDecidedAssetStatus };
 
 /**
  * The conversation workspace.
@@ -624,6 +674,11 @@ export function DraftReceiptCard({ card, status, onReview, onContextMenu }: { ca
  * because spanning runs is the one thing the inline trace cannot do, but as
  * navigation: one line per run, expandable, rather than forty rows deep.
  */
+/** How wide the workspace sidebar sits. Wide enough to read a deliverable's
+ *  title and channel without truncating; narrow enough that it stays a list and
+ *  never tries to be the reader — the full-pane preview is the reader. */
+const WORK_PANEL_WIDTH = 400;
+
 export function ArcWorkPanel({
   message,
   messages,
@@ -633,6 +688,7 @@ export function ArcWorkPanel({
   demoPending,
   demoRequest,
   demoOutcome,
+  paneBox,
   onReview,
   onRecover,
   onClose,
@@ -645,13 +701,17 @@ export function ArcWorkPanel({
   demoPending: boolean;
   demoRequest?: string;
   demoOutcome?: "complete" | "canceled";
+  /** Where the content pane is, in viewport coordinates. The panel covers the
+   *  pane rather than docking beside it, and it is portaled out to the shell, so
+   *  it has to be told the box — see usePaneBox in arc-view.tsx. */
+  paneBox?: PaneBox | null;
   onReview: (cards: ArcActionCard[]) => void;
   onRecover: (prompt: string) => void;
   onClose: () => void;
 }) {
   const reduceMotion = useReducedMotion();
   const [openSections, setOpenSections] = useState<Record<WorkSectionId, boolean>>(DEFAULT_WORK_SECTIONS);
-  const [showAllMemory, setShowAllMemory] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [demoActiveIndex, setDemoActiveIndex] = useState(0);
 
@@ -711,7 +771,7 @@ export function ArcWorkPanel({
         ?? (demoSeed
           ? [
               ...DEMO_STEPS.map((step, index) => ({ id: `demo-panel-step-${index}`, label: step.label, detail: step.detail?.join(" · "), status: "done" as const, kind: step.kind ?? "think" })),
-              ...DEMO_TOOLS.map((tool, index) => ({ id: `demo-panel-tool-${index}`, label: formatToolName(tool.name), detail: tool.output, status: "done" as const, kind: getToolKind(tool.name) })),
+              ...DEMO_TOOLS.map((tool, index) => ({ id: `demo-panel-tool-${index}`, label: arcToolLabel(tool.name), detail: tool.output, status: "done" as const, kind: getToolKind(tool.name) })),
             ]
           : []);
 
@@ -742,28 +802,53 @@ export function ArcWorkPanel({
   });
 
   const statusOf = (card: ArcActionCard) => statuses[card.approval?.assetId ?? ""] ?? card.status ?? null;
-  const approvedCount = scopedCards.filter((card) => statusOf(card) === "approved").length;
-  const awaitingCards = scopedCards.filter((card) => card.approval && !isDecidedAssetStatus(statusOf(card)));
+  // A deliverable is something a human has to rule on; everything else Arc put
+  // on a card is context. See `partitionArcWorkspaceCards` for why they split.
+  const { deliverables, findings, awaiting: awaitingCards, approvedCount } = partitionArcWorkspaceCards(scopedCards, statuses);
   const isEmpty = runs.length === 0 && scopedCards.length === 0;
 
   const summary = [
-    runs.length > 0 ? `${runs.length} ${runs.length === 1 ? "run" : "runs"}` : null,
-    scopedCards.length > 0 ? `${scopedCards.length} ${scopedCards.length === 1 ? "deliverable" : "deliverables"}` : null,
     awaitingCards.length > 0 ? `${awaitingCards.length} waiting on you` : null,
+    deliverables.length > 0 ? `${deliverables.length} ${deliverables.length === 1 ? "deliverable" : "deliverables"}` : null,
+    runs.length > 0 ? `${runs.length} ${runs.length === 1 ? "run" : "runs"}` : null,
   ].filter(Boolean).join(" · ");
 
   return (
+    <OverlayPortal>
+      {/* Scrim and panel portal together — see overlay-portal.tsx. */}
+      <motion.button
+        type="button"
+        className="arc-dlv-scrim"
+        aria-label="Close conversation workspace"
+        initial={reduceMotion ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={reduceMotion ? undefined : { opacity: 0 }}
+        onClick={onClose}
+      />
     <motion.aside
       className="arc-artifact-workspace arc-work-panel"
       aria-label="Conversation workspace"
-      initial={reduceMotion ? false : { opacity: 0, x: 24 }}
+      /* A right-hand sidebar again, but an OVERLAYING one. The original rail
+         docked, which meant it paid for itself out of the conversation's width
+         (`margin-right: clamp(340px, 30cqi, 420px)`) and squeezed the reading
+         column every time it opened. Anchored to the pane's right edge and
+         floated over it, the list is where a list belongs and the chat keeps
+         its full measure — and picking something here opens it big rather than
+         trying to render it in 390px. */
+      style={paneBox ? {
+        top: paneBox.top,
+        left: paneBox.left + Math.max(0, paneBox.width - Math.min(WORK_PANEL_WIDTH, paneBox.width)),
+        width: Math.min(WORK_PANEL_WIDTH, paneBox.width),
+        height: paneBox.height,
+      } : undefined}
+      initial={reduceMotion ? false : { opacity: 0, x: 18 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={reduceMotion ? undefined : { opacity: 0, x: 18 }}
+      exit={reduceMotion ? undefined : { opacity: 0, x: 14 }}
       transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
     >
       <header className="arc-artifact-header">
         <div><h2>Workspace</h2><p>{summary || "Everything Arc makes here collects in this panel"}</p></div>
-        <button type="button" onClick={onClose} aria-label="Close conversation workspace"><PanelRightClose size={17} /></button>
+        <button type="button" onClick={onClose} aria-label="Close conversation workspace"><X size={18} /></button>
       </header>
 
       <div className="arc-work-body">
@@ -805,27 +890,50 @@ export function ArcWorkPanel({
           </div>
         ) : null}
 
-        {scopedCards.length > 0 ? (
+        {deliverables.length > 0 ? (
           <section className="arc-work-section">
             <h3 className="arc-work-section-title arc-work-section-head">
               <span className="arc-work-section-name">Deliverables</span>
-              <span className="arc-work-section-meta">{approvedCount} of {scopedCards.length} approved</span>
+              <span className="arc-work-section-meta">{approvedCount} of {deliverables.length} approved</span>
             </h3>
-            <div className="arc-created-progress"><div><i style={{ width: `${(approvedCount / scopedCards.length) * 100}%` }} /></div></div>
+            <div className="arc-created-progress"><div><i style={{ width: `${(approvedCount / deliverables.length) * 100}%` }} /></div></div>
             <div className="arc-created-list">
-              {scopedCards.map((card, index) => {
-                const status = statusOf(card);
-                const meta = assetStatusMeta(status);
+              {deliverables.map((card, index) => {
+                const meta = assetStatusMeta(statusOf(card));
+                return (
+                  <button type="button" className="arc-created-item" key={`${card.title}-${index}`} onClick={() => onReview([card])} aria-label={`Review ${card.title}`}>
+                    <DeliverableThumb card={card} />
+                    <span><b>{card.title}</b><small>{[card.channel, card.format].filter(Boolean).join(" · ") || "Draft by Arc"}</small></span>
+                    <em className={`is-${meta.tone}`}>{meta.label}</em>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        {findings.length > 0 ? (
+          <section className="arc-work-section">
+            <h3 className="arc-work-section-title arc-work-section-head">
+              <span className="arc-work-section-name">What Arc found</span>
+              <span className="arc-work-section-meta">{findings.length}</span>
+            </h3>
+            <div className="arc-work-findings">
+              {findings.map((card, index) => {
+                const destination = card.appState?.href ?? card.href;
+                const detail = [card.channel, card.format].filter(Boolean).join(" · ")
+                  || card.rows[0]?.meta
+                  || card.preview;
                 const content = (
                   <>
-                    <span className="arc-created-icon"><ChannelIcon channel={card.channel} size={15} /></span>
-                    <span><b>{card.title}</b><small>{[card.channel, card.format].filter(Boolean).join(" · ")}</small></span>
-                    <em className={`is-${meta.tone}`}>{meta.label}</em>
+                    <span className="arc-work-finding-icon"><ChannelIcon channel={card.channel} size={14} /></span>
+                    <span><b>{card.title}</b>{detail ? <small>{detail}</small> : null}</span>
+                    {destination?.startsWith("/") ? <ArrowRight size={13} /> : null}
                   </>
                 );
-                return card.approval
-                  ? <button type="button" className="arc-created-item" key={`${card.title}-${index}`} onClick={() => onReview([card])} aria-label={`Review ${card.title}`}>{content}</button>
-                  : <div className="arc-created-item" key={`${card.title}-${index}`}>{content}</div>;
+                return destination?.startsWith("/")
+                  ? <Link className="arc-work-finding" key={`${card.title}-${index}`} href={destination}>{content}</Link>
+                  : <div className="arc-work-finding" key={`${card.title}-${index}`}>{content}</div>;
               })}
             </div>
           </section>
@@ -843,45 +951,49 @@ export function ArcWorkPanel({
             {openSections.evidence ? (
               evidence.length > 0 ? (
                 <div className="arc-work-evidence">
-                  {evidence.map((group) => (
-                    // Memories are sentences Arc wrote; everything else is a
-                    // name and a number. They get different shapes because they
-                    // read differently — a sentence forced into a one-line row
-                    // is what made this section a wall of truncated keys.
-                    <div key={group.id} data-group={group.id}>
-                      <h4><span className="arc-work-evidence-icon"><EvidenceIcon group={group.id} /></span>{group.label}<i>{group.items.length}</i></h4>
-                      {group.id === "memory"
-                        ? (() => {
-                            // The parser no longer caps recall (BSR-624), so a
-                            // real turn can carry fifteen facts. Long is fine —
-                            // hiding some of them and printing a confident count
-                            // of the survivors is not. The limit is the reader's
-                            // to lift, and the button says what it is holding.
-                            const shown = showAllMemory ? group.items : group.items.slice(0, MEMORY_PREVIEW);
-                            return (
-                              <>
-                                {shown.map((item, index) => (
-                                  <p className="arc-work-fact" key={`${group.id}-${index}`}>
-                                    {item.label}
-                                    {item.detail ? <em>{item.detail}</em> : null}
-                                  </p>
-                                ))}
-                                {group.items.length > MEMORY_PREVIEW ? (
-                                  <button type="button" className="arc-work-more" aria-expanded={showAllMemory} onClick={() => setShowAllMemory((value) => !value)}>
-                                    {showAllMemory ? "Show fewer" : `Show all ${group.items.length}`}
-                                    <ChevronDown size={13} className={showAllMemory ? "is-open" : ""} />
-                                  </button>
-                                ) : null}
-                              </>
-                            );
-                          })()
-                        : group.items.map((item, index) => (
-                            item.href
-                              ? <Link className="arc-work-evidence-item" key={`${group.id}-${index}`} href={item.href}><b>{item.label}</b>{item.detail ? <span>{item.detail}</span> : null}<ArrowRight size={12} /></Link>
-                              : <div className="arc-work-evidence-item" key={`${group.id}-${index}`}><b>{item.label}</b>{item.detail ? <span>{item.detail}</span> : null}</div>
-                          ))}
-                    </div>
-                  ))}
+                  {evidence.map((group) => {
+                    // The parser no longer caps recall (BSR-624) and nothing
+                    // caps the records a turn reads, so a real turn arrives with
+                    // dozens of both. Long is fine — printing all of it under
+                    // the deliverables is not, and neither is hiding some of it
+                    // behind a confident count of the survivors. Every group
+                    // previews, and the button says exactly what it is holding.
+                    const expanded = expandedGroups[group.id] ?? false;
+                    const limit = group.id === "memory" ? MEMORY_PREVIEW : EVIDENCE_PREVIEW;
+                    const shown = expanded ? group.items : group.items.slice(0, limit);
+                    return (
+                      // Memories are sentences Arc wrote; everything else is a
+                      // name and a number. They get different shapes because they
+                      // read differently — a sentence forced into a one-line row
+                      // is what made this section a wall of truncated keys.
+                      <div key={group.id} data-group={group.id}>
+                        <h4><span className="arc-work-evidence-icon"><EvidenceIcon group={group.id} /></span>{group.label}<i>{group.items.length}</i></h4>
+                        {group.id === "memory"
+                          ? shown.map((item, index) => (
+                              <p className="arc-work-fact" key={`${group.id}-${index}`}>
+                                {item.label}
+                                {item.detail ? <em>{item.detail}</em> : null}
+                              </p>
+                            ))
+                          : shown.map((item, index) => (
+                              item.href
+                                ? <Link className="arc-work-evidence-item" key={`${group.id}-${index}`} href={item.href}><b>{item.label}</b>{item.detail ? <span>{item.detail}</span> : null}<ArrowRight size={12} /></Link>
+                                : <div className="arc-work-evidence-item" key={`${group.id}-${index}`}><b>{item.label}</b>{item.detail ? <span>{item.detail}</span> : null}</div>
+                            ))}
+                        {group.items.length > limit ? (
+                          <button
+                            type="button"
+                            className="arc-work-more"
+                            aria-expanded={expanded}
+                            onClick={() => setExpandedGroups((current) => ({ ...current, [group.id]: !expanded }))}
+                          >
+                            {expanded ? "Show fewer" : `Show all ${group.items.length}`}
+                            <ChevronDown size={13} className={expanded ? "is-open" : ""} />
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="arc-work-note">Arc did not record a source for this conversation. Records, recalled memory, and the tools it ran show up here.</p>
@@ -917,7 +1029,15 @@ export function ArcWorkPanel({
                         <ChevronRight size={14} className={open ? "is-open" : ""} />
                       </button>
                       {open ? (
-                        run.rows.length > 0 ? (
+                        <>
+                          {/* A sibling link, not a nested one: the row above is a
+                              <button> and an anchor inside it would be invalid.
+                              run.id IS the arc_messages id, so this routes
+                              directly (BSR-509). */}
+                          <Link className="arc-work-inspect" href={`/arc/runs/${run.id}`}>
+                            Inspect this run — steps, retrieval, cost
+                          </Link>
+                          {run.rows.length > 0 ? (
                           <div className="arc-work-activity">
                             {run.rows.map((row) => (
                               <div key={row.id} className={`is-${row.status}`}>
@@ -925,13 +1045,14 @@ export function ArcWorkPanel({
                                 <div>
                                   <b>{row.label}</b>
                                   {row.detail ? <small>{row.detail}</small> : null}
-                                  <span className="sr-only">{row.status === "done" ? "Complete" : row.status === "running" ? "In progress" : row.status === "error" ? "Error" : "Queued"}</span>
+                                  <span className="sr-only">{row.status === "done" ? "Complete" : row.status === "retried" ? "Failed, then succeeded on retry" : row.status === "running" ? "In progress" : row.status === "error" ? "Error" : "Queued"}</span>
                                 </div>
-                                {row.status === "done" ? <Check size={13} /> : row.status === "running" ? <LoaderCircle size={14} /> : row.status === "error" ? <X size={13} /> : <Circle size={9} />}
+                                {row.status === "done" ? <Check size={13} /> : row.status === "retried" ? <RotateCcw size={13} /> : row.status === "running" ? <LoaderCircle size={14} /> : row.status === "error" ? <X size={13} /> : <Circle size={9} />}
                               </div>
                             ))}
                           </div>
-                        ) : <p className="arc-work-note">This run reported no separate steps.</p>
+                          ) : <p className="arc-work-note">This run reported no separate steps.</p>}
+                        </>
                       ) : null}
                     </div>
                   );
@@ -942,6 +1063,7 @@ export function ArcWorkPanel({
         ) : null}
       </div>
     </motion.aside>
+    </OverlayPortal>
   );
 }
 
@@ -994,7 +1116,16 @@ export function useDraftDecision({
       onResolved(approval.assetId, "revision");
       setReviseOpen(false);
       setReviseText("");
-      setNotice(result.persisted ? "Revision requested — Arc is updating it" : "Preview — revision not saved");
+      if (!result.persisted) return setNotice("Preview — revision not saved");
+      // "Arc is updating it" is only true if the runner actually took the wake.
+      // On `dispatched: false` the request is saved but nothing is running, and
+      // nothing will re-surface it — so point at the campaign, where the retry
+      // lives, rather than reporting an update that is not happening.
+      setNotice(
+        result.dispatched === false
+          ? "Saved, but Arc hasn't picked it up — open the campaign to send it again"
+          : "Revision requested — Arc is updating it",
+      );
     });
   };
 
@@ -1006,93 +1137,13 @@ export function useDraftDecision({
   return { busy, notice, reviseOpen, reviseText, setReviseText, decided, decide, submitRevision, openRevise, cancelRevise, reset } as const;
 }
 
-/**
- * Card-driven review workspace: the assets Arc drafted, one tab each, with the
- * full draft content and per-asset Approve / Revise / Decline wired (via
- * `useDraftDecision`) to the real campaign decision flow. Decisions are lifted to
- * the parent (keyed by asset id) so they persist while the panel is open and
- * reflect back on the package summary.
- */
-export function AssetReviewPanel({ cards, statuses, onStatus, onClose }: { cards: ArcActionCard[]; statuses: Record<string, ArcAssetStatus>; onStatus: (assetId: string, status: ArcAssetStatus) => void; onClose: () => void }) {
-  const reduceMotion = useReducedMotion();
-  const [active, setActive] = useState(0);
-  const card = cards[Math.min(active, cards.length - 1)];
-  const assetId = card.approval?.assetId ?? "";
-  const status = statuses[assetId] ?? card.status ?? null;
-  const meta = assetStatusMeta(status);
-  const approvedCount = cards.filter((c) => (statuses[c.approval?.assetId ?? ""] ?? c.status) === "approved").length;
-  const { busy, notice, reviseOpen, reviseText, setReviseText, decided, decide, submitRevision, openRevise, cancelRevise, reset } = useDraftDecision({ approval: card.approval, status, onResolved: onStatus });
-
-  const selectTab = (index: number) => { setActive(index); reset(); };
-
-  return (
-    <motion.aside
-      className="arc-artifact-workspace"
-      aria-label="Asset review workspace"
-      initial={reduceMotion ? false : { opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={reduceMotion ? undefined : { opacity: 0, x: 18 }}
-      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <header className="arc-artifact-header">
-        <div><span>Review workspace</span><h2>{cards.length === 1 ? "Asset review" : "Campaign package"}</h2><p>{cards.length} {cards.length === 1 ? "asset" : "assets"} · {approvedCount} approved</p></div>
-        <button type="button" onClick={onClose} aria-label="Close review workspace"><PanelRightClose size={17} /></button>
-      </header>
-      <div className="arc-artifact-shell">
-        <div className="arc-artifact-tabs" role="tablist" aria-label="Campaign assets">
-          {cards.map((tabCard, index) => {
-            const tabStatus = statuses[tabCard.approval?.assetId ?? ""] ?? tabCard.status ?? null;
-            return (
-              <button type="button" role="tab" key={`${tabCard.title}-${index}`} aria-selected={index === active} className={index === active ? "is-active" : ""} onClick={() => selectTab(index)}>
-                <ChannelIcon channel={tabCard.channel} />
-                <span>{tabCard.channel ?? tabCard.title}</span>
-                <i className={`arc-artifact-dot is-${assetStatusMeta(tabStatus).tone}`} aria-hidden="true" />
-              </button>
-            );
-          })}
-        </div>
-        <div className="arc-artifact-content">
-          <div className="arc-artifact-status" aria-live="polite"><span className={`is-${meta.tone}`}><CheckCircle2 size={14} />{meta.label}</span></div>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={active} role="tabpanel" className="arc-artifact-view" initial={reduceMotion ? false : { opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: -4 }} transition={{ duration: 0.16 }}>
-              <div className="arc-artifact-title"><span>{card.channel ?? "Asset"}</span><h3>{card.title}</h3>{card.format ? <p>{card.format}</p> : null}</div>
-              {card.preview ? <div className="arc-asset-preview">{card.preview}</div> : null}
-              {card.rows.length > 0 ? (
-                <section className="arc-artifact-section"><h4>Details</h4>{card.rows.slice(0, 6).map((row, index) => <div className="arc-asset-row" key={`${row.name}-${index}`}><b>{row.name}</b><span>{row.meta ?? ""}</span></div>)}</section>
-              ) : null}
-              {card.flags.length > 0 ? (
-                <section className="arc-artifact-section"><h4>Checks</h4><div className="arc-check-grid">{card.flags.slice(0, 4).map((flag, index) => <span key={`${flag.label}-${index}`} className={`is-${flag.tone}`}><CheckCircle2 size={14} />{flag.label}</span>)}</div></section>
-              ) : null}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </div>
-      <footer className="arc-artifact-footer" aria-busy={busy}>
-        {reviseOpen ? (
-          <form className="arc-revision-form" onSubmit={submitRevision}>
-            <label htmlFor="arc-revision-request">What should Arc change in the {(card.channel ?? "asset").toLowerCase()}?</label>
-            <textarea id="arc-revision-request" autoFocus value={reviseText} onChange={(event) => setReviseText(event.target.value)} placeholder="Describe the change…" rows={2} />
-            <div><button type="button" onClick={cancelRevise}>Cancel</button><button type="submit" className="is-primary" disabled={!reviseText.trim() || busy}>Send revision</button></div>
-          </form>
-        ) : (
-          <>
-            <div role="status" aria-live="polite">{notice ?? "Approve, revise, or decline each asset."}</div>
-            <button type="button" onClick={openRevise} disabled={busy || decided}>Revise</button>
-            <button type="button" onClick={() => decide("declined")} disabled={busy || decided}>Decline</button>
-            <button type="button" className="is-primary" onClick={() => decide("approved")} disabled={busy || decided}><Check size={14} />{status === "approved" ? "Approved" : "Approve"}</button>
-          </>
-        )}
-      </footer>
-    </motion.aside>
-  );
-}
 
 export const DRAFT_STATUS_META: Record<ArcAssetStatus | "review", { label: string; tone: string }> = {
-  review: { label: "Needs review", tone: "muted" },
-  draft: { label: "Needs review", tone: "muted" },
-  revision: { label: "Revising", tone: "accent" },
-  approved: { label: "Approved", tone: "ok" },
-  rejected: { label: "Declined", tone: "red" },
+  review: { label: WORK_STATE_LABEL.needs_you, tone: "muted" },
+  draft: { label: WORK_STATE_LABEL.needs_you, tone: "muted" },
+  revision: { label: WORK_STATE_LABEL.needs_changes, tone: "accent" },
+  approved: { label: WORK_STATE_LABEL.approved, tone: "ok" },
+  rejected: { label: WORK_STATE_LABEL.declined, tone: "red" },
 };
 
 /**

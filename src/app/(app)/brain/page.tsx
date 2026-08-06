@@ -1,3 +1,4 @@
+import { WORK_STATE_LABEL } from "@/domain";
 import { reasonIfUnavailable, unavailable } from "@/lib/observability/unavailable";
 import { countNodesByTier, listGraphEdges, listNodes, type BrainNode } from "@/lib/knowledge-graph/read-model";
 
@@ -80,19 +81,19 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
     .map(toFact);
 
   const stats = [
-    { label: "Knowledge nodes", value: counts.total, sub: "in Arc's memory", color: "" },
-    { label: "Trusted", value: counts.trusted, sub: "approved for outbound", color: "var(--ok-text)" },
-    { label: "Observed", value: counts.observed, sub: "watching, not yet trusted", color: "" },
-    { label: "Awaiting review", value: counts.proposed, sub: "human approval required", color: counts.proposed > 0 ? "var(--warn-text)" : "" },
+    // "Knowledge nodes" was graph vocabulary for what the tabs below already call
+    // facts, and "Awaiting review" was a third name for "Needs you" (BSR-656/657).
+    { label: "Things Arc knows", value: counts.total, sub: "in Arc's memory", color: "" },
+    { label: "Trusted", value: counts.trusted, sub: "Arc can use these in your copy", color: "var(--ok-text)" },
+    { label: "Watching", value: counts.observed, sub: "seen, not trusted yet", color: "" },
+    // The sublabel carries the consequence, not just the state. A banner
+    // directly beneath this strip used to spell out "N new facts stay out of
+    // everything Arc writes until you approve them" — the same N, about the
+    // same facts, one row apart. The tile is the better home for it: it is
+    // where the number already is, and it reads the true count rather than a
+    // capped list (which is why the banner existed at all).
+    { label: WORK_STATE_LABEL.needs_you, value: counts.proposed, sub: "kept out of your copy until you approve", color: counts.proposed > 0 ? "var(--warn-text)" : "" },
   ];
-
-  // Reads the true count for the same reason the tile does: this note IS the trust
-  // gate's visibility, and it was suppressed whenever the proposed facts happened
-  // to sit outside the capped list.
-  const coverageNote =
-    counts.proposed > 0
-      ? `${counts.proposed} proposed fact${counts.proposed === 1 ? "" : "s"} stay out of all outbound copy until you approve them — Arc's trust gate.`
-      : "";
 
   // Reads that FAILED, as distinct from returning nothing. Without this, a
   // broken query renders as a Brain with no facts — indistinguishable from a
@@ -106,6 +107,6 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
     .filter((entry): entry is [string, string] => Boolean(entry[1]))
     .map(([label, reason]) => `${label}: ${reason}`);
 
-  const data: BrainData = { stats, coverageNote, facts, totalFacts: counts.total, review, learned, graphNodes, graphEdges };
+  const data: BrainData = { stats, facts, totalFacts: counts.total, review, learned, graphNodes, graphEdges };
   return <BrainView data={data} focusNodeId={focusNodeId} loadErrors={loadErrors} />;
 }

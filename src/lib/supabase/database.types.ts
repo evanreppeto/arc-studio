@@ -372,6 +372,7 @@ export type Database = {
           run_status: Database["public"]["Enums"]["agent_run_status"]
           started_at: string | null
           task_id: string | null
+          workspace_id: string | null
         }
         Insert: {
           agent_id: string
@@ -391,6 +392,7 @@ export type Database = {
           run_status?: Database["public"]["Enums"]["agent_run_status"]
           started_at?: string | null
           task_id?: string | null
+          workspace_id?: string | null
         }
         Update: {
           agent_id?: string
@@ -410,6 +412,7 @@ export type Database = {
           run_status?: Database["public"]["Enums"]["agent_run_status"]
           started_at?: string | null
           task_id?: string | null
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -447,6 +450,7 @@ export type Database = {
           org_id: string
           task_id: string
           title: string
+          workspace_id: string | null
         }
         Insert: {
           actor_kind: string
@@ -459,6 +463,7 @@ export type Database = {
           org_id: string
           task_id: string
           title: string
+          workspace_id?: string | null
         }
         Update: {
           actor_kind?: string
@@ -471,6 +476,7 @@ export type Database = {
           org_id?: string
           task_id?: string
           title?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -500,6 +506,7 @@ export type Database = {
           source_table: string | null
           summary: string | null
           task_id: string
+          workspace_id: string | null
         }
         Insert: {
           created_at?: string
@@ -511,6 +518,7 @@ export type Database = {
           source_table?: string | null
           summary?: string | null
           task_id: string
+          workspace_id?: string | null
         }
         Update: {
           created_at?: string
@@ -522,6 +530,7 @@ export type Database = {
           source_table?: string | null
           summary?: string | null
           task_id?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -858,6 +867,7 @@ export type Database = {
           status: Database["public"]["Enums"]["agent_status"]
           system_instructions: string | null
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           allowed_actions?: string[]
@@ -873,6 +883,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["agent_status"]
           system_instructions?: string | null
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           allowed_actions?: string[]
@@ -888,6 +899,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["agent_status"]
           system_instructions?: string | null
           updated_at?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -1447,6 +1459,7 @@ export type Database = {
           persona: string | null
           source_asset_ids: Json
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           asset_type?: string | null
@@ -1465,6 +1478,7 @@ export type Database = {
           persona?: string | null
           source_asset_ids?: Json
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           asset_type?: string | null
@@ -1483,6 +1497,7 @@ export type Database = {
           persona?: string | null
           source_asset_ids?: Json
           updated_at?: string
+          workspace_id?: string | null
         }
         Relationships: []
       }
@@ -1913,6 +1928,67 @@ export type Database = {
         }
         Relationships: []
       }
+      brand_logos: {
+        Row: {
+          created_at: string
+          file_name: string | null
+          id: string
+          media_asset_id: string | null
+          org_id: string
+          role: string
+          updated_at: string
+          uploaded_by: string | null
+          url: string
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          media_asset_id?: string | null
+          org_id: string
+          role: string
+          updated_at?: string
+          uploaded_by?: string | null
+          url: string
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          media_asset_id?: string | null
+          org_id?: string
+          role?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          url?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_logos_media_asset_id_fkey"
+            columns: ["media_asset_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_logos_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_logos_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_profiles: {
         Row: {
           accent: string
@@ -1943,6 +2019,7 @@ export type Database = {
           updated_at: string
           voice_guidance: string | null
           website_url: string | null
+          workspace_id: string | null
         }
         Insert: {
           accent?: string
@@ -1973,6 +2050,7 @@ export type Database = {
           updated_at?: string
           voice_guidance?: string | null
           website_url?: string | null
+          workspace_id?: string | null
         }
         Update: {
           accent?: string
@@ -2003,6 +2081,7 @@ export type Database = {
           updated_at?: string
           voice_guidance?: string | null
           website_url?: string | null
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -2759,6 +2838,7 @@ export type Database = {
           summary: string | null
           top_keywords: string[]
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           ad_creatives?: Json
@@ -2779,6 +2859,7 @@ export type Database = {
           summary?: string | null
           top_keywords?: string[]
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           ad_creatives?: Json
@@ -2799,6 +2880,7 @@ export type Database = {
           summary?: string | null
           top_keywords?: string[]
           updated_at?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -4076,6 +4158,7 @@ export type Database = {
           trust_tier: Database["public"]["Enums"]["knowledge_trust_tier"]
           updated_at: string
           weight: number | null
+          workspace_id: string | null
         }
         Insert: {
           approved_at?: string | null
@@ -4092,6 +4175,7 @@ export type Database = {
           trust_tier?: Database["public"]["Enums"]["knowledge_trust_tier"]
           updated_at?: string
           weight?: number | null
+          workspace_id?: string | null
         }
         Update: {
           approved_at?: string | null
@@ -4108,6 +4192,7 @@ export type Database = {
           trust_tier?: Database["public"]["Enums"]["knowledge_trust_tier"]
           updated_at?: string
           weight?: number | null
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -4157,6 +4242,7 @@ export type Database = {
           tags: string[]
           trust_tier: Database["public"]["Enums"]["knowledge_trust_tier"]
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           approved_at?: string | null
@@ -4181,6 +4267,7 @@ export type Database = {
           tags?: string[]
           trust_tier?: Database["public"]["Enums"]["knowledge_trust_tier"]
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           approved_at?: string | null
@@ -4205,6 +4292,7 @@ export type Database = {
           tags?: string[]
           trust_tier?: Database["public"]["Enums"]["knowledge_trust_tier"]
           updated_at?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -4371,6 +4459,7 @@ export type Database = {
           updated_at: string
           uploaded_by: string | null
           width: number | null
+          workspace_id: string | null
         }
         Insert: {
           available_to_arc?: boolean
@@ -4393,6 +4482,7 @@ export type Database = {
           updated_at?: string
           uploaded_by?: string | null
           width?: number | null
+          workspace_id?: string | null
         }
         Update: {
           available_to_arc?: boolean
@@ -4415,6 +4505,7 @@ export type Database = {
           updated_at?: string
           uploaded_by?: string | null
           width?: number | null
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -4443,6 +4534,7 @@ export type Database = {
           parent_id: string | null
           sort_order: number
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           created_at?: string
@@ -4453,6 +4545,7 @@ export type Database = {
           parent_id?: string | null
           sort_order?: number
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           created_at?: string
@@ -4463,6 +4556,7 @@ export type Database = {
           parent_id?: string | null
           sort_order?: number
           updated_at?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -4504,6 +4598,7 @@ export type Database = {
           status: Database["public"]["Enums"]["next_best_action_status"]
           title: string
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           action_type: string
@@ -4527,6 +4622,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["next_best_action_status"]
           title: string
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           action_type?: string
@@ -4550,6 +4646,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["next_best_action_status"]
           title?: string
           updated_at?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -4736,6 +4833,7 @@ export type Database = {
           created_at: string
           detected_by: string
           dismissed_at: string | null
+          dismissed_reason: string | null
           evidence: Json
           id: string
           kind: string
@@ -4750,6 +4848,7 @@ export type Database = {
           title: string
           updated_at: string
           urgency: Database["public"]["Enums"]["opportunity_urgency"]
+          workspace_id: string | null
         }
         Insert: {
           agent_task_id?: string | null
@@ -4758,6 +4857,7 @@ export type Database = {
           created_at?: string
           detected_by?: string
           dismissed_at?: string | null
+          dismissed_reason?: string | null
           evidence?: Json
           id?: string
           kind: string
@@ -4772,6 +4872,7 @@ export type Database = {
           title: string
           updated_at?: string
           urgency?: Database["public"]["Enums"]["opportunity_urgency"]
+          workspace_id?: string | null
         }
         Update: {
           agent_task_id?: string | null
@@ -4780,6 +4881,7 @@ export type Database = {
           created_at?: string
           detected_by?: string
           dismissed_at?: string | null
+          dismissed_reason?: string | null
           evidence?: Json
           id?: string
           kind?: string
@@ -4794,6 +4896,7 @@ export type Database = {
           title?: string
           updated_at?: string
           urgency?: Database["public"]["Enums"]["opportunity_urgency"]
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -5325,6 +5428,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           body: string
@@ -5340,6 +5444,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           body?: string
@@ -5355,6 +5460,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -5403,6 +5509,7 @@ export type Database = {
           updated_at: string
           value_context: Json
           value_tier: string | null
+          workspace_id: string | null
         }
         Insert: {
           audit_payload?: Json
@@ -5440,6 +5547,7 @@ export type Database = {
           updated_at?: string
           value_context?: Json
           value_tier?: string | null
+          workspace_id?: string | null
         }
         Update: {
           audit_payload?: Json
@@ -5477,6 +5585,7 @@ export type Database = {
           updated_at?: string
           value_context?: Json
           value_tier?: string | null
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -6326,6 +6435,7 @@ export type Database = {
           tags: string[]
           title: string
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           author?: string
@@ -6339,6 +6449,7 @@ export type Database = {
           tags?: string[]
           title: string
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           author?: string
@@ -6352,6 +6463,7 @@ export type Database = {
           tags?: string[]
           title?: string
           updated_at?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {

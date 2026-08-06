@@ -335,11 +335,20 @@ async function createWorkspaceDefaults(
   // this path had an Arc that could not be given a single instruction.
   //
   // Distinct from arc_instances above, which is the per-workspace Arc identity;
-  // this is the org-scoped agent that agent_tasks.agent_id points at. The key
-  // must match DEFAULT_CONNECTION.agentKey in lib/agent/connection.ts.
+  // this is the agent that agent_tasks.agent_id points at. The key must match
+  // DEFAULT_CONNECTION.agentKey in lib/agent/connection.ts.
+  //
+  // `agents` is workspace-owned by the BSR-637 boundary (two workspaces in one
+  // company could legitimately want different approval policies) and gained
+  // workspace_id in BSR-712. NOTE the conflict target is still (org_id, key):
+  // equivalent today, since no product path puts a second workspace in an
+  // existing org, but it is the constraint that would have to move first if one
+  // ever did. Tracked on BSR-713 rather than changed here — a Phase A does not
+  // rewrite unique constraints.
   await client.from("agents").upsert(
     {
       org_id: org.id,
+      workspace_id: workspace.id,
       key: "arc",
       name: "Arc",
       description: "Marketing operator. Drafts and prepares; never sends without approval.",
@@ -349,16 +358,21 @@ async function createWorkspaceDefaults(
     { onConflict: "org_id,key" },
   );
 
+  // The brand identity a workspace creates from (BSR-714) — distinct from
+  // workspaces.logo_url, which is shell chrome. The unique moved from (org_id) to
+  // (workspace_id) in BSR-715: the old constraint did not merely fail to express
+  // workspace ownership, it forbade it. Conflict target follows the constraint.
   await client.from("business_profiles").upsert(
     {
       org_id: org.id,
+      workspace_id: workspace.id,
       display_name: org.name,
       legal_name: org.name,
       short_mark: shortMarkFor(org.name),
       industry,
       status: "draft",
     },
-    { onConflict: "org_id" },
+    { onConflict: "workspace_id" },
   );
 
   await seedDefaultMediaFolders({ orgId: org.id, client });
@@ -369,7 +383,7 @@ async function createWorkspaceDefaults(
   // identically — it just can't be edited in Settings until the first save
   // materialises the set. Failing workspace creation over that trades a working
   // workspace for a cosmetic one.
-  await seedDefaultPipelineStages({ orgId: org.id, client }).catch((error) => {
+  await seedDefaultPipelineStages({ orgId: org.id, client, industry }).catch((error) => {
     reportDegraded(error, { scope: "workspace-onboarding.seedDefaultPipelineStages", surface: "secondary" });
     return 0;
   });

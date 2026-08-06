@@ -1,7 +1,9 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type AgentTaskTenantFields, getCurrentAgentTaskTenantFields } from "@/lib/agent-tasks/scope";
+import { notifyArcCampaignTask } from "@/lib/arc-chat/notify";
 import { getSupabaseAdminClient } from "../supabase/server";
+import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 
 export type RevisionRequestInput = {
   campaignId: string;
@@ -14,6 +16,13 @@ export type RevisionRequestInput = {
 export type RevisionRequestResult = {
   approvalItemId: string | null;
   agentTaskId: string | null;
+  /**
+   * Whether the runner actually acknowledged the wake. `false` means the
+   * revision is recorded but Arc has NOT started on it — nothing polls
+   * `agent_tasks`, so an un-woken task is never picked up. The caller is
+   * expected to surface this rather than reporting an unqualified success.
+   */
+  dispatched: boolean;
 };
 
 /**
@@ -52,7 +61,7 @@ export async function requestAssetRevision(
   // 2 + 3. Log the decision and move the approval item to revision_requested.
   if (approvalRow) {
     const { error: decisionError } = await client.from("approval_decisions").insert({
-      org_id: tenant.org_id,
+      ...workspaceScopeFields(tenant),
       approval_item_id: approvalRow.id,
       decision: "revision_requested",
       decided_by: operator,
@@ -87,7 +96,7 @@ export async function requestAssetRevision(
 
   // 5. Campaign event for the timeline.
   const { error: eventError } = await client.from("campaign_events").insert({
-    org_id: tenant.org_id,
+    ...workspaceScopeFields(tenant),
     campaign_id: campaignId,
     campaign_asset_id: assetId,
     approval_item_id: approvalItemId,
@@ -107,7 +116,35 @@ export async function requestAssetRevision(
     operator,
   });
 
-  return { approvalItemId, agentTaskId };
+  // 7. Wake the runner.
+  //
+  // Load-bearing, and it used to be missing. Nothing polls `agent_tasks` —
+  // there is no inbox poller in the runner and no cron that drains queued
+  // rows — so the wake POST is the ONLY thing that starts a task. Without
+  // this call the rows above were all written correctly and the revision
+  // simply never ran: the asset was never regenerated and the task sat
+  // `queued` forever. The unit tests asserted the insert and stopped there,
+  // which is exactly why it stayed green (BSR-695).
+  const dispatched = agentTaskId
+    ? await notifyArcCampaignTask({
+        agentTaskId,
+        campaignId,
+        assetId,
+        conversationId: null,
+        message: instruction,
+        operator,
+        taskType: "campaign_asset_revision",
+      })
+    : false;
+
+  if (agentTaskId && !dispatched) {
+    console.warn(
+      `[campaigns] revision task ${agentTaskId} was queued but the runner did not acknowledge the wake. ` +
+        "Nothing polls agent_tasks, so this revision will not run until it is re-dispatched.",
+    );
+  }
+
+  return { approvalItemId, agentTaskId, dispatched };
 }
 
 async function queueArcRevision(
@@ -122,6 +159,7 @@ async function queueArcRevision(
     .from("agents")
     .select("id")
     .eq("org_id", tenant.org_id)
+    .eq("workspace_id", tenant.workspace_id)
     .eq("key", "arc")
     .limit(1)
     .maybeSingle<{ id: string }>();
@@ -157,10 +195,10 @@ async function queueArcRevision(
     throw new Error("agent_tasks insert returned no id");
   }
 
-  // org_id only — agent_task_inputs has no workspace_id column, so `...tenant`
-  // would send one that doesn't exist.
+  // agent_task_inputs gained workspace_id in BSR-712; it now carries the same
+  // scope as the agent_tasks row above.
   const { error: inputError } = await client.from("agent_task_inputs").insert({
-    org_id: tenant.org_id,
+    ...workspaceScopeFields(tenant),
     task_id: task.id,
     input_type: "revision_instruction",
     source_table: "campaign_assets",

@@ -11,6 +11,30 @@ export type ArcSkill = {
   outputContract: readonly string[];
 };
 
+/**
+ * Tools the system prompt instructs on EVERY turn, whatever the task — so a
+ * skill that filters one out leaves Arc following an instruction it cannot obey.
+ *
+ * Two separate instructions land here. `record_brain_note` is the closing MEMORY
+ * rule ("record any new durable learning or signal worth remembering"); it was
+ * granted by no skill at all, and `promoteConversationMemory` only runs on chat
+ * turns, so every campaign task and every opportunity scan was told to record
+ * what it learned with no way to do it — the proactive work, which is exactly
+ * the work meant to compound. The other three are the reply-assembly tools,
+ * already pinned past tool search by `ALWAYS_LOADED_REPLY_TOOLS` because the
+ * prompt calls them from prose; pinning them and then filtering them out in a
+ * skill is the same contradiction one layer down.
+ *
+ * None of these can reach the outside world: `record_brain_note` writes internal
+ * learnings only, and the other three shape a reply. Enforced by a test.
+ */
+export const ALWAYS_INSTRUCTED_TOOLS = [
+  "record_brain_note",
+  "emit_card",
+  "cite_sources",
+  "suggest_followups",
+] as const;
+
 export const ARC_SKILLS: readonly ArcSkill[] = [
   {
     id: "skill-authoring",
@@ -18,7 +42,15 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
     description: "Guide an operator through defining a safe, reusable Arc workflow.",
     businessAgnostic: true,
     approvalPolicy: "propose_only",
-    allowedTools: ["get_app_map", "get_workspace_settings", "emit_card", "suggest_followups", "ask_operator"],
+    allowedTools: [
+      "get_app_map",
+      "get_workspace_settings",
+      "record_brain_note",
+      "emit_card",
+      "cite_sources",
+      "suggest_followups",
+      "ask_operator",
+    ],
     instructions: [
       "Use this skill only when the operator wants to create or revise a reusable Arc skill.",
       "Gather the skill name, trigger, required context, ordered instructions, expected output, and approval rules. Ask focused questions when any of these are missing.",
@@ -37,7 +69,7 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
     description: "Research a company, market, or prospect using public and workspace sources.",
     businessAgnostic: true,
     approvalPolicy: "propose_only",
-    allowedTools: ["research_web", "emit_card", "cite_sources", "suggest_followups", "ask_operator"],
+    allowedTools: ["research_web", "record_brain_note", "emit_card", "cite_sources", "suggest_followups", "ask_operator"],
     instructions: [
       "Use this skill when the operator wants source-backed research about a company, category, market, or prospect.",
       "Stay neutral to the workspace's industry. Let the business context and operator goal define what matters.",
@@ -71,6 +103,10 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
       "get_workspace_settings",
       "research_web",
       "propose_opportunity",
+      // A scan that spots something durable — a segment gap, a signal that keeps
+      // recurring — has to be able to keep it. It could read the Brain and not
+      // write to it, so every nightly scan started from the same blank slate.
+      "record_brain_note",
       "emit_card",
       "cite_sources",
       "suggest_followups",
@@ -102,13 +138,38 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
       "attach_media",
       "list_brand_documents",
       "read_brand_document",
+      // The prompt says to call read_performance and cite real figures rather
+      // than fabricate a metric. Campaign wakes run under THIS skill, so without
+      // it the one instruction against inventing numbers had no tool behind it.
+      // (campaign-package-drafting has always granted it.)
+      "read_performance",
       "get_app_map",
       "get_workspace_settings",
       "create_campaign_draft",
+      // Metadata only — no asset, no approval item. BSR-677 added it so a
+      // campaign could be documented without minting a deliverable nobody
+      // intends to send; leaving it off this skill meant a campaign wake could
+      // only record an objective or a handoff note by creating exactly that
+      // deliverable, which is the thing the ticket removed.
+      "record_campaign_summary",
+      // The revision write path. Campaign task wakes run under this skill, so a
+      // revision arriving without this tool is a revision that cannot be done —
+      // which is exactly what happened to the copy revisions on prod (BSR-759).
+      "revise_campaign_asset",
       "generate_image",
+      "edit_image",
       "generate_video",
+      // Required, not optional, alongside generate_image: the prompt tells Arc
+      // that a request to put a logo / phone number / any words onto an existing
+      // image MUST go through compose_creative, because image generation is
+      // hardened to strip text and logos and a regenerated background silently
+      // drops the request. Without it here the allowlist removed the only tool
+      // that can satisfy that instruction, and every branding revision ended in
+      // Arc correctly reporting it had no way to do the work (BSR-759).
+      "compose_creative",
       "analyze_website",
       "propose_brand_profile",
+      "record_brain_note",
       "emit_card",
       "cite_sources",
       "suggest_followups",
@@ -157,6 +218,12 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
       "get_app_map",
       "get_workspace_settings",
       "create_campaign_draft",
+      // This skill's output contract demands a brief, a handoff note and the
+      // audiences considered — all campaign metadata. Without this tool the only
+      // way to record them is on a deliverable, so documenting the package meant
+      // minting one (BSR-677).
+      "record_campaign_summary",
+      "record_brain_note",
       "emit_card",
       "cite_sources",
       "suggest_followups",

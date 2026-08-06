@@ -3,7 +3,7 @@
 // lead→job→won funnel, and revenue-by-persona / leads-by-source breakdowns)
 // straight from real leads / jobs / outcomes rows. Everything is derived, so it
 // degrades gracefully when the tables are sparse or unconfigured.
-import { humanizePersonaLabel } from "@/domain";
+import { humanizePersonaLabel, personaAccent } from "@/domain";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { isWonStatus } from "@/domain";
@@ -24,16 +24,13 @@ export function normalizeWindow(raw: unknown): AnalyticsWindow {
 }
 
 export type TrendKey = "revenue" | "leads" | "bookings";
-export type KpiTag = "wired" | "partial" | "sync";
 
 export type OverviewKpi = {
   label: string;
   value: string;
-  deltaLabel: string; // e.g. "+12.5%" or "— est."
+  deltaLabel: string; // e.g. "+12.5%"; empty when there is nothing to compare
   dir: "up" | "dn" | "flat";
   prevLabel: string;
-  tag: KpiTag;
-  tagLabel: string;
 };
 export type TrendSeries = { cur: number[]; prev: number[] };
 export type BreakdownRow = { label: string; count: number; width: number; dot: string; valueLabel?: string };
@@ -58,7 +55,7 @@ export type AnalyticsOverview = {
   dataError?: string | null;
 };
 
-const PERSONA_DOTS = ["#c8a24a", "#7fb89a", "#88b6d8", "#9678c8", "#cc6a6a", "#d8935a", "#6ea8a0", "#b08fd0"];
+
 
 function humanizePersona(p: string): string {
   const label = humanizePersonaLabel(p);
@@ -142,14 +139,26 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
   const prevJobs = sum(trend.bookings.prev);
   const curRev = sum(trend.revenue.cur);
   const prevRev = sum(trend.revenue.prev);
-  const curWon = Math.round(curJobs * 0.84);
+  // Demo only. The live path counts real won outcomes (see getAnalyticsOverview);
+  // here Won is derived from bookings so the funnel narrows plausibly. Booked and
+  // Won are DIFFERENT stages — a booked job that never closes stays booked.
+  const DEMO_BOOKED_TO_WON = 0.84;
+  const curWon = Math.round(curJobs * DEMO_BOOKED_TO_WON);
 
+  // The sublabel names the BASELINE, not just a number (DESIGN.md §4.3). These
+  // read "580 prev" — a bare figure with no period attached, so "+22.4%" beside
+  // it was a percentage of something the reader had to guess at. Home already
+  // says "vs previous 30 days" for the same three metrics; this says the same
+  // thing and keeps the figure, so the two screens agree and neither drops the
+  // baseline. The window is whatever the range picker is set to, so it is read
+  // from `windowDays` rather than spelled "30".
+  const baseline = (value: string) => `${value} in the previous ${windowDays} days`;
   const kpis: OverviewKpi[] = [
-    { label: "Leads", value: curLeads.toLocaleString(), ...pct(curLeads, prevLeads), prevLabel: `${prevLeads} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Booked jobs", value: curJobs.toLocaleString(), ...pct(curJobs, prevJobs), prevLabel: `${prevJobs} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Won revenue", value: money(curRev), ...pct(curRev, prevRev), prevLabel: `${money(prevRev)} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Reply rate", value: "—", deltaLabel: "needs sends", dir: "flat", prevLabel: "no send denominator", tag: "partial", tagLabel: "partial" },
-    { label: "Cost / job", value: "—", deltaLabel: "— est.", dir: "flat", prevLabel: "needs spend feed", tag: "sync", tagLabel: "needs sync" },
+    { label: "Leads", value: curLeads.toLocaleString(), ...pct(curLeads, prevLeads), prevLabel: baseline(prevLeads.toLocaleString()) },
+    { label: "Booked jobs", value: curJobs.toLocaleString(), ...pct(curJobs, prevJobs), prevLabel: baseline(prevJobs.toLocaleString()) },
+    { label: "Won revenue", value: money(curRev), ...pct(curRev, prevRev), prevLabel: baseline(money(prevRev)) },
+    { label: "Reply rate", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Starts once you send your first campaign" },
+    { label: "Cost / job", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Connect an ad account to see this" },
   ];
 
   const funnelMax = Math.max(1, curLeads);
@@ -163,17 +172,17 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
 
   const personaRev: Array<[string, number]> = [
     ["High-Intent Evaluator", 8_930_000],
-    ["Team Admin", 5_120_000],
+    ["Team admin", 5_120_000],
     ["Proactive Evaluator", 3_960_000],
     ["Feature-Focused Evaluator", 1_840_000],
     ["Procurement", 1_020_000],
   ];
   const revMax = Math.max(1, ...personaRev.map(([, v]) => v));
-  const revenueByPersona: BreakdownRow[] = personaRev.map(([label, v], i) => ({
+  const revenueByPersona: BreakdownRow[] = personaRev.map(([label, v]) => ({
     label,
     count: v,
     width: Math.round((v / revMax) * 100),
-    dot: PERSONA_DOTS[i % PERSONA_DOTS.length],
+    dot: personaAccent(label),
     valueLabel: money(v),
   }));
 
@@ -185,11 +194,16 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
     ["Referral", 74],
   ];
   const srcMax = Math.max(1, ...sources.map(([, v]) => v));
-  const leadsBySource: BreakdownRow[] = sources.map(([label, v], i) => ({
+  const leadsBySource: BreakdownRow[] = sources.map(([label, v]) => ({
     label,
     count: v,
     width: Math.round((v / srcMax) * 100),
-    dot: PERSONA_DOTS[i % PERSONA_DOTS.length],
+    // Neutral, not the accent. Every source row was assigned the SAME gold, so
+    // the colour carried no information at all — it was an ordinary magnitude
+    // wearing the one hue §4.4 reserves for "needs you". Width already encodes
+    // the magnitude. Persona rows above keep personaAccent(), where the colour
+    // is deterministic per persona and does mean something.
+    dot: "var(--text-2)",
   }));
 
   const trendLabels = Array.from({ length: windowDays }, (_, i) => {
@@ -205,7 +219,7 @@ function demoAnalyticsOverview(windowDays: number): AnalyticsOverview {
     revenueByPersona,
     leadsBySource,
     arcRead: {
-      text: `Won revenue is up ${pct(curRev, prevRev).deltaLabel} on ${curWon} booked demos from ${curLeads.toLocaleString()} leads — you're converting better, not just sourcing more. Revenue is concentrated in the High-Intent Evaluator persona, and Email is your top lead source. Reply and cost-per-demo metrics fill in once campaigns send and an ad platform syncs.`,
+      text: `Won revenue is up ${pct(curRev, prevRev).deltaLabel} on ${curWon} won jobs from ${curLeads.toLocaleString()} leads — you're converting better, not just sourcing more. Revenue is concentrated in the High-Intent Evaluator persona, and Email is your top lead source. Reply rate and cost per job fill in once campaigns send and an ad platform syncs.`,
       cites: [`leads ${curLeads.toLocaleString()}`, `won ${curWon}`, `rev ${money(curRev)}`],
       rec: "Double down on High-Intent Evaluator — your highest-revenue persona this period. Arc can draft a lookalike campaign against it, approval-gated.",
     },
@@ -305,12 +319,20 @@ export async function getAnalyticsOverview(
   const jobsDelta = pct(curJobs, prevJobs);
   const revDelta = pct(curRev, prevRev);
 
+  // The sublabel names the BASELINE, not just a number (DESIGN.md §4.3). These
+  // read "580 prev" — a bare figure with no period attached, so "+22.4%" beside
+  // it was a percentage of something the reader had to guess at. Home already
+  // says "vs previous 30 days" for the same three metrics; this says the same
+  // thing and keeps the figure, so the two screens agree and neither drops the
+  // baseline. The window is whatever the range picker is set to, so it is read
+  // from `windowDays` rather than spelled "30".
+  const baseline = (value: string) => `${value} in the previous ${windowDays} days`;
   const kpis: OverviewKpi[] = [
-    { label: "Leads", value: curLeads.toLocaleString(), ...leadsDelta, prevLabel: `${prevLeads} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Booked jobs", value: curJobs.toLocaleString(), ...jobsDelta, prevLabel: `${prevJobs} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Won revenue", value: money(curRev), ...revDelta, prevLabel: `${money(prevRev)} prev`, tag: "wired", tagLabel: "wired" },
-    { label: "Reply rate", value: "—", deltaLabel: "needs sends", dir: "flat", prevLabel: "no send denominator", tag: "partial", tagLabel: "partial" },
-    { label: "Cost / job", value: "—", deltaLabel: "— est.", dir: "flat", prevLabel: "needs spend feed", tag: "sync", tagLabel: "needs sync" },
+    { label: "Leads", value: curLeads.toLocaleString(), ...leadsDelta, prevLabel: baseline(prevLeads.toLocaleString()) },
+    { label: "Booked jobs", value: curJobs.toLocaleString(), ...jobsDelta, prevLabel: baseline(prevJobs.toLocaleString()) },
+    { label: "Won revenue", value: money(curRev), ...revDelta, prevLabel: baseline(money(prevRev)) },
+    { label: "Reply rate", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Starts once you send your first campaign" },
+    { label: "Cost / job", value: "—", deltaLabel: "", dir: "flat", prevLabel: "Connect an ad account to see this" },
   ];
 
   // Funnel (current window): leads -> booked -> won.
@@ -332,11 +354,11 @@ export async function getAnalyticsOverview(
   }
   const revEntries = [...revByPersona.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
   const revMax = Math.max(1, ...revEntries.map(([, v]) => v));
-  const revenueByPersona: BreakdownRow[] = revEntries.map(([label, v], i) => ({
+  const revenueByPersona: BreakdownRow[] = revEntries.map(([label, v]) => ({
     label,
     count: v,
     width: Math.round((v / revMax) * 100),
-    dot: PERSONA_DOTS[i % PERSONA_DOTS.length],
+    dot: personaAccent(label),
     valueLabel: money(v),
   }));
 
@@ -349,11 +371,16 @@ export async function getAnalyticsOverview(
   }
   const srcEntries = [...bySource.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
   const srcMax = Math.max(1, ...srcEntries.map(([, v]) => v));
-  const leadsBySource: BreakdownRow[] = srcEntries.map(([label, v], i) => ({
+  const leadsBySource: BreakdownRow[] = srcEntries.map(([label, v]) => ({
     label,
     count: v,
     width: Math.round((v / srcMax) * 100),
-    dot: PERSONA_DOTS[i % PERSONA_DOTS.length],
+    // Neutral, not the accent. Every source row was assigned the SAME gold, so
+    // the colour carried no information at all — it was an ordinary magnitude
+    // wearing the one hue §4.4 reserves for "needs you". Width already encodes
+    // the magnitude. Persona rows above keep personaAccent(), where the colour
+    // is deterministic per persona and does mean something.
+    dot: "var(--text-2)",
   }));
 
   // Arc's read — narrative from the real deltas.

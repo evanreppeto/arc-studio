@@ -108,6 +108,12 @@ export async function notifyOpportunityScan(payload: ArcOpportunityScanWake): Pr
 export type ArcCampaignTaskWake = {
   agentTaskId: string;
   campaignId: string;
+  /**
+   * The specific asset being revised. Only set for `campaign_asset_revision` —
+   * without it Arc knows the campaign but not which of its assets the operator
+   * asked to change, and a campaign with more than one asset makes that a guess.
+   */
+  assetId?: string | null;
   conversationId: string | null;
   message: string;
   operator: string;
@@ -185,7 +191,20 @@ async function postArcWake(body: Record<string, unknown>): Promise<boolean> {
     void recordTestResult({ status: res.ok ? "ok" : "error", error: res.ok ? null : `HTTP ${res.status}` });
     return res.ok;
   } catch {
-    // Best-effort wake-up; intentionally swallow errors and let the inbox catch it.
+    // Best-effort wake-up: the throw is swallowed so a request never fails on an
+    // unreachable runner. What the caller does about it is NOT uniform, and the
+    // comment that used to sit here ("let the inbox catch it") was only ever true
+    // for one task type.
+    //
+    // `arc-chat/inbox.ts` does reclaim dropped work — but every one of its queries
+    // filters `task_type = "arc_chat_message"`, so chat tasks are the only kind it
+    // re-surfaces. For every other type there is no poller, no cron, and no
+    // stale-reclaim: a swallowed wake failure means that task sits `queued` and
+    // the work silently never happens. Campaign asset revisions shipped that way
+    // and stranded every revision for a week (BSR-695).
+    //
+    // So: callers outside chat must treat `false` as "this did not start" and
+    // surface it, rather than trusting a safety net that does not cover them.
     void recordTestResult({ status: "unreachable", error: "Wake request failed." });
     return false;
   } finally {

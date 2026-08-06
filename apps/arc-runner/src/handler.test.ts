@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ArcClient } from "./arc-client";
 import type { Config } from "./config";
 import { runArcCampaignTask, runArcOpportunityScan, runArcTurn } from "./arc";
-import { handleCampaignTask, handleChatMessage, handleOpportunityScan } from "./handler";
+import { handleCampaignTask, handleChatMessage, handleOpportunityScan, scanCompletionSummary } from "./handler";
 
 vi.mock("./arc", () => ({
   runArcTurn: vi.fn(async () => ({
@@ -16,7 +16,7 @@ vi.mock("./arc", () => ({
     memory: [],
     toolCalls: [],
     reasoning: null,
-    usage: { model: "claude", inputTokens: 10, outputTokens: 5 },
+    usage: { model: "claude", inputTokens: 10, outputTokens: 5, detail: null },
   })),
   runArcCampaignTask: vi.fn(async () => ({
     body: "I drafted the first campaign assets.",
@@ -28,12 +28,14 @@ vi.mock("./arc", () => ({
     toolCalls: [],
   })),
   runArcOpportunityScan: vi.fn(async () => ({
+    body: "Filed one dormant-company opportunity.",
     actions: [{ kind: "opportunity", title: "Dormant company", rows: [], flags: [] }],
     suggestions: [],
     sources: [],
     questions: [],
     memory: [],
-    usage: { model: "claude", inputTokens: 10, outputTokens: 20 },
+    toolCalls: [{ name: "list_opportunities" }],
+    usage: { model: "claude", inputTokens: 10, outputTokens: 20, detail: null },
   })),
 }));
 
@@ -42,10 +44,12 @@ function client() {
     postChatReply: vi.fn(async () => {}),
     apiPost: vi.fn(async () => ({})),
     postUsage: vi.fn(async () => {}),
+    claimTask: vi.fn(async () => ({ claimed: true })),
   } as unknown as ArcClient & {
     postChatReply: ReturnType<typeof vi.fn>;
     apiPost: ReturnType<typeof vi.fn>;
     postUsage: ReturnType<typeof vi.fn>;
+    claimTask: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -66,7 +70,7 @@ describe("handleChatMessage", () => {
         memory: [],
         toolCalls: [],
         reasoning: null,
-        usage: { model: "claude", inputTokens: 10, outputTokens: 5 },
+        usage: { model: "claude", inputTokens: 10, outputTokens: 5, detail: null },
       };
     });
 
@@ -95,6 +99,107 @@ describe("handleChatMessage", () => {
 });
 
 describe("handleCampaignTask", () => {
+  /**
+   * Claiming is what makes a `queued` row mean "never started". Campaign tasks
+   * used to run without ever leaving `queued` — only the final /complete moved
+   * them — so a task mid-run was indistinguishable from one whose wake was
+   * dropped, and stranded revisions could not be retried safely (BSR-695).
+   */
+  it("claims the task before running it", async () => {
+    const fakeClient = client();
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-1",
+      campaignId: "campaign-1",
+      conversationId: null,
+      message: "Add the truck.",
+      operator: "Operator",
+      taskType: "campaign_asset_revision",
+    });
+
+    expect(fakeClient.claimTask).toHaveBeenCalledWith("task-1");
+    expect(runArcCampaignTask).toHaveBeenCalled();
+  });
+
+  /** A wake racing an operator's Retry: exactly one may run the instruction. */
+  it("skips the run entirely when another worker already claimed the task", async () => {
+    const fakeClient = client();
+    fakeClient.claimTask.mockResolvedValueOnce({ claimed: false, reason: "already-claimed", detail: "409 rejected" });
+    vi.mocked(runArcCampaignTask).mockClear();
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-1",
+      campaignId: "campaign-1",
+      conversationId: null,
+      message: "Add the truck.",
+      operator: "Operator",
+      taskType: "campaign_asset_revision",
+    });
+
+    expect(runArcCampaignTask).not.toHaveBeenCalled();
+    expect(fakeClient.apiPost).not.toHaveBeenCalled();
+    expect(fakeClient.postChatReply).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The prod regression this test exists for.
+   *
+   * `arcGuard` answers 409 for `workspace_required` / `workspace_mismatch` — the
+   * same status the claim route uses for a real conflict. The first version of
+   * the claim treated every 409 as "already claimed" and returned, so two
+   * campaign tasks were dropped on prod under a log line reading "skipping
+   * duplicate run" when there was no duplicate.
+   *
+   * A refused claim means NOBODY is running it. The work has to go ahead, or the
+   * operator's request is lost.
+   */
+  it.each([
+    { label: "workspace_required", detail: "409 workspace_required No active workspace is available" },
+    { label: "workspace_mismatch", detail: "409 workspace_mismatch scoped to a different workspace" },
+    { label: "an unexpected status", detail: "502 failed Failed to claim task." },
+  ])("still runs the task when the claim is refused with $label", async ({ detail }) => {
+    const fakeClient = client();
+    fakeClient.claimTask.mockResolvedValueOnce({ claimed: false, reason: "refused", detail });
+    vi.mocked(runArcCampaignTask).mockClear();
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-1",
+      campaignId: "campaign-1",
+      conversationId: null,
+      message: "Add the truck.",
+      operator: "Operator",
+      taskType: "campaign_asset_revision",
+    });
+
+    expect(runArcCampaignTask, "a refused claim must not be mistaken for a duplicate").toHaveBeenCalled();
+  });
+
+  /**
+   * Bookkeeping must not cost the operator their revision: if the app is briefly
+   * unreachable the work still runs, and the retry path has its own re-read
+   * guard against duplicates.
+   */
+  it("still runs the task when the claim call itself fails", async () => {
+    const fakeClient = client();
+    fakeClient.claimTask.mockRejectedValueOnce(new Error("app unreachable"));
+    vi.mocked(runArcCampaignTask).mockClear();
+
+    await handleCampaignTask(fakeClient, {} as Config, {
+      type: "arc_campaign_task",
+      agentTaskId: "task-1",
+      campaignId: "campaign-1",
+      conversationId: null,
+      message: "Add the truck.",
+      operator: "Operator",
+      taskType: "campaign_asset_revision",
+    });
+
+    expect(runArcCampaignTask).toHaveBeenCalled();
+  });
+
   it("runs a campaign task in Arc and posts the reply to the linked conversation", async () => {
     const fakeClient = client();
 
@@ -175,7 +280,7 @@ describe("handleCampaignTask", () => {
         { name: "crm_search", status: "complete", input: '{"persona":"high_intent"}', output: "142 rows" },
         { name: "weather_lookup", status: "error", output: "timeout" },
       ],
-      usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null },
+      usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, detail: null },
     });
 
     await handleCampaignTask(fakeClient, {} as Config, {
@@ -231,7 +336,7 @@ describe("handleCampaignTask", () => {
       drafts: [],
       memory: [{ label: "Landlord playbook", summary: null, kind: "note", confidence: 0.8, nodeId: "n1" }],
       toolCalls: [],
-      usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null },
+      usage: { model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, detail: null },
     });
 
     await handleCampaignTask(fakeClient, {} as Config, {
@@ -292,7 +397,74 @@ describe("handleOpportunityScan", () => {
 
     expect(fakeClient.apiPost).toHaveBeenCalledWith(
       "/api/v1/arc/tasks/scan-2/block",
-      expect.objectContaining({ reason: expect.stringContaining("opportunity scan") }),
+      // The error itself, not "check the runner logs" — that instruction is what
+      // sent a diagnosis to Cloud Logging for an hour on 2026-08-04.
+      expect.objectContaining({ reason: expect.stringContaining("boom") }),
     );
+  });
+
+  /**
+   * The zero-card scan. Arc read everything, proposed nothing, and explained
+   * itself in prose the runner then dropped on the floor — leaving a scan that
+   * worked perfectly indistinguishable from one that crashed.
+   */
+  it("records Arc's reason when it proposes nothing", async () => {
+    const fakeClient = client();
+    vi.mocked(runArcOpportunityScan).mockResolvedValueOnce({
+      body: "Every gap I can see is already open in the inbox, and the five I raised this week were dismissed.",
+      actions: [],
+      suggestions: [],
+      sources: [],
+      questions: [],
+      memory: [],
+      toolCalls: [{ name: "list_opportunities" }, { name: "search_companies" }],
+      usage: { model: "claude", inputTokens: 10, outputTokens: 20, detail: null },
+    } as never);
+
+    await handleOpportunityScan(fakeClient, {} as Config, {
+      type: "arc_opportunity_scan",
+      agentTaskId: "scan-3",
+      message: "Survey the CRM and propose opportunities.",
+      operator: "Scheduled scan",
+    });
+
+    const [, payload] = vi
+      .mocked(fakeClient.apiPost)
+      .mock.calls.find(([path]) => path === "/api/v1/arc/tasks/scan-3/complete") as [string, Record<string, unknown>];
+
+    expect(payload.summary).toContain("proposed 0 opportunity(ies)");
+    expect(payload.summary).toContain("already open in the inbox");
+    expect(payload.outputs).toMatchObject({
+      actions: [],
+      reply: expect.stringContaining("dismissed"),
+      // What it looked at — how you tell a considered "nothing new" from a
+      // scan that barely read anything.
+      toolCalls: [{ name: "list_opportunities" }, { name: "search_companies" }],
+    });
+  });
+});
+
+describe("scanCompletionSummary", () => {
+  it("stays a plain count when cards were proposed", () => {
+    expect(scanCompletionSummary(3, "some prose")).toBe("Opportunity scan complete — proposed 3 opportunity(ies).");
+  });
+
+  it("carries Arc's reason when nothing was proposed", () => {
+    expect(scanCompletionSummary(0, "  Nothing new —\n  the inbox already covers it. ")).toBe(
+      "Opportunity scan complete — proposed 0 opportunity(ies). Arc's reason: Nothing new — the inbox already covers it.",
+    );
+  });
+
+  // Proposed nothing AND said nothing is a different problem from a considered
+  // "nothing to add", and the record has to be able to tell them apart.
+  it("says so when Arc proposed nothing and explained nothing", () => {
+    expect(scanCompletionSummary(0, "")).toBe("Opportunity scan complete — proposed 0 opportunity(ies). Arc gave no reason.");
+    expect(scanCompletionSummary(0, null)).toContain("gave no reason");
+  });
+
+  it("clips a long reason, leaving the full text to the outputs", () => {
+    const summary = scanCompletionSummary(0, "x".repeat(900));
+    expect(summary.length).toBeLessThan(500);
+    expect(summary.endsWith("…")).toBe(true);
   });
 });
