@@ -70,7 +70,11 @@ describe("target -> engine -> provider", () => {
     });
     expect(engine.ok).toBe(false);
     if (engine.ok) return;
-    expect(engine.reason).toMatch(/Higgsfield isn't connected/);
+    // Copy checked by intent, not by vendor name: off-switch reasons must say
+    // what to open rather than naming the engine's owner — the operator bought
+    // Arc, not it (src/app/(app)/plumbing-vocabulary.test.ts).
+    expect(engine.reason).toMatch(/Settings → Connections/);
+    expect(engine.reason).not.toMatch(/Higgsfield|credential/i);
   });
 
   it("meters a Gemini target against the platform connector, not the customer's", async () => {
