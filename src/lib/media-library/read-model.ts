@@ -169,7 +169,11 @@ export async function getMediaLibraryData(client?: SupabaseClient, orgIdArg?: st
   }
 
   const { data: folderRows, error: fErr } = await db
-    .from("media_folders").select("id, name, parent_id, description").eq("org_id", orgId).order("sort_order");
+    // `name` is the tiebreak, not decoration: `sort_order` is `default 0`, so
+    // every folder created before it was set explicitly holds 0 — and ordering
+    // by a column full of ties lets Postgres return the rail in a different
+    // order on different reads.
+    .from("media_folders").select("id, name, parent_id, description").eq("org_id", orgId).order("sort_order").order("name");
   if (fErr) return { status: "unavailable", message: fErr.message };
 
   const { data: assetRows, error: aErr } = await db
