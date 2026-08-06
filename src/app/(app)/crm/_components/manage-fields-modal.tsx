@@ -67,6 +67,10 @@ export function ManageFieldsModal({
       description="What you track beyond the built-in columns. Fields appear on the record, in the add and edit forms, and in what Arc reads when it drafts."
       width={560}
     >
+      {/* Carries the field editor's own primitives (.btn/.inp/.sel/.cxm-*).
+          Without it the shared form falls through to the app's gold button and
+          Remove renders as the loudest thing in the dialog. */}
+      <div className="arc-fieldkit">
       {feedback && (
         <div role="status" style={{ marginBottom: 12, fontSize: 12, color: feedback.ok ? "var(--ok-text)" : "var(--red-text)" }}>
           {feedback.text}
@@ -162,6 +166,7 @@ export function ManageFieldsModal({
           </Link>
         </div>
       )}
+      </div>
     </Modal>
   );
 }
