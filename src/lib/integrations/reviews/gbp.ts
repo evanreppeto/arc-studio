@@ -1,5 +1,7 @@
 import type { ReviewInput } from "@/domain";
 
+import { gbpGet } from "../gbp/client";
+
 /**
  * Live source behind the reviews-signals connector: recent Google Business Profile
  * reviews for one configured location, read-only. Best-effort — a non-2xx or a
@@ -9,9 +11,12 @@ import type { ReviewInput } from "@/domain";
  * The location resource name (`accounts/{id}/locations/{id}`) is operator-configured
  * (config.gbpLocation) because the v4 reviews endpoint is keyed on it. We keep only a
  * brief snippet of each review, never the full text (ToS).
+ *
+ * Reads go through `gbpGet` rather than `fetch` directly: the credential's scope
+ * permits writing to the live profile, so the read-only property is enforced at
+ * one door instead of trusted at each call site. See `../gbp/client.ts`.
  */
 
-const GBP_TIMEOUT_MS = 8000;
 const SNIPPET_MAX = 200;
 
 export type GbpReviewSourceOptions = {
@@ -70,52 +75,28 @@ export async function checkGbpConnection(
 ): Promise<GbpConnectionResult> {
   const location = locationName?.trim();
   if (!location) return { ok: false, error: "no business location configured" };
-  const doFetch = opts.fetchImpl ?? fetch;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GBP_TIMEOUT_MS);
-  try {
-    const res = await doFetch(`https://mybusiness.googleapis.com/v4/${location}/reviews?pageSize=1`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-      signal: controller.signal,
-    });
-    if (res.status === 401 || res.status === 403) return { ok: false, error: `access rejected (${res.status}) — reconnect Google` };
-    if (res.status === 404) return { ok: false, error: "location not found — check the location resource name" };
-    if (!res.ok) return { ok: false, error: `Google returned ${res.status}` };
-    const json = (await res.json()) as GbpReviewsResponse;
-    return { ok: true, count: Array.isArray(json.reviews) ? json.reviews.length : 0 };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Google unreachable" };
-  } finally {
-    clearTimeout(timer);
+  const result = await gbpGet(`https://mybusiness.googleapis.com/v4/${location}/reviews?pageSize=1`, accessToken, opts);
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) return { ok: false, error: `access rejected (${result.status}) — reconnect Google` };
+    if (result.status === 404) return { ok: false, error: "location not found — check the location resource name" };
+    return { ok: false, error: result.error };
   }
+  const json = (result.json ?? {}) as GbpReviewsResponse;
+  return { ok: true, count: Array.isArray(json.reviews) ? json.reviews.length : 0 };
 }
 
 export function gbpReviewSource(accessToken: string, opts: GbpReviewSourceOptions): { listRecentReviews(now: string): Promise<ReviewInput[]> } {
-  const doFetch = opts.fetchImpl ?? fetch;
   const pageSize = opts.pageSize ?? 50;
   return {
     async listRecentReviews(): Promise<ReviewInput[]> {
       const location = opts.locationName?.trim();
       if (!location) return [];
       const url = `https://mybusiness.googleapis.com/v4/${location}/reviews?pageSize=${pageSize}`;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), GBP_TIMEOUT_MS);
-      try {
-        const res = await doFetch(url, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-          signal: controller.signal,
-        });
-        if (!res.ok) return [];
-        const json = (await res.json()) as GbpReviewsResponse;
-        const reviews = Array.isArray(json.reviews) ? json.reviews : [];
-        return reviews.map((r) => gbpReviewToInput(r, location)).filter((r): r is ReviewInput => r !== null);
-      } catch {
-        return [];
-      } finally {
-        clearTimeout(timer);
-      }
+      const result = await gbpGet(url, accessToken, opts);
+      if (!result.ok) return [];
+      const json = (result.json ?? {}) as GbpReviewsResponse;
+      const reviews = Array.isArray(json.reviews) ? json.reviews : [];
+      return reviews.map((r) => gbpReviewToInput(r, location)).filter((r): r is ReviewInput => r !== null);
     },
   };
 }

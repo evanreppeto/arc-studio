@@ -1,5 +1,12 @@
-import { detectReviewSignalOpportunities, type OpportunityCandidate, type ReviewInput } from "@/domain";
+import {
+  detectLocalSeoOpportunities,
+  detectReviewSignalOpportunities,
+  type LocationProfile,
+  type OpportunityCandidate,
+  type ReviewInput,
+} from "@/domain";
 
+import { gbpLocationSource } from "@/lib/integrations/gbp/location";
 import { gbpReviewSource } from "@/lib/integrations/reviews/gbp";
 
 import { readConnectorCredential } from "../credentials";
@@ -88,11 +95,43 @@ async function resolveReviewSource(ctx: SignalDetectContext): Promise<ReviewSour
   }
 }
 
+/**
+ * The profile half of this connector: read the configured location and audit it
+ * for the gaps that suppress local-pack visibility.
+ *
+ * Same OAuth credential, same location config, no new connector — the profile
+ * and its reviews are two reads of one Business Profile. Null whenever the
+ * workspace hasn't connected or configured a location, or the read fails; the
+ * audit then contributes nothing rather than inventing gaps from an empty
+ * profile, which is the one failure mode that would matter here (every rule
+ * fires on absence).
+ */
+async function resolveLocationProfile(ctx: SignalDetectContext): Promise<LocationProfile | null> {
+  const configLocation = typeof ctx.config?.gbpLocation === "string" ? ctx.config.gbpLocation.trim() : "";
+  if (!ctx.client || !ctx.workspaceId || !configLocation) return null;
+  try {
+    const ref = await resolveConnectorCredentialRef(ctx.client, ctx.workspaceId, REVIEWS_SIGNAL_CONNECTOR_KEY);
+    const raw = await readConnectorCredential(ctx.client, ref);
+    if (!raw) return null;
+    const resolved = await resolveGoogleAccessToken(ctx.client, ref, raw);
+    if (!resolved.ok) return null;
+    return await gbpLocationSource(resolved.accessToken, { configLocation }).fetchProfile();
+  } catch {
+    return null;
+  }
+}
+
 export const reviewsSignalConnector: SignalSourceConnector = {
   key: REVIEWS_SIGNAL_CONNECTOR_KEY,
   detect: async (ctx) => {
-    const source = await resolveReviewSource(ctx);
-    return detectReviewOpportunities({ config: ctx.config, now: ctx.now, source });
+    // Independent reads: a reviews outage must not suppress the profile audit,
+    // and vice versa. Both already degrade to empty on their own.
+    const [source, profile] = await Promise.all([resolveReviewSource(ctx), resolveLocationProfile(ctx)]);
+    const [reviews, localSeo] = await Promise.all([
+      detectReviewOpportunities({ config: ctx.config, now: ctx.now, source }),
+      Promise.resolve(detectLocalSeoOpportunities(profile, { now: ctx.now })),
+    ]);
+    return [...reviews, ...localSeo];
   },
 };
 
