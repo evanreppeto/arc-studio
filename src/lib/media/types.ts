@@ -37,6 +37,19 @@ export type GeneratedMedia = {
 
 export type VideoGenInput = {
   prompt: string;
+  /**
+   * A still to animate, rather than a scene invented from the prompt alone.
+   *
+   * Studio has always offered "Animate" — "add gentle motion to this image" —
+   * and had no way to send the image, so it produced an unrelated clip from the
+   * words and discarded the picture the operator was pointing at. Same shape as
+   * the missing image edit: they point at something they have, and the system
+   * regenerates from scratch.
+   *
+   * Veo takes either a prompt or a starting image (or both); it will not take an
+   * image and a source video together.
+   */
+  image?: { bytes: Buffer; contentType: string };
   aspectRatio?: string;
   durationSeconds?: number;
   /** DONT_ALLOW | ALLOW_ADULT | ALLOW_ALL. Omit for the deployment default. */
