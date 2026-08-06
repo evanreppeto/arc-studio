@@ -13,11 +13,14 @@ import { bulkUpdateCrmPersona, type CreateCrmInput, insertCrmRecord } from "@/li
 import { insertTask } from "@/lib/interactions/persistence";
 import { listArchivedCrmObjectRows, searchCrmObjectRows, type CrmObjectKey } from "@/lib/crm/read-model";
 import { archiveCrmRecords, restoreCrmRecords } from "@/lib/crm/archive";
+import { getCustomObjectByKey } from "@/lib/custom-objects/definitions";
+import { createCustomRecord, listCustomRecords, setCustomRecordsArchived } from "@/lib/custom-objects/records";
+import { customRecordToRow } from "./_data/custom-row-vm";
 
 import { toRow } from "./_data/row-vm";
 import { type CrmRowVM } from "./_components/crm-board";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
-import type { CustomFieldObjectKey } from "@/domain";
+import type { CustomFieldObjectKey, CustomObject } from "@/domain";
 import { saveCustomFieldValues, validateCustomFieldValues } from "@/lib/custom-fields/values";
 
 /**
@@ -315,4 +318,92 @@ export async function createCrmRecord(input: CreateCrmInput): Promise<CreateResu
     return { ok: false, error: "The record was created, but its custom fields could not be saved. Open the record to add them." };
   }
   return { ok: true, persisted: true, id: result.id };
+}
+
+/* ── Tenant-defined object types ──────────────────────────────────────────────
+ *
+ * Custom objects are rows, not tables, so none of the paths above reach them —
+ * every one of those resolves `objectKey` to a real table name. These are the
+ * parallel writes for a record of a tenant-defined type. Same gate, same
+ * org-scoping, same archive semantics.
+ */
+
+// Explicit union: inferred from the returns, TypeScript widens each branch with
+// the other's keys as optional-undefined, and `"error" in scope` then narrows
+// nothing — every caller below reads scope.orgId as possibly undefined.
+type ResolvedObject = { error: string } | { orgId: string; object: CustomObject };
+
+async function resolveObject(objectKey: string): Promise<ResolvedObject> {
+  const orgId = await getCurrentOrgId();
+  if (!orgId) return { error: "Could not resolve your workspace." };
+  const object = await getCustomObjectByKey(orgId, objectKey).catch(() => null);
+  if (!object) return { error: "That record type no longer exists." };
+  return { orgId, object };
+}
+
+export async function createCustomObjectRecord(input: {
+  objectKey: string;
+  title: string;
+  subtitle?: string;
+}): Promise<CreateResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
+  const scope = await resolveObject(input.objectKey);
+  if ("error" in scope) return { ok: false, error: scope.error };
+
+  const res = await createCustomRecord(scope.orgId, scope.object, {
+    title: input.title,
+    subtitle: input.subtitle,
+  });
+  if (!res.ok) return { ok: false, error: res.error };
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${input.objectKey}`);
+  return { ok: true, persisted: res.persisted, id: res.id };
+}
+
+export async function archiveCustomObjectRecords(objectKey: string, ids: string[]): Promise<ArchiveActionResult> {
+  await requireOperator();
+  if (!ids?.length) return { ok: false, error: "Select at least one record." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, count: 0 };
+
+  const scope = await resolveObject(objectKey);
+  if ("error" in scope) return { ok: false, error: scope.error };
+
+  const res = await setCustomRecordsArchived(scope.orgId, scope.object, ids, true);
+  if (!res.ok) return { ok: false, error: res.error };
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${objectKey}`);
+  return { ok: true, persisted: res.persisted, count: res.count ?? 0 };
+}
+
+export async function restoreCustomObjectRecords(objectKey: string, ids: string[]): Promise<ArchiveActionResult> {
+  await requireOperator();
+  if (!ids?.length) return { ok: false, error: "Select at least one record." };
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, count: 0 };
+
+  const scope = await resolveObject(objectKey);
+  if ("error" in scope) return { ok: false, error: scope.error };
+
+  const res = await setCustomRecordsArchived(scope.orgId, scope.object, ids, false);
+  if (!res.ok) return { ok: false, error: res.error };
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${objectKey}`);
+  return { ok: true, persisted: res.persisted, count: res.count ?? 0 };
+}
+
+/** Archived records of a custom object, for the board's Archived view. */
+export async function listArchivedCustomObjectRecords(objectKey: string): Promise<CrmSearchActionResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: true, rows: [], capped: false };
+
+  const scope = await resolveObject(objectKey);
+  if ("error" in scope) return { ok: false, error: scope.error };
+
+  try {
+    const rows = await listCustomRecords(scope.orgId, scope.object, { archived: true });
+    return { ok: true, rows: rows.map((r) => customRecordToRow(scope.object.key, r)), capped: false };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not load archived records." };
+  }
 }

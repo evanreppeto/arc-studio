@@ -16,6 +16,9 @@ import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
 import { listFieldDefinitions } from "@/lib/custom-fields/definitions";
 import { getCustomFieldsForRecords } from "@/lib/custom-fields/values";
 import { reportDegraded } from "@/lib/observability/report-degraded";
+import { listCustomObjects } from "@/lib/custom-objects/definitions";
+import { countCustomRecords, listCustomRecords } from "@/lib/custom-objects/records";
+import { customRecordToRow } from "./_data/custom-row-vm";
 
 /** How many custom fields become list columns. See the note at the call site. */
 const MAX_CUSTOM_COLUMNS = 2;
@@ -121,6 +124,36 @@ export default async function CrmPage() {
     };
   });
 
+  // The workspace's OWN object types, appended after the six. A failed read is
+  // reported rather than swallowed: returning none silently removes tabs the
+  // operator created, which reads as data loss.
+  const customObjects = await listCustomObjects(orgId).catch((error) => {
+    reportDegraded(error, { scope: "crm.listCustomObjects", surface: "primary", detail: { orgId } });
+    return [];
+  });
+
+  for (const object of customObjects) {
+    try {
+      const [records, count] = await Promise.all([
+        listCustomRecords(orgId, object),
+        countCustomRecords(orgId, object),
+      ]);
+      rowsByKey[object.key] = records.map((r) => customRecordToRow(object.key, r));
+      objects.push({
+        key: object.key,
+        isCustom: true,
+        label: object.labelPlural,
+        noun: object.labelPlural.toLowerCase(),
+        nameHeader: object.labelSingular,
+        addLabel: `Add ${object.labelSingular.toLowerCase()}`,
+        filterPlaceholder: `Filter ${object.labelPlural.toLowerCase()}…`,
+        count,
+      });
+    } catch (error) {
+      reportDegraded(error, { scope: "crm.customObjectRows", surface: "primary", detail: { orgId, object: object.key } });
+    }
+  }
+
   // The tenant's custom fields: values onto each row (searchable + displayable)
   // and the column set per object. Capped at MAX_CUSTOM_COLUMNS columns because
   // the table's built-in columns are fixed-width; every field stays searchable
@@ -129,7 +162,7 @@ export default async function CrmPage() {
   const customFieldDefsByKey: Record<string, CustomFieldDefinition[]> = {};
   if (orgId) {
     await Promise.all(
-      OBJECT_KEYS.map(async (key) => {
+      [...OBJECT_KEYS, ...customObjects.map((o) => o.key)].map(async (key) => {
         try {
           const definitions = await listFieldDefinitions(orgId, key as CustomFieldObjectKey);
           if (definitions.length === 0) return;

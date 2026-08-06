@@ -8,6 +8,10 @@ import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, isPipelineObjectKey, p
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
 import {
+  archiveCustomObjectRecords,
+  createCustomObjectRecord,
+  listArchivedCustomObjectRecords,
+  restoreCustomObjectRecords,
   archiveCrmRecordsAction,
   bulkAddContactsToCampaign,
   bulkAddTask,
@@ -18,6 +22,7 @@ import {
   searchCrmRecords,
 } from "../actions";
 import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-record-modal";
+import { AddCustomRecordModal } from "./add-custom-record-modal";
 import { pageRangeLabel, pageWindow } from "./pagination";
 import { createStoredPreference } from "./stored-preference";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
@@ -423,6 +428,17 @@ const COLS: Record<string, Col[]> = {
   outcomes: [{ k: "sel" }, { k: "primary", t: "Outcome" }, { k: "status", t: "Status" }, { k: "value", t: "Revenue" }, { k: "last", t: "Closed" }, { k: "act" }],
 };
 
+/**
+ * Columns for a tenant-defined object type.
+ *
+ * Deliberately spare: a custom object has a name and a timestamp, and
+ * everything else its owner cares about is a custom field, which the board
+ * already splices in beside these. Borrowing the contacts set instead — which
+ * is what happens by default, since COLS lookups fall back to it — would put
+ * Persona, Status and Company headings above six empty columns.
+ */
+const CUSTOM_OBJECT_COLS: Col[] = [{ k: "sel" }, { k: "primary", t: "Name" }, { k: "last", t: "Updated" }, { k: "act" }];
+
 function nx(v: string) {
   return v ? v : "—";
 }
@@ -514,6 +530,8 @@ function cellContent(k: string, r: CrmRowVM) {
 
 export type CrmObjectVM = {
   key: string;
+  /** A tenant-defined type (a row in custom_objects), not one of the six tables. */
+  isCustom?: boolean;
   label: string;
   noun: string;
   nameHeader: string;
@@ -699,7 +717,7 @@ export function CrmBoard({
   const totalRows = localRows.length + (rowsByKey[active.key] ?? []).length;
   // Splice the tenant's custom columns in just before the trailing actions cell.
   const allCols = (() => {
-    const base = COLS[active.key] ?? COLS.contacts;
+    const base = COLS[active.key] ?? (active.isCustom ? CUSTOM_OBJECT_COLS : COLS.contacts);
     const custom = customColumnsByKey[active.key] ?? [];
     if (custom.length === 0) return base;
     const actIdx = base.findIndex((c) => c.k === "act");
@@ -864,7 +882,7 @@ export function CrmBoard({
       return next;
     });
     setSelected(new Set());
-    archiveCrmRecordsAction(objectKey, ids)
+    (active.isCustom ? archiveCustomObjectRecords(objectKey, ids) : archiveCrmRecordsAction(objectKey, ids))
       .then((res) => {
         if (!res.ok) {
           setArchivedLocally(prev);
@@ -890,7 +908,7 @@ export function CrmBoard({
     const objectKey = active.key;
     setArchivedRows((cur) => (cur ? cur.filter((r) => !ids.includes(r.id)) : cur));
     setSelected(new Set());
-    restoreCrmRecordsAction(objectKey, ids)
+    (active.isCustom ? restoreCustomObjectRecords(objectKey, ids) : restoreCrmRecordsAction(objectKey, ids))
       .then((res) => {
         if (!res.ok) {
           setError(res.error);
@@ -919,7 +937,9 @@ export function CrmBoard({
     setArchivedLoading(true);
     setArchivedRows(null);
     try {
-      const res = await listArchivedCrmRecords(objectKey);
+      const res = active.isCustom
+        ? await listArchivedCustomObjectRecords(objectKey)
+        : await listArchivedCrmRecords(objectKey);
       // A failed read is not an empty archive — saying "nothing archived" when
       // the query broke is how an operator concludes their records are gone.
       if (!res.ok) setError(res.error);
@@ -1058,7 +1078,9 @@ export function CrmBoard({
     setError(null);
     setLocalByKey((prev) => ({ ...prev, [objectKey]: [buildOptimisticRow(objectKey, tempId, value, stageOptions[objectKey] ?? []), ...(prev[objectKey] ?? [])] }));
 
-    const res = await createCrmRecord({ objectKey, ...value });
+    const res = active.isCustom
+      ? await createCustomObjectRecord({ objectKey, title: value.name, subtitle: value.detail })
+      : await createCrmRecord({ objectKey, ...value });
 
     if (!res.ok) {
       setLocalByKey((prev) => ({ ...prev, [objectKey]: (prev[objectKey] ?? []).filter((r) => r.id !== tempId) }));
@@ -1116,14 +1138,17 @@ export function CrmBoard({
         <div>
           <h1 className="ct">{active.label}</h1>
           <div className="csub">
-            {countFor(active).toLocaleString()} {active.noun} · kept up to date by Arc
+            {countFor(active).toLocaleString()} {active.noun}
+            {active.isCustom ? " · your own record type" : " · kept up to date by Arc"}
           </div>
         </div>
         <div className="sp">
+          {!active.isCustom && (
           <Link className="gbtn" href="/crm/import" title="Import contacts from a CSV">
             <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
             Import
           </Link>
+          )}
           <button type="button" className="gbtn" onClick={exportCsv} disabled={filteredAll.length === 0} title={`Download ${filteredAll.length} ${active.noun} as CSV`}>
             <svg viewBox="0 0 24 24"><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3M8 9l4 4 4-4M12 13V3" /></svg>
             Export
@@ -1177,6 +1202,11 @@ export function CrmBoard({
             aria-label={`Filter ${active.noun}`}
           />
         </span>
+        {/* Persona, Status and Owner describe the six. A tenant-defined type
+            has none of them — its shape is its custom fields — so the filters
+            are absent rather than present and always empty. */}
+        {!active.isCustom && (
+        <>
         <FilterMenu
           icon={<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M4 20c0-3 2-5 5-5s5 2 5 5" /></svg>}
           label="Persona"
@@ -1207,6 +1237,8 @@ export function CrmBoard({
           value={ownerF}
           onChange={setOwnerF}
         />
+        </>
+        )}
         {anyFilter && (
           <button type="button" className="fbtn dashed" onClick={clearFilters}>
             <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -1240,7 +1272,7 @@ export function CrmBoard({
 
       <div className={`selbar${selected.size ? " show" : ""}${personaMenuOpen || taskMenuOpen || campaignMenuOpen ? " menuopen" : ""}`}>
         <span className="sc">{selected.size} selected</span>
-        {active.key === "contacts" ? (
+        {active.isCustom ? null : active.key === "contacts" ? (
           <div className="sa-wrap">
             <button type="button" className="sa" onClick={() => setCampaignMenuOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={campaignMenuOpen}>
               <svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign
@@ -1263,6 +1295,7 @@ export function CrmBoard({
         ) : (
           <span className="sa is-inapplicable" title="Add contacts to a campaign from the People tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign</span>
         )}
+        {!active.isCustom && (
         <div className="sa-wrap">
           <button type="button" className="sa" onClick={() => setPersonaMenuOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={personaMenuOpen}>
             <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M4 20c0-3 2-5 5-5s5 2 5 5" /></svg>Assign persona
@@ -1278,6 +1311,8 @@ export function CrmBoard({
             </>
           )}
         </div>
+        )}
+        {!active.isCustom && (
         <div className="sa-wrap">
           <button type="button" className="sa" onClick={() => setTaskMenuOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={taskMenuOpen}>
             <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8M4 12v7a1 1 0 001 1h14" /></svg>Add task
@@ -1304,6 +1339,7 @@ export function CrmBoard({
             </>
           )}
         </div>
+        )}
         {viewArchived ? (
           <button type="button" className="sa" onClick={restoreSelected}>
             <svg viewBox="0 0 24 24"><path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1z" /><path d="M3 4h18v4H3z" /><path d="M12 17v-5M9 15l3-3 3 3" /></svg>
@@ -1422,7 +1458,12 @@ export function CrmBoard({
       <div className="gfoot">
         <span className="arcnote">
           <i />
-          Arc keeps {active.noun} up to date, and keeps their lead scores current
+          {/* Arc reads the six. It cannot see a tenant-defined type yet, so
+              claiming it maintains these — and scores them — would be a
+              promise the product does not keep. */}
+          {active.isCustom
+            ? `${active.label} are yours to maintain — Arc doesn't read them yet`
+            : `Arc keeps ${active.noun} up to date, and keeps their lead scores current`}
         </span>
         <div className="pager">
           <span className="rpp">
@@ -1480,6 +1521,18 @@ export function CrmBoard({
         definitions={customFieldDefsByKey[active.key] ?? []}
       />
 
+      {/* AddRecordModal is keyed to the six — it looks up a per-object config
+          for persona, status and parent pickers, which is undefined for a
+          tenant-defined type. Rendering it for one crashed the board. */}
+      {active.isCustom ? (
+        <AddCustomRecordModal
+          key={`${active.key}:${addOpen ? "open" : "closed"}`}
+          open={addOpen}
+          singular={active.addLabel.replace(/^Add\s+/i, "")}
+          onClose={() => setAddOpen(false)}
+          onSubmit={(v) => handleCreate({ name: v.name, detail: v.detail } as AddRecordValue)}
+        />
+      ) : (
       <AddRecordModal
         key={`${active.key}:${addOpen ? "open" : "closed"}`}
         open={addOpen}
@@ -1492,6 +1545,7 @@ export function CrmBoard({
         onClose={() => setAddOpen(false)}
         onSubmit={handleCreate}
       />
+      )}
     </div>
   );
 }
