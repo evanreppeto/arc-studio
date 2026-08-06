@@ -74,6 +74,14 @@ Unset is a normal state, not a broken one — local dev and CI run without it, a
 `fileSupportRequestInLinear` returns `skipped` rather than an error so a deploy
 with no Linear key doesn't look like a failing one.
 
+⚠️ **A var can be present and empty, and that reads as unset.** `resolveLinearConfig`
+trims the key, so `LINEAR_API_KEY=""` is falsy and the whole path returns
+`skipped` — indistinguishable from a healthy deploy that never had a key. This
+is not hypothetical: on 2026-08-06 prod carried `LINEAR_API_KEY` with a
+**zero-length value** next to two correct 36-char UUIDs, and `vercel env ls`
+listed all three identically. Checking that a name exists proves nothing; pull
+the env and measure the value's length.
+
 Readiness is reported by the **Support triage** capability in Settings → Health
 and `pnpm diagnose:env`.
 
