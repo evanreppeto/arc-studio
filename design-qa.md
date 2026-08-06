@@ -51,3 +51,5 @@ The source is a desktop-rail crop rather than a mobile-drawer specification, so 
 - P3: a future product-wide pass could align all top-bar and rail icon optical weights at multiple device-pixel ratios, but the current assets are coherent and production-ready.
 
 final result: passed
+
+<!-- CI control probe: verifying whether the e2e job is failing for reasons unrelated to any code change. Delete with the branch. -->
