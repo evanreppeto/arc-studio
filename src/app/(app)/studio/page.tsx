@@ -16,6 +16,28 @@ import "./studio.css";
 
 export const metadata = { title: "Studio — Arc Studio" };
 
+/**
+ * Studio's server actions call an image model, and a model takes longer than the
+ * platform's default function budget allows.
+ *
+ * Found by clicking "Change this image…" on prod: the edit ran, the model
+ * returned a picture, and the upload of it died with
+ *
+ *   media upload failed: This operation was aborted
+ *
+ * — the function's deadline landing mid-write, not a storage fault. The error
+ * names the last thing it was doing rather than the thing that killed it, which
+ * is why this looked like a Supabase problem.
+ *
+ * It hid until now because nothing on this page had ever called a slow provider
+ * from the browser. "Generate creative" is `compose`, which renders locally in
+ * milliseconds; video is deliberately start-then-poll precisely so no request has
+ * to stay open for it. `edit` is the first, and it inherits the same budget.
+ *
+ * 60s, matching /brain, which reached this conclusion before Studio did.
+ */
+export const maxDuration = 60;
+
 function provFromSource(source: string): Item["p"] {
   switch (source) {
     case "ai_generated": return "ai";
