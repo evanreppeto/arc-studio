@@ -37,11 +37,20 @@
 .arc-studio .sources { border-right: 1px solid var(--line); min-height: 0; overflow: auto; padding: 14px 13px; background: color-mix(in srgb, var(--canvas-deep) 14%, transparent); }
 .arc-studio .seyl { font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin: 0 2px 9px; }
 .arc-studio .stabs { display: flex; gap: 3px; margin-bottom: 12px; background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 3px; }
-.arc-studio .stab { flex: 1; text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); padding: 6px 3px; border-radius: var(--r-md); cursor: pointer; transition: var(--dur-base); }
+/* The source tabs, the dropzone, the media tiles, the format chips, the
+   Image/Video toggle and the version thumbs were all `<span>`/`<div>` carrying
+   an onClick: 21 controls at tabIndex -1, unreachable by keyboard and announced
+   as nothing. #1017 fixed exactly this class in the Design pane and stopped at
+   the pane boundary. These are real <button>s now, so each rule that styled a
+   span has to reset the UA button defaults to keep the look identical. */
+.arc-studio .stab { flex: 1; text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); padding: 6px 3px; border: 0; background: transparent; font-family: inherit; border-radius: var(--r-md); cursor: pointer; transition: var(--dur-base); }
 .arc-studio .stab:hover { color: var(--text-2); }
 .arc-studio .stab.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
-.arc-studio .drop { border: 1px dashed var(--line-3); border-radius: var(--r-md); padding: 14px 12px; text-align: center; margin-bottom: 12px; cursor: pointer; transition: var(--dur-base); }
+.arc-studio .stab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arc-studio .drop { display: block; width: 100%; border: 1px dashed var(--line-3); border-radius: var(--r-md); padding: 14px 12px; text-align: center; margin-bottom: 12px; background: transparent; font-family: inherit; color: inherit; cursor: pointer; transition: var(--dur-base); }
 .arc-studio .drop:hover { border-color: var(--accent-border); background: var(--accent-soft); }
+.arc-studio .drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arc-studio .drop .dt, .arc-studio .drop .dd { display: block; }
 .arc-studio .drop svg { width: 19px; height: 19px; stroke: var(--accent); fill: none; stroke-width: 1.6; margin-bottom: 5px; }
 .arc-studio .drop .dt { font-size: 11.5px; font-weight: 600; color: var(--text-2); }
 .arc-studio .drop .dd { font-size: 10px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
@@ -49,18 +58,22 @@
 .arc-studio .srchead .st { font-size: 11px; font-weight: 600; color: var(--text-2); }
 .arc-studio .srchead .sc { font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
 .arc-studio .mgrid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-.arc-studio .mtile { border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden; cursor: pointer; background: var(--panel); transition: border-color var(--dur-base), transform var(--dur-base) var(--ease); }
+.arc-studio .mtile { display: block; width: 100%; padding: 0; text-align: left; font-family: inherit; color: inherit; border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden; cursor: pointer; background: var(--panel); transition: border-color var(--dur-base), transform var(--dur-base) var(--ease); }
 .arc-studio .mtile:hover { border-color: var(--accent-border); }
 .arc-studio .mtile.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.arc-studio .mtile .mt { position: relative; height: 70px; background: #222a30; }
-.arc-studio .mtile .mt > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.arc-studio .mtile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arc-studio .mtile .mt { display: block; position: relative; height: 70px; background: #222a30; }
+/* Not `> svg`: the demo art is wrapped in Raw's positioned <span>, so a child
+   combinator here matched nothing and the sample tiles sized off the SVG's own
+   intrinsic box. Descendant, so both the wrapped and unwrapped cases land. */
+.arc-studio .mtile .mt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .arc-studio .mtile .mt .pv { position: absolute; top: 5px; left: 5px; font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: var(--r-sm); backdrop-filter: blur(3px); }
 .arc-studio .pv.real { color: var(--ok-text); background: rgba(127, 184, 154, 0.22); }
 .arc-studio .pv.ai { color: var(--accent-contrast); background: rgba(200, 162, 74, 0.22); }
 .arc-studio .pv.comp { color: var(--slate-text); background: var(--slate-soft); }
 .arc-studio .pv.upload { color: var(--blue-text); background: rgba(136, 182, 216, 0.22); }
 .arc-studio .pv.stock { color: var(--text-2); background: rgba(120, 120, 130, 0.28); }
-.arc-studio .mtile .ml { font-size: 10px; color: var(--text-2); padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-studio .mtile .ml { display: block; font-size: 10px; color: var(--text-2); padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-studio .enginenote { margin-top: 13px; border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 10px 11px; background: var(--panel); font-size: 10.5px; color: var(--muted); line-height: 1.5; }
 /* Live workspace with nothing approved yet — the source grid is empty by truth, not by error. */
 .arc-studio .srcempty { margin-top: 13px; border: 1px dashed var(--line-2); border-radius: var(--r-md); padding: 12px 11px; font-size: 10.5px; color: var(--muted); line-height: 1.5; text-align: center; }
@@ -133,20 +146,23 @@
 }
 .arc-studio .formats { display: flex; align-items: center; gap: 7px; padding: 11px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .arc-studio .modeseg { display: flex; gap: 2px; background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 2px; }
-.arc-studio .modeseg span { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--muted); padding: 5px 10px; border-radius: var(--r-sm); cursor: pointer; transition: var(--dur-base); }
-.arc-studio .modeseg span:hover { color: var(--text-2); }
-.arc-studio .modeseg span.on { background: var(--panel); color: var(--text); }
-.arc-studio .modeseg span svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+.arc-studio .modeseg button { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; font-family: inherit; color: var(--muted); padding: 5px 10px; border: 0; background: transparent; border-radius: var(--r-sm); cursor: pointer; transition: var(--dur-base); }
+.arc-studio .modeseg button:hover { color: var(--text-2); }
+.arc-studio .modeseg button.on { background: var(--panel); color: var(--text); }
+.arc-studio .modeseg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arc-studio .modeseg button svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-studio .fmdiv { width: 1px; height: 22px; background: var(--line-2); margin: 0 6px; }
 .arc-studio .formats .fl { font-size: 10.5px; color: var(--muted); margin-right: 1px; font-weight: 600; letter-spacing: 0.04em; }
-.arc-studio .fchip { font-size: 11px; color: var(--text-2); border: 1px solid var(--line-2); background: var(--inset); border-radius: var(--r-md); padding: 5px 10px; cursor: pointer; transition: var(--dur-base); display: flex; align-items: center; gap: 6px; }
+.arc-studio .fchip { font-size: 11px; font-family: inherit; color: var(--text-2); border: 1px solid var(--line-2); background: var(--inset); border-radius: var(--r-md); padding: 5px 10px; cursor: pointer; transition: var(--dur-base); display: flex; align-items: center; gap: 6px; }
 .arc-studio .fchip:hover { border-color: var(--accent-border); color: var(--text); }
+.arc-studio .fchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-studio .fchip.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--text); }
 .arc-studio .fchip .fr { font-family: var(--mono); font-size: 9px; color: var(--muted); }
 .arc-studio .fchip.on .fr { color: var(--accent); }
 .arc-studio .fspacer { margin-left: auto; }
-.arc-studio .szbtn { font-size: 10.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 5px 10px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: var(--dur-base); }
+.arc-studio .szbtn { font-size: 10.5px; font-family: inherit; color: var(--muted); border: 1px solid var(--line-2); background: transparent; border-radius: var(--r-md); padding: 5px 10px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: var(--dur-base); }
 .arc-studio .szbtn:hover { color: var(--text-2); border-color: var(--accent-border); }
+.arc-studio .szbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-studio .szbtn.on { color: var(--accent-contrast); border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-studio .szbtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 .arc-studio .zoom { font-family: var(--mono); font-size: 10px; color: var(--muted); padding: 0 4px; }
@@ -246,10 +262,12 @@
 .arc-studio .strip { display: flex; align-items: center; flex-wrap: nowrap; gap: 9px; padding: 11px 18px; border-top: 1px solid var(--line); min-height: 78px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .arc-studio .strip::-webkit-scrollbar { display: none; }
 .arc-studio .strip .sl { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
-.arc-studio .vthumb { width: 52px; height: 52px; border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--line-2); position: relative; cursor: pointer; flex-shrink: 0; transition: border-color var(--dur-base), transform var(--dur-base) var(--ease); }
+.arc-studio .vthumb { display: block; width: 52px; height: 52px; padding: 0; background: transparent; font-family: inherit; border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--line-2); position: relative; cursor: pointer; flex-shrink: 0; transition: border-color var(--dur-base), transform var(--dur-base) var(--ease); }
 .arc-studio .vthumb:hover { border-color: var(--accent-border); }
 .arc-studio .vthumb.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.arc-studio .vthumb > svg, .arc-studio .vthumb > img, .arc-studio .vthumb > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.arc-studio .vthumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Descendant, not `>`: the offline thumbs wrap their SVG in Raw's <span>. */
+.arc-studio .vthumb svg, .arc-studio .vthumb img, .arc-studio .vthumb video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .arc-studio .vthumb .vtag { position: absolute; bottom: 0; left: 0; right: 0; font-size: 7.5px; font-weight: 600; text-align: center; padding: 1px 0; background: rgba(16, 16, 19, 0.74); color: var(--text-2); }
 .arc-studio .vsdiv { width: 1px; height: 38px; background: var(--line-2); }
 /* white-space: nowrap — squeezed by the thumbs this wrapped onto three lines
@@ -318,14 +336,22 @@
 .arc-studio .bchips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .arc-studio .bchip { font-size: 10px; font-weight: 600; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 3px 8px; }
 .arc-studio .bchip.per { color: var(--accent-contrast); border-color: var(--accent-border); background: var(--accent-soft); }
-.arc-studio .layer { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); margin-bottom: 7px; cursor: pointer; transition: border-color var(--dur-base); }
+/* The row is a plain container holding TWO sibling buttons — pick the layer,
+   and show/hide it. It used to be one clickable div with a second clickable
+   span nested inside it, which is a button inside a button. */
+.arc-studio .layer { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); margin-bottom: 7px; transition: border-color var(--dur-base); }
 .arc-studio .layer:hover { border-color: var(--accent-border); }
 .arc-studio .layer.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+.arc-studio .layer .layerpick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: transparent; font-family: inherit; color: inherit; text-align: left; cursor: pointer; }
+.arc-studio .layer .layerpick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-studio .layer .li { width: 26px; height: 26px; border-radius: var(--r-md); background: var(--inset); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; }
 .arc-studio .layer .li svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.7; }
-.arc-studio .layer .lt { font-size: 12px; font-weight: 600; min-width: 0; }
-.arc-studio .layer .ld { font-size: 10px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arc-studio .layer .eye { margin-left: auto; color: var(--muted); font-size: 13px; }
+.arc-studio .layer .lb { min-width: 0; }
+.arc-studio .layer .lt { display: block; font-size: 12px; font-weight: 600; min-width: 0; }
+.arc-studio .layer .ld { display: block; font-size: 10px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-studio .layer .eye { margin-left: auto; flex-shrink: 0; color: var(--muted); font-size: 13px; font-family: inherit; padding: 2px 4px; border: 0; background: transparent; cursor: pointer; }
+.arc-studio .layer .eye:hover { color: var(--text-2); }
+.arc-studio .layer .eye:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-studio .swatches { display: flex; gap: 8px; align-items: center; }
 .arc-studio .swatches .sw { width: 30px; height: 30px; border-radius: var(--r-md); cursor: pointer; border: 2px solid transparent; transition: var(--dur-base); padding: 0; font: inherit; }
 .arc-studio .swatches .sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -327,12 +327,12 @@ export function BrandView({ view }: { view: BrandProfileView }) {
                   {palette.map((p, i) => {
                     const light = isLight(p.hex);
                     return (
-                      <div key={p.role} className={`sw${i === active ? " on" : ""}`} onClick={() => setActive(i)}>
-                        <div className="chip" style={{ background: p.hex, ...(light ? {} : { borderBottom: "1px solid var(--line-2)" }) }}>
+                      <button type="button" key={p.role} className={`sw${i === active ? " on" : ""}`} aria-pressed={i === active} onClick={() => setActive(i)}>
+                        <span className="chip" style={{ background: p.hex, ...(light ? {} : { borderBottom: "1px solid var(--line-2)" }) }}>
                           <span className="role" style={light ? { color: "#3a3f4a", textShadow: "none" } : undefined}>{p.role}</span>
-                        </div>
-                        <div className="meta"><div className="nm">{p.name}</div><div className="hx">{p.hex}</div></div>
-                      </div>
+                        </span>
+                        <span className="meta"><span className="nm">{p.name}</span><span className="hx">{p.hex}</span></span>
+                      </button>
                     );
                   })}
                 </div>
