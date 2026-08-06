@@ -1331,13 +1331,27 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
               already the shorter path. */}
           {/* Two ways through the same queue: read the list, or be handed one
               deliverable at a time. Offered from two up — with one, the card is
-              already the focused view. */}
+              already the focused view.
+
+              GOLD, not ghost. This is the screen's primary action: the whole
+              page exists so a human can decide these, and the control that
+              walks them through one at a time was the quietest thing on it —
+              quieter than "Approve all clean" below, which is the shortcut, not
+              the path. The hierarchy now matches what the product wants people
+              to do.
+
+              The label deliberately does NOT repeat the count. The sentence
+              beside it already says "6 deliverables need a decision", and a
+              button reading "Review 6 deliverables" next to that is one fact
+              printed twice — the same redundancy `nextActionFor` exists to
+              avoid on the board. "One at a time" says what the mode IS, which
+              the count cannot. */}
           {tab === "deliverables" && queueAssets.length > 1 && (
             <div className="rqstart">
               <span>
                 <b>{queueAssets.length} deliverables</b> need a decision.
               </span>
-              <button className="cbtn ghost" onClick={() => { setErr(null); setQueueOpen(true); }} disabled={pending}>
+              <button className="cbtn gold" onClick={() => { setErr(null); setQueueOpen(true); }} disabled={pending}>
                 {svg('<path d="M4 6h16M4 12h16M4 18h9"/>')}
                 Review one at a time
               </button>
