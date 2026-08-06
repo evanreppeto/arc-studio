@@ -11,13 +11,13 @@
 .arc-campaign .cname { font-family: var(--serif); font-weight: 500; font-size: clamp(1.6rem, 2.5vw, 2.1rem); line-height: 1.06; letter-spacing: -0.02em; margin: 0; }
 .arc-campaign .csub { font-size: 13px; color: var(--text-2); margin-top: 5px; max-width: 62ch; line-height: 1.5; }
 .arc-campaign .cchips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
-.arc-campaign .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 7px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.arc-campaign .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--r-md); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .arc-campaign .chip.persona { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-campaign .chip.persona .pgd { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 .arc-campaign .chip.ghost { color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); }
 .arc-campaign .chip.ghost .gi { width: 12px; height: 12px; stroke: var(--muted); fill: none; stroke-width: 1.8; }
 
-.arc-campaign .pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 7px; font-size: 11px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.arc-campaign .pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--r-md); font-size: 11px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
 .arc-campaign .pill .pd { width: 5px; height: 5px; border-radius: 50%; }
 .arc-campaign .pill.ok { color: var(--ok-text); background: var(--ok-soft); border-color: var(--ok-border); }
 .arc-campaign .pill.ok .pd { background: var(--ok); }
@@ -31,7 +31,7 @@
 .arc-campaign .pill.gray .pd { background: var(--muted); }
 
 /* Launch-state summary in the header */
-.arc-campaign .cstate { flex-shrink: 0; width: 210px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 14px 16px; }
+.arc-campaign .cstate { flex-shrink: 0; width: 210px; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 14px 16px; }
 .arc-campaign .csrow { display: flex; align-items: baseline; gap: 7px; }
 .arc-campaign .csv { font-family: var(--serif); font-weight: 500; font-size: 27px; letter-spacing: -0.02em; }
 .arc-campaign .csk { font-size: 11.5px; color: var(--muted); }
@@ -48,7 +48,7 @@
 .arc-campaign .ctab:hover { color: var(--text); }
 .arc-campaign .ctab.on { color: var(--text); }
 .arc-campaign .ctab.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px; }
-.arc-campaign .ctab .cnt { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: 5px; padding: 1px 6px; }
+.arc-campaign .ctab .cnt { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: var(--r-sm); padding: 1px 6px; }
 
 /* One scroll for the page, not two panes side by side.
    This used to be an `overflow: hidden` grid of two independent scrollers under
@@ -74,32 +74,32 @@
    row, and a sticky element cannot move inside its own box. */
 .arc-campaign .csnap { position: sticky; top: 56px; align-self: start; max-height: calc(100dvh - 150px); overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
 
-.arc-campaign .cerr { font-size: 12px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: 9px; padding: 9px 12px; margin-bottom: 14px; }
+.arc-campaign .cerr { font-size: 12px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: var(--r-md); padding: 9px 12px; margin-bottom: 14px; }
 
 .arc-campaign .csec { margin-bottom: 26px; }
 .arc-campaign .csh { font-family: var(--serif); font-weight: 500; font-size: 14.5px; letter-spacing: -0.01em; margin: 0 0 13px; display: flex; align-items: center; gap: 9px; }
-.arc-campaign .csh .cgc { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: 5px; padding: 1px 6px; font-weight: 400; }
-.arc-campaign .est { font-family: var(--mono); font-size: 9px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent-contrast); background: var(--accent-soft); border-radius: 5px; padding: 2px 6px; }
+.arc-campaign .csh .cgc { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border-radius: var(--r-sm); padding: 1px 6px; font-weight: 400; }
+.arc-campaign .est { font-family: var(--mono); font-size: 9px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent-contrast); background: var(--accent-soft); border-radius: var(--r-sm); padding: 2px 6px; }
 .arc-campaign .empty-note { font-size: 12.5px; color: var(--muted); line-height: 1.6; padding: 6px 0; }
 
 /* One decision for everything a review passed. Sits above the list, quiet until
    it is armed — a bulk approval should look deliberate, not like a toolbar. */
-.arc-campaign .bulkbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); padding: 10px 13px; margin-bottom: 16px; }
+.arc-campaign .bulkbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); padding: 10px 13px; margin-bottom: 16px; }
 .arc-campaign .bulkbar.confirming { align-items: flex-start; border-color: var(--accent-border); background: var(--accent-soft); }
 .arc-campaign .bulkbar .bulktext { flex: 1; min-width: 220px; font-size: 12px; color: var(--text-2); line-height: 1.5; }
 .arc-campaign .bulkbar .bulktext b { color: var(--text); }
 .arc-campaign .bulklist { list-style: none; margin: 7px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 .arc-campaign .bulklist li { font-size: 11.5px; color: var(--text); padding-left: 13px; position: relative; }
-.arc-campaign .bulklist li::before { content: ""; position: absolute; left: 3px; top: 7px; width: 4px; height: 4px; border-radius: 99px; background: var(--ok); }
+.arc-campaign .bulklist li::before { content: ""; position: absolute; left: 3px; top: 7px; width: 4px; height: 4px; border-radius: var(--r-full); background: var(--ok); }
 .arc-campaign .bulkacts { display: flex; gap: 8px; flex: none; }
 
 /* Deliverable card + approval controls */
-.arc-campaign .deliver { border: 1px solid var(--line-2); border-radius: 13px; background: var(--panel); margin-bottom: 13px; }
+.arc-campaign .deliver { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); margin-bottom: 13px; }
 
 /* The collapsed row. Everything needed to triage without opening anything:
    name, channel, whether media is attached, what the review found, status. */
-.arc-campaign .dsum { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; padding: 14px 17px; border: 0; background: none; cursor: pointer; border-radius: 13px; }
-.arc-campaign .deliver.open .dsum { border-radius: 13px 13px 0 0; }
+.arc-campaign .dsum { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; padding: 14px 17px; border: 0; background: none; cursor: pointer; border-radius: var(--r-lg); }
+.arc-campaign .deliver.open .dsum { border-radius: var(--r-lg) var(--r-lg) 0 0; }
 .arc-campaign .dsum:hover { background: var(--inset); }
 .arc-campaign .dsum:focus-visible { outline: 2px solid var(--accent-border); outline-offset: -2px; }
 .arc-campaign .dchev { flex: none; display: flex; color: var(--muted); transition: transform var(--dur-slow) var(--ease); }
@@ -107,7 +107,7 @@
 .arc-campaign .deliver.open .dchev { transform: rotate(90deg); }
 .arc-campaign .dsumhead { flex: 1; min-width: 0; }
 .arc-campaign .dsumrev { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); white-space: nowrap; }
-.arc-campaign .dsumrev i { width: 5px; height: 5px; border-radius: 99px; background: var(--muted); }
+.arc-campaign .dsumrev i { width: 5px; height: 5px; border-radius: var(--r-full); background: var(--muted); }
 .arc-campaign .dsumrev.tone-red { color: var(--red-text); }
 .arc-campaign .dsumrev.tone-red i { background: var(--red); }
 .arc-campaign .dsumrev.tone-amber { color: var(--warn-text); }
@@ -118,7 +118,7 @@
 
 .arc-campaign .dtitle { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .arc-campaign .dmeta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
-.arc-campaign .dcopy { position: relative; margin-top: 14px; padding: 15px 17px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--canvas-deep, #101013); }
+.arc-campaign .dcopy { position: relative; margin-top: 14px; padding: 15px 17px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--canvas-deep, #101013); }
 /* The draft is the thing being decided, and it was rendering as loose paragraphs
    on the page background — no edge, no label, nothing to say "this is the email".
    It gets a document surface and a caption. */
@@ -133,19 +133,19 @@
    a highlighter block over body copy fights the card for attention. */
 .arc-campaign .dmark { background: none; color: var(--text); box-shadow: inset 0 -1px 0 0 var(--warn-border); border-radius: 2px; padding: 0 1px; scroll-margin: 90px; }
 .arc-campaign .dmark.blk { box-shadow: inset 0 -1px 0 0 var(--accent-border); }
-.arc-campaign .revnote { font-size: 11px; color: var(--accent-contrast); background: var(--accent-soft); border-radius: 7px; padding: 6px 9px; margin-top: 11px; }
+.arc-campaign .revnote { font-size: 11px; color: var(--accent-contrast); background: var(--accent-soft); border-radius: var(--r-md); padding: 6px 9px; margin-top: 11px; }
 .arc-campaign .revnote b { color: var(--text); }
 
 /* A revision the operator asked for that Arc never started. Warn, not error:
    nothing is broken or lost, it just has not run — and the fix is one click. */
-.arc-campaign .dstalled { font-size: 11px; color: var(--text-2); background: var(--warn-soft); margin-top: 10px; padding: 9px 11px; border-left: 2px solid var(--warn); border-radius: 0 6px 6px 0; line-height: 1.5; }
+.arc-campaign .dstalled { font-size: 11px; color: var(--text-2); background: var(--warn-soft); margin-top: 10px; padding: 9px 11px; border-left: 2px solid var(--warn); border-radius: 0 var(--r-sm) var(--r-sm) 0; line-height: 1.5; }
 .arc-campaign .dstalled b { color: var(--text); }
 .arc-campaign .dstalled .dsq { display: block; margin-top: 5px; color: var(--muted); font-style: italic; }
 .arc-campaign .dstalled .cbtn { margin-top: 8px; }
 /* The review, above the draft it is about. One block: the verdict, what blocks
    send, and everything else folded away. It sits at the top of the card because
    the reviewer's question is "can I approve this?", not "what does this say?" */
-.arc-campaign .review { margin-top: 11px; padding: 10px 12px; border: 1px solid var(--line-2); border-left-width: 2px; border-radius: 8px; background: var(--inset); }
+.arc-campaign .review { margin-top: 11px; padding: 10px 12px; border: 1px solid var(--line-2); border-left-width: 2px; border-radius: var(--r-md); background: var(--inset); }
 .arc-campaign .review.tone-red { border-left-color: var(--accent); }
 .arc-campaign .review.tone-amber { border-left-color: var(--warn); }
 .arc-campaign .review.tone-ok { border-left-color: var(--ok); }
@@ -153,7 +153,7 @@
    is a pass. */
 .arc-campaign .review.tone-gray { border-left-color: var(--line-3); }
 .arc-campaign .rvhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.arc-campaign .rvdot { width: 6px; height: 6px; border-radius: 99px; flex: none; background: var(--muted); }
+.arc-campaign .rvdot { width: 6px; height: 6px; border-radius: var(--r-full); flex: none; background: var(--muted); }
 .arc-campaign .review.tone-red .rvdot { background: var(--accent); }
 .arc-campaign .review.tone-amber .rvdot { background: var(--warn); }
 .arc-campaign .review.tone-ok .rvdot { background: var(--ok); }
@@ -166,7 +166,7 @@
 .arc-campaign .rvlist { list-style: none; margin: 9px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .arc-campaign .rvrow { border-left: 2px solid var(--warn); }
 .arc-campaign .rvrow.blk { border-left-color: var(--accent); }
-.arc-campaign .rvbtn { display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 4px 8px 5px 9px; border-radius: 0 5px 5px 0; transition: background var(--dur-base) var(--ease); }
+.arc-campaign .rvbtn { display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 4px 8px 5px 9px; border-radius: 0 var(--r-sm) var(--r-sm) 0; transition: background var(--dur-base) var(--ease); }
 .arc-campaign .rvbtn:hover { background: var(--raised); }
 .arc-campaign .rvq { display: block; font-size: 11.5px; font-style: italic; color: var(--text); line-height: 1.45; }
 .arc-campaign .rvq::before, .arc-campaign .rvq::after { content: none; }
@@ -182,7 +182,7 @@
 .arc-campaign .rvfold > summary::before { content: "▸"; font-size: 8px; transition: transform var(--dur-base) var(--ease); }
 .arc-campaign .rvfold[open] > summary::before { transform: rotate(90deg); }
 .arc-campaign .rvfold > summary:hover { color: var(--accent-contrast); }
-.arc-campaign .rvcount { color: var(--text-2); background: var(--raised); border-radius: 4px; padding: 0 5px; }
+.arc-campaign .rvcount { color: var(--text-2); background: var(--raised); border-radius: var(--r-sm); padding: 0 5px; }
 .arc-campaign .rvbody { font-size: 11.5px; color: var(--text-2); line-height: 1.55; margin-top: 7px; }
 .arc-campaign .rvedits { margin: 7px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
 .arc-campaign .rvedits li { font-size: 11.5px; color: var(--text-2); line-height: 1.5; }
@@ -190,7 +190,7 @@
 .arc-campaign .rvfoot { font-size: 10.5px; color: var(--muted); margin-top: 8px; }
 
 .arc-campaign .dctrls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.arc-campaign .cbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; text-decoration: none; transition: var(--dur-base) var(--ease); }
+.arc-campaign .cbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 12px; cursor: pointer; text-decoration: none; transition: var(--dur-base) var(--ease); }
 .arc-campaign .cbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-campaign .cbtn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
 .arc-campaign .cbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
@@ -205,16 +205,16 @@
 .arc-campaign .ddecided .dreopen svg { width: 13px; height: 13px; }
 
 .arc-campaign .revbox { margin-top: 13px; }
-.arc-campaign .revbox textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--text); font-family: inherit; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; outline: none; }
+.arc-campaign .revbox textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); color: var(--text); font-family: inherit; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; outline: none; }
 .arc-campaign .revbox textarea:focus { border-color: var(--accent-border); }
 .arc-campaign .revbox textarea::placeholder { color: var(--muted); }
 .arc-campaign .revactions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 9px; }
 /* inline copy editing — reuses the revbox frame with a title row above the body */
 .arc-campaign .editbox { display: flex; flex-direction: column; gap: 8px; }
-.arc-campaign .editbox .editrow-title { width: 100%; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--text); font-family: inherit; font-weight: 600; font-size: 13px; padding: 8px 12px; outline: none; }
+.arc-campaign .editbox .editrow-title { width: 100%; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); color: var(--text); font-family: inherit; font-weight: 600; font-size: 13px; padding: 8px 12px; outline: none; }
 .arc-campaign .editbox .editrow-title:focus { border-color: var(--accent-border); }
 .arc-campaign .editbox .editrow-title::placeholder { color: var(--muted); }
-.arc-campaign .editbox textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); color: var(--text); font-family: inherit; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; outline: none; }
+.arc-campaign .editbox textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); color: var(--text); font-family: inherit; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; outline: none; }
 .arc-campaign .editbox textarea:focus { border-color: var(--accent-border); }
 .arc-campaign .editbox textarea::placeholder { color: var(--muted); }
 .arc-campaign .editnote { margin-right: auto; font-size: 10.5px; color: var(--muted); }
@@ -224,59 +224,59 @@
 /* Tiles keep a common width and take their height from the creative's declared
    ratio (set inline per tile), so a 9:16 reads as a 9:16 on the board. */
 .arc-campaign .mediagrid { align-items: start; }
-.arc-campaign .mediatile { position: relative; display: block; width: 100%; padding: 0; text-align: left; aspect-ratio: 4 / 3; border-radius: 9px; border: 1px solid var(--line-2); background-color: var(--inset); overflow: hidden; cursor: pointer; transition: border-color var(--dur-base) var(--ease); }
+.arc-campaign .mediatile { position: relative; display: block; width: 100%; padding: 0; text-align: left; aspect-ratio: 4 / 3; border-radius: var(--r-md); border: 1px solid var(--line-2); background-color: var(--inset); overflow: hidden; cursor: pointer; transition: border-color var(--dur-base) var(--ease); }
 .arc-campaign .mediatile:hover { border-color: var(--accent-border); }
 .arc-campaign .mediatile.flagged { border-color: var(--red-border); }
-.arc-campaign .mediatile .mtrisk { position: absolute; top: 6px; right: 30px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: var(--red-soft); border: 1px solid var(--red-border); }
+.arc-campaign .mediatile .mtrisk { position: absolute; top: 6px; right: 30px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: var(--r-sm); background: var(--red-soft); border: 1px solid var(--red-border); }
 .arc-campaign .mediatile .mtrisk svg { width: 12px; height: 12px; stroke: var(--red-text); fill: none; stroke-width: 1.9; }
 .arc-campaign .mediatile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-campaign .mediatile .mtimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 /* Zoom affordance: the tile used to look like a picture, not a control. */
-.arc-campaign .mediatile .mtzoom { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: rgba(20, 20, 24, 0.66); opacity: 0; transition: opacity var(--dur-base) var(--ease); }
+.arc-campaign .mediatile .mtzoom { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: var(--r-sm); background: rgba(20, 20, 24, 0.66); opacity: 0; transition: opacity var(--dur-base) var(--ease); }
 .arc-campaign .mediatile:hover .mtzoom, .arc-campaign .mediatile:focus-visible .mtzoom { opacity: 1; }
 .arc-campaign .mediatile .mtzoom svg { width: 12px; height: 12px; stroke: #ecebe6; fill: none; stroke-width: 1.9; }
 .arc-campaign .mediatile .mtscrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 10, 12, 0.05), rgba(10, 10, 12, 0.62)); }
-.arc-campaign .mediatile .mtbadge { position: absolute; top: 6px; left: 6px; font-family: var(--mono); font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 4px; padding: 2px 5px; }
+.arc-campaign .mediatile .mtbadge { position: absolute; top: 6px; left: 6px; font-family: var(--mono); font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; border-radius: var(--r-sm); padding: 2px 5px; }
 .arc-campaign .mediatile .mtbadge.ai { color: #201808; background: var(--accent); }
 .arc-campaign .mediatile .mtbadge.real { color: var(--text-2); background: rgba(20, 20, 24, 0.72); }
 .arc-campaign .mediatile .mttitle { position: absolute; left: 7px; right: 7px; bottom: 6px; font-size: 9.5px; font-weight: 600; color: #ecebe6; line-height: 1.3; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
 .arc-campaign .mediatile .mtlineage { display: block; font-family: var(--mono); font-size: 8px; font-weight: 500; font-style: normal; color: #cfc9ba; opacity: 0.9; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* attach approved Library media to a deliverable */
-.arc-campaign .addmedia { display: inline-flex; align-items: center; gap: 6px; height: 30px; margin-top: 10px; padding: 0 12px; border-radius: 8px; border: 1px dashed var(--line-3); background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: var(--dur-base); }
+.arc-campaign .addmedia { display: inline-flex; align-items: center; gap: 6px; height: 30px; margin-top: 10px; padding: 0 12px; border-radius: var(--r-md); border: 1px dashed var(--line-3); background: transparent; color: var(--muted); font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: var(--dur-base); }
 .arc-campaign .addmedia:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text-2); }
 .arc-campaign .addmedia svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
 .arc-campaign .addmedia:disabled { opacity: 0.5; cursor: default; }
-.arc-campaign .mediapicker { margin-top: 12px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--inset); padding: 11px 12px; }
+.arc-campaign .mediapicker { margin-top: 12px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); padding: 11px 12px; }
 .arc-campaign .mediapicker .mphead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .arc-campaign .mediapicker .mphead b { font-size: 12px; color: var(--text); }
-.arc-campaign .mediapicker .mpclose { display: grid; place-items: center; width: 24px; height: 24px; border: none; background: transparent; color: var(--muted); cursor: pointer; border-radius: 6px; }
+.arc-campaign .mediapicker .mpclose { display: grid; place-items: center; width: 24px; height: 24px; border: none; background: transparent; color: var(--muted); cursor: pointer; border-radius: var(--r-sm); }
 .arc-campaign .mediapicker .mpclose:hover { color: var(--text); background: var(--line); }
 .arc-campaign .mediapicker .mpclose svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-campaign .mpgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
 .arc-campaign .mpitem { display: flex; flex-direction: column; gap: 5px; padding: 0; border: none; background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
 .arc-campaign .mpitem:disabled { opacity: 0.5; cursor: default; }
-.arc-campaign .mpitem .mpthumb { aspect-ratio: 4 / 3; border-radius: 8px; border: 1px solid var(--line-2); background-color: var(--panel); background-size: cover; background-position: center; transition: var(--dur-base); }
+.arc-campaign .mpitem .mpthumb { aspect-ratio: 4 / 3; border-radius: var(--r-md); border: 1px solid var(--line-2); background-color: var(--panel); background-size: cover; background-position: center; transition: var(--dur-base); }
 .arc-campaign .mpitem:hover:not(:disabled) .mpthumb { border-color: var(--accent-border); }
 .arc-campaign .mpitem .mpname { font-size: 9.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Overview */
-.arc-campaign .brief { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.arc-campaign .brief { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
 .arc-campaign .briefrow { display: grid; grid-template-columns: 130px 1fr; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .arc-campaign .briefrow:last-child { border-bottom: none; }
 .arc-campaign .briefrow .bk { font-size: 11px; color: var(--muted); }
 .arc-campaign .briefrow .bv { font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
-.arc-campaign .card { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 15px 16px; }
+.arc-campaign .card { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 15px 16px; }
 .arc-campaign .rbody { font-size: 12.5px; color: var(--text-2); line-height: 1.6; margin: 0 0 9px; }
 .arc-campaign .rbody b { color: var(--text); }
 .arc-campaign .flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.arc-campaign .flag { font-size: 10.5px; color: var(--warn-text); background: var(--warn-soft); border-radius: 5px; padding: 2px 8px; }
+.arc-campaign .flag { font-size: 10.5px; color: var(--warn-text); background: var(--warn-soft); border-radius: var(--r-sm); padding: 2px 8px; }
 .arc-campaign .tools { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 11px; }
 
 /* Sources */
-.arc-campaign .srcrow { display: flex; align-items: center; gap: 12px; padding: 12px 13px; border: 1px solid var(--line-2); border-radius: 11px; background: var(--panel); margin-bottom: 8px; cursor: pointer; transition: var(--dur-base) var(--ease); }
+.arc-campaign .srcrow { display: flex; align-items: center; gap: 12px; padding: 12px 13px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); margin-bottom: 8px; cursor: pointer; transition: var(--dur-base) var(--ease); }
 .arc-campaign .srcrow:hover { border-color: var(--accent-border); }
-.arc-campaign .srck { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 7px; flex-shrink: 0; }
+.arc-campaign .srck { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 3px 7px; flex-shrink: 0; }
 .arc-campaign .srct { font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-campaign .srcd { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arc-campaign .srcrow .go { margin-left: auto; color: var(--muted); font-size: 14px; flex-shrink: 0; }
@@ -294,8 +294,8 @@
 /* Right rail */
 .arc-campaign .csnap .snsec { }
 .arc-campaign .snh { font-family: var(--serif); font-weight: 500; font-size: 12.5px; margin: 0 0 11px; color: var(--text); }
-.arc-campaign .lstate { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 14px 15px; }
-.arc-campaign .lpill { display: inline-flex; height: 22px; align-items: center; padding: 0 10px; border-radius: 7px; font-size: 11px; font-weight: 600; margin-bottom: 12px; }
+.arc-campaign .lstate { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 14px 15px; }
+.arc-campaign .lpill { display: inline-flex; height: 22px; align-items: center; padding: 0 10px; border-radius: var(--r-md); font-size: 11px; font-weight: 600; margin-bottom: 12px; }
 .arc-campaign .lpill.ok { color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); }
 .arc-campaign .lpill.amber { color: var(--warn-text); background: var(--warn-soft); border: 1px solid rgba(216, 162, 74, 0.4); }
 .arc-campaign .lpill.blue { color: var(--blue-text); background: rgba(136, 182, 216, 0.13); border: 1px solid rgba(136, 182, 216, 0.4); }
@@ -306,11 +306,11 @@
 .arc-campaign .lctrl { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
 .arc-campaign .lctrl .cbtn { flex: 1 1 auto; }
 .arc-campaign .lchint { flex-basis: 100%; font-size: 10.5px; color: var(--muted); line-height: 1.5; }
-.arc-campaign .lc-audience { flex-basis: 100%; display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--text-2); padding: 8px 10px; border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 8px; margin-bottom: 2px; }
+.arc-campaign .lc-audience { flex-basis: 100%; display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--text-2); padding: 8px 10px; border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: var(--r-md); margin-bottom: 2px; }
 .arc-campaign .lc-audience svg { width: 15px; height: 15px; flex-shrink: 0; stroke: var(--accent); fill: none; stroke-width: 1.7; }
 .arc-campaign .lc-audience.empty { border-color: var(--line-2); background: var(--inset); color: var(--muted); }
 .arc-campaign .lc-audience.empty svg { stroke: var(--muted); }
-.arc-campaign .glance { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.arc-campaign .glance { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
 .arc-campaign .glance .gl { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .arc-campaign .glance .gl:last-child { border-bottom: none; }
 .arc-campaign .glance .gk { font-size: 11.5px; color: var(--muted); }
@@ -324,15 +324,15 @@
 .arc-campaign .kpistrip.perfkpis { margin-top: 0; }
 .arc-campaign .perfnote { font-size: 11px; color: var(--muted); line-height: 1.55; margin: 13px 0 0; padding-left: 11px; border-left: 2px solid var(--line-3); }
 
-.arc-campaign .pfunnel { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 6px 15px; }
+.arc-campaign .pfunnel { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 6px 15px; }
 .arc-campaign .pfrow { display: grid; grid-template-columns: 130px 1fr 60px; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .arc-campaign .pfrow:last-child { border-bottom: none; }
 .arc-campaign .pfl { font-size: 12px; color: var(--text-2); }
-.arc-campaign .pfbar { height: 8px; border-radius: 4px; background: var(--inset); overflow: hidden; }
-.arc-campaign .pfbar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.arc-campaign .pfbar { height: 8px; border-radius: var(--r-sm); background: var(--inset); overflow: hidden; }
+.arc-campaign .pfbar i { display: block; height: 100%; background: var(--accent); border-radius: var(--r-sm); }
 .arc-campaign .pfc { font-family: var(--mono); font-size: 12px; color: var(--text); text-align: right; }
 
-.arc-campaign .pchan { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.arc-campaign .pchan { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
 .arc-campaign .pchead, .arc-campaign .pcrow { display: grid; grid-template-columns: 1.4fr 0.7fr 0.7fr 1fr 0.9fr; gap: 10px; align-items: center; padding: 10px 15px; }
 .arc-campaign .pchead { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border-bottom: 1px solid var(--line-2); }
 .arc-campaign .pchead span:not(:first-child), .arc-campaign .pcrow span:not(.pcname) { text-align: right; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
@@ -343,14 +343,14 @@
 .arc-campaign .pcspend { color: var(--muted) !important; }
 
 /* Revenue trend */
-.arc-campaign .ptrend { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 14px 16px 10px; }
+.arc-campaign .ptrend { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 14px 16px 10px; }
 .arc-campaign .ptcap { display: flex; align-items: baseline; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
 .arc-campaign .ptcap b { font-family: var(--serif); font-weight: 500; font-size: 17px; color: var(--text); letter-spacing: -0.01em; }
 .arc-campaign .ptsvg { width: 100%; height: 108px; display: block; margin-top: 8px; }
 .arc-campaign .ptaxis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-top: 2px; }
 
 /* Asset performance table */
-.arc-campaign .passets { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.arc-campaign .passets { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
 .arc-campaign .pahead, .arc-campaign .parow { display: grid; grid-template-columns: 2.4fr 1fr 1fr 0.8fr 0.8fr 0.7fr 0.7fr; gap: 10px; align-items: center; padding: 11px 15px; }
 .arc-campaign .pahead { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border-bottom: 1px solid var(--line-2); }
 .arc-campaign .pahead span:not(:first-child) { text-align: right; }
@@ -361,7 +361,7 @@
 .arc-campaign .paname i { font-family: var(--mono); font-size: 9.5px; color: var(--muted); font-style: normal; }
 .arc-campaign .parow .panum { text-align: right; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
 .arc-campaign .parow > span:nth-child(2), .arc-campaign .parow > span:nth-child(3) { display: flex; justify-content: flex-end; }
-.arc-campaign .prov { font-family: var(--mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 5px; padding: 3px 7px; white-space: nowrap; }
+.arc-campaign .prov { font-family: var(--mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; border-radius: var(--r-sm); padding: 3px 7px; white-space: nowrap; }
 .arc-campaign .prov.real { color: var(--ok-text); background: var(--ok-soft); border: 1px solid var(--ok-border); }
 .arc-campaign .prov.ai { color: var(--accent-contrast); background: var(--accent-soft); border: 1px solid var(--accent-border); }
 .arc-campaign .prov.composite { color: var(--blue-text); background: rgba(136, 182, 216, 0.13); border: 1px solid rgba(136, 182, 216, 0.4); }
@@ -369,13 +369,13 @@
 
 /* Measurement plan (pre-data honesty state) */
 .arc-campaign .mplan { display: flex; flex-direction: column; gap: 9px; }
-.arc-campaign .mprow { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 13px 15px; }
+.arc-campaign .mprow { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 13px 15px; }
 .arc-campaign .mpk { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .arc-campaign .mparea { font-size: 13px; font-weight: 600; color: var(--text); }
 .arc-campaign .mpq { font-size: 12.5px; color: var(--text-2); line-height: 1.5; margin-top: 8px; }
 .arc-campaign .mpn { font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
 .arc-campaign .lockgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.arc-campaign .lockcard { border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel); padding: 13px 14px; }
+.arc-campaign .lockcard { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); padding: 13px 14px; }
 .arc-campaign .lockt { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--text); }
 .arc-campaign .lockt svg { width: 13px; height: 13px; stroke: var(--muted); fill: none; stroke-width: 1.8; }
 .arc-campaign .lockd { font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: 7px; }
@@ -400,7 +400,7 @@
 }
 
 /* ── Performance learning loop: "What Arc learned / Next move" ───────────── */
-.arc-campaign .perflearn { border: 1px solid var(--accent-border); border-radius: 14px; background: var(--accent-soft); padding: 16px 18px; }
+.arc-campaign .perflearn { border: 1px solid var(--accent-border); border-radius: var(--r-lg); background: var(--accent-soft); padding: 16px 18px; }
 .arc-campaign .perflearn .csh { margin-top: 0; }
 .arc-campaign .perflearn .csh svg { width: 16px; height: 16px; flex: none; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .arc-campaign .perflearn-wins { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -408,7 +408,7 @@
 .arc-campaign .perflearn-wins li::before { content: ""; position: absolute; left: 3px; top: 0.62em; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 .arc-campaign .perflearn-move { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--accent-border); }
 .arc-campaign .perflearn-rec { flex: 1; min-width: 240px; color: var(--text); font-size: 13px; font-weight: 550; line-height: 1.5; }
-.arc-campaign .perflearn-cta { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 15px; border: 1px solid var(--accent-border-strong); border-radius: 9px; background: var(--accent); color: var(--on-accent); font-size: 12.5px; font-weight: 600; text-decoration: none; transition: background var(--dur-base) var(--ease), transform var(--dur-base) var(--ease); }
+.arc-campaign .perflearn-cta { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 15px; border: 1px solid var(--accent-border-strong); border-radius: var(--r-md); background: var(--accent); color: var(--on-accent); font-size: 12.5px; font-weight: 600; text-decoration: none; transition: background var(--dur-base) var(--ease), transform var(--dur-base) var(--ease); }
 .arc-campaign .perflearn-cta:hover { background: var(--accent-hover); transform: translateY(-1px); }
 .arc-campaign .perflearn-cta svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .arc-campaign .perflearn-lock { margin: 12px 0 0; color: var(--muted); font-size: 10.5px; }
@@ -417,12 +417,12 @@
    by default; the open state drops the chip's tint so the +/- lines carry the
    only colour in the block. */
 .arc-campaign .revdiff { padding: 0; }
-.arc-campaign .revdiff > summary { list-style: none; cursor: pointer; padding: 6px 9px; border-radius: 7px; transition: color var(--dur-base) var(--ease); }
+.arc-campaign .revdiff > summary { list-style: none; cursor: pointer; padding: 6px 9px; border-radius: var(--r-md); transition: color var(--dur-base) var(--ease); }
 .arc-campaign .revdiff > summary::-webkit-details-marker { display: none; }
 .arc-campaign .revdiff > summary:hover { color: var(--text-2); }
 .arc-campaign .revdiff > summary:focus-visible { outline: 2px solid var(--accent-border-strong); outline-offset: 1px; }
 .arc-campaign .revdiff[open] { background: transparent; border: 1px solid var(--line-2); }
-.arc-campaign .revdiff[open] > summary { border-bottom: 1px solid var(--line-2); border-radius: 7px 7px 0 0; }
+.arc-campaign .revdiff[open] > summary { border-bottom: 1px solid var(--line-2); border-radius: var(--r-md) var(--r-md) 0 0; }
 .arc-campaign .revdiff-body { max-height: 260px; overflow: auto; padding: 7px 0; font-family: var(--mono); font-size: 11px; line-height: 1.6; }
 .arc-campaign .revdiff-line { display: flex; gap: 8px; padding: 0 9px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .arc-campaign .revdiff-gutter { flex-shrink: 0; width: 8px; text-align: center; color: var(--muted); user-select: none; }
@@ -440,12 +440,12 @@
 .extsend .exlabel span { min-width: 0; }
 .extsend .exactions { display: inline-flex; gap: 6px; text-transform: none; letter-spacing: 0; }
 .extsend .exvalue { font-size: 12.5px; color: var(--text); }
-.extsend .exbody { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text-2); font-family: var(--mono); font-size: 10.5px; line-height: 1.5; padding: 8px 10px; }
+.extsend .exbody { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); color: var(--text-2); font-family: var(--mono); font-size: 10.5px; line-height: 1.5; padding: 8px 10px; }
 .extsend .exhint { font-size: 11.5px; color: var(--muted); margin: 0; line-height: 1.5; }
 .extsend .exerr { font-size: 11.5px; color: var(--warn-text, #d9a05b); margin: 0; }
 .extsend .exdone { color: var(--ok-text); }
 .extsend .exmarkrow { display: flex; gap: 8px; margin-top: 8px; }
-.extsend .exinput { flex: 1; border: 1px solid var(--line-2); border-radius: 8px; background: var(--inset); color: var(--text); font-size: 12px; padding: 8px 10px; }
+.extsend .exinput { flex: 1; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); color: var(--text); font-size: 12px; padding: 8px 10px; }
 
 /* Full-size media preview (the tile lightbox). Rides the shared .modal-* card,
    so only the stage and the provenance rail are defined here.
@@ -468,9 +468,9 @@
    4:3 image inside 460px of empty black, which reads as a loading state. The
    cap is on the image itself so a 9:16 vertical is judged at the same scale a
    16:9 is, and neither pushes the dialog past the fold. */
-.arc-campaign .lbstage { display: flex; align-items: center; justify-content: center; min-height: 180px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--canvas-deep, #101013); padding: 10px; overflow: hidden; }
+.arc-campaign .lbstage { display: flex; align-items: center; justify-content: center; min-height: 180px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--canvas-deep, #101013); padding: 10px; overflow: hidden; }
 /* contain, never cover — the tile crops, the full-size view must not. */
-.arc-campaign .lbimg { display: block; max-width: 100%; max-height: min(56vh, 600px); object-fit: contain; border-radius: 6px; }
+.arc-campaign .lbimg { display: block; max-width: 100%; max-height: min(56vh, 600px); object-fit: contain; border-radius: var(--r-sm); }
 .arc-campaign .lbnoprev { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .arc-campaign .lbfail { margin: 0; padding: 24px 12px; font-size: 12px; line-height: 1.55; color: var(--muted); text-align: center; max-width: 46ch; }
 
@@ -481,7 +481,7 @@
 .arc-campaign .lbwho { font-size: 11.5px; color: var(--muted); }
 .arc-campaign .lbnote { margin: -4px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
 
-.arc-campaign .lbrisk { border: 1px solid var(--red-border); border-radius: 10px; background: var(--red-soft); padding: 11px 13px; }
+.arc-campaign .lbrisk { border: 1px solid var(--red-border); border-radius: var(--r-md); background: var(--red-soft); padding: 11px 13px; }
 .arc-campaign .lbrisk b { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--red-text); }
 .arc-campaign .lbrisk b svg { width: 14px; height: 14px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-campaign .lbrisk ul { margin: 7px 0 0; padding-left: 21px; }
@@ -492,11 +492,11 @@
    state it changes and above the reference facts, because it is the reason the
    dialog is open — the provenance below is what you consult, this is what you
    came to do. */
-.arc-campaign .lbdecide { border: 1px solid var(--line-2); border-radius: 10px; background: var(--inset); padding: 11px 12px; display: flex; flex-direction: column; gap: 9px; }
+.arc-campaign .lbdecide { border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); padding: 11px 12px; display: flex; flex-direction: column; gap: 9px; }
 .arc-campaign .lbdecrow { display: flex; flex-wrap: wrap; gap: 7px; }
 .arc-campaign .lbdecrow .cbtn { height: 30px; padding: 0 11px; }
 .arc-campaign .lback { display: flex; flex-direction: column; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); }
-.arc-campaign .lback textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 12px; line-height: 1.5; padding: 7px 9px; }
+.arc-campaign .lback textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-family: inherit; font-size: 12px; line-height: 1.5; padding: 7px 9px; }
 .arc-campaign .lback textarea:focus-visible { outline: 2px solid var(--accent-border-strong); outline-offset: 1px; }
 .arc-campaign .lbdecerr { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--red-text); }
 .arc-campaign .lbdecnote { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--muted); }
@@ -506,7 +506,7 @@
 .arc-campaign .lbrow:first-child { border-top: 0; padding-top: 0; }
 .arc-campaign .lbrow dt { flex-shrink: 0; width: 84px; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
 .arc-campaign .lbrow dd { margin: 0; min-width: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); overflow-wrap: anywhere; }
-.arc-campaign .lbsec { border: 1px solid var(--line-2); border-radius: 9px; background: var(--inset); padding: 10px 12px; }
+.arc-campaign .lbsec { border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--inset); padding: 10px 12px; }
 .arc-campaign .lbsec b { display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
 .arc-campaign .lbprompt p { margin: 0; font-family: var(--mono); font-size: 11px; line-height: 1.55; color: var(--text-2); overflow-wrap: anywhere; }
 /* Same lineage read as the Library card: the tuple's first value is a dot
@@ -560,9 +560,9 @@
 .arc-campaign .rqcount { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .arc-campaign .rqcount b { color: var(--text); font-size: 13px; }
 .arc-campaign .rqname { margin-left: 12px; font-family: var(--ff-body, inherit); font-size: 12.5px; color: var(--text-2); }
-.arc-campaign .rqtrack { flex: 1; height: 2px; background: var(--line-3); border-radius: 99px; overflow: hidden; }
+.arc-campaign .rqtrack { flex: 1; height: 2px; background: var(--line-3); border-radius: var(--r-full); overflow: hidden; }
 .arc-campaign .rqtrack i { display: block; height: 100%; background: var(--accent); transition: width var(--dur-slower) var(--ease); }
-.arc-campaign .rqclose { display: flex; padding: 6px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 7px; }
+.arc-campaign .rqclose { display: flex; padding: 6px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: var(--r-md); }
 .arc-campaign .rqclose:hover { color: var(--text); background: var(--inset); }
 .arc-campaign .rqclose svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 
@@ -578,22 +578,22 @@
 .arc-campaign .rqfoot { flex: none; border-top: 1px solid var(--line-2); background: var(--panel); padding: 13px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .arc-campaign .rqacts { display: flex; gap: 8px; flex-wrap: wrap; }
 .arc-campaign .rqacts .cbtn { height: 34px; }
-.arc-campaign .rqfoot kbd { font-family: var(--mono); font-size: 9px; line-height: 1; padding: 3px 4px; margin-left: 2px; border-radius: 4px; border: 1px solid var(--line-2); background: var(--raised); color: var(--muted); }
+.arc-campaign .rqfoot kbd { font-family: var(--mono); font-size: 9px; line-height: 1; padding: 3px 4px; margin-left: 2px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--raised); color: var(--muted); }
 .arc-campaign .cbtn.gold kbd { border-color: rgba(32, 24, 8, 0.28); background: rgba(32, 24, 8, 0.12); color: #201808; }
 .arc-campaign .rqnav { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .arc-campaign .rqhint { font-family: var(--mono); font-size: 10px; color: var(--muted); }
-.arc-campaign .rqstep { display: flex; padding: 6px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--text-2); cursor: pointer; }
+.arc-campaign .rqstep { display: flex; padding: 6px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--text-2); cursor: pointer; }
 .arc-campaign .rqstep:hover:not(:disabled) { border-color: var(--accent-border); color: var(--text); }
 .arc-campaign .rqstep:disabled { opacity: 0.35; cursor: default; }
 .arc-campaign .rqstep svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .arc-campaign .rqrevise { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
-.arc-campaign .rqrevise textarea { flex: 1; resize: vertical; font: inherit; font-size: 12.5px; color: var(--text); background: var(--inset); border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 10px; }
+.arc-campaign .rqrevise textarea { flex: 1; resize: vertical; font: inherit; font-size: 12.5px; color: var(--text); background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 8px 10px; }
 .arc-campaign .rqrevise textarea:focus { outline: none; border-color: var(--accent-border); }
 
 .arc-campaign .rqdone { margin: auto; text-align: center; max-width: 420px; padding: 0 24px; }
 .arc-campaign .rqdone b { display: block; font-family: var(--serif); font-weight: 500; font-size: 19px; color: var(--text); margin-bottom: 8px; }
 .arc-campaign .rqdone p { font-size: 12.5px; color: var(--text-2); line-height: 1.6; margin-bottom: 18px; }
-.arc-campaign .rqtick { display: inline-flex; padding: 11px; border-radius: 99px; background: var(--ok-soft); color: var(--ok-text); margin-bottom: 14px; }
+.arc-campaign .rqtick { display: inline-flex; padding: 11px; border-radius: var(--r-full); background: var(--ok-soft); color: var(--ok-text); margin-bottom: 14px; }
 .arc-campaign .rqtick svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; }
 
 @media (max-width: 720px) {
@@ -609,12 +609,12 @@
 .arc-campaign .rvrow:not(.blk) .rvfix { border-left-color: var(--warn); }
 .arc-campaign .rvfixlabel { display: block; font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
 .arc-campaign .rvfixrow { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
-.arc-campaign .rvfixinput { flex: 1; min-width: 160px; height: 30px; padding: 0 9px; font: inherit; font-size: 12px; color: var(--text); background: var(--raised); border: 1px solid var(--line-2); border-radius: 7px; }
+.arc-campaign .rvfixinput { flex: 1; min-width: 160px; height: 30px; padding: 0 9px; font: inherit; font-size: 12px; color: var(--text); background: var(--raised); border: 1px solid var(--line-2); border-radius: var(--r-md); }
 .arc-campaign .rvfixinput::placeholder { color: var(--muted); }
 .arc-campaign .rvfixinput:focus { outline: none; border-color: var(--accent-border); }
 .arc-campaign .rvfixgo { height: 30px; flex: none; font-size: 11.5px; }
 .arc-campaign .rvfixnote { font-size: 10.5px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
-.arc-campaign .rvfixnote code { font-family: var(--mono); font-size: 10px; color: var(--text-2); background: var(--raised); border-radius: 4px; padding: 1px 4px; }
+.arc-campaign .rvfixnote code { font-family: var(--mono); font-size: 10px; color: var(--text-2); background: var(--raised); border-radius: var(--r-sm); padding: 1px 4px; }
 
 /* The two halves of the review, now split around the draft. The verdict is the
    answer and keeps the accent edge; the detail below is the argument, and needs
@@ -647,7 +647,7 @@
 
 /* The draft — the one surface, because it is the thing being decided. */
 .arc-campaign .rqcard .dcopy {
-  margin-top: 22px; padding: 22px 24px; border: 0; border-radius: 12px;
+  margin-top: 22px; padding: 22px 24px; border: 0; border-radius: var(--r-lg);
   background: var(--surface-soft, #1a1a1e);
 }
 .arc-campaign .rqcard .dcopy::before { margin-bottom: 14px; letter-spacing: .02em; }

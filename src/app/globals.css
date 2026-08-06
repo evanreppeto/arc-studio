@@ -22,6 +22,26 @@
   --dur-slow: 200ms;            /* panels, disclosure, larger surfaces */
   --dur-slower: 250ms;          /* full-surface fades, overlays */
 
+  /* Corner radius — four steps, replacing every integer from 2px to 16px.
+     847 hand-typed declarations meant 847 individual judgement calls; nobody can
+     point at a 9px corner beside an 8px one, which is exactly why it could only
+     accumulate, never be reviewed. Each value is the dominant member of its
+     cluster, so this codifies the current shape language rather than restyling
+     it — the mid step carries half the app and shifts by at most 1px on 328 of
+     its 413 declarations. 12px with 6px of padding also makes --r-sm the
+     geometrically correct inner radius for a menu item inside a menu.
+     Held out on purpose:
+       - 2px/3px (24 decls) — tick marks, 3px indicator bars, focus-ring corners.
+         Near-square by design; rounding them to 6px would visibly inflate them,
+         and a scale needing an --r-xs for 24 uses is not a scale.
+       - `50%` (72 decls) — NOT folded into --r-full. They agree only on a square
+         element: on a rectangle `50%` is an ellipse and `999px` is a stadium.
+         Different intent, so it stays spelled as a circle. */
+  --r-sm: 6px;                  /* chips, keyboard hints, toggles, menu items */
+  --r-md: 8px;                  /* buttons, nav rows, thumbnails, inputs */
+  --r-lg: 12px;                 /* cards, panels, menus, modals */
+  --r-full: 999px;              /* pills and tracks — one spelling, not four */
+
   /* Surface tiers — warm near-black, stepping up for separation */
   --canvas: #16161a;            /* page background, warm obsidian */
   --canvas-deep: #101013;       /* gutter / behind-rail void */
@@ -359,7 +379,7 @@ time,
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--r-full);
   border: 3px solid transparent;
   background-clip: padding-box;
 }
@@ -942,7 +962,7 @@ time,
     position: relative;
     isolation: isolate;
     overflow: visible;
-    border-radius: 9999px;
+    border-radius: var(--r-full);
     background: transparent;
   }
   .arc-persona[data-state="listening"] {
@@ -980,7 +1000,7 @@ time,
     position: absolute;
     inset: 6%;
     z-index: 0;
-    border-radius: 9999px;
+    border-radius: var(--r-full);
     background: radial-gradient(
       circle at 50% 42%,
       color-mix(in srgb, var(--arc-persona-accent) 72%, transparent) 0%,
@@ -1018,7 +1038,7 @@ time,
     position: absolute;
     inset: -42%;
     z-index: 0;
-    border-radius: 9999px;
+    border-radius: var(--r-full);
     background: radial-gradient(
       circle at 50% 46%,
       color-mix(in srgb, var(--arc-persona-accent) 26%, transparent) 0%,
@@ -1074,7 +1094,7 @@ time,
 /* Non-gradient skeleton for not-yet-streamed content (replaces gradient-text shimmer) */
 .arc-skel {
   height: 11px;
-  border-radius: 5px;
+  border-radius: var(--r-sm);
   background: var(--surface-inset);
   position: relative;
   overflow: hidden;
@@ -1159,7 +1179,7 @@ time,
 }
 .arc-shimmer-bar {
   height: 11px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: linear-gradient(90deg, var(--surface-inset) 0%, var(--surface-raised) 50%, var(--surface-inset) 100%);
   background-size: 200% 100%;
   animation: text-shimmer 1.6s linear infinite;
@@ -1209,7 +1229,7 @@ time,
   position: absolute;
   width: 46rem;
   height: 46rem;
-  border-radius: 9999px;
+  border-radius: var(--r-full);
   background: radial-gradient(circle at center, var(--accent), transparent 68%);
   filter: blur(90px);
   opacity: 0.05;
@@ -1278,7 +1298,7 @@ time,
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 9999px;
+  border-radius: var(--r-full);
   background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
   opacity: 0.3;
   animation: arc-tstep-halo 1.8s ease-in-out infinite;
@@ -1287,7 +1307,7 @@ time,
   position: relative;
   width: 7px;
   height: 7px;
-  border-radius: 9999px;
+  border-radius: var(--r-full);
   background: var(--accent);
   box-shadow: 0 0 7px var(--accent-soft);
   animation: arc-tstep-core 1.8s ease-in-out infinite;
