@@ -390,6 +390,9 @@ export type StartStudioVideoInput = {
   style?: string;
   format: string;
   campaignId: string;
+  /** A still to animate. Without it Veo invents a scene from the prompt, which
+   *  is what "animate this image" used to do — silently ignoring the image. */
+  sourceImageUrl?: string;
 };
 
 export type StartStudioVideoResult =
@@ -428,6 +431,17 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
       videoModel: settings.videoModel,
     });
     const aspectRatio = videoAspectFor(input.format);
+
+    // Fetched before metering: a bad URL should cost nothing.
+    let startFrame: { bytes: Buffer; contentType: string } | undefined;
+    const frameUrl = (input.sourceImageUrl ?? "").trim();
+    if (frameUrl) {
+      assertPublicHttpUrl(frameUrl);
+      const frameRes = await fetch(frameUrl);
+      if (!frameRes.ok) return { ok: false, code: "failed", error: `Couldn't read that image (${frameRes.status}).` };
+      startFrame = { bytes: Buffer.from(await frameRes.arrayBuffer()), contentType: frameRes.headers.get("content-type") ?? "image/png" };
+    }
+
     // Duration is deliberately NOT exposed: only the model's own default is
     // verified against live Veo, and an unverified knob is how this path shipped
     // broken the first time.
@@ -441,7 +455,7 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
         costTier: access.costTier,
         context: { surface: "studio", engine: "video" },
       },
-      () => provider.startVideo({ prompt: hardenImagePrompt(prompt, { style: input.style }), aspectRatio }),
+      () => provider.startVideo({ prompt: hardenImagePrompt(prompt, { style: input.style }), aspectRatio, image: startFrame }),
     );
     if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
     const start = metered.result;

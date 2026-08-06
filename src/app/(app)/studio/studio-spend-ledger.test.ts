@@ -76,3 +76,49 @@ describe("spend is recorded before storage", () => {
     expect(storeAt).toBeGreaterThan(recordAt);
   });
 });
+
+/**
+ * "Animate" means animate THIS picture.
+ *
+ * Studio has offered "Add gentle motion to this image" since the quick-ask row
+ * existed, and `startStudioVideo` had no way to send an image — so Veo invented a
+ * clip from the words and the photo the operator was pointing at was discarded.
+ * Same shape as the missing image edit: point at something you have, get
+ * something unrelated generated from scratch.
+ *
+ * Veo takes a starting image OR a source video, never both; only the image case
+ * is wired, because extending an existing clip is a different feature and
+ * pretending otherwise is how "video editing" would get claimed without existing.
+ */
+describe("animate uses the picture on the canvas", () => {
+  const actions = readFileSync(join(__dirname, "actions.ts"), "utf8");
+  const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+  const gemini = readFileSync(join(__dirname, "..", "..", "..", "lib", "media", "gemini.ts"), "utf8");
+
+  it("passes the selected photo as the start frame", () => {
+    expect(view).toMatch(/sourceImageUrl: bg\?\.url/);
+    expect(actions).toMatch(/image: startFrame/);
+  });
+
+  it("hands Veo the image, not just the prompt", () => {
+    const startVideo = gemini.match(/async startVideo[\s\S]*?\n    \},/)?.[0] ?? "";
+    expect(startVideo).toMatch(/input\.image/);
+    expect(startVideo).toMatch(/imageBytes/);
+  });
+
+  it("fetches the frame before metering — a bad URL must cost nothing", () => {
+    const fetchAt = actions.indexOf("const frameUrl = (input.sourceImageUrl");
+    const meterAt = actions.indexOf("estimatedUnits: MEDIA_UNITS.video");
+    expect(fetchAt).toBeGreaterThan(-1);
+    expect(meterAt).toBeGreaterThan(fetchAt);
+  });
+
+  it("guards the operator-supplied frame URL", () => {
+    const block = actions.slice(actions.indexOf("const frameUrl = (input.sourceImageUrl"), actions.indexOf("estimatedUnits: MEDIA_UNITS.video"));
+    expect(block).toMatch(/assertPublicHttpUrl\(frameUrl\)/);
+  });
+
+  it("stops promising the photo is ignored", () => {
+    expect(view).not.toMatch(/it does not use the selected photo/);
+  });
+});
