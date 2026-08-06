@@ -56,6 +56,51 @@ describe("Higgsfield media provider", () => {
     expect(media).toMatchObject({ model: "nano_banana_pro", jobId: "job-1", contentType: "image/png" });
   });
 
+  it("records the model the server ACTUALLY ran, not the one we asked for", async () => {
+    // Observed live 2026-08-06: a submit for `nano_banana_pro` came back
+    // reporting `nano_banana_2`. Provenance has to say what rendered the asset,
+    // or an approval card credits a model that never touched it.
+    scriptMcp([
+      { jobs: [{ index: 0, job_id: "job-1", status: "pending" }] },
+      { jobs: [{ index: 0, job_id: "job-1", status: "completed", model: "nano_banana_2", result_url: "https://cdn.example/i.png" }], all_terminal: true },
+    ]);
+    const media = await createHiggsfieldMediaProvider("oat_x", { model: "nano_banana_pro" }).generateImage({ prompt: "x" });
+    expect(media.model).toBe("nano_banana_2");
+  });
+
+  it("waits long enough for a real render", async () => {
+    // MEASURED: a real nano_banana_pro image took ~75s. The first version of
+    // this provider gave up at 40s and would have abandoned every one — the
+    // mocks answered instantly, so nothing caught it until a live run did.
+    vi.useFakeTimers();
+    try {
+      const pending = { jobs: [{ index: 0, job_id: "job-1", status: "in_progress" }], all_terminal: false, poll_after_seconds: 10 };
+      const done = { jobs: [{ index: 0, job_id: "job-1", status: "completed", result_url: "https://cdn.example/i.png" }], all_terminal: true };
+      scriptMcp([{ jobs: [{ index: 0, job_id: "job-1", status: "pending" }] }, pending, pending, pending, done]);
+      const promise = createHiggsfieldMediaProvider("oat_x", { model: "soul_v2" }).generateImage({ prompt: "x" });
+      await vi.advanceTimersByTimeAsync(45_000);
+      await expect(promise).resolves.toMatchObject({ jobId: "job-1" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names the job when it gives up, because the credits are already spent", async () => {
+    vi.useFakeTimers();
+    try {
+      scriptMcp([
+        { jobs: [{ index: 0, job_id: "job-slow", status: "pending" }] },
+        { jobs: [{ index: 0, job_id: "job-slow", status: "in_progress" }], all_terminal: false, poll_after_seconds: 10 },
+      ]);
+      const promise = createHiggsfieldMediaProvider("oat_x", { model: "soul_v2", imageBudgetMs: 5_000 }).generateImage({ prompt: "x" });
+      const assertion = expect(promise).rejects.toThrow(/job-slow/);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("never lets the server spend the customer's free-trial allowance on its own", async () => {
     // Omitting use_unlim returns `unlim_choice` — a question for a human. An
     // unattended server action has nobody to ask, so the generation would stall
@@ -87,9 +132,9 @@ describe("Higgsfield media provider", () => {
     try {
       const running = { jobs: [{ index: 0, job_id: "job-1", status: "queued" }], all_terminal: false };
       scriptMcp([{ jobs: [{ index: 0, job_id: "job-1" }] }, running]);
-      const promise = createHiggsfieldMediaProvider("oat_x", { model: "soul_v2" }).generateImage({ prompt: "x" });
+      const promise = createHiggsfieldMediaProvider("oat_x", { model: "soul_v2", imageBudgetMs: 5_000 }).generateImage({ prompt: "x" });
       const assertion = expect(promise).rejects.toThrow(/still rendering/);
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(30_000);
       await assertion;
     } finally {
       vi.useRealTimers();

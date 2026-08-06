@@ -111,13 +111,28 @@ parameter on a call we make — not only a required argument named in Arc's prom
   The old `gemini-media` gate was removed from Studio and the media routes: it
   refused a workspace whose only connected engine is Higgsfield.
 
-**Contract confidence.** Verified live on 2026-08-06: `jobs_wait` (exact shape),
-`show_generations`, `generate_image` `get_cost`, `models_explore`, and the batch
-*failure* envelope. The batch **success** envelope could not be probed without
-spending credits (a batch submit rejects `get_cost`), so `parseSubmittedJobs`
-accepts the plausible spellings and **throws**, naming what it received, rather
-than returning an empty list for a generation the customer has already paid for.
-**One real generation still has to run before this path is called proven.**
+**Contract confidence — a real generation was run on 2026-08-06** (job
+`13af5a4f-85db-470d-8b40-1915fe0b6b30`, `nano_banana_pro`, 2 credits). Every
+envelope is now recorded from the live server and pinned in the tests. Three
+things the run found that no mock could:
+
+1. **It took ~75 seconds** (`pending` → `in_progress` → `completed`). The
+   provider waited 40 and would have abandoned every real render. The budget is
+   now caller-supplied, defaulting to 50s — which still does not fit every
+   model, so **`maxDuration = 60` on the Studio route is the binding
+   constraint**, and expiry now names the job id so the paid-for render can be
+   found rather than silently lost.
+2. **`poll_after_seconds: 10`** rides along with `timed_out: true` on an expired
+   long poll. The loop honours the server's cadence instead of a made-up one.
+3. **The server substituted the model** — a submit for `nano_banana_pro` reported
+   back as `nano_banana_2`. Provenance records what actually ran, not what was
+   asked for, or an approval card credits a model that never touched the asset.
+
+**The remaining gap is architectural, not contractual:** a synchronous server
+action cannot reliably hold a 75s render. Higgsfield images need the
+start-then-poll path the Veo video flow already uses (submit → job id + signed
+ticket → client polls). Until then a slow model returns the "still rendering"
+message above rather than an asset.
 
 **Still not supported on Higgsfield**, both reported honestly rather than
 silently degraded:
@@ -187,7 +202,7 @@ Independent of the picker, bumping FAST to Sonnet 5 is a one-line quality win.
 | 2. Media model | per-category model across BOTH engines | Auto (Gemini) | ✅ done — one resolver, both engines execute app-side |
 | 3. Reasoning | Arc Auto / Spark / Forge | Auto | ✅ done — composer pill |
 
-**Do next:** run ONE real Higgsfield generation from Studio and confirm the
-submit envelope parses (see "Contract confidence" above) — it is the last
-inferred piece. After that: `media_upload`, which unlocks Higgsfield image edits
-and photo-to-video, the two capabilities that currently refuse with a reason.
+**Do next:** move Higgsfield images onto start-then-poll, reusing the video
+flow's shape — that is what makes a 75s render land as an asset instead of a
+message. Then `media_upload`, which unlocks Higgsfield image edits and
+photo-to-video, the two capabilities that currently refuse with a reason.

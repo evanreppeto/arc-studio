@@ -30,8 +30,18 @@ export type HiggsfieldJobState = {
   error?: string;
 };
 
-export type HiggsfieldWait = { jobs: HiggsfieldJobState[]; allTerminal: boolean };
+export type HiggsfieldWait = {
+  jobs: HiggsfieldJobState[];
+  allTerminal: boolean;
+  /** The server's own requested gap before polling again, in seconds. It sends
+   *  `poll_after_seconds: 10` alongside `timed_out: true` on an expired long
+   *  poll; honouring it beats a cadence we invented. */
+  pollAfterSeconds?: number;
+};
 
+// Observed live: a fresh submit reports `pending`, then `in_progress`, then
+// `completed`. Only the last is done — an unknown status is treated as still
+// running, because calling a live job finished loses the result.
 const TERMINAL = new Set(["completed", "failed", "canceled", "cancelled", "lookup_failed"]);
 export function isTerminalStatus(status: string): boolean {
   return TERMINAL.has(status.toLowerCase());
@@ -57,14 +67,15 @@ function str(value: unknown): string | undefined {
 /**
  * Pull the submitted jobs out of a `*_batch` response.
  *
- * ⚠️ This is the ONE part of the contract that could not be confirmed without
- * spending the customer's credits — a batch submit has no `get_cost` preflight
- * (its schema forbids the field), so the success envelope was inferred from
- * `jobs_wait`, which consumes exactly `{index, job_id}` and is the documented
- * next step. The parser therefore accepts the plausible spellings AND throws a
- * contract error naming what it actually received. It must not return an empty
- * list on an unrecognised envelope: that would read as "nothing submitted" for a
- * generation the customer has already been charged for.
+ * VERIFIED by a real (paid) submit on 2026-08-06:
+ *   {"jobs":[{"index":0,"job_id":"…","status":"pending","adjustments":{…}}],
+ *    "submitted_count":1,"failed_count":0}
+ *
+ * The lenient spellings stay: they cost nothing and this is the one envelope
+ * with a single confirming sample. What matters is the failure mode — on an
+ * unrecognised envelope this THROWS naming what it received, and never returns
+ * an empty list, which would read as "nothing submitted" for a generation the
+ * customer has already been charged for.
  */
 export function parseSubmittedJobs(value: unknown): HiggsfieldJob[] {
   const root = record(value);
@@ -104,7 +115,8 @@ export function parseWait(value: unknown): HiggsfieldWait {
   // Trust the server's own verdict when it gives one; otherwise derive it, so a
   // missing flag cannot turn a finished job into an infinite poll.
   const allTerminal = typeof root.all_terminal === "boolean" ? root.all_terminal : jobs.every((j) => isTerminalStatus(j.status));
-  return { jobs, allTerminal };
+  const pollAfter = typeof root.poll_after_seconds === "number" ? root.poll_after_seconds : undefined;
+  return { jobs, allTerminal, ...(pollAfter !== undefined ? { pollAfterSeconds: pollAfter } : {}) };
 }
 
 async function call(token: string, name: string, args: Record<string, unknown>, timeoutMs?: number): Promise<unknown> {

@@ -45,6 +45,15 @@ describe("parseWait (recorded live response)", () => {
     expect(parseWait(LIVE_WAIT).jobs[1]).toMatchObject({ status: "lookup_failed", error: "Generation not found" });
   });
 
+  it("carries the server's own poll cadence", () => {
+    // VERIFIED: an expired long poll answers `timed_out: true` with
+    // `poll_after_seconds: 10`. Inventing our own interval instead would
+    // hammer the API for the whole render.
+    const expired = { jobs: [{ index: 0, job_id: "j", status: "in_progress", type: "image", model: "nano_banana_2" }], all_terminal: false, timed_out: true, poll_after_seconds: 10 };
+    expect(parseWait(expired).pollAfterSeconds).toBe(10);
+    expect(parseWait(LIVE_WAIT).pollAfterSeconds).toBeUndefined();
+  });
+
   it("derives all_terminal when the server omits it, so a finished job can't poll forever", () => {
     const wait = parseWait({ jobs: [{ index: 0, job_id: "j", status: "completed" }] });
     expect(wait.allTerminal).toBe(true);
@@ -60,12 +69,25 @@ describe("parseWait (recorded live response)", () => {
   });
 });
 
-describe("parseSubmittedJobs", () => {
-  it("reads the shape jobs_wait consumes", () => {
-    expect(parseSubmittedJobs({ jobs: [{ index: 0, job_id: "abc" }] })).toEqual([{ index: 0, jobId: "abc" }]);
+/** VERIFIED — a real (paid) `generate_image_batch` submit, 2026-08-06. */
+const LIVE_SUBMIT = {
+  jobs: [{ index: 0, job_id: "13af5a4f-85db-470d-8b40-1915fe0b6b30", status: "pending", adjustments: { "params.resolution": { requested: "(unset)", used: "1k" } } }],
+  submitted_count: 1,
+  failed_count: 0,
+};
+
+describe("parseSubmittedJobs (recorded live response)", () => {
+  it("reads the real batch-submit envelope", () => {
+    expect(parseSubmittedJobs(LIVE_SUBMIT)).toEqual([{ index: 0, jobId: "13af5a4f-85db-470d-8b40-1915fe0b6b30" }]);
   });
 
-  it("accepts the plausible spellings, since this envelope could not be probed for free", () => {
+  it("treats the submit's own `pending` status as not finished", () => {
+    // A fresh submit reports `pending`, then `in_progress`, then `completed`.
+    expect(isTerminalStatus("pending")).toBe(false);
+    expect(isTerminalStatus("in_progress")).toBe(false);
+  });
+
+  it("accepts the plausible spellings — one confirming sample is not a spec", () => {
     expect(parseSubmittedJobs({ results: [{ index: 3, id: "abc" }] })).toEqual([{ index: 3, jobId: "abc" }]);
     expect(parseSubmittedJobs([{ jobId: "abc" }])).toEqual([{ index: 0, jobId: "abc" }]);
   });
