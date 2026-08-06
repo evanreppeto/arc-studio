@@ -169,3 +169,34 @@ describe("Higgsfield media provider", () => {
     await expect(createHiggsfieldMediaProvider("oat_x", { model: "soul_v2" }).generateImage({ prompt: "x" })).rejects.toThrow(/502/);
   });
 });
+
+describe("start-then-poll image", () => {
+  it("hands back an operation name instead of blocking on a 75s render", async () => {
+    const calls = scriptMcp([{ jobs: [{ index: 0, job_id: "img-7", status: "pending" }] }]);
+    const start = await createHiggsfieldMediaProvider("oat_x", { model: "soul_v2" }).startImage!({ prompt: "x", aspectRatio: "1:1" });
+    expect(calls[0]?.name).toBe("generate_image_batch");
+    expect(start).toMatchObject({ operationName: "img-7", jobId: "img-7", model: "soul_v2" });
+  });
+
+  it("reports an unfinished image as running rather than an error", async () => {
+    scriptMcp([{ jobs: [{ index: 0, job_id: "img-7", status: "in_progress" }], all_terminal: false }]);
+    const poll = await createHiggsfieldMediaProvider("oat_x", { model: "soul_v2" }).pollImage!("img-7");
+    expect(poll.status).toBe("running");
+  });
+
+  it("returns the bytes and the model that actually ran once it finishes", async () => {
+    scriptMcp([{ jobs: [{ index: 0, job_id: "img-7", status: "completed", model: "nano_banana_2", result_url: "https://cdn.example/i.png" }], all_terminal: true }]);
+    const poll = await createHiggsfieldMediaProvider("oat_x", { model: "nano_banana_pro" }).pollImage!("img-7");
+    expect(poll).toMatchObject({ status: "done", model: "nano_banana_2", jobId: "img-7", contentType: "image/png" });
+  });
+
+  it("surfaces a failed job's own reason on the poll", async () => {
+    scriptMcp([{ jobs: [{ index: 0, job_id: "img-7", status: "failed", error: "content policy" }], all_terminal: true }]);
+    await expect(createHiggsfieldMediaProvider("oat_x", { model: "soul_v2" }).pollImage!("img-7")).rejects.toThrow(/content policy/);
+  });
+
+  it("is absent on Gemini, which is how a caller knows to block instead", async () => {
+    const { createGeminiMediaProvider } = await import("../gemini");
+    expect(createGeminiMediaProvider("key").startImage).toBeUndefined();
+  });
+});

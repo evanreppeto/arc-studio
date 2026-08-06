@@ -60,8 +60,28 @@ export type VideoPoll =
   | { status: "running" }
   | { status: "done"; bytes: Buffer; contentType: string };
 
+/**
+ * A started image job. Present only on engines where an image is a job rather
+ * than an inline response — see `MediaProvider.startImage`.
+ */
+export type ImageStart = { operationName: string; model: string; jobId: string };
+export type ImagePoll =
+  | { status: "running" }
+  | { status: "done"; bytes: Buffer; contentType: string; model: string; jobId: string };
+
 export interface MediaProvider {
   generateImage(input: ImageGenInput): Promise<GeneratedMedia>;
+  /**
+   * Start an image job, for engines where images are asynchronous.
+   *
+   * OPTIONAL because the two engines genuinely differ, and pretending otherwise
+   * is what broke: Gemini returns bytes inline in a second or two, while a real
+   * Higgsfield image measured ~75s — longer than a serverless request may live.
+   * A caller that finds these present should submit and poll (as the video flow
+   * already does); one that doesn't can call generateImage and block.
+   */
+  startImage?(input: ImageGenInput): Promise<ImageStart>;
+  pollImage?(operationName: string): Promise<ImagePoll>;
   /** Edit an existing image. Throws ImageEditUnsupportedError on generate-only
    *  models, so the caller can say which model and why rather than "failed". */
   editImage(input: ImageEditInput): Promise<GeneratedMedia>;

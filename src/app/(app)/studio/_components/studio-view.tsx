@@ -1124,7 +1124,17 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             <div className="srcempty">No approved media yet. Upload real photos in the <a href="/library">Library</a> and mark them available to Arc.</div>
           ) : null}
           {srcTab === "ai" && (
-            <div className="enginenote"><b>AI generation runs on Higgsfield.</b> Image, video, reframe, upscale, cut-out &amp; motion all come from the connected engine.<span className="ed"><i />Connector off — enable in Settings → Connectors</span></div>
+            // The "Connector off" chip here used to be hardcoded, so it went on
+            // saying off after Higgsfield was connected AND after the app could
+            // execute it. Status that is painted rather than read is worse than
+            // no status: it argues with the picker two panels over.
+            <div className="enginenote">
+              <b>AI generation runs on {mediaEngines.higgsfield ? "Higgsfield and the built-in engine" : "the built-in engine"}.</b>{" "}
+              Pick the model for a render with the Model control beside the generate buttons.
+              {!mediaEngines.higgsfield && !mediaEngines.gemini ? (
+                <span className="ed"><i />No engine connected — enable one in Settings → Connections</span>
+              ) : null}
+            </div>
           )}
           <div className="legend">
             <span className="lg pv real">Real media</span><span className="lg pv comp">Composite</span><span className="lg pv ai">AI-generated</span><span className="lg pv upload">Imported</span><span className="lg pv stock">Stock</span>

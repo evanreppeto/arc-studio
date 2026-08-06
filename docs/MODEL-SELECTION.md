@@ -128,11 +128,22 @@ things the run found that no mock could:
    back as `nano_banana_2`. Provenance records what actually ran, not what was
    asked for, or an approval card credits a model that never touched the asset.
 
-**The remaining gap is architectural, not contractual:** a synchronous server
-action cannot reliably hold a 75s render. Higgsfield images need the
-start-then-poll path the Veo video flow already uses (submit → job id + signed
-ticket → client polls). Until then a slow model returns the "still rendering"
-message above rather than an asset.
+**Closed 2026-08-06: images are start-then-poll.** `MediaProvider` gained optional
+`startImage` / `pollImage` — optional because the engines genuinely differ, and
+pretending otherwise is what broke. Gemini answers inline in a second; Higgsfield
+answers with a job. `POST /api/v1/arc/media/generate-image` now mirrors the video
+route: `status: "running"` + an operation name on a job-based engine, a poll mode
+keyed on `operation_name` (+ the `engine` that started it), and ONE shared
+`landImage` tail so the inline and polled paths cannot drift into writing
+different Library rows. The runner's `generate_image` tool polls it, same shape
+as `generate_video`. A poll is never metered — the render is already paid for,
+and billing per "is it done yet" would be charging for the question.
+
+⚠️ **Studio has no raw-image generate control at all.** Its "AI" source tab is a
+note, not a button, and `generateStudioAsset({engine: "image"})` has no UI caller
+— Studio only composes (local render) and edits (which Higgsfield refuses). So
+the image path's real consumer is Arc via the media route. The Studio *video*
+path does run on Higgsfield, and the Model picker steers both.
 
 **Still not supported on Higgsfield**, both reported honestly rather than
 silently degraded:

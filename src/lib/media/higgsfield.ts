@@ -115,6 +115,28 @@ export function createHiggsfieldMediaProvider(accessToken: string, opts: { model
       return { bytes, contentType, model: state.model ?? model, jobId: state.jobId };
     },
 
+    // Images here are jobs, and a real one measured ~75s — longer than a
+    // serverless request may live. Callers that can submit-and-poll should:
+    // generateImage above still works, but it can only ever wait as long as the
+    // request that called it.
+    async startImage(input) {
+      const job = await submitHiggsfieldImage(accessToken, { model, prompt: input.prompt, aspectRatio: input.aspectRatio });
+      return { operationName: job.jobId, model, jobId: job.jobId };
+    },
+
+    async pollImage(operationName) {
+      const wait = await waitForHiggsfieldJobs(accessToken, [{ index: 0, jobId: operationName }], 0);
+      const state = wait.jobs[0];
+      if (!state || !isTerminalStatus(state.status)) return { status: "running" };
+      if (state.status !== "completed" || !state.resultUrl) {
+        throw new HiggsfieldError(failureMessage(state, "Higgsfield returned no image."), "tool");
+      }
+      const { bytes, contentType } = await download(state.resultUrl);
+      // The server's model, not the requested one — it substitutes (observed:
+      // nano_banana_pro answered as nano_banana_2).
+      return { status: "done", bytes, contentType, model: state.model ?? model, jobId: state.jobId };
+    },
+
     async editImage() {
       // Not a capability gap we can paper over: Higgsfield edits take a
       // `media_id` from its own upload endpoint, not a URL or bytes, so editing

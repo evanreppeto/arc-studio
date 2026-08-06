@@ -7,6 +7,11 @@ import { textResult, type StepFn } from "./helpers";
 
 const VIDEO_POLL_MS = 10_000;
 const VIDEO_MAX_POLLS = 36; // ~6 min
+// Images are usually inline, but on a job-based engine they are not: a real
+// Higgsfield image measured ~75s, past any single request's life. Same
+// start-then-poll shape as video, on a shorter leash.
+const IMAGE_POLL_MS = 5_000;
+const IMAGE_MAX_POLLS = 48; // ~4 min
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Map a compose output format to an aspect ratio the image generator supports
@@ -17,6 +22,54 @@ const BG_ASPECT_FOR_FORMAT: Record<string, string> = {
   "9:16": "9:16",
   "16:9": "16:9",
 };
+
+type ImageResponse = {
+  status?: string;
+  media?: ArcMedia;
+  objectPath?: string;
+  operationName?: string;
+  model?: string;
+  jobId?: string;
+  engine?: string;
+};
+
+/**
+ * Generate an image, whichever way the engine works.
+ *
+ * Gemini answers inline in a second or two. A job-based engine answers
+ * `status: "running"` with an operation name instead, because a real Higgsfield
+ * image measured ~75s — longer than the request that asked for it may live. The
+ * two are handled here, once, so neither tool below has to know which engine the
+ * operator picked.
+ *
+ * Throws with the operation name if the render outlives the poll budget: the
+ * customer's credits are already spent and the result lands on the engine's
+ * side, so the id is the difference between "find it" and "pay again".
+ */
+async function generateImageMaybeAsync(client: ArcClient, body: Record<string, unknown>): Promise<{ media: ArcMedia; objectPath?: string }> {
+  const started = await client.apiPost<ImageResponse>("/api/v1/arc/media/generate-image", body);
+  if (started.status !== "running" || !started.operationName) {
+    if (!started.media) throw new Error("The image service returned no media.");
+    return { media: started.media, objectPath: started.objectPath };
+  }
+  for (let i = 0; i < IMAGE_MAX_POLLS; i++) {
+    await sleep(IMAGE_POLL_MS);
+    const poll = await client.apiPost<ImageResponse>("/api/v1/arc/media/generate-image", {
+      operation_name: started.operationName,
+      // The engine that STARTED it — not whatever the workspace default resolves
+      // to now, which may have changed mid-render.
+      engine: started.engine,
+      prompt: body.prompt,
+      model: started.model,
+      job_id: started.jobId,
+      aspect_ratio: body.aspect_ratio,
+    });
+    if (poll.status !== "running" && poll.media) return { media: poll.media, objectPath: poll.objectPath };
+  }
+  throw new Error(
+    `The image is still rendering after ${Math.round((IMAGE_POLL_MS * IMAGE_MAX_POLLS) / 60_000)} minutes. It was submitted and paid for and will finish on the engine's side (job ${started.operationName}).`,
+  );
+}
 
 /**
  * Media generation (act/draft mode). `generate_image` creates an AI image and
@@ -57,7 +110,7 @@ export function mediaTools(
       const label = "Generating image";
       await step(label, "running");
       try {
-        const gen = await client.apiPost<{ media: ArcMedia; objectPath?: string }>("/api/v1/arc/media/generate-image", {
+        const gen = await generateImageMaybeAsync(client, {
           prompt: args.prompt,
           style: args.style,
           aspect_ratio: args.aspect_ratio,
@@ -242,7 +295,7 @@ export function mediaTools(
             await step(label, "done");
             return textResult("compose_creative needs either a background_url or a prompt to generate the background.");
           }
-          const bg = await client.apiPost<{ media: ArcMedia }>("/api/v1/arc/media/generate-image", {
+          const bg = await generateImageMaybeAsync(client, {
             prompt: args.prompt,
             style: args.style,
             aspect_ratio: args.format ? (BG_ASPECT_FOR_FORMAT[args.format] ?? "1:1") : undefined,
