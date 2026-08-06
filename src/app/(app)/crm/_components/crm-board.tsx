@@ -21,7 +21,8 @@ import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-reco
 import { pageRangeLabel, pageWindow } from "./pagination";
 import { createStoredPreference } from "./stored-preference";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
-import type { CustomFieldDefinition } from "@/domain";
+import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
+import { ManageFieldsModal } from "./manage-fields-modal";
 
 type FilterOption = { value: string; label: string; count: number };
 
@@ -200,15 +201,15 @@ function ColumnsMenu({
   hidden,
   onToggle,
   onShowAll,
-  fieldsHref,
+  onManageFields,
 }: {
   cols: Col[];
   hidden: readonly string[];
   onToggle: (key: string) => void;
   onShowAll: () => void;
-  /** Where this object's fields are DEFINED — the columns here are only which
-   *  of them show. Same footer idea as the Status menu's "Edit stages". */
-  fieldsHref?: string;
+  /** Opens the field editor. This menu decides which fields SHOW; that decides
+   *  which exist, and it used to be a different screen entirely. */
+  onManageFields?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -270,12 +271,12 @@ function ColumnsMenu({
           )}
           {/* Reading the column list is when you notice the thing you track
               isn't one of them. This menu can only hide and show what already
-              exists; adding or removing a field happens on the fields editor,
-              and nothing else on this screen said where that is. */}
-          {fieldsHref && (
-            <Link className="fmenu-foot" href={fieldsHref}>
-              Add or remove fields
-            </Link>
+              exists — so the way to add one opens right here rather than
+              sending you to Settings and back. */}
+          {onManageFields && (
+            <button type="button" className="fmenu-foot" onClick={onManageFields}>
+              Add or edit fields…
+            </button>
           )}
         </div>
       )}
@@ -667,6 +668,7 @@ export function CrmBoard({
   // on top of the server rows until a real DB write revalidates the page.
   const [localByKey, setLocalByKey] = useState<Record<string, CrmRowVM[]>>({});
   const [addOpen, setAddOpen] = useState(false);
+  const [fieldsOpen, setFieldsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
    * Records archived this session, per object, so the row leaves at once.
@@ -1231,7 +1233,7 @@ export function CrmBoard({
           hidden={hiddenHere}
           onToggle={toggleColumn}
           onShowAll={showAllColumns}
-          fieldsHref={`/settings?s=records&t=Fields&o=${encodeURIComponent(active.key)}`}
+          onManageFields={() => setFieldsOpen(true)}
         />
         <DensityMenu value={density} onChange={densityPref.set} />
       </div>
@@ -1469,6 +1471,14 @@ export function CrmBoard({
           </button>
         </div>
       </div>
+
+      <ManageFieldsModal
+        open={fieldsOpen}
+        onClose={() => setFieldsOpen(false)}
+        objectKey={active.key as CustomFieldObjectKey}
+        objectLabel={active.label}
+        definitions={customFieldDefsByKey[active.key] ?? []}
+      />
 
       <AddRecordModal
         key={`${active.key}:${addOpen ? "open" : "closed"}`}

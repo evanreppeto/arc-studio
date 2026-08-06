@@ -134,12 +134,20 @@ describe("the control is wired, not decorative", () => {
   });
 
   /**
-   * The menu chooses which fields SHOW; it cannot add or remove one. Without
-   * this link the CRM never named the screen that can — the record page linked
-   * to it, so the only way to reach the field editor was to open a record.
+   * The menu chooses which fields SHOW; it cannot add or remove one. It used to
+   * name no way to — the field editor was reachable only from a record page, so
+   * shaping the table meant leaving it. It now opens the editor in place; this
+   * started as a link to Settings, which was still a round trip out of the
+   * screen you are shaping.
    */
-  it("points at where fields are actually defined", () => {
+  it("can open the field editor from the columns menu", () => {
     const menu = SOURCE.match(/<ColumnsMenu[\s\S]*?\/>/);
-    expect(menu![0]).toMatch(/fieldsHref=\{`\/settings\?s=records&t=Fields&o=\$\{encodeURIComponent\(active\.key\)\}`\}/);
+    expect(menu![0]).toMatch(/onManageFields=\{\(\) => setFieldsOpen\(true\)\}/);
+    // Rendered with the ACTIVE object's definitions, or it edits another
+    // object's schema from this object's table.
+    const modal = SOURCE.match(/<ManageFieldsModal[\s\S]*?\/>/);
+    expect(modal, "no <ManageFieldsModal> rendered").toBeTruthy();
+    expect(modal![0]).toMatch(/objectKey=\{active\.key as CustomFieldObjectKey\}/);
+    expect(modal![0]).toMatch(/definitions=\{customFieldDefsByKey\[active\.key\] \?\? \[\]\}/);
   });
 });
