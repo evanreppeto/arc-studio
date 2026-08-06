@@ -87,6 +87,27 @@ const SORTS: readonly (readonly ["recent" | "name" | "used", string])[] = [
   ["name", "Name (A–Z)"],
   ["used", "Most used"],
 ] as const;
+/**
+ * The collection chips, in order.
+ *
+ * The first four are the readiness axis and are mutually exclusive — every
+ * asset is in exactly one of Arc-ready / needs you / not reviewed, and they sum
+ * to All. "Unused" and "Recent" are a separate axis: an asset can be Arc-ready
+ * and still never used.
+ *
+ * `untouched` is new here only in the sense that it is now reachable. Its count
+ * was already rendered in the header band, wedged between two clickable
+ * siblings and clickable by neither, so the one readiness state you could not
+ * ask to see was the one holding the assets Arc has never been told about.
+ */
+const COLLECTIONS: readonly (readonly [string, string])[] = [
+  ["all", "All"],
+  ["arc", "Arc-ready"],
+  ["review", WORK_STATE_LABEL.needs_you],
+  ["untouched", "Not reviewed"],
+  ["unused", "Unused"],
+  ["recent", "Recent"],
+] as const;
 const IMGBASE = "https://d8j0ntlcm91z4.cloudfront.net/user_3FaOq1cCR2Izxa2haYxVnIrhIBK/";
 const IMG = {
   team: IMGBASE + "hf_20260625_205928_522fa33a-3aa6-4e05-8a8b-db2bd83a688d_min.webp",
@@ -655,9 +676,21 @@ export function LibraryView({
 
   const isArc = (a: Asset) => (a.id in arcState ? arcState[a.id] : a.arc);
   const needsReview = (a: Asset) => !!a.risk || (a.pv === "upload" && !isArc(a));
+  // Readiness: exclusive, and sums to the total. `needsReview` wins over
+  // `isArc` because a risk flag on an approved asset still needs a look — the
+  // same precedence `totals` uses, and it has to be the SAME rule.
+  //
+  // It was not. The count said `!needsReview(a) && isArc(a)` while this filter
+  // said `isArc(a)`, so a risk-flagged asset that was also marked Arc-available
+  // was counted under "need you" and listed under "Arc-ready": click a 39 and
+  // get 40 items. No fixture happens to contain one, which is exactly why it
+  // survived — the two definitions agree until the day they don't.
+  const isArcReady = (a: Asset) => !needsReview(a) && isArc(a);
+  const isUnreviewed = (a: Asset) => !needsReview(a) && !isArc(a);
   const inColl = (a: Asset) => {
-    if (curColl === "arc") return isArc(a);
+    if (curColl === "arc") return isArcReady(a);
     if (curColl === "review") return needsReview(a);
+    if (curColl === "untouched") return isUnreviewed(a);
     if (curColl === "unused") return a.uses === 0;
     if (curColl === "recent") return a.recent === 1;
     return true;
@@ -678,17 +711,29 @@ export function LibraryView({
     allAssets.forEach((a) => { byk[a.kind]++; });
     return {
       total: allAssets.length,
-      // Readiness — exclusive, and sums to total. `needsReview` wins over
-      // `isArc` because a risk flag on an approved asset still needs a look.
+      // Through the SAME predicates the filter uses (see `isArcReady`), so a
+      // chip's number and the list it produces cannot drift apart.
       rev: allAssets.filter(needsReview).length,
-      arc: allAssets.filter((a) => !needsReview(a) && isArc(a)).length,
-      untouched: allAssets.filter((a) => !needsReview(a) && !isArc(a)).length,
+      arc: allAssets.filter(isArcReady).length,
+      untouched: allAssets.filter(isUnreviewed).length,
       // Usage — a separate axis entirely.
       un: allAssets.filter((a) => a.uses === 0).length,
       byk,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arcState, allAssets]);
+
+  // The collection chips, and the count each one carries. `null` means the chip
+  // shows no number — "Recent" is a rolling window rather than a pile of work,
+  // so a count on it would read as a backlog to clear.
+  const collectionCount: Record<string, number | null> = {
+    all: totals.total,
+    arc: totals.arc,
+    review: totals.rev,
+    untouched: totals.untouched,
+    unused: totals.un,
+    recent: null,
+  };
 
   const toggleSel = (id: number) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const selmode = sel.size > 0;
@@ -1025,34 +1070,42 @@ export function LibraryView({
         </div>
       </div>
 
+      {/* This band used to be the filter toolbar again, wearing statistics.
+          It carried eleven numbers: the total, a four-way kind breakdown
+          (images / videos / logos / docs), a three-way readiness split
+          (Arc-ready / need you / not reviewed) and "never used" — and the
+          toolbar forty pixels below it already had a chip for nearly every
+          one. Clicking "39 Arc-ready" up here and clicking the "Arc-ready"
+          chip down there ran the same `setCurColl("arc")`.
+
+          So it was the same control surface twice, and only the copy that
+          looked like a control was styled like one: these were `<span
+          role="button">`, indistinguishable from the two stats beside them
+          that did nothing.
+
+          The counts moved onto the chips that already act on them — nothing is
+          lost, and each number now sits on the thing that filters by it. What
+          stays here is what the toolbar cannot say: how much you have, what
+          the dot on each card means, and what it occupies on disk. */}
       <div className="oband">
         {/* `obigv`, not `ov`: `.ov` is the card hover OVERLAY (absolute, inset 0,
             opacity 0). It applied to this number too, so the headline asset count
             rendered invisible AND stretched a 1204x58 transparent box across the
             band that swallowed clicks on the Arc-ready / need-you filters. */}
         <div className="obig"><span className="obigv">{totals.total}</span><span className="ol">assets</span></div>
-        <div className="obars">
-          <span className="obar"><i style={{ background: "#7fb89a" }} />{totals.byk.image} images</span>
-          <span className="obar"><i style={{ background: "#bd6a58" }} />{totals.byk.video} videos</span>
-          <span className="obar"><i style={{ background: "#9aa0ac" }} />{totals.byk.logo} logos</span>
-          <span className="obar"><i style={{ background: "#9aa0ac" }} />{totals.byk.document} docs</span>
-        </div>
-        <div className="ospacer" />
+        {/* The legend sits next to the count, not flung to the far right by a
+            spacer. With the filters gone from this band those were the only two
+            things left in it, and `ospacer` put a thousand pixels between them —
+            one line reading as two unrelated islands. */}
         <span className="pvlegend" aria-label="What the dot on each item means">
           {(["real", "ai", "comp"] as const).map((k) => (
             <span key={k}><i className={`pdot pv-${k}`} />{PVL[k]}</span>
           ))}
         </span>
-        <span className="ostatgrp" title="Every item is in exactly one of these">
-          <span className="ostat ok" role="button" tabIndex={0} onClick={() => setCurColl("arc")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCurColl("arc"); } }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3d0b8" strokeWidth={2}><path d="M5 12l4 4 10-10" /></svg><b>{totals.arc}</b> Arc-ready<Define term="arc_ready" /></span>
-          <span className="ostat warn" role="button" tabIndex={0} onClick={() => setCurColl("review")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCurColl("review"); } }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e7c486" strokeWidth={2}><path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3l-8-14a2 2 0 00-3.4 0z" /></svg><b>{totals.rev}</b> need you</span>
-          {totals.untouched > 0 ? <span className="ostat"><b>{totals.untouched}</b> not reviewed</span> : null}
-        </span>
-        <span className="ostatsep" aria-hidden="true" />
-        <span className="ostat" role="button" tabIndex={0} title="Separate from the counts on the left — an item can be Arc-ready and still never used" onClick={() => setCurColl("unused")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCurColl("unused"); } }}><b>{totals.un}</b> never used</span>
+        <div className="ospacer" />
         {/* Real bytes stored. There is no storage quota in the backend, so this
             reports usage rather than a meter against an invented limit. */}
-        {totalBytes != null ? <span className="ostat"><b>{formatByteSize(totalBytes)}</b> stored</span> : null}
+        {totalBytes != null ? <span className="ostat is-fact"><b>{formatByteSize(totalBytes)}</b> stored</span> : null}
       </div>
 
       <div
@@ -1120,18 +1173,47 @@ export function LibraryView({
         />
 
         <section className="gallery">
+          {/* TWO deliberate lines, not one line that wraps.
+              Filters on top, controls beneath. With the header band's counts
+              moved down here the single row overflowed into three ragged ones —
+              "Recent" orphaned from the collection it belongs to, the view
+              toggles alone on a line of their own. Wrapping decided the
+              grouping, and it grouped by whatever happened to fit. */}
           <div className="gtoolbar">
-            <span className="lsearch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter assets…" /></span>
-            {([["all", "All"], ["arc", "Arc-ready"], ["review", WORK_STATE_LABEL.needs_you], ["unused", "Unused"], ["recent", "Recent"]] as const).map(([k, label]) => (
-              <span key={k} className={`chip${curColl === k ? " on" : ""}`} onClick={() => setCurColl(k)}>
-                {label}
-                {k === "review" ? <span className="cn">{totals.rev}</span> : k === "unused" ? <span className="cn">{totals.un}</span> : null}
-              </span>
-            ))}
+            <div className="gtrow gtrow-filters">
+            {/* Every chip carries its own count, which is where the header band's
+                eleven numbers went. Two of the four readiness states were
+                filterable and the third ("not reviewed") was a dead number in
+                the band, even though it sat inside a group captioned "every
+                item is in exactly one of these" — so the caption was true and
+                only two thirds of it was actionable. All three filter now.
+
+                "Recent" is deliberately countless: it is a recency window, not
+                a set the operator is working through, and a number on it would
+                read as a backlog. */}
+            {/* Each axis is its own group, so when the row runs out of width the
+                break lands BETWEEN the two rather than through the middle of
+                one — "Logos" and "Docs" stranded on a line under "Recent" reads
+                as a third category of filter that isn't there. */}
+            <span className="chipgrp" role="group" aria-label="Readiness">
+              {COLLECTIONS.map(([k, label]) => (
+                <span key={k} className={`chip${curColl === k ? " on" : ""}`} onClick={() => setCurColl(k)}>
+                  {k === "arc" ? <>{label}<Define term="arc_ready" /></> : label}
+                  {collectionCount[k] != null ? <span className="cn">{collectionCount[k]}</span> : null}
+                </span>
+              ))}
+            </span>
             <span className="cdiv" />
-            {([["image", "Images"], ["video", "Videos"], ["logo", "Logos"], ["document", "Docs"]] as const).map(([k, label]) => (
-              <span key={k} className={`chip${curKind === k ? " on" : ""}`} onClick={() => setCurKind((c) => (c === k ? "all" : k))}>{label}</span>
-            ))}
+            <span className="chipgrp" role="group" aria-label="Type">
+              {([["image", "Images"], ["video", "Videos"], ["logo", "Logos"], ["document", "Docs"]] as const).map(([k, label]) => (
+                <span key={k} className={`chip${curKind === k ? " on" : ""}`} onClick={() => setCurKind((c) => (c === k ? "all" : k))}>
+                  {label}<span className="cn">{totals.byk[k]}</span>
+                </span>
+              ))}
+            </span>
+            </div>
+            <div className="gtrow gtrow-controls">
+            <span className="lsearch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter assets…" /></span>
             <span className="gspacer" />
             {/* Selecting many assets at once was already wired end to end — bulk
                 Arc-availability, add-to-campaign, move-to-folder — but the only
@@ -1204,6 +1286,7 @@ export function LibraryView({
               <button type="button" className={`sb${viewMode === "grid" ? " on" : ""}`} aria-label="Grid view" aria-pressed={viewMode === "grid"} title="Grid" onClick={() => setViewMode("grid")}><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></button>
               <button type="button" className={`sb${viewMode === "list" ? " on" : ""}`} aria-label="List view" aria-pressed={viewMode === "list"} title="List" onClick={() => setViewMode("list")}><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg></button>
             </span>
+            </div>
           </div>
 
           {/* `menuopen` lifts the bar's `overflow: hidden` so a picker can escape

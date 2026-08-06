@@ -23,7 +23,12 @@ describe("settings information architecture", () => {
 describe("settings interaction semantics", () => {
   it("uses native buttons for navigation and interactive cards", () => {
     expect(SETTINGS_VIEW).toContain('className={`setitem${it[0] === cur ? " on" : ""}`}');
-    expect(SETTINGS_VIEW).toContain('type="button" className="ovcard"');
+    // The `ovcard` row this used to assert on is gone: Overview's four tiles
+    // restated the Workspace panel directly beneath them (Team twice, less
+    // completely in the tile), so they were folded into it as rows. The rule
+    // the assertion was protecting — native <button>, never role="button" —
+    // still binds every remaining clickable, including those rows' buttons.
+    expect(SETTINGS_VIEW).not.toContain('className="ovcard"');
     expect(SETTINGS_VIEW).toContain('type="button" className="ccard ccard-btn"');
     expect(SETTINGS_VIEW).not.toContain('role="button"');
   });
