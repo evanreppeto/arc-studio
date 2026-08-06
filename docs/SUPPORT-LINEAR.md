@@ -16,7 +16,7 @@ tracker's internals.
 
 | Support form | Linear |
 | --- | --- |
-| Every in-app request | label `user-feedback` |
+| Every in-app request | label `user-feedback` + label `app › Arc Studio` |
 | Something's broken | label `Bug` |
 | How do I… | label `Question` |
 | Feature request | label `Feature` |
@@ -29,6 +29,27 @@ tracker's internals.
 `user-feedback` is the filter that answers **"did a human in the product report
 this, or did we write it ourselves?"** — it goes on every ticket unconditionally,
 so `label:user-feedback` in Linear is the complete inbox.
+
+## Which app it came from
+
+The BSR Linear team holds tickets for **both** Arc Studio and the BSR Manager
+App, and both file in-app feedback into it. `app` is a Linear **label group**, so
+membership is exclusive — a ticket carries exactly one of:
+
+| Label | Colour | Filed by |
+| --- | --- | --- |
+| `app › Arc Studio` | teal `#26b5ce` | `SUPPORT_APP_LABEL` in `src/domain/support-linear.ts` |
+| `app › Manager App` | magenta `#d648a8` | `lib/linear.ts` in the Manager App repo |
+
+This is deliberately **not** derived from `LINEAR_PROJECT_ID`. The project field
+is optional here and unset on ~19% of recent team tickets, and a Slack feed
+filtered on a field nobody remembered to set drops reports silently. A ticket
+that reaches Linear at all now says where it came from.
+
+The two Slack feeds are Linear **view subscriptions**, one per app, each
+filtering `label:user-feedback AND label:app › <app>`. Views fire on issue
+added/completed/cancelled only — see the `linear-slack-feed-wiring` note for why
+the project bell and team notifications are the wrong tools.
 
 The title is the operator's own one-line summary. The description leads with
 their report, then a context table: reference code, workspace, who filed it,
