@@ -7,6 +7,7 @@ import {
   ASSET_NOUN,
   assetSourceLabel,
   countOf,
+  deriveCampaignSpine,
   humanizePersonaLabel as humanizePersona,
   reviewAgentLabel,
   reviewVerdictLabel,
@@ -37,6 +38,7 @@ import { KpiStrip, type KpiCell } from "../../../_components/kpi-strip";
 import { Modal } from "../../../_components/modal";
 import { ShareDialog } from "../../../_components/share-dialog";
 import { DeliverableCopy, markId, ReviewBlock, statusMeta, svg, type Tone } from "./deliverable-review";
+import { CampaignSpine } from "./campaign-spine";
 import { ExternalSendModal } from "./external-send-modal";
 import { ReviewQueue } from "./review-queue";
 import {
@@ -951,6 +953,34 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   // BYO send channel: which approved deliverable is open in the export modal.
   const [externalSendFor, setExternalSendFor] = useState<CampaignWorkspaceAsset | null>(null);
 
+  // Where this campaign is, in four steps. Derived from the SAME `launchState`
+  // the header counts and the launch panel already read, so the spine cannot
+  // drift from the numbers beside it.
+  //
+  // Deliberately NOT recomputed from the optimistic `assets` state. In the
+  // backend-less preview a decision looks like it does not move the spine —
+  // `decideCampaignAsset` short-circuits at `isSupabaseAdminConfigured()` and
+  // returns `persisted: false` WITHOUT calling `revalidatePath`, so the server
+  // props never change while the card's own pill flips optimistically. That is
+  // a demo artifact, not staleness: on a configured workspace the decision
+  // revalidates and the header, the readiness panel and this all refresh
+  // together.
+  //
+  // Deriving from client state instead would also make `launchState.ready`
+  // optimistic, which gates the Launch button — an approve that failed
+  // server-side would leave a real outbound control enabled.
+  const spine = deriveCampaignSpine({
+    hasBrief: Boolean(
+      campaign.objective?.trim() || campaign.campaignTheme?.trim() || campaign.audienceSummary?.trim(),
+    ),
+    requiredCount: launchState.requiredCount,
+    approvedCount: launchState.approvedCount,
+    pendingCount: launchState.pendingCount,
+    deployedCount: launchState.deployedCount,
+    live: launchState.live,
+    ready: launchState.ready,
+  });
+
   function setAssetStatus(assetId: string, status: string) {
     setAssets((as) => as.map((a) => (a.id === assetId ? { ...a, status, approval: a.approval ? { ...a.approval, status } : a.approval } : a)));
   }
@@ -1309,6 +1339,11 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
             </div>
           </div>
         </div>
+        {/* The journey, above the work. Every value comes from
+            `deriveCampaignSpine` — this screen must not compute a second answer
+            to "where am I", which is the bug it already had when the board's
+            pill and its own header disagreed. */}
+        <CampaignSpine steps={spine} />
       </div>
 
       <div className="ctabs">
