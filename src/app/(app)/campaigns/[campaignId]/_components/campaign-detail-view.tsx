@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
@@ -952,6 +953,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     .map((asset) => ({ campaignId: campaign.id, campaignName: campaign.name, asset }));
   // BYO send channel: which approved deliverable is open in the export modal.
   const [externalSendFor, setExternalSendFor] = useState<CampaignWorkspaceAsset | null>(null);
+  const router = useRouter();
 
   // Where this campaign is, in four steps. Derived from the SAME `launchState`
   // the header counts and the launch panel already read, so the spine cannot
@@ -1343,7 +1345,34 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
             `deriveCampaignSpine` — this screen must not compute a second answer
             to "where am I", which is the bug it already had when the board's
             pill and its own header disagreed. */}
-        <CampaignSpine steps={spine} />
+        <CampaignSpine
+          steps={spine}
+          onSelect={(key) => {
+            setErr(null);
+            if (key === "brief") {
+              // The brief has always existed — "The brief" is the first section
+              // of Overview — but nothing pointed at it, so it went unread by
+              // the person about to approve the work it describes.
+              setTab("overview");
+              return;
+            }
+            if (key === "review") {
+              setTab("deliverables");
+              // Straight into the queue when there is something to decide; the
+              // list is the right landing when there isn't.
+              if (queueAssets.length > 0) setQueueOpen(true);
+              return;
+            }
+            if (key === "launch") {
+              // Launch readiness lives in the right rail beside this tab.
+              setTab("deliverables");
+              return;
+            }
+            // Send is only reachable once launched, and the Outbox owns it —
+            // this screen never confirms a send.
+            router.push("/outbox");
+          }}
+        />
       </div>
 
       <div className="ctabs">
