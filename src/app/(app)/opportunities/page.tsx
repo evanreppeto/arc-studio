@@ -216,7 +216,7 @@ export default async function OpportunitiesPage({
   const [opportunityRead, storedPersonaOptions, params, scanStatus] = await Promise.all([
     // The outer catch stays as a backstop, but it no longer HIDES the failure:
     // readOpenOpportunities reports it and hands back a message for the screen.
-    readOpenOpportunities(undefined, ctx.orgId).catch(() => ({
+    readOpenOpportunities(undefined, ctx.orgId, ctx.workspaceId).catch(() => ({
       records: [] as OpportunityRecord[],
       failed: "We couldn't load your opportunities. Nothing was changed; refresh to try again.",
     })),
