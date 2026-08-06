@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { ImageEditUnsupportedError } from "../types";
@@ -92,3 +94,63 @@ function readSource(rel: string): string {
   const { join } = require("node:path") as typeof import("node:path");
   return readFileSync(join(process.cwd(), rel), "utf8");
 }
+
+/**
+ * An edit on a job-based engine renders for longer than one request may live
+ * (a real Higgsfield image measured ~75s), so Studio submits and polls. What
+ * matters is that the polled result rejoins the SAME landing sequence as the
+ * synchronous one — a second, looser route to "the asset exists" is how Studio
+ * once wrote to the bucket without ever writing a media_assets row (BSR-634).
+ */
+describe("Studio edit: start-then-poll", () => {
+  const actions = readFileSync(new URL("../../../app/(app)/studio/actions.ts", import.meta.url), "utf8");
+  const view = readFileSync(new URL("../../../app/(app)/studio/_components/studio-view.tsx", import.meta.url), "utf8");
+
+  it("submits before downloading anything, on an engine that imports the URL itself", () => {
+    // Fetching the bytes for a provider that only wants a URL is pure waste,
+    // and it happens on the operator's clock.
+    const branch = actions.match(/if \(input\.engine === "edit"\)[\s\S]*?const sourceRes = await fetch\(sourceUrl\);/)?.[0] ?? "";
+    // Guard the guard: a regex that stops matching would make every assertion
+    // below vacuously true, which is the failure mode of every source-grep test.
+    expect(branch.length).toBeGreaterThan(300);
+    expect(branch.indexOf("engine.provider.startImage")).toBeGreaterThan(-1);
+    expect(branch.indexOf("engine.provider.startImage")).toBeLessThan(branch.indexOf("await fetch(sourceUrl)"));
+  });
+
+  it("lands a polled edit through the same helper as a synchronous one", () => {
+    // Both paths call landStudioAsset — Library row, campaign draft, approval
+    // gate — rather than one of them reimplementing it.
+    expect(actions.match(/await landStudioAsset\(/g)?.length).toBe(2);
+    const poll = actions.match(/export async function pollStudioEdit[\s\S]*?\n}/)?.[0] ?? "";
+    expect(poll.length).toBeGreaterThan(500);
+    expect(poll).toMatch(/landStudioAsset\(/);
+    expect(poll).toMatch(/EDITED_RISK/);
+  });
+
+  it("binds the poll to the engine that started it, through the signed ticket", () => {
+    const poll = actions.match(/export async function pollStudioEdit[\s\S]*?\n}/)?.[0] ?? "";
+    expect(poll).toMatch(/verifyVideoTicket\(input\.ticket, input\.operationName, tenant\.workspace_id \?\? "", engineKey\)/);
+  });
+
+  it("does not meter the poll — the submit already paid", () => {
+    const poll = actions.match(/export async function pollStudioEdit[\s\S]*?\n}/)?.[0] ?? "";
+    expect(poll.length).toBeGreaterThan(500);
+    expect(poll).not.toMatch(/meterConnectorCall/);
+  });
+
+  it("is actually driven from the UI, not merely callable", () => {
+    expect(view).toMatch(/pollStudioEdit\(/);
+    expect(view).toMatch(/res\.status === "running"/);
+    // A button that looks idle for a minute gets pressed again, and that pays twice.
+    expect(view).toMatch(/setEditNote\(/);
+  });
+
+  it("tells the truth when the render outlives the poll budget", () => {
+    // The edit is real and paid for; "failed" would be a false statement about
+    // the operator's credits.
+    const loop = view.match(/if \(res\.status === "running"\)[\s\S]*?\n      \}/)?.[0] ?? "";
+    expect(loop.length).toBeGreaterThan(300);
+    expect(loop).toMatch(/Still rendering/);
+    expect(loop).toMatch(/Library/);
+  });
+});

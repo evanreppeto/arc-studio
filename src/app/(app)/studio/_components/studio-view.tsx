@@ -21,7 +21,7 @@ import { wantsBrandingInScene } from "./logo-hint";
 
 import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
-import { generateStudioAsset, pollStudioVideo, startStudioVideo } from "../actions";
+import { generateStudioAsset, pollStudioEdit, pollStudioVideo, startStudioVideo } from "../actions";
 import { StudioCanvas, type CanvasBrand, type CanvasLayer } from "./studio-canvas";
 import { AppImage } from "../../_components/app-image";
 
@@ -252,6 +252,10 @@ type StudioDraft = { campaignId: string; assetId: string; url: string; source: s
 /** Veo renders asynchronously; poll about every 10s for up to ~6 minutes. */
 const VIDEO_POLL_MS = 10_000;
 const VIDEO_MAX_POLLS = 36;
+// An edit on a job-based engine is minutes-scale like video, but usually much
+// shorter — a tighter interval keeps the canvas responsive without hammering.
+const EDIT_POLL_MS = 5_000;
+const EDIT_MAX_POLLS = 48;
 
 /**
  * Starting copy for the canvas text layers. The sample set is restoration
@@ -662,6 +666,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const activeModel = modelPick[modelCategory];
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoNote, setVideoNote] = useState<string | null>(null);
+  const [editNote, setEditNote] = useState<string | null>(null);
   // The video poll loop outlives a fast unmount; this stops it writing state
   // into a component that is gone.
   const aliveRef = useRef(true);
@@ -742,13 +747,58 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         campaignId,
         model: modelPick.image,
       });
-      if (res.ok && res.assetId && res.media) {
-        const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: res.media.url, source: res.media.source, format: res.media.format, title: instruction.slice(0, 60), status: "pending_approval", at: Date.now(), origin: "studio" };
+      if (!res.ok) {
+        setGenErr(res.error);
+        return;
+      }
+      const title = instruction.slice(0, 60);
+      const land = (campaign: string, assetId: string, media: { url: string; source: StudioDraft["source"]; format: string }) => {
+        const draft: StudioDraft = { campaignId: campaign, assetId, url: media.url, source: media.source, format: media.format, title, status: "pending_approval", at: Date.now(), origin: "studio" };
         setDrafts((prev) => [draft, ...prev]);
         setPreview(draft);
-      } else if (!res.ok) {
-        setGenErr(res.error);
+      };
+
+      // A job-based engine renders for longer than one request can wait, so the
+      // action hands back an operation name and we finish it here — the same
+      // shape the video button has always used.
+      if (res.status === "running") {
+        setEditNote("Editing — this can take a minute.");
+        for (let i = 0; i < EDIT_MAX_POLLS; i++) {
+          await new Promise((r) => setTimeout(r, EDIT_POLL_MS));
+          if (!aliveRef.current) return;
+          const poll = await pollStudioEdit({
+            operationName: res.operationName,
+            ticket: res.ticket,
+            // Round-tripped so the poll asks the engine that started it; the
+            // server checks it against the signed ticket, so the client cannot
+            // redirect it at the other provider.
+            engine: res.engine,
+            instruction,
+            format: FORMATS[fmt].r,
+            title,
+            campaignId,
+          });
+          if (!aliveRef.current) return;
+          if (!poll.ok) {
+            setEditNote(null);
+            setGenErr(poll.error);
+            return;
+          }
+          if (poll.status === "done") {
+            setEditNote(null);
+            land(poll.campaignId, poll.assetId, poll.media);
+            return;
+          }
+        }
+        setEditNote(null);
+        // The edit is real and paid for; it finishes on the engine's side and
+        // lands in the Library. Saying "failed" would be a false statement
+        // about the operator's credits.
+        setGenErr("Still rendering after a few minutes — it was submitted and will appear in your Library when it finishes.");
+        return;
       }
+
+      if (res.assetId && res.media) land(res.campaignId ?? campaignId, res.assetId, res.media);
     });
   };
 
@@ -782,7 +832,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           accent,
           campaignId,
         });
-        if (res.ok && res.assetId && res.media) {
+        if (res.ok && res.status !== "running" && res.assetId && res.media) {
           const media = res.media;
           const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: media.url, source: media.source, format: media.format, title: headline || "Studio creative", status: "pending_approval", at: Date.now(), origin: "studio" };
           setDrafts((prev) => [draft, ...prev]);
@@ -1592,12 +1642,18 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       className="exrow"
                       onClick={runEdit}
                       disabled={Boolean(editGate) || gen}
+                      aria-busy={Boolean(editNote)}
                       title={editGate ?? undefined}
                       {...(editGate ? { "data-soon": editGate } : {})}
                     >
                       <svg viewBox="0 0 24 24"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
-                      Change this image…
+                      {editNote ? "Editing…" : "Change this image…"}
                     </button>
+                    {/* An edit used to return within one request. On a job-based
+                        engine it renders for a minute or more, so the wait needs
+                        saying — a button that looks idle for 60s reads as broken
+                        and gets pressed again, paying twice. */}
+                    {editNote ? <div className="scapt" role="status">{editNote}</div> : null}
                     <button
                       type="button"
                       className="exrow gold"

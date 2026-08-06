@@ -169,16 +169,21 @@ parallel lifecycle. `/api/v1/arc/media/edit` therefore got the same start/poll
 treatment as the image route, with one shared `landEdit` tail, and the runner's
 `edit_image` tool polls through the same helper as `generate_image`.
 
-**What works now:** photo-to-video on Higgsfield (Studio's video path was already
-start/poll), and edits through Arc's route.
+**Everything is start-then-poll now**, including Studio's "Change this image…".
+`generateStudioAsset` returns a `status: "running"` variant on a job-based
+engine and the client polls `pollStudioEdit`, exactly as its video button has
+always worked. The submit happens **before** the source is downloaded, since
+that engine imports the URL itself — a guard test enforces the ordering (and was
+control-tested by reintroducing the bug).
 
-⚠️ **Studio's "Change this image…" button is still synchronous.** It works on
-fast models and returns an honest job-named message on slow ones. Converting it
-means extracting `generateStudioAsset`'s shared landing tail (Library row →
-campaign promote → approval gate) so a poll action can reuse it — deliberately
-NOT done in the same pass as the rest, because that tail is the most
-bug-annotated code in the file and Studio's primary action (compose) runs
-through it.
+The landing sequence — Library row → campaign draft → approval gate — is
+extracted as `landStudioAsset` and called by **both** paths. A second copy is
+exactly how Studio once wrote to the bucket and promoted a campaign asset
+without ever writing a `media_assets` row (BSR-634), so the count of call sites
+is itself asserted.
+
+A poll is never metered: the submit was, and charging per "is it done yet" would
+bill the operator for asking.
 
 **Auto stays on Gemini** even though both engines execute. That is a spend
 decision, not a capability one: Higgsfield bills the customer's own credits, and
