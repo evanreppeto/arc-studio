@@ -377,6 +377,25 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
     } else if (input.engine === "image") {
       const prompt = (input.prompt ?? "").trim();
       if (!prompt) return { ok: false, code: "failed", error: "Describe the image you want Arc to generate." };
+      const aspect = imageAspectFor(input.format);
+      // Same reason as the edit branch: on a job-based engine this renders for
+      // longer than the request may live, so submit and hand back a job.
+      if (engine.provider.startImage) {
+        const started = await meterConnectorCall(
+          undefined,
+          { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: engine.connectorKey, estimatedUnits: 1, costTier: engine.costTier, context: { surface: "studio", engine: "image", provider: engine.engine } },
+          () => engine.provider.startImage!({ prompt: hardenImagePrompt(prompt, { style: input.style }), aspectRatio: aspect }),
+        );
+        if (!started.ok) return { ok: false, code: "failed", error: started.refusal.message };
+        return {
+          ok: true,
+          status: "running",
+          persisted: true,
+          operationName: started.result.operationName,
+          ticket: signVideoTicket(started.result.operationName, tenant.workspace_id ?? "", engine.engine),
+          engine: engine.engine,
+        };
+      }
       const provider = engine.provider;
       const aspectRatio = imageAspectFor(input.format);
       // Platform-credit generations are spend-capped; a workspace's own key bypasses.
@@ -485,26 +504,31 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
   }
 }
 
-export type PollStudioEditInput = {
+export type PollStudioImageInput = {
   operationName: string;
   ticket: string;
   /** The engine that STARTED it, bound into the ticket. */
   engine?: string;
   /** Re-sent so the finished asset carries the text that produced it — the only
-   *  text an edit has for the copy screen and the Library row. */
+   *  text it has for the copy screen and the Library row. For an edit that is
+   *  the instruction; for a raw generation, the scene prompt. */
   instruction: string;
+  /** True when this job was an edit of an existing picture. It changes what the
+   *  asset is proof of — an edit inherits whatever the source showed and adds
+   *  the model's changes on top — so it changes the risk flags, not just a label. */
+  edited?: boolean;
   format: string;
   title: string;
   campaignId: string;
 };
 
-export type PollStudioEditResult =
+export type PollStudioImageResult =
   | { ok: true; status: "running" }
   | { ok: true; status: "done"; campaignId: string; assetId: string; media: StudioMedia }
   | { ok: false; error: string };
 
 /**
- * Finish an edit a job-based engine is still rendering.
+ * Finish an image a job-based engine is still rendering — generated or edited.
  *
  * Mirrors `pollStudioVideo`, and lands through the same `landStudioAsset` the
  * synchronous path uses — so a polled edit gets the same Library row, the same
@@ -514,7 +538,7 @@ export type PollStudioEditResult =
  * Not metered: the submit was. Charging per "is it done yet" would bill the
  * operator for asking.
  */
-export async function pollStudioEdit(input: PollStudioEditInput): Promise<PollStudioEditResult> {
+export async function pollStudioImage(input: PollStudioImageInput): Promise<PollStudioImageResult> {
   await requireOperator();
   if (!isSupabaseAdminConfigured()) return { ok: false, error: "Editing needs a connected backend." };
 
@@ -526,7 +550,7 @@ export async function pollStudioEdit(input: PollStudioEditInput): Promise<PollSt
     ]);
     const engineKey = input.engine === "higgsfield" ? "higgsfield" : "gemini";
     if (!verifyVideoTicket(input.ticket, input.operationName, tenant.workspace_id ?? "", engineKey)) {
-      return { ok: false, error: "This edit does not belong to this workspace." };
+      return { ok: false, error: "This image job does not belong to this workspace." };
     }
     const settings = await getAppSettings(ctx.orgId);
     const engine = await resolveEngineProvider({
@@ -545,7 +569,7 @@ export async function pollStudioEdit(input: PollStudioEditInput): Promise<PollSt
     const ext = poll.contentType.includes("png") ? "png" : poll.contentType.includes("webp") ? "webp" : "jpg";
     const objectPath = `arc-generated/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.${ext}`;
     const url = await storeGeneratedImage(objectPath, poll.bytes, poll.contentType);
-    await recordSpend(ctx.orgId, tenant.workspace_id, { model: poll.model, jobId: poll.jobId }, "studio_edit");
+    await recordSpend(ctx.orgId, tenant.workspace_id, { model: poll.model, jobId: poll.jobId }, input.edited ? "studio_edit" : "studio_generate");
 
     const media: StudioMedia = {
       kind: "image",
@@ -555,7 +579,7 @@ export async function pollStudioEdit(input: PollStudioEditInput): Promise<PollSt
       // The model that ACTUALLY ran — engines substitute.
       model: poll.model,
       jobId: poll.jobId,
-      riskFlags: [EDITED_RISK, ...deriveImageRiskFlags(input.instruction)],
+      riskFlags: input.edited ? [EDITED_RISK, ...deriveImageRiskFlags(input.instruction)] : deriveImageRiskFlags(input.instruction),
     };
     const landed = await landStudioAsset({
       orgId: ctx.orgId,
@@ -574,8 +598,8 @@ export async function pollStudioEdit(input: PollStudioEditInput): Promise<PollSt
     revalidatePath("/studio");
     return { ok: true, status: "done", campaignId: landed.campaignId, assetId: landed.assetId, media };
   } catch (error) {
-    reportDegraded(error, { scope: "studio.pollStudioEdit", surface: "primary", detail: { operationName: input.operationName } });
-    return { ok: false, error: error instanceof Error ? error.message : "Could not finish that edit." };
+    reportDegraded(error, { scope: "studio.pollStudioImage", surface: "primary", detail: { operationName: input.operationName, edited: Boolean(input.edited) } });
+    return { ok: false, error: error instanceof Error ? error.message : "Could not finish that image." };
   }
 }
 

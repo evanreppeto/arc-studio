@@ -139,11 +139,23 @@ different Library rows. The runner's `generate_image` tool polls it, same shape
 as `generate_video`. A poll is never metered — the render is already paid for,
 and billing per "is it done yet" would be charging for the question.
 
-⚠️ **Studio has no raw-image generate control at all.** Its "AI" source tab is a
-note, not a button, and `generateStudioAsset({engine: "image"})` has no UI caller
-— Studio only composes (local render) and edits (which Higgsfield refuses). So
-the image path's real consumer is Arc via the media route. The Studio *video*
-path does run on Higgsfield, and the Model picker steers both.
+**Studio can now generate a picture from a description** (2026-08-06). It could
+previously only composite over media you already owned and edit media you
+already owned, so a workspace with no approved photos had nothing to start from
+— and `generateStudioAsset({engine: "image"})` sat there with no UI caller while
+the "AI" source tab was a note rather than a button.
+
+The control has its own gate (`sceneGate`): it deliberately does NOT require a
+background, because sharing compose's gate would refuse the very action that
+produces the background compose is missing. The result lands as an
+approval-gated draft like every other output, becomes the selected canvas
+background (the next thing anyone wants is to compose over what they just made),
+and appears in the "AI" source tab. It is a job on a job-based engine, same
+start-then-poll as everything else.
+
+Risk flags differ by path and that is load-bearing: an edit carries
+`EDITED_RISK` because it inherits whatever its source was proof of; a generation
+has no source to inherit from, so carrying it would misdescribe the asset.
 
 ### Reference media — edits and photo-to-video (2026-08-06)
 

@@ -21,7 +21,7 @@ import { wantsBrandingInScene } from "./logo-hint";
 
 import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
-import { generateStudioAsset, pollStudioEdit, pollStudioVideo, startStudioVideo } from "../actions";
+import { generateStudioAsset, pollStudioImage, pollStudioVideo, startStudioVideo } from "../actions";
 import { StudioCanvas, type CanvasBrand, type CanvasLayer } from "./studio-canvas";
 import { AppImage } from "../../_components/app-image";
 
@@ -288,14 +288,21 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   // the workspace's approved media and let an operator compose over it believing it
   // was theirs. Offline (backend-less preview) the samples keep the tool usable.
   const [uploaded, setUploaded] = useState<Item[]>([]);
+  /** Images generated in this session, so the AI source tab shows real work
+   *  instead of sample art — and so a fresh render is immediately selectable
+   *  as a background to compose over. */
+  const [generated, setGenerated] = useState<Item[]>([]);
   const sources = useMemo<Record<string, { title: string; items: Item[] }>>(
     () => ({
       ...SRC,
       library: live ? { title: "Approved media", items: libraryItems ?? [] } : SRC.library,
       // Imported art: real uploads live-first (empty until you add some); demo samples offline.
       uploads: uploaded.length || live ? { title: "Imported", items: [...uploaded, ...(live ? [] : SRC.uploads.items)] } : SRC.uploads,
+      // Live, this tab shows what was actually generated here — the sample tiles
+      // are offline-only, same rule the library tab follows.
+      ai: generated.length || live ? { title: "Generated this session", items: [...generated, ...(live ? [] : SRC.ai.items)] } : SRC.ai,
     }),
-    [libraryItems, uploaded, live],
+    [libraryItems, uploaded, generated, live],
   );
   const [srcTab, setSrcTab] = useState("library");
   // May be undefined: a live workspace with no approved media (media_assets empty)
@@ -667,6 +674,8 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoNote, setVideoNote] = useState<string | null>(null);
   const [editNote, setEditNote] = useState<string | null>(null);
+  const [scenePrompt, setScenePrompt] = useState("");
+  const [imageNote, setImageNote] = useState<string | null>(null);
   // The video poll loop outlives a fast unmount; this stops it writing state
   // into a component that is gone.
   const aliveRef = useRef(true);
@@ -697,6 +706,90 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         : !bg?.url
           ? "Select an approved photo as the background"
           : null;
+
+  /** Generating a scene from words needs no background — that requirement belongs
+   *  to compose, which composites OVER one. Sharing genGate would have refused
+   *  the very action that produces the missing background. */
+  const sceneGate = !mediaEnabled
+    ? mediaOffReason ?? "Image generation isn't switched on for this workspace yet."
+    : !live
+      ? "Connect a workspace to generate"
+      : !campaignId
+        ? campaignGateText
+        : !scenePrompt.trim()
+          ? "Describe the image you want first"
+          : null;
+
+  /**
+   * Generate a picture from a description — the thing Studio could never do.
+   *
+   * It composited over media you already had and edited media you already had,
+   * so a workspace with no approved photos had nothing to start from at all. The
+   * result lands as an approval-gated draft like every other output AND becomes
+   * the selected background, because the next thing anyone wants is to compose
+   * over the image they just made.
+   */
+  const runGenerateImage = () => {
+    if (sceneGate || gen) return;
+    const prompt = scenePrompt.trim();
+    setGenErr(null);
+    startGen(async () => {
+      const title = prompt.slice(0, 60);
+      const land = (campaign: string, assetId: string, media: { url: string; source: StudioDraft["source"]; format: string }) => {
+        const draft: StudioDraft = { campaignId: campaign, assetId, url: media.url, source: media.source, format: media.format, title, status: "pending_approval", at: Date.now(), origin: "studio" };
+        setDrafts((prev) => [draft, ...prev]);
+        setPreview(draft);
+        const tile: Item = { s: media.url, l: title, p: "ai", url: media.url, id: assetId };
+        setGenerated((prev) => [tile, ...prev]);
+        setBg(tile);
+        setScenePrompt("");
+      };
+
+      const res = await generateStudioAsset({
+        engine: "image",
+        prompt,
+        format: FORMATS[fmt].r,
+        title,
+        campaignId,
+        model: modelPick.image,
+      });
+      if (!res.ok) {
+        setGenErr(res.error);
+        return;
+      }
+      if (res.status === "running") {
+        setImageNote("Generating — this can take a minute.");
+        for (let i = 0; i < EDIT_MAX_POLLS; i++) {
+          await new Promise((r) => setTimeout(r, EDIT_POLL_MS));
+          if (!aliveRef.current) return;
+          const poll = await pollStudioImage({
+            operationName: res.operationName,
+            ticket: res.ticket,
+            engine: res.engine,
+            instruction: prompt,
+            format: FORMATS[fmt].r,
+            title,
+            campaignId,
+          });
+          if (!aliveRef.current) return;
+          if (!poll.ok) {
+            setImageNote(null);
+            setGenErr(poll.error);
+            return;
+          }
+          if (poll.status === "done") {
+            setImageNote(null);
+            land(poll.campaignId, poll.assetId, poll.media);
+            return;
+          }
+        }
+        setImageNote(null);
+        setGenErr("Still rendering after a few minutes — it was submitted and will appear in your Library when it finishes.");
+        return;
+      }
+      if (res.assetId && res.media) land(res.campaignId ?? campaignId, res.assetId, res.media);
+    });
+  };
 
   // The one media guardrail this app can honestly compute: the provenance tag of the
   // background you actually picked (Item.p), plus whether it resolves to a real stored
@@ -766,7 +859,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         for (let i = 0; i < EDIT_MAX_POLLS; i++) {
           await new Promise((r) => setTimeout(r, EDIT_POLL_MS));
           if (!aliveRef.current) return;
-          const poll = await pollStudioEdit({
+          const poll = await pollStudioImage({
             operationName: res.operationName,
             ticket: res.ticket,
             // Round-tripped so the poll asks the engine that started it; the
@@ -774,6 +867,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             // redirect it at the other provider.
             engine: res.engine,
             instruction,
+            edited: true,
             format: FORMATS[fmt].r,
             title,
             campaignId,
@@ -1180,7 +1274,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             // no status: it argues with the picker two panels over.
             <div className="enginenote">
               <b>AI generation runs on {mediaEngines.higgsfield ? "Higgsfield and the built-in engine" : "the built-in engine"}.</b>{" "}
-              Pick the model for a render with the Model control beside the generate buttons.
+              Describe an image in the panel on the right to make one — it lands here and on the canvas, held for your approval.
               {!mediaEngines.higgsfield && !mediaEngines.gemini ? (
                 <span className="ed"><i />No engine connected — enable one in Settings → Connections</span>
               ) : null}
@@ -1637,6 +1731,35 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                         accessible description rather than only a hover toast. */}
                     {/* Editing the chosen photo, above generating a new creative
                         from it — it acts on what is already on the canvas. */}
+                    {/* Generate a picture from words. Studio could only ever
+                        composite over media you already had and edit media you
+                        already had, so a workspace with no approved photos had
+                        nothing to start from at all. */}
+                    <div className="field">
+                      <div className="fieldl"><span>Describe an image</span></div>
+                      <textarea
+                        className="input"
+                        rows={2}
+                        style={{ resize: "vertical", lineHeight: 1.45 }}
+                        placeholder="e.g. A clean service van in a suburban driveway on a bright morning"
+                        value={scenePrompt}
+                        onChange={(e) => setScenePrompt(e.target.value)}
+                        disabled={gen}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="exrow"
+                      onClick={runGenerateImage}
+                      disabled={Boolean(sceneGate) || gen}
+                      aria-busy={Boolean(imageNote)}
+                      title={sceneGate ?? undefined}
+                      {...(sceneGate ? { "data-soon": sceneGate } : {})}
+                    >
+                      <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>
+                      {imageNote ? "Generating…" : `Generate image · ${FORMATS[fmt].r}`}
+                    </button>
+                    {imageNote ? <div className="scapt" role="status">{imageNote}</div> : null}
                     <button
                       type="button"
                       className="exrow"

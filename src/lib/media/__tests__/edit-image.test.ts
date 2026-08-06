@@ -102,7 +102,7 @@ function readSource(rel: string): string {
  * synchronous one — a second, looser route to "the asset exists" is how Studio
  * once wrote to the bucket without ever writing a media_assets row (BSR-634).
  */
-describe("Studio edit: start-then-poll", () => {
+describe("Studio image jobs: start-then-poll", () => {
   const actions = readFileSync(new URL("../../../app/(app)/studio/actions.ts", import.meta.url), "utf8");
   const view = readFileSync(new URL("../../../app/(app)/studio/_components/studio-view.tsx", import.meta.url), "utf8");
 
@@ -117,29 +117,29 @@ describe("Studio edit: start-then-poll", () => {
     expect(branch.indexOf("engine.provider.startImage")).toBeLessThan(branch.indexOf("await fetch(sourceUrl)"));
   });
 
-  it("lands a polled edit through the same helper as a synchronous one", () => {
+  it("lands a polled image through the same helper as a synchronous one", () => {
     // Both paths call landStudioAsset — Library row, campaign draft, approval
     // gate — rather than one of them reimplementing it.
     expect(actions.match(/await landStudioAsset\(/g)?.length).toBe(2);
-    const poll = actions.match(/export async function pollStudioEdit[\s\S]*?\n}/)?.[0] ?? "";
+    const poll = actions.match(/export async function pollStudioImage[\s\S]*?\n}/)?.[0] ?? "";
     expect(poll.length).toBeGreaterThan(500);
     expect(poll).toMatch(/landStudioAsset\(/);
     expect(poll).toMatch(/EDITED_RISK/);
   });
 
   it("binds the poll to the engine that started it, through the signed ticket", () => {
-    const poll = actions.match(/export async function pollStudioEdit[\s\S]*?\n}/)?.[0] ?? "";
+    const poll = actions.match(/export async function pollStudioImage[\s\S]*?\n}/)?.[0] ?? "";
     expect(poll).toMatch(/verifyVideoTicket\(input\.ticket, input\.operationName, tenant\.workspace_id \?\? "", engineKey\)/);
   });
 
   it("does not meter the poll — the submit already paid", () => {
-    const poll = actions.match(/export async function pollStudioEdit[\s\S]*?\n}/)?.[0] ?? "";
+    const poll = actions.match(/export async function pollStudioImage[\s\S]*?\n}/)?.[0] ?? "";
     expect(poll.length).toBeGreaterThan(500);
     expect(poll).not.toMatch(/meterConnectorCall/);
   });
 
   it("is actually driven from the UI, not merely callable", () => {
-    expect(view).toMatch(/pollStudioEdit\(/);
+    expect(view).toMatch(/pollStudioImage\(/);
     expect(view).toMatch(/res\.status === "running"/);
     // A button that looks idle for a minute gets pressed again, and that pays twice.
     expect(view).toMatch(/setEditNote\(/);
@@ -152,5 +152,56 @@ describe("Studio edit: start-then-poll", () => {
     expect(loop.length).toBeGreaterThan(300);
     expect(loop).toMatch(/Still rendering/);
     expect(loop).toMatch(/Library/);
+  });
+});
+
+/**
+ * Generating a picture from words is the capability Studio never had: it could
+ * composite over media you already owned and edit media you already owned, so a
+ * workspace with no approved photos had nothing to start from at all.
+ */
+describe("Studio: generate an image from a description", () => {
+  const actions = readFileSync(new URL("../../../app/(app)/studio/actions.ts", import.meta.url), "utf8");
+  const view = readFileSync(new URL("../../../app/(app)/studio/_components/studio-view.tsx", import.meta.url), "utf8");
+
+  it("is reachable from the UI, not merely callable", () => {
+    // `engine: "image"` existed in the action for months with NO caller — the
+    // AI source tab was a note, not a button. That is the shape this asserts
+    // against, so the guard has to look at the view, not the action.
+    expect(view).toMatch(/runGenerateImage/);
+    expect(view).toMatch(/engine: "image"/);
+    expect(view).toMatch(/Generate image/);
+  });
+
+  it("does not require a background, the way compose does", () => {
+    // Sharing compose's gate would refuse the very action that produces the
+    // background compose is missing.
+    const gate = view.match(/const sceneGate =[\s\S]*?: null;/)?.[0] ?? "";
+    expect(gate.length).toBeGreaterThan(120);
+    expect(gate).not.toMatch(/bg\?\.url/);
+    expect(gate).toMatch(/scenePrompt/);
+  });
+
+  it("selects the new picture as the canvas background", () => {
+    // The next thing anyone wants is to compose over the image they just made.
+    const handler = view.match(/const runGenerateImage = \(\)[\s\S]*?\n  \};/)?.[0] ?? "";
+    expect(handler.length).toBeGreaterThan(500);
+    expect(handler).toMatch(/setBg\(tile\)/);
+    expect(handler).toMatch(/setGenerated\(/);
+  });
+
+  it("submits as a job on an engine that needs one, like every other path", () => {
+    const branch = actions.match(/else if \(input\.engine === "image"\)[\s\S]*?const aspectRatio = imageAspectFor/)?.[0] ?? "";
+    expect(branch.length).toBeGreaterThan(300);
+    expect(branch).toMatch(/engine\.provider\.startImage/);
+    expect(branch).toMatch(/signVideoTicket/);
+  });
+
+  it("flags a generated image WITHOUT the edited-from risk", () => {
+    // An edit inherits whatever its source was proof of; a generation has no
+    // source to inherit from, so carrying EDITED_RISK would misdescribe it.
+    const poll = actions.match(/export async function pollStudioImage[\s\S]*?\n}/)?.[0] ?? "";
+    expect(poll.length).toBeGreaterThan(500);
+    expect(poll).toMatch(/input\.edited \? \[EDITED_RISK/);
   });
 });
