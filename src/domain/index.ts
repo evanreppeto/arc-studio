@@ -12,6 +12,7 @@ export * from "./notebook";
 export * from "./campaign-kind";
 export * from "./campaign-spine";
 export * from "./campaign-revisions";
+export * from "./revision-quote";
 export * from "./campaign-rollup";
 export * from "./campaign-results";
 export * from "./arc-chat";
