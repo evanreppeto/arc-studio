@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { composeRevisionInstruction, truncateQuote } from "@/domain";
 import { type CampaignAssetFinding, type CampaignWorkspaceAsset, type ReviewQueueEntry } from "@/lib/campaigns/read-model";
 
 import { OverlayPortal } from "../../../_components/overlay-portal";
@@ -68,6 +69,17 @@ export function ReviewQueue({
   // cannot go stale; this is a single number reported once the queue is empty,
   // where "all of them were decided" is the only thing it can mean.
   const [startedWith] = useState(queue.length);
+  /** The passage the reviewer pointed at, carried into the revision request. */
+  const [quote, setQuote] = useState<string | null>(null);
+  // The selection listener is bound once, so it reads the mode through a ref.
+  // Written in an effect, not during render — a ref mutated while rendering is
+  // a value React cannot see, and the lint rule that catches it is right.
+  // Effects flush long before any user selection event, so it is never stale
+  // when the listener reads it.
+  const revisingRef = useRef(false);
+  useEffect(() => {
+    revisingRef.current = revising;
+  }, [revising]);
 
   const clamped = Math.min(index, Math.max(queue.length - 1, 0));
   const entry = queue[clamped];
@@ -104,6 +116,9 @@ export function ReviewQueue({
     (action: "next" | "prev") => {
       setRevising(false);
       setReviseText("");
+      // The quote belongs to the deliverable being left, for the same reason
+      // the half-written instruction does.
+      setQuote(null);
       setIndex((current) => stepQueueIndex(Math.min(current, Math.max(queue.length - 1, 0)), action, queue.length));
     },
     [queue.length],
@@ -112,15 +127,72 @@ export function ReviewQueue({
   const submitRevision = useCallback(() => {
     const instruction = reviseText.trim();
     if (!instruction || !asset || pending) return;
-    onRevise(asset, instruction);
+    // The quote is composed in HERE rather than prefilled into the box, so the
+    // operator's words stay theirs and the quote stays byte-identical to the
+    // draft — which is the one property that makes it useful to Arc. With no
+    // selection this is exactly the string it always was.
+    onRevise(asset, composeRevisionInstruction({ quote, instruction }));
     setRevising(false);
     setReviseText("");
+    setQuote(null);
     // Approving or declining takes the deliverable out of the queue, so the next
     // one arrives on its own. A revision request does not — the piece is still
     // undecided and still belongs here — so this is the one action that has to
     // move the cursor itself.
     setIndex((current) => stepQueueIndex(current, "next", queue.length));
   }, [asset, onRevise, pending, queue.length, reviseText]);
+
+  /**
+   * What the reviewer has selected in the draft, if anything.
+   *
+   * Two selection models, because the draft is rendered two ways. An undecided
+   * deliverable is a transparent `<textarea>` laid over the highlight marks
+   * (see `DeliverableCopy`), where the selection lives in
+   * `selectionStart/selectionEnd` and `window.getSelection()` returns nothing.
+   * A decided one is ordinary text, where the opposite is true. Reading only
+   * one of them would make the feature work on exactly half the queue — and
+   * the half it would miss is the half you actually review.
+   *
+   * Scoped to the draft: selecting Arc's own finding text, or the title, is
+   * reading rather than pointing at something to change.
+   */
+  useEffect(() => {
+    function read() {
+      const panel = wrapRef.current;
+      if (!panel) return;
+      // Committed once the instruction is being written. Clicking into the
+      // textarea collapses the selection, and the quote must survive that.
+      if (revisingRef.current) return;
+
+      const active = document.activeElement;
+      if (active instanceof HTMLTextAreaElement && active.classList.contains("dlive-ta") && panel.contains(active)) {
+        const { selectionStart, selectionEnd, value } = active;
+        const picked = selectionStart === selectionEnd ? "" : value.slice(selectionStart ?? 0, selectionEnd ?? 0);
+        setQuote(picked.trim() ? picked : null);
+        return;
+      }
+
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        setQuote(null);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const container =
+        range.commonAncestorContainer.nodeType === 1
+          ? (range.commonAncestorContainer as Element)
+          : range.commonAncestorContainer.parentElement;
+      if (!container || !panel.contains(container) || !container.closest(".dcopy")) {
+        setQuote(null);
+        return;
+      }
+      const picked = selection.toString();
+      setQuote(picked.trim() ? picked : null);
+    }
+
+    document.addEventListener("selectionchange", read);
+    return () => document.removeEventListener("selectionchange", read);
+  }, []);
 
   // Focus moves in so the shortcuts work without clicking first, and the page
   // behind stops scrolling, because this covers the shell rather than sitting
@@ -323,14 +395,46 @@ export function ReviewQueue({
 
         {error && <p className="rqerr">{error}</p>}
 
+        {/* Select a passage and the ask becomes about that passage. It sits
+            above the actions rather than floating at the caret: the draft is a
+            transparent textarea over a highlight layer, so there are no
+            selection rects to anchor to, and a mirror-measured popover would be
+            a lot of geometry to get subtly wrong. This is always in the same
+            place, which is easier to learn and impossible to miss. */}
+        {quote && !revising && (
+          <div className="rqsel">
+            <span className="rqsel-q">“{truncateQuote(quote, 120)}”</span>
+            <button
+              type="button"
+              className="cbtn rqsel-go"
+              // Mousedown is what collapses the selection, and the collapse
+              // fires `selectionchange`, which cleared the quote before the
+              // click ever landed — the box opened with nothing attached.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setRevising(true)}
+              disabled={pending}
+            >
+              Revise this part
+            </button>
+            <button type="button" className="cbtn ghost" onClick={() => setQuote(null)} disabled={pending}>
+              Clear
+            </button>
+          </div>
+        )}
+
         <div className="rqfoot">
           {revising ? (
             <div className="rqrevise">
+              {quote && (
+                <span className="rqsel-tag" title={quote}>
+                  About “{truncateQuote(quote, 60)}”
+                </span>
+              )}
               <textarea
                 ref={reviseRef}
                 value={reviseText}
                 onChange={(e) => setReviseText(e.target.value)}
-                placeholder="Tell Arc what to change…"
+                placeholder={quote ? "What should change about it?" : "Tell Arc what to change…"}
                 rows={2}
                 disabled={pending}
               />

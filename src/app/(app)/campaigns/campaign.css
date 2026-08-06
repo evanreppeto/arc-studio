@@ -850,3 +850,70 @@
   .arc-campaign .cspine-step:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
   .arc-campaign .cspine-step:nth-child(2n) { border-right: 0; }
 }
+
+/* ── Select a passage, revise that passage ─────────────────────────────────
+   Sits between the deliverable and the actions, so the thing you pointed at
+   and the thing you press are adjacent. Not a floating popover: the draft is a
+   transparent textarea over a highlight layer, so a selection has no rects to
+   anchor to and a mirror-measured caret popover is a lot of geometry to get
+   subtly wrong. */
+.arc-campaign .rqsel {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 24px;
+  border-top: 1px solid var(--line-2);
+  background: var(--surface-inset);
+  animation: rqselin var(--dur-base) var(--ease) both;
+}
+.arc-campaign .rqsel-q {
+  min-width: 0;
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--text-2);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arc-campaign .rqsel-go {
+  flex: none;
+  height: 30px;
+  /* Not gold. Approve is the deliverable's primary action and stays the one
+     accent on the panel; this bar animates in and sits on a lifted surface, so
+     it is already the most salient new thing on screen without competing. */
+  border-color: var(--accent-border);
+  color: var(--accent-contrast);
+}
+.arc-campaign .rqsel-go:hover { background: var(--accent-soft); }
+.arc-campaign .rqsel .cbtn.ghost { flex: none; height: 30px; }
+
+/* The quote, carried into the revision box so it is clear what the instruction
+   is about once the selection bar is gone. */
+.arc-campaign .rqsel-tag {
+  flex: none;
+  align-self: flex-start;
+  max-width: 240px;
+  padding: 5px 9px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-contrast);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes rqselin {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arc-campaign .rqsel { animation: none; }
+}
+@media (max-width: 720px) {
+  .arc-campaign .rqsel { flex-wrap: wrap; padding: 9px 16px; }
+  .arc-campaign .rqsel-q { flex-basis: 100%; }
+}
