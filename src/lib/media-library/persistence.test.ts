@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
 
-import { buildStoragePath, createFolder, createsFolderCycle, insertAsset, insertAssetWithUrl, moveAsset, sanitizeFileName, setAvailableToArc, DEFAULT_MEDIA_FOLDERS, seedDefaultMediaFolders } from "./persistence";
+import { buildStoragePath, createFolder, createsFolderCycle, insertAsset, insertAssetWithUrl, moveAsset, reorderFolders, sanitizeFileName, setAvailableToArc, updateFolder, DEFAULT_MEDIA_FOLDERS, seedDefaultMediaFolders } from "./persistence";
 
 /**
  * The invariant behind dragging one folder onto another.
@@ -57,10 +57,16 @@ describe("buildStoragePath", () => {
 });
 
 describe("createFolder", () => {
+  // Two reads now: the existing siblings' sort_order, then the insert.
+  const responses = (siblings: { sort_order: number }[]) => ({
+    media_folders: [
+      { data: siblings, error: null },
+      { data: { id: "folder-2" }, error: null },
+    ],
+  });
+
   it("persists a parent folder when creating a subfolder", async () => {
-    const supabase = createSupabaseQueryMock({
-      media_folders: { data: { id: "folder-2" }, error: null },
-    });
+    const supabase = createSupabaseQueryMock(responses([]));
 
     await createFolder({
       orgId: "org-1",
@@ -77,6 +83,78 @@ describe("createFolder", () => {
         parent_id: "folder-1",
       }),
     ]);
+  });
+
+  /**
+   * `sort_order` is `not null default 0`, and this used to leave it there — so
+   * every folder an operator made tied with whichever seeded folder also held
+   * 0, and a tie on the only ORDER BY column lets Postgres return the rail in a
+   * different order on different reads. Confirmed on the live tenant before
+   * this was written: two folders both sat at 0.
+   */
+  it("puts a new folder after its existing siblings instead of tying them at 0", async () => {
+    const supabase = createSupabaseQueryMock(responses([{ sort_order: 0 }, { sort_order: 3 }, { sort_order: 1 }]));
+
+    await createFolder({ orgId: "org-1", name: "Storm 2026", client: supabase });
+
+    expect(supabase.calls).toContainEqual(["insert", expect.objectContaining({ sort_order: 4 })]);
+  });
+
+  it("starts at 0 when the parent has no children yet", async () => {
+    const supabase = createSupabaseQueryMock(responses([]));
+
+    await createFolder({ orgId: "org-1", name: "First", client: supabase });
+
+    expect(supabase.calls).toContainEqual(["insert", expect.objectContaining({ sort_order: 0 })]);
+  });
+
+  it("scopes the sibling lookup to the top level with `is`, not `eq`, for a null parent", async () => {
+    const supabase = createSupabaseQueryMock(responses([]));
+
+    await createFolder({ orgId: "org-1", name: "Top", client: supabase });
+
+    // `.eq("parent_id", null)` does not match NULL rows in PostgREST — it would
+    // silently see no siblings and hand every root folder the same 0.
+    expect(supabase.calls).toContainEqual(["is", "parent_id", null]);
+  });
+});
+
+describe("reorderFolders", () => {
+  it("writes each id's position, and refuses ids that are not this parent's children", async () => {
+    const supabase = createSupabaseQueryMock({
+      media_folders: [
+        { data: [{ id: "a" }, { id: "b" }], error: null },
+        { data: [{ id: "a" }], error: null },
+        { data: [{ id: "b" }], error: null },
+      ],
+    });
+
+    // "zz" is not in the org's rows for this parent; the browser sent it, so it
+    // does not get to decide membership.
+    const written = await reorderFolders("org-1", "parent-1", ["b", "zz", "a"], supabase);
+
+    expect(written).toBe(2);
+    expect(supabase.calls).toContainEqual(["update", { sort_order: 0 }]);
+    expect(supabase.calls).toContainEqual(["update", { sort_order: 1 }]);
+    expect(supabase.calls).not.toContainEqual(["eq", "id", "zz"]);
+  });
+});
+
+describe("updateFolder", () => {
+  it("leaves a field alone when its key is absent, and clears it on an explicit null", async () => {
+    const nameOnly = createSupabaseQueryMock({ media_folders: { data: [{ id: "f1" }], error: null } });
+    await updateFolder("f1", { name: "Renamed" }, "org-1", nameOnly);
+    expect(nameOnly.calls).toContainEqual(["update", { name: "Renamed" }]);
+
+    const cleared = createSupabaseQueryMock({ media_folders: { data: [{ id: "f1" }], error: null } });
+    await updateFolder("f1", { description: null }, "org-1", cleared);
+    expect(cleared.calls).toContainEqual(["update", { description: null }]);
+  });
+
+  it("does not issue a write at all when the patch is empty", async () => {
+    const supabase = createSupabaseQueryMock({ media_folders: { data: [{ id: "f1" }], error: null } });
+    await updateFolder("f1", {}, "org-1", supabase);
+    expect(supabase.calls).toEqual([]);
   });
 });
 

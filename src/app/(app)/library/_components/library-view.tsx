@@ -6,8 +6,9 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 
 import { formatByteSize, WORK_STATE_LABEL } from "@/domain";
 
-import { createLibraryFolder, decideLibraryAsset, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, moveLibraryAssets, moveLibraryFolder, renameLibraryAsset, renameLibraryFolder, setLibraryAssetArcAvailability, setLibraryAssetTags, uploadLibraryAsset } from "../actions";
+import { createLibraryFolder, decideLibraryAsset, deleteLibraryAsset, deleteLibraryFolder, importLibraryAssetFromUrl, moveLibraryAssets, moveLibraryFolder, renameLibraryAsset, renameLibraryFolder, reorderLibraryFolders, setLibraryAssetArcAvailability, setLibraryAssetTags, updateLibraryFolder, uploadLibraryAsset } from "../actions";
 import { addLibraryAssetsToCampaign } from "../actions";
+import { FolderDetailsModal } from "./folder-details-modal";
 import { ImportUrlModal } from "./import-url-modal";
 import { NewFolderModal } from "./new-folder-modal";
 import { DRAG_ASSETS, FolderTree, ROOT_FOLDER, type Folder } from "./folder-tree";
@@ -221,6 +222,35 @@ function addToTree(nodes: Folder[], parentId: string, node: Folder): Folder[] {
         : n,
   );
 }
+function setDetailsInTree(nodes: Folder[], id: string, name: string, description: string | null): Folder[] {
+  return nodes.map((n) =>
+    n.f === id
+      ? { ...n, name, description }
+      : n.children
+        ? { ...n, children: setDetailsInTree(n.children, id, name, description) }
+        : n,
+  );
+}
+/** Re-sequence one parent's children to `orderedIds`. `parentId: null` is the
+ *  top level, which in this tree is every root node except the "All assets"
+ *  row — that row is a filter, not a folder, and must stay at the head. */
+function reorderInTree(nodes: Folder[], parentId: string | null, orderedIds: string[]): Folder[] {
+  const sort = (list: Folder[]): Folder[] => {
+    const rank = new Map(orderedIds.map((id, i) => [id, i]));
+    return [...list].sort((a, b) => (rank.get(a.f) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.f) ?? Number.MAX_SAFE_INTEGER));
+  };
+  if (parentId === null) {
+    const root = nodes.filter((n) => n.f === ROOT_FOLDER);
+    return [...root, ...sort(nodes.filter((n) => n.f !== ROOT_FOLDER))];
+  }
+  return nodes.map((n) =>
+    n.f === parentId
+      ? { ...n, children: sort(n.children ?? []) }
+      : n.children
+        ? { ...n, children: reorderInTree(n.children, parentId, orderedIds) }
+        : n,
+  );
+}
 function findInTree(nodes: Folder[], id: string): Folder | undefined {
   for (const n of nodes) {
     if (n.f === id) return n;
@@ -306,6 +336,8 @@ export function LibraryView({
   const [folderOpen, setFolderOpen] = useState(false);
   /** Which folder the next "New folder" lands in — null is the top level. */
   const [newFolderParent, setNewFolderParent] = useState<string | null>(null);
+  /** The folder whose name + description are being edited, if any. */
+  const [detailsFolder, setDetailsFolder] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // "Add to campaign" picker. The control used to be a bare link to /campaigns,
@@ -897,6 +929,47 @@ export function LibraryView({
   };
 
   /**
+   * Save the folder-details editor. Both fields go in one write — same row,
+   * same gate — and the tree updates optimistically so the rail reflects the
+   * new name before the refetch.
+   */
+  const saveFolderDetails = async (id: string, value: { name: string; description: string }): Promise<{ ok: boolean; error?: string }> => {
+    const snapshot = tree;
+    setTree((t) => setDetailsInTree(t, id, value.name, value.description || null));
+    const res = await updateLibraryFolder({ folderId: id, name: value.name, description: value.description }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    if (!res.ok) {
+      setTree(snapshot);
+      return { ok: false, error: res.error };
+    }
+    if (!res.persisted) setNotice("Connect a workspace to save folder details.");
+    return { ok: true };
+  };
+
+  /**
+   * Persist a sibling order — the drop-between gesture, and Move up / Down.
+   *
+   * The whole ordered list is sent rather than a delta, so what lands in
+   * `sort_order` is exactly the sequence the operator was looking at.
+   */
+  const handleReorderFolders = async (parentId: string | null, orderedIds: string[]) => {
+    const snapshot = tree;
+    setTree((t) => reorderInTree(t, parentId, orderedIds));
+    const res = await reorderLibraryFolders({ parentId, orderedIds }).catch(() => ({
+      ok: false as const,
+      error: "Could not reach the server.",
+    }));
+    if (!res.ok) {
+      setTree(snapshot);
+      setNotice(res.error);
+      return;
+    }
+    if (!res.persisted) setNotice("Connect a workspace to save the folder order.");
+  };
+
+  /**
    * The rail's drop handler. Assets dropped on a folder go through the same
    * org-scoped move the selection bar uses — one path, so a drag can't quietly
    * become a second way to file media that skips the workspace check.
@@ -998,6 +1071,8 @@ export function LibraryView({
             onDelete={handleFolderDelete}
             onNewFolder={openNewFolder}
             onMoveFolder={(id, parentId) => void handleMoveFolder(id, parentId)}
+            onReorder={(parentId, orderedIds) => void handleReorderFolders(parentId, orderedIds)}
+            onEditDetails={setDetailsFolder}
             onDropAssets={handleDropAssets}
             dragging={assetDrag}
           />
@@ -1540,6 +1615,19 @@ export function LibraryView({
         onSubmit={handleCreateFolder}
         parentName={newFolderParent ? folderName(tree, newFolderParent) ?? null : null}
       />
+
+      {/* Keyed by folder id so reopening on a different folder resets the form
+          to that folder's own values rather than the last one's. */}
+      {detailsFolder && (
+        <FolderDetailsModal
+          key={`details-${detailsFolder}`}
+          open
+          folderName={findInTree(tree, detailsFolder)?.name ?? ""}
+          description={findInTree(tree, detailsFolder)?.description ?? null}
+          onClose={() => setDetailsFolder(null)}
+          onSubmit={(value) => saveFolderDetails(detailsFolder, value)}
+        />
+      )}
 
       <ImportUrlModal
         key={importOpen ? "import-open" : "import-closed"}

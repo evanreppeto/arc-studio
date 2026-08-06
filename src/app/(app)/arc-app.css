@@ -2237,6 +2237,9 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .mfield input:focus, .arc-app .mfield textarea:focus, .arc-app .mfield select:focus {
   outline: none; border-color: var(--accent-border-strong); box-shadow: 0 0 0 3px var(--accent-soft);
 }
+/* Sub-label under a field, for the sentence a placeholder can't hold — what the
+   value is FOR, or what an empty one means. */
+.arc-app .mhint { font-size: 11px; line-height: 1.45; color: var(--muted); }
 .arc-app .mError { font-size: 12px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border, var(--line-2)); border-radius: var(--r-md); padding: 8px 11px; }
 
 /* Workspace identity editor — a live miniature of the rail block being edited,
