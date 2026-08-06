@@ -73,7 +73,9 @@ describe("edit wiring", () => {
   it("lands the edit in the approval gate like every other output", () => {
     // It rejoins the shared tail — metering, Library record, promoteAssetToCampaign
     // — rather than carrying a second, looser path to the same place.
-    expect(action).toMatch(/context: \{ surface: "studio", engine: "edit" \}/);
+    // `provider` was added when Higgsfield became executable app-side: the
+    // meter has to record WHICH engine ran, not only which surface asked.
+    expect(action).toMatch(/context: \{ surface: "studio", engine: "edit", provider: engine\.engine \}/);
     expect(action).toMatch(/EDITED_RISK/);
   });
 

@@ -90,12 +90,46 @@ suggestion — *"use `veo3_1` unless the task truly needs another model"* — wh
   the runner never interprets a model reference — it relays `key` back to the
   media endpoints, which validate it again.
 
-**Known boundary:** the app still cannot *execute* Higgsfield — Arc drives it
-through the `mcp__higgsfield` connector. A Higgsfield pick is therefore enforced
-as a prompt-level required argument, not an app-side parameter, and Studio (which
-runs in-process) offers Gemini models only when Higgsfield is the sole connection.
-Closing that means an app-side Higgsfield MCP client; `checkHiggsfieldToken`
-(`src/lib/connectors/higgsfield-health.ts`) already proves the transport works.
+### Executing Higgsfield app-side
+
+The app now runs Higgsfield generations itself, so a Higgsfield pick is a
+parameter on a call we make — not only a required argument named in Arc's prompt.
+
+- **Transport** — `src/lib/connectors/mcp-client.ts`: `initialize` → `tools/call`
+  over HTTP, SSE-aware. `checkHiggsfieldToken` was rebuilt on it so the health
+  check and real generations cannot drift apart.
+- **Contract** — `src/lib/connectors/higgsfield-mcp.ts`. Submits through the
+  **headless** `generate_image_batch` / `generate_video_batch` (the plain
+  `generate_image` tool exists to render a widget in a chat client), then polls
+  `jobs_wait`. `use_unlim: false` is always explicit: omitting it makes the server
+  ask a human whether to spend their free-trial allowance, and an unattended
+  server action has nobody to ask.
+- **Provider** — `src/lib/media/higgsfield.ts`, same `MediaProvider` interface as
+  Gemini, so callers stay engine-agnostic.
+- **Selection** — `src/lib/media/engine-provider.ts` turns a resolved target into
+  the provider that executes it, with the right credential and the right meter.
+  The old `gemini-media` gate was removed from Studio and the media routes: it
+  refused a workspace whose only connected engine is Higgsfield.
+
+**Contract confidence.** Verified live on 2026-08-06: `jobs_wait` (exact shape),
+`show_generations`, `generate_image` `get_cost`, `models_explore`, and the batch
+*failure* envelope. The batch **success** envelope could not be probed without
+spending credits (a batch submit rejects `get_cost`), so `parseSubmittedJobs`
+accepts the plausible spellings and **throws**, naming what it received, rather
+than returning an empty list for a generation the customer has already paid for.
+**One real generation still has to run before this path is called proven.**
+
+**Still not supported on Higgsfield**, both reported honestly rather than
+silently degraded:
+- **Editing an image** — needs a `media_id` from Higgsfield's own upload
+  endpoint, so it raises `ImageEditUnsupportedError` (which the callers already
+  turn into "choose a Gemini image model to edit").
+- **Animating a chosen photo** — same reason; Studio refuses with a sentence
+  naming the model instead of quietly rendering from the prompt alone.
+
+**Auto stays on Gemini** even though both engines execute. That is a spend
+decision, not a capability one: Higgsfield bills the customer's own credits, and
+reaching for them when nobody chose to is not a default to make on their behalf.
 
 ## Layer 3 — Reasoning model (which Claude model Arc *thinks* with)
 
@@ -150,11 +184,10 @@ Independent of the picker, bumping FAST to Sonnet 5 is a one-line quality win.
 | Layer | Choice | Default | State |
 |---|---|---|---|
 | 1. Backend | Higgsfield/Gemini on/off + credential | off until connected | ✅ done |
-| 2. Media model | per-category model across BOTH engines | Auto (Arc picks) | ✅ done — one resolver, enforced as an argument |
+| 2. Media model | per-category model across BOTH engines | Auto (Gemini) | ✅ done — one resolver, both engines execute app-side |
 | 3. Reasoning | Arc Auto / Spark / Forge | Auto | ✅ done — composer pill |
 
-**Do next:** an app-side Higgsfield execution client, so a Higgsfield pick is a
-parameter on a call the app makes rather than a required argument stated in a
-prompt. Until then the Higgsfield half of Layer 2 is as strong as a prompt can
-be, and no stronger — verify a Higgsfield generation names the picked model
-before treating it as enforced.
+**Do next:** run ONE real Higgsfield generation from Studio and confirm the
+submit envelope parses (see "Contract confidence" above) — it is the last
+inferred piece. After that: `media_upload`, which unlocks Higgsfield image edits
+and photo-to-video, the two capabilities that currently refuse with a reason.

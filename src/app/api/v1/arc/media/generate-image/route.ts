@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { MEDIA_UNITS, geminiModelForTarget, parseArcRoute } from "@/domain";
+import { MEDIA_UNITS, parseArcRoute } from "@/domain";
 
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
 import { checkUsageAllowed, usageBlockMessage } from "@/lib/billing/entitlements";
-import { getMediaProviderWithKey } from "@/lib/media";
 import { resolveWorkspaceTarget } from "@/lib/media-config/target";
-import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
+import { resolveEngineProvider } from "@/lib/media/engine-provider";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { hardenImagePrompt } from "@/lib/media/prompt";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
@@ -31,8 +30,11 @@ export async function POST(request: Request) {
   const allowed = await arcGuard(request);
   if (!allowed.ok) return allowed.response;
 
-  const access = await resolveMediaGeneration(allowed.scope.workspaceId);
-  if (!access.enabled) return fail("not_configured", access.reason, 503);
+  // NOTE: no gemini-media gate here. Whether generation can run is now answered
+  // by resolveEngineProvider below, which asks the engine the target actually
+  // names — gating on the Gemini connector first would refuse a workspace whose
+  // only connected engine is Higgsfield. A Gemini/Auto target still reaches the
+  // same check, with the same operator-actionable reason.
 
   // Pre-flight plan/quota gate (non-blocking until ARC_BILLING_ENFORCEMENT is armed).
   const gate = await checkUsageAllowed(allowed.scope.orgId);
@@ -66,7 +68,9 @@ export async function POST(request: Request) {
     category: "image",
     requestOverride: typeof body.model_key === "string" ? body.model_key : null,
   });
-  const provider = getMediaProviderWithKey(access.credential, { level, imageModel: geminiModelForTarget(target) });
+  const engine = await resolveEngineProvider({ client: getSupabaseAdminClient(), workspaceId: allowed.scope.workspaceId, target, level });
+  if (!engine.ok) return fail("not_configured", engine.reason, 503);
+  const provider = engine.provider;
 
   try {
     // Harden the prompt (strip embedded text/branding, add quality + caller style)
@@ -75,7 +79,7 @@ export async function POST(request: Request) {
     // Platform-credit generations are spend-capped; a workspace's own key bypasses.
     const metered = await meterConnectorCall(
       undefined,
-      { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: MEDIA_UNITS.image, costTier: access.costTier, context: { route: "generate-image" } },
+      { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: engine.connectorKey, estimatedUnits: MEDIA_UNITS.image, costTier: engine.costTier, context: { route: "generate-image", provider: engine.engine } },
       () => provider.generateImage({ prompt: finalPrompt, aspectRatio }),
     );
     if (!metered.ok) return fail("plan_limit", metered.refusal.message, 402);

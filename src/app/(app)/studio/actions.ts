@@ -8,7 +8,6 @@ import {
   type CreativeCopy,
   type CreativeLayoutOverride,
   MEDIA_UNITS,
-  geminiModelForTarget,
   normalizeCreativeFormat,
   parseArcRoute,
   selectCreativeTemplate,
@@ -21,9 +20,9 @@ import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { listBrandLogos } from "@/lib/brand-kit/logos";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { promoteAssetToCampaign, resolveOrCreateCampaign } from "@/lib/campaigns/create";
-import { getMediaProviderWithKey, isMediaGenEnabled } from "@/lib/media";
+import { isMediaGenEnabled } from "@/lib/media";
 import { resolveWorkspaceTarget } from "@/lib/media-config/target";
-import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
+import { resolveEngineProvider } from "@/lib/media/engine-provider";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { renderCreative } from "@/lib/media/compose/renderer";
 import { assertPublicHttpUrl } from "@/lib/brand-kit/website";
@@ -172,10 +171,6 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       getCurrentAgentTaskTenantFields(),
       getOperatorActor(),
     ]);
-    // Per-workspace gate: the gemini-media connector (platform credits or the
-    // workspace's own key), with the legacy env flag as deployment-wide fallback.
-    const access = await resolveMediaGeneration(tenant.workspace_id);
-    if (!access.enabled) return { ok: false, code: "disabled", error: access.reason };
     const settings = await getAppSettings(ctx.orgId);
     // One resolution for every image-producing engine below. Auto yields
     // undefined and leaves Gemini's own chain (level → env → default) untouched;
@@ -187,7 +182,23 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       category: "image",
       requestOverride: input.model,
     });
-    const pinnedImageModel = geminiModelForTarget(target);
+    // Which engine executes it, and on whose credential. A Higgsfield pick now
+    // runs HERE, in-process, instead of being a model id Studio could display
+    // and never use.
+    //
+    // This also replaces the old gemini-media gate that stood above: gating on
+    // the Gemini connector would refuse a workspace that has Higgsfield
+    // connected and nothing else — a "media generation is off" message on a
+    // screen whose model picker was listing Higgsfield models. For a Gemini or
+    // Auto target the resolution ends up at the same connector check, with the
+    // same operator-actionable sentence.
+    const engine = await resolveEngineProvider({
+      client: getSupabaseAdminClient(),
+      workspaceId: tenant.workspace_id,
+      target,
+      level: parseArcRoute(settings.markDefaultRoute),
+    });
+    if (!engine.ok) return { ok: false, code: "disabled", error: engine.reason };
 
     let media: StudioMedia;
     let objectPath: string;
@@ -218,11 +229,10 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const sourceBytes = Buffer.from(await sourceRes.arrayBuffer());
       const sourceType = sourceRes.headers.get("content-type") ?? "image/png";
 
-      const level = parseArcRoute(settings.markDefaultRoute);
-      const provider = getMediaProviderWithKey(access.credential, { level, imageModel: pinnedImageModel });
+      const provider = engine.provider;
       const metered = await meterConnectorCall(
         undefined,
-        { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: 1, costTier: access.costTier, context: { surface: "studio", engine: "edit" } },
+        { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: engine.connectorKey, estimatedUnits: 1, costTier: engine.costTier, context: { surface: "studio", engine: "edit", provider: engine.engine } },
         () => provider.editImage({ bytes: sourceBytes, contentType: sourceType, instruction }),
       );
       if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
@@ -255,13 +265,12 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
     } else if (input.engine === "image") {
       const prompt = (input.prompt ?? "").trim();
       if (!prompt) return { ok: false, code: "failed", error: "Describe the image you want Arc to generate." };
-      const level = parseArcRoute(settings.markDefaultRoute);
-      const provider = getMediaProviderWithKey(access.credential, { level, imageModel: pinnedImageModel });
+      const provider = engine.provider;
       const aspectRatio = imageAspectFor(input.format);
       // Platform-credit generations are spend-capped; a workspace's own key bypasses.
       const metered = await meterConnectorCall(
         undefined,
-        { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: 1, costTier: access.costTier, context: { surface: "studio", engine: "image" } },
+        { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: engine.connectorKey, estimatedUnits: 1, costTier: engine.costTier, context: { surface: "studio", engine: "image", provider: engine.engine } },
         () => provider.generateImage({ prompt: hardenImagePrompt(prompt, { style: input.style }), aspectRatio }),
       );
       if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
@@ -419,7 +428,7 @@ export type StartStudioVideoInput = {
 };
 
 export type StartStudioVideoResult =
-  | { ok: true; operationName: string; ticket: string; model: string; aspectRatio: string }
+  | { ok: true; operationName: string; ticket: string; model: string; aspectRatio: string; engine: string }
   | { ok: false; error: string; code?: "disabled" | "no_campaign" | "failed" };
 
 /**
@@ -444,8 +453,6 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
 
   try {
     const [ctx, tenant] = await Promise.all([getCurrentWorkspaceContext(), getCurrentAgentTaskTenantFields()]);
-    const access = await resolveMediaGeneration(tenant.workspace_id);
-    if (!access.enabled) return { ok: false, code: "disabled", error: access.reason };
     const settings = await getAppSettings(ctx.orgId);
     const level = parseArcRoute(settings.markDefaultRoute);
     const target = await resolveWorkspaceTarget({
@@ -455,11 +462,23 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
       category: "video",
       requestOverride: input.model,
     });
-    const provider = getMediaProviderWithKey(access.credential, {
-      level,
-      videoModel: geminiModelForTarget(target),
-    });
+    const engine = await resolveEngineProvider({ client: getSupabaseAdminClient(), workspaceId: tenant.workspace_id, target, level });
+    if (!engine.ok) return { ok: false, code: "disabled", error: engine.reason };
+    const provider = engine.provider;
     const aspectRatio = videoAspectFor(input.format);
+
+    // Animating a specific photo is a Veo capability we have; on Higgsfield the
+    // reference has to be uploaded to their media store first, and that flow
+    // doesn't exist here yet. Say so. Dropping the frame and rendering from the
+    // words alone is precisely the bug the start-frame support was added to fix
+    // — the operator points at a picture and gets an unrelated clip.
+    if (engine.engine === "higgsfield" && (input.sourceImageUrl ?? "").trim()) {
+      return {
+        ok: false,
+        code: "failed",
+        error: `Animating an existing photo isn't supported on ${target?.label ?? "this model"} yet — choose a built-in Veo model for that, or clear the photo to render from your description.`,
+      };
+    }
 
     // Fetched before metering: a bad URL should cost nothing.
     let startFrame: { bytes: Buffer; contentType: string } | undefined;
@@ -479,10 +498,10 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
       {
         orgId: ctx.orgId,
         workspaceId: tenant.workspace_id,
-        connectorKey: MEDIA_CONNECTOR_KEY,
+        connectorKey: engine.connectorKey,
         estimatedUnits: MEDIA_UNITS.video,
-        costTier: access.costTier,
-        context: { surface: "studio", engine: "video" },
+        costTier: engine.costTier,
+        context: { surface: "studio", engine: "video", provider: engine.engine },
       },
       () => provider.startVideo({ prompt: hardenImagePrompt(prompt, { style: input.style }), aspectRatio, image: startFrame }),
     );
@@ -491,7 +510,8 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
     return {
       ok: true,
       operationName: start.operationName,
-      ticket: signVideoTicket(start.operationName, tenant.workspace_id ?? ""),
+      ticket: signVideoTicket(start.operationName, tenant.workspace_id ?? "", engine.engine),
+      engine: engine.engine,
       model: start.model,
       aspectRatio,
     };
@@ -501,6 +521,9 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
 }
 
 export type PollStudioVideoInput = {
+  /** Which engine rendered it — round-tripped from the start result and bound
+   *  into the ticket, so a client cannot redirect the poll at the other one. */
+  engine?: string;
   operationName: string;
   ticket: string;
   model: string;
@@ -527,17 +550,25 @@ export async function pollStudioVideo(input: PollStudioVideoInput): Promise<Poll
       getCurrentAgentTaskTenantFields(),
       getOperatorActor(),
     ]);
-    if (!verifyVideoTicket(input.ticket, input.operationName, tenant.workspace_id ?? "")) {
+    const engineKey = input.engine === "higgsfield" ? "higgsfield" : "gemini";
+    if (!verifyVideoTicket(input.ticket, input.operationName, tenant.workspace_id ?? "", engineKey)) {
       return { ok: false, error: "This video job does not belong to this workspace." };
     }
-    const access = await resolveMediaGeneration(tenant.workspace_id);
-    if (!access.enabled) return { ok: false, error: access.reason };
     const settings = await getAppSettings(ctx.orgId);
-    const provider = getMediaProviderWithKey(access.credential, {
+    // Ask the engine that STARTED the job, not whatever the workspace default
+    // resolves to now — a default changed mid-render would otherwise send the
+    // poll to the wrong provider and report a live job as missing. The model is
+    // irrelevant here (polling selects nothing), so a bare engine target is
+    // enough to pick the right credential.
+    const engine = await resolveEngineProvider({
+      client: getSupabaseAdminClient(),
+      workspaceId: tenant.workspace_id,
+      target: null,
+      engine: engineKey,
       level: parseArcRoute(settings.markDefaultRoute),
-      imageModel: settings.imageModel,
-      videoModel: settings.videoModel,
     });
+    if (!engine.ok) return { ok: false, error: engine.reason };
+    const provider = engine.provider;
 
     const result = await provider.pollVideo(input.operationName);
     if (result.status === "running") return { ok: true, status: "running" };

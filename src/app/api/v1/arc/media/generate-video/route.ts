@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { MEDIA_UNITS, geminiModelForTarget, parseArcRoute } from "@/domain";
+import { MEDIA_UNITS, parseArcRoute } from "@/domain";
 
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
 import { checkUsageAllowed, usageBlockMessage } from "@/lib/billing/entitlements";
-import { getMediaProviderWithKey } from "@/lib/media";
 import { resolveWorkspaceTarget } from "@/lib/media-config/target";
-import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
+import { resolveEngineProvider } from "@/lib/media/engine-provider";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { hardenImagePrompt } from "@/lib/media/prompt";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
@@ -26,8 +25,11 @@ import { recordUsageEvent } from "@/lib/ai-usage/persistence";
 export async function POST(request: Request) {
   const allowed = await arcGuard(request);
   if (!allowed.ok) return allowed.response;
-  const access = await resolveMediaGeneration(allowed.scope.workspaceId);
-  if (!access.enabled) return fail("not_configured", access.reason, 503);
+  // NOTE: no gemini-media gate here. Whether generation can run is now answered
+  // by resolveEngineProvider below, which asks the engine the target actually
+  // names — gating on the Gemini connector first would refuse a workspace whose
+  // only connected engine is Higgsfield. A Gemini/Auto target still reaches the
+  // same check, with the same operator-actionable reason.
   const payload = await readJson(request);
   if (payload === INVALID_JSON || typeof payload !== "object" || payload === null) {
     return fail("rejected", "Request body must be valid JSON.", 400);
@@ -47,7 +49,13 @@ export async function POST(request: Request) {
     category: "video",
     requestOverride: typeof body.model_key === "string" ? body.model_key : null,
   });
-  const provider = getMediaProviderWithKey(access.credential, { level, videoModel: geminiModelForTarget(target) });
+  // A poll carries the engine that started the job (body.engine); a start uses
+  // the target's. Re-deriving on a poll would question the wrong provider if the
+  // workspace default changed mid-render.
+  const pollEngine = body.engine === "higgsfield" ? ("higgsfield" as const) : body.engine === "gemini" ? ("gemini" as const) : undefined;
+  const engine = await resolveEngineProvider({ client: getSupabaseAdminClient(), workspaceId: allowed.scope.workspaceId, target, level, engine: pollEngine });
+  if (!engine.ok) return fail("not_configured", engine.reason, 503);
+  const provider = engine.provider;
 
   const operationName = typeof body.operation_name === "string" ? body.operation_name.trim() : "";
 
@@ -114,7 +122,7 @@ export async function POST(request: Request) {
     // cost is already incurred). Video ≈ 10 image-units in the rate table.
     const metered = await meterConnectorCall(
       undefined,
-      { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: MEDIA_UNITS.video, costTier: access.costTier, context: { route: "generate-video" } },
+      { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: engine.connectorKey, estimatedUnits: MEDIA_UNITS.video, costTier: engine.costTier, context: { route: "generate-video", provider: engine.engine } },
       () => provider.startVideo({ prompt: hardenImagePrompt(prompt), aspectRatio, durationSeconds, personGeneration }),
     );
     if (!metered.ok) return fail("plan_limit", metered.refusal.message, 402);

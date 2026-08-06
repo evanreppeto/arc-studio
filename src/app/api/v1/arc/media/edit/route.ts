@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { geminiModelForTarget, parseArcRoute } from "@/domain";
+import { parseArcRoute } from "@/domain";
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
 import { assertPublicHttpUrl } from "@/lib/brand-kit/website";
 import { meterConnectorCall } from "@/lib/connectors/metering";
-import { getMediaProviderWithKey } from "@/lib/media";
 import { resolveWorkspaceTarget } from "@/lib/media-config/target";
-import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
+import { resolveEngineProvider } from "@/lib/media/engine-provider";
 import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
 import { storeGeneratedMedia } from "@/lib/media/storage";
@@ -46,8 +45,11 @@ export async function POST(request: Request) {
   const allowed = await arcGuard(request);
   if (!allowed.ok) return allowed.response;
 
-  const access = await resolveMediaGeneration(allowed.scope.workspaceId);
-  if (!access.enabled) return fail("not_configured", access.reason, 503);
+  // NOTE: no gemini-media gate here. Whether generation can run is now answered
+  // by resolveEngineProvider below, which asks the engine the target actually
+  // names — gating on the Gemini connector first would refuse a workspace whose
+  // only connected engine is Higgsfield. A Gemini/Auto target still reaches the
+  // same check, with the same operator-actionable reason.
 
   const body = await readJson(request);
   if (body === INVALID_JSON) return fail("rejected", "Request body must be valid JSON.", 400);
@@ -75,20 +77,24 @@ export async function POST(request: Request) {
       category: "image",
       requestOverride: str((body as Record<string, unknown>).model_key) || null,
     });
-    const provider = getMediaProviderWithKey(access.credential, {
+    const engine = await resolveEngineProvider({
+      client: getSupabaseAdminClient(),
+      workspaceId: allowed.scope.workspaceId,
+      target,
       level: parseArcRoute(settings.markDefaultRoute),
-      imageModel: geminiModelForTarget(target),
     });
+    if (!engine.ok) return fail("not_configured", engine.reason, 503);
+    const provider = engine.provider;
 
     const metered = await meterConnectorCall(
       undefined,
       {
         orgId: allowed.scope.orgId,
         workspaceId: allowed.scope.workspaceId,
-        connectorKey: MEDIA_CONNECTOR_KEY,
+        connectorKey: engine.connectorKey,
         estimatedUnits: 1,
-        costTier: access.costTier,
-        context: { surface: "arc", engine: "edit" },
+        costTier: engine.costTier,
+        context: { surface: "arc", engine: "edit", provider: engine.engine },
       },
       () => provider.editImage({ bytes: sourceBytes, contentType: sourceType, instruction }),
     );

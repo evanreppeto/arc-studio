@@ -837,6 +837,10 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         const poll = await pollStudioVideo({
           operationName: started.operationName,
           ticket: started.ticket,
+          // Round-tripped so the poll asks the engine that started the job. The
+          // server verifies it against the signed ticket, so this is a hint the
+          // client cannot lie with.
+          engine: started.engine,
           model: started.model,
           prompt,
           format: started.aspectRatio,

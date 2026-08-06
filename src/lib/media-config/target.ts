@@ -71,10 +71,12 @@ export async function resolveWorkspaceTarget(input: WorkspaceTargetInput): Promi
     requestOverride: input.requestOverride,
     engines,
     legacyGemini: { image: settings?.imageModel, video: settings?.videoModel },
-    // The app itself can only execute Gemini — Arc drives Higgsfield through its
-    // MCP connector. So an *auto* target on an app-side path lands on Gemini and
-    // leaves its default chain intact; Higgsfield is reached only by an explicit
-    // pick, which the runner turns into a required `model` argument.
+    // Auto lands on Gemini even though the app can now execute Higgsfield too.
+    // That is a spend decision, not a capability one: Gemini runs on platform
+    // credits (or the workspace's own key), while every Higgsfield generation
+    // bills the customer's own Higgsfield credits. Reaching for their credits
+    // when nobody chose to is not a default we get to pick for them — so
+    // Higgsfield runs when it is asked for, and only then.
     autoEngine: "gemini",
   });
 }
