@@ -1,5 +1,20 @@
 /** Provider-agnostic media generation. Swap Gemini → Higgsfield/Vertex behind this. */
-export type ImageGenInput = { prompt: string; aspectRatio?: string };
+export type ImageGenInput = {
+  prompt: string;
+  aspectRatio?: string;
+  /**
+   * A picture to work FROM, by public URL.
+   *
+   * Carried as a URL rather than bytes because the two engines want opposite
+   * things: Gemini takes the bytes inline, while Higgsfield takes a `media_id`
+   * it mints by fetching a URL itself (`media_import_url`) and rejects a URL
+   * passed anywhere else. Every caller already holds a permanent public URL, so
+   * this is the form that serves both without one of them re-uploading.
+   *
+   * With a prompt, this is an EDIT: change this picture in this way.
+   */
+  source?: { url: string };
+};
 
 /**
  * Edit an image that already exists, rather than making a new one from words.
@@ -17,6 +32,9 @@ export type ImageEditInput = {
   contentType: string;
   /** What to change about it, in the operator's words. */
   instruction: string;
+  /** The same image as a public URL, for engines that import rather than accept
+   *  bytes. Callers already fetched the bytes FROM this. */
+  sourceUrl?: string;
 };
 
 /** Thrown when the configured model cannot edit — Imagen generates only. Its own
@@ -49,7 +67,13 @@ export type VideoGenInput = {
    * Veo takes either a prompt or a starting image (or both); it will not take an
    * image and a source video together.
    */
-  image?: { bytes: Buffer; contentType: string };
+  image?: {
+    bytes: Buffer;
+    contentType: string;
+    /** The same still as a public URL — see ImageGenInput.source for why both
+     *  forms travel together. */
+    url?: string;
+  };
   aspectRatio?: string;
   durationSeconds?: number;
   /** DONT_ALLOW | ALLOW_ADULT | ALLOW_ALL. Omit for the deployment default. */

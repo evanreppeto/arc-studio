@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ImageEditUnsupportedError } from "../types";
 import { createHiggsfieldMediaProvider } from "../higgsfield";
 
 afterEach(() => vi.restoreAllMocks());
@@ -32,6 +31,23 @@ function scriptMcp(payloads: unknown[], onFile?: () => { status: number; arrayBu
     return mcpResponse(payloads[Math.min(next++, payloads.length - 1)]);
   });
   vi.stubGlobal("fetch", fetchMock);
+  return calls;
+}
+
+/** Answer by tool name — reference-media flows fire two lookups concurrently,
+ *  so a positional script would be a race. */
+function scriptByName(map: Record<string, unknown>) {
+  const calls: Array<{ name?: string; args?: Record<string, unknown> }> = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: { body?: string }) => {
+    if (!url.includes("mcp.higgsfield.ai")) {
+      return { status: 200, headers: new Headers({ "content-type": "image/png" }), arrayBuffer: async () => new ArrayBuffer(4) };
+    }
+    const body = JSON.parse(init?.body ?? "{}") as { method: string; params?: { name?: string; arguments?: Record<string, unknown> } };
+    if (body.method === "initialize") return { status: 200, headers: new Headers(), text: async () => "{}" };
+    const name = body.params?.name ?? "";
+    calls.push({ name, args: body.params?.arguments });
+    return mcpResponse(map[name] ?? {});
+  }));
   return calls;
 }
 
@@ -154,14 +170,14 @@ describe("Higgsfield media provider", () => {
     expect(poll.status).toBe("running");
   });
 
-  it("says which model cannot edit, using the error the callers already handle", async () => {
-    // Higgsfield edits need a media_id from their own upload endpoint, which is
-    // a flow that does not exist here yet. This is a capability answer, not a
-    // failure, and the operator is told what to switch to.
+  it("refuses an edit with no public URL, naming the reason", async () => {
+    // Higgsfield mints a media_id by fetching a URL itself; bytes alone cannot
+    // become one. A caller that sends only bytes gets told that, not a generic
+    // failure it would retry.
     scriptMcp([]);
     await expect(
       createHiggsfieldMediaProvider("oat_x", { model: "soul_v2" }).editImage({ bytes: Buffer.from(""), contentType: "image/png", instruction: "x" }),
-    ).rejects.toThrow(ImageEditUnsupportedError);
+    ).rejects.toThrow(/public URL/);
   });
 
   it("does not treat a transport failure as a rejected generation", async () => {
@@ -198,5 +214,68 @@ describe("start-then-poll image", () => {
   it("is absent on Gemini, which is how a caller knows to block instead", async () => {
     const { createGeminiMediaProvider } = await import("../gemini");
     expect(createGeminiMediaProvider("key").startImage).toBeUndefined();
+  });
+});
+
+describe("reference media (media_import_url)", () => {
+  const IMPORTED = { media_id: "media-42", type: "image", content_type: "image/png" };
+
+  it("imports the picture and sends the media_id, never the URL", async () => {
+    // `medias[].value` must be a media_id — Higgsfield rejects an https URL
+    // outright, which is exactly why editing was impossible before this.
+    const calls = scriptByName({
+      media_import_url: IMPORTED,
+      models_explore: { medias: [{ roles: ["image"] }] },
+      generate_image_batch: { jobs: [{ index: 0, job_id: "e1", status: "pending" }] },
+      jobs_wait: { jobs: [{ index: 0, job_id: "e1", status: "completed", result_url: "https://cdn/x.png" }], all_terminal: true },
+    });
+
+    await createHiggsfieldMediaProvider("oat_x", { model: "flux_kontext" }).editImage({
+      bytes: Buffer.from(""),
+      contentType: "image/png",
+      instruction: "put our logo on the van door",
+      sourceUrl: "https://cdn.example/van.png",
+    });
+
+    expect(calls.find((c) => c.name === "media_import_url")?.args).toMatchObject({ url: "https://cdn.example/van.png" });
+    const submit = calls.find((c) => c.name === "generate_image_batch")!.args as { requests: Array<{ params: Record<string, unknown> }> };
+    expect(submit.requests[0]!.params.medias).toEqual([{ role: "image", value: "media-42" }]);
+    expect(submit.requests[0]!.params.prompt).toBe("put our logo on the van door");
+  });
+
+  it("uses the role the model declares, not a guessed one", async () => {
+    // VERIFIED live: kling3_0_turbo declares only `start_image`, while the image
+    // models declare `image`. Sending the wrong one leans on the server's
+    // "auto-coerce when unambiguous", which is not a guarantee.
+    const calls = scriptByName({
+      media_import_url: IMPORTED,
+      models_explore: { medias: [{ roles: ["start_image"] }] },
+      generate_video_batch: { jobs: [{ index: 0, job_id: "v1", status: "pending" }] },
+    });
+
+    await createHiggsfieldMediaProvider("oat_x", { model: "kling3_0_turbo" }).startVideo({
+      prompt: "a slow push in",
+      image: { bytes: Buffer.from(""), contentType: "image/png", url: "https://cdn.example/still.png" },
+    });
+
+    const submit = calls.find((c) => c.name === "generate_video_batch")!.args as { requests: Array<{ params: Record<string, unknown> }> };
+    expect(submit.requests[0]!.params.medias).toEqual([{ role: "start_image", value: "media-42" }]);
+  });
+
+  it("sends no medias at all when there is no reference", async () => {
+    const calls = scriptByName({ generate_video_batch: { jobs: [{ index: 0, job_id: "v2", status: "pending" }] } });
+    await createHiggsfieldMediaProvider("oat_x", { model: "kling3_0_turbo" }).startVideo({ prompt: "text only" });
+    const submit = calls.find((c) => c.name === "generate_video_batch")!.args as { requests: Array<{ params: Record<string, unknown> }> };
+    expect(submit.requests[0]!.params.medias).toBeUndefined();
+    expect(calls.some((c) => c.name === "media_import_url")).toBe(false);
+  });
+
+  it("fails loudly when the import returns no media_id", async () => {
+    // Generating without the reference would silently produce an unrelated
+    // picture — the precise bug start-frame support exists to prevent.
+    scriptByName({ media_import_url: { error: "unreachable" }, models_explore: { medias: [] } });
+    await expect(
+      createHiggsfieldMediaProvider("oat_x", { model: "soul_v2" }).startImage!({ prompt: "x", source: { url: "https://cdn.example/p.png" } }),
+    ).rejects.toThrow(/could not import/);
   });
 });

@@ -233,7 +233,7 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const metered = await meterConnectorCall(
         undefined,
         { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: engine.connectorKey, estimatedUnits: 1, costTier: engine.costTier, context: { surface: "studio", engine: "edit", provider: engine.engine } },
-        () => provider.editImage({ bytes: sourceBytes, contentType: sourceType, instruction }),
+        () => provider.editImage({ bytes: sourceBytes, contentType: sourceType, instruction, sourceUrl }),
       );
       if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
       const gen = metered.result;
@@ -467,27 +467,16 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
     const provider = engine.provider;
     const aspectRatio = videoAspectFor(input.format);
 
-    // Animating a specific photo is a Veo capability we have; on Higgsfield the
-    // reference has to be uploaded to their media store first, and that flow
-    // doesn't exist here yet. Say so. Dropping the frame and rendering from the
-    // words alone is precisely the bug the start-frame support was added to fix
-    // — the operator points at a picture and gets an unrelated clip.
-    if (engine.engine === "higgsfield" && (input.sourceImageUrl ?? "").trim()) {
-      return {
-        ok: false,
-        code: "failed",
-        error: `Animating an existing photo isn't supported on ${target?.label ?? "this model"} yet — choose a built-in Veo model for that, or clear the photo to render from your description.`,
-      };
-    }
 
     // Fetched before metering: a bad URL should cost nothing.
-    let startFrame: { bytes: Buffer; contentType: string } | undefined;
+    let startFrame: { bytes: Buffer; contentType: string; url?: string } | undefined;
     const frameUrl = (input.sourceImageUrl ?? "").trim();
     if (frameUrl) {
       assertPublicHttpUrl(frameUrl);
       const frameRes = await fetch(frameUrl);
       if (!frameRes.ok) return { ok: false, code: "failed", error: `Couldn't read that image (${frameRes.status}).` };
-      startFrame = { bytes: Buffer.from(await frameRes.arrayBuffer()), contentType: frameRes.headers.get("content-type") ?? "image/png" };
+      // Both forms travel: Veo takes the bytes, Higgsfield imports the URL.
+      startFrame = { bytes: Buffer.from(await frameRes.arrayBuffer()), contentType: frameRes.headers.get("content-type") ?? "image/png", url: frameUrl };
     }
 
     // Duration is deliberately NOT exposed: only the model's own default is

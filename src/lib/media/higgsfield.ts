@@ -1,13 +1,16 @@
 import {
   HiggsfieldError,
+  higgsfieldModelRoles,
+  importHiggsfieldMedia,
   isTerminalStatus,
+  pickMediaRole,
   submitHiggsfieldImage,
   submitHiggsfieldVideo,
   waitForHiggsfieldJobs,
   type HiggsfieldJobState,
 } from "@/lib/connectors/higgsfield-mcp";
 
-import { ImageEditUnsupportedError, type MediaProvider, type VideoPoll, type VideoStart } from "./types";
+import { type MediaProvider, type VideoPoll, type VideoStart } from "./types";
 
 /**
  * Higgsfield as a MediaProvider — the app executing a generation itself, rather
@@ -104,9 +107,25 @@ export function createHiggsfieldMediaProvider(accessToken: string, opts: { model
     return state;
   }
 
+  /**
+   * Turn a public URL into the `medias` entry this model expects.
+   *
+   * Two lookups, both unavoidable: the URL has to become a media_id (Higgsfield
+   * rejects URLs in `medias[].value`), and the role has to match what the model
+   * declares — `start_image` on Kling, `image` on the image models.
+   */
+  async function referenceMedia(url: string, preference: string[]): Promise<Array<{ role: string; value: string }>> {
+    const [mediaId, declared] = await Promise.all([
+      importHiggsfieldMedia(accessToken, url, "image"),
+      higgsfieldModelRoles(accessToken, model),
+    ]);
+    return [{ role: pickMediaRole(declared, preference), value: mediaId }];
+  }
+
   return {
     async generateImage(input) {
-      const job = await submitHiggsfieldImage(accessToken, { model, prompt: input.prompt, aspectRatio: input.aspectRatio });
+      const medias = input.source ? await referenceMedia(input.source.url, ["image"]) : undefined;
+      const job = await submitHiggsfieldImage(accessToken, { model, prompt: input.prompt, aspectRatio: input.aspectRatio, medias });
       const state = await pollUntilTerminal(job, imageBudgetMs);
       if (state.status !== "completed" || !state.resultUrl) {
         throw new HiggsfieldError(failureMessage(state, "Higgsfield returned no image."), "tool");
@@ -120,7 +139,11 @@ export function createHiggsfieldMediaProvider(accessToken: string, opts: { model
     // generateImage above still works, but it can only ever wait as long as the
     // request that called it.
     async startImage(input) {
-      const job = await submitHiggsfieldImage(accessToken, { model, prompt: input.prompt, aspectRatio: input.aspectRatio });
+      // An edit is a generation with a reference picture — same submit, same
+      // poll. Modelling it as a separate verb would have meant a second copy of
+      // the whole job lifecycle for one extra argument.
+      const medias = input.source ? await referenceMedia(input.source.url, ["image"]) : undefined;
+      const job = await submitHiggsfieldImage(accessToken, { model, prompt: input.prompt, aspectRatio: input.aspectRatio, medias });
       return { operationName: job.jobId, model, jobId: job.jobId };
     },
 
@@ -137,21 +160,33 @@ export function createHiggsfieldMediaProvider(accessToken: string, opts: { model
       return { status: "done", bytes, contentType, model: state.model ?? model, jobId: state.jobId };
     },
 
-    async editImage() {
-      // Not a capability gap we can paper over: Higgsfield edits take a
-      // `media_id` from its own upload endpoint, not a URL or bytes, so editing
-      // means a second flow (media_upload → generate with medias[]) that does
-      // not exist yet. This is the typed error the callers already handle, so
-      // the operator is told which model can't do it and what to switch to,
-      // instead of watching a generic failure.
-      throw new ImageEditUnsupportedError(model);
+    async editImage(input) {
+      // Higgsfield edits are jobs like everything else here, so this blocking
+      // form can only wait as long as the request that called it. Callers that
+      // can submit-and-poll should use startImage with a `source` instead — the
+      // edit route and Studio both do.
+      if (!input.sourceUrl) {
+        throw new HiggsfieldError("Editing on Higgsfield needs the picture's public URL, which this caller did not send.", "contract");
+      }
+      const medias = await referenceMedia(input.sourceUrl, ["image"]);
+      const job = await submitHiggsfieldImage(accessToken, { model, prompt: input.instruction, medias });
+      const state = await pollUntilTerminal(job, imageBudgetMs);
+      if (state.status !== "completed" || !state.resultUrl) {
+        throw new HiggsfieldError(failureMessage(state, "Higgsfield returned no image."), "tool");
+      }
+      const { bytes, contentType } = await download(state.resultUrl);
+      return { bytes, contentType, model: state.model ?? model, jobId: state.jobId };
     },
 
     async startVideo(input): Promise<VideoStart> {
+      // Animate the still the operator pointed at, rather than inventing a
+      // scene from the words and discarding their picture.
+      const medias = input.image?.url ? await referenceMedia(input.image.url, ["start_image", "image"]) : undefined;
       const job = await submitHiggsfieldVideo(accessToken, {
         model,
         prompt: input.prompt,
         aspectRatio: input.aspectRatio,
+        medias,
         // Higgsfield clamps an unsupported duration to the model's nearest
         // allowed value rather than rejecting it, so passing the caller's number
         // through is safe; omitted means the model's own default.

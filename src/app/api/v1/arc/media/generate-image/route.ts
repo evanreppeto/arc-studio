@@ -116,6 +116,8 @@ export async function POST(request: Request) {
   const aspectRatio =
     typeof body.aspect_ratio === "string" && body.aspect_ratio.trim() ? body.aspect_ratio.trim() : "1:1";
   const style = typeof body.style === "string" && body.style.trim() ? body.style.trim() : undefined;
+  // A reference picture turns this into an edit on engines that support one.
+  const sourceUrl = typeof body.source_url === "string" && body.source_url.trim() ? body.source_url.trim() : undefined;
 
   const settings = await getAppSettings(allowed.scope.orgId);
   // Precedence: explicit Advanced override (settings.image/videoModel) beats the
@@ -172,7 +174,7 @@ export async function POST(request: Request) {
       const started = await meterConnectorCall(
         undefined,
         { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: engine.connectorKey, estimatedUnits: MEDIA_UNITS.image, costTier: engine.costTier, context: { route: "generate-image", provider: engine.engine } },
-        () => provider.startImage!({ prompt: finalPrompt, aspectRatio }),
+        () => provider.startImage!({ prompt: finalPrompt, aspectRatio, ...(sourceUrl ? { source: { url: sourceUrl } } : {}) }),
       );
       if (!started.ok) return fail("plan_limit", started.refusal.message, 402);
       return NextResponse.json(
@@ -185,7 +187,7 @@ export async function POST(request: Request) {
     const metered = await meterConnectorCall(
       undefined,
       { orgId: allowed.scope.orgId, workspaceId: allowed.scope.workspaceId, connectorKey: engine.connectorKey, estimatedUnits: MEDIA_UNITS.image, costTier: engine.costTier, context: { route: "generate-image", provider: engine.engine } },
-      () => provider.generateImage({ prompt: finalPrompt, aspectRatio }),
+      () => provider.generateImage({ prompt: finalPrompt, aspectRatio, ...(sourceUrl ? { source: { url: sourceUrl } } : {}) }),
     );
     if (!metered.ok) return fail("plan_limit", metered.refusal.message, 402);
     const gen = metered.result;

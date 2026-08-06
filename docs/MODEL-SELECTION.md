@@ -145,13 +145,40 @@ note, not a button, and `generateStudioAsset({engine: "image"})` has no UI calle
 the image path's real consumer is Arc via the media route. The Studio *video*
 path does run on Higgsfield, and the Model picker steers both.
 
-**Still not supported on Higgsfield**, both reported honestly rather than
-silently degraded:
-- **Editing an image** — needs a `media_id` from Higgsfield's own upload
-  endpoint, so it raises `ImageEditUnsupportedError` (which the callers already
-  turn into "choose a Gemini image model to edit").
-- **Animating a chosen photo** — same reason; Studio refuses with a sentence
-  naming the model instead of quietly rendering from the prompt alone.
+### Reference media — edits and photo-to-video (2026-08-06)
+
+Higgsfield generators take a `media_id` and **reject an `https://` URL in
+`medias[].value`**, which is why editing and start-frames were impossible.
+`importHiggsfieldMedia` (`media_import_url`, VERIFIED → `{media_id, type,
+content_type, source_url}`) mints one from a public URL in a single call —
+better than `media_upload`'s presign → PUT → confirm, since every caller already
+holds a permanent public campaign-media URL.
+
+`ImageGenInput.source` / `ImageEditInput.sourceUrl` / `VideoGenInput.image.url`
+carry the picture as a **URL alongside the bytes**, because the engines want
+opposite things: Gemini takes bytes inline, Higgsfield takes a media_id it mints
+itself.
+
+**Roles are per-model and not interchangeable** — VERIFIED: `kling3_0_turbo`
+declares only `start_image`, `marketing_studio_image` declares `image`. So
+`higgsfieldModelRoles` asks the catalog (cached per process) instead of relying
+on the server's "auto-coerce when unambiguous".
+
+An **edit is a generation with a reference picture** — same submit, same poll, no
+parallel lifecycle. `/api/v1/arc/media/edit` therefore got the same start/poll
+treatment as the image route, with one shared `landEdit` tail, and the runner's
+`edit_image` tool polls through the same helper as `generate_image`.
+
+**What works now:** photo-to-video on Higgsfield (Studio's video path was already
+start/poll), and edits through Arc's route.
+
+⚠️ **Studio's "Change this image…" button is still synchronous.** It works on
+fast models and returns an honest job-named message on slow ones. Converting it
+means extracting `generateStudioAsset`'s shared landing tail (Library row →
+campaign promote → approval gate) so a poll action can reuse it — deliberately
+NOT done in the same pass as the rest, because that tail is the most
+bug-annotated code in the file and Studio's primary action (compose) runs
+through it.
 
 **Auto stays on Gemini** even though both engines execute. That is a spend
 decision, not a capability one: Higgsfield bills the customer's own credits, and

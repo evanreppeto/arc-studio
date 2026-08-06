@@ -131,6 +131,9 @@ export type HiggsfieldSubmit = {
   aspectRatio?: string;
   /** Seconds. Video only; the server clamps to the model's allowed values. */
   duration?: number;
+  /** Reference media, already imported. `value` is a media_id or a prior job id
+   *  — NEVER a URL; the server rejects those outright. */
+  medias?: Array<{ role: string; value: string }>;
 };
 
 function submitParams(input: HiggsfieldSubmit): Record<string, unknown> {
@@ -139,6 +142,7 @@ function submitParams(input: HiggsfieldSubmit): Record<string, unknown> {
     prompt: input.prompt,
     ...(input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}),
     ...(input.duration ? { duration: input.duration } : {}),
+    ...(input.medias?.length ? { medias: input.medias } : {}),
     // NEVER let the server decide to spend the customer's free-trial allowance
     // on our behalf. Omitting this returns `unlim_choice` — a question for a
     // human — which an unattended server action has no way to answer, so the
@@ -178,6 +182,70 @@ export async function waitForHiggsfieldJobs(token: string, jobs: HiggsfieldJob[]
     (budget + 20) * 1000,
   );
   return parseWait(result);
+}
+
+/**
+ * Import a publicly-reachable URL into Higgsfield storage and get its media_id.
+ *
+ * This is the missing piece that made "put our logo on the van door" and
+ * "animate this photo" impossible on Higgsfield: its generators take a
+ * `media_id`, and passing an `https://` URL in `medias[].value` is rejected
+ * outright. Every caller here already holds a permanent public URL (the
+ * campaign-media bucket), so importing beats uploading bytes — one call instead
+ * of presign → PUT → confirm.
+ *
+ * VERIFIED 2026-08-06: `{media_id, type, content_type, source_url}`. Max 50 MB.
+ * The URL must be reachable by Higgsfield, not merely by us — a signed or
+ * private URL will fail here rather than silently generating without the
+ * reference, which is the failure mode worth having.
+ */
+export async function importHiggsfieldMedia(token: string, url: string, type: "image" | "video" | "auto" = "auto"): Promise<string> {
+  const result = await call(token, "media_import_url", { url, type });
+  const mediaId = str(record(result).media_id) ?? str(record(result).mediaId);
+  if (!mediaId) {
+    throw new HiggsfieldError(`Higgsfield could not import that image: ${JSON.stringify(result).slice(0, 300)}`, "contract");
+  }
+  return mediaId;
+}
+
+/**
+ * The reference-media roles a model declares.
+ *
+ * Roles are per-model and NOT interchangeable — verified live: `kling3_0_turbo`
+ * declares only `start_image`, while `marketing_studio_image` declares `image`.
+ * Sending the wrong one relies on the server's "auto-coerce when unambiguous",
+ * which is not a guarantee, so the roster is asked instead of guessed.
+ *
+ * Cached per process: the catalog is static relative to a deployment's life, and
+ * an extra round trip before every generation is a real cost for an answer that
+ * does not change.
+ */
+const roleCache = new Map<string, string[]>();
+
+export async function higgsfieldModelRoles(token: string, modelId: string): Promise<string[]> {
+  const cached = roleCache.get(modelId);
+  if (cached) return cached;
+  try {
+    const result = await call(token, "models_explore", { action: "get", model_id: modelId });
+    const medias = Array.isArray(record(result).medias) ? (record(result).medias as unknown[]) : [];
+    const roles = medias.flatMap((m) => {
+      const list = record(m).roles;
+      return Array.isArray(list) ? list.filter((r): r is string => typeof r === "string") : [];
+    });
+    roleCache.set(modelId, roles);
+    return roles;
+  } catch {
+    // A catalog lookup failing must not block a generation. An empty list makes
+    // the caller fall back to its preference order, which is what it would have
+    // guessed anyway.
+    return [];
+  }
+}
+
+/** Pick the role to send: the first preference the model actually declares,
+ *  else the first preference (the server may still coerce it). */
+export function pickMediaRole(declared: string[], preference: string[]): string {
+  return preference.find((role) => declared.includes(role)) ?? declared[0] ?? preference[0]!;
 }
 
 /**

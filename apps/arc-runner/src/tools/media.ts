@@ -46,23 +46,27 @@ type ImageResponse = {
  * customer's credits are already spent and the result lands on the engine's
  * side, so the id is the difference between "find it" and "pay again".
  */
-async function generateImageMaybeAsync(client: ArcClient, body: Record<string, unknown>): Promise<{ media: ArcMedia; objectPath?: string }> {
-  const started = await client.apiPost<ImageResponse>("/api/v1/arc/media/generate-image", body);
+async function pollableMedia(client: ArcClient, path: string, body: Record<string, unknown>): Promise<{ media: ArcMedia; objectPath?: string }> {
+  const started = await client.apiPost<ImageResponse>(path, body);
   if (started.status !== "running" || !started.operationName) {
     if (!started.media) throw new Error("The image service returned no media.");
     return { media: started.media, objectPath: started.objectPath };
   }
   for (let i = 0; i < IMAGE_MAX_POLLS; i++) {
     await sleep(IMAGE_POLL_MS);
-    const poll = await client.apiPost<ImageResponse>("/api/v1/arc/media/generate-image", {
+    const poll = await client.apiPost<ImageResponse>(path, {
       operation_name: started.operationName,
       // The engine that STARTED it — not whatever the workspace default resolves
       // to now, which may have changed mid-render.
       engine: started.engine,
       prompt: body.prompt,
+      // The edit route needs the instruction back for the risk flags it derives
+      // and the Library row it writes.
+      instruction: body.instruction,
       model: started.model,
       job_id: started.jobId,
       aspect_ratio: body.aspect_ratio,
+      format: body.format,
     });
     if (poll.status !== "running" && poll.media) return { media: poll.media, objectPath: poll.objectPath };
   }
@@ -110,7 +114,7 @@ export function mediaTools(
       const label = "Generating image";
       await step(label, "running");
       try {
-        const gen = await generateImageMaybeAsync(client, {
+        const gen = await pollableMedia(client, "/api/v1/arc/media/generate-image", {
           prompt: args.prompt,
           style: args.style,
           aspect_ratio: args.aspect_ratio,
@@ -295,7 +299,7 @@ export function mediaTools(
             await step(label, "done");
             return textResult("compose_creative needs either a background_url or a prompt to generate the background.");
           }
-          const bg = await generateImageMaybeAsync(client, {
+          const bg = await pollableMedia(client, "/api/v1/arc/media/generate-image", {
             prompt: args.prompt,
             style: args.style,
             aspect_ratio: args.format ? (BG_ASPECT_FOR_FORMAT[args.format] ?? "1:1") : undefined,
@@ -380,10 +384,12 @@ export function mediaTools(
       const label = `Editing the image: ${args.instruction}`;
       await step(label, "running");
       try {
-        const edited = await client.apiPost<{ media: ArcMedia; objectPath?: string }>(
-          "/api/v1/arc/media/edit",
-          { image_url: args.image_url, instruction: args.instruction, format: args.format, model_key: ctx.mediaModel ?? null },
-        );
+        const edited = await pollableMedia(client, "/api/v1/arc/media/edit", {
+          image_url: args.image_url,
+          instruction: args.instruction,
+          format: args.format,
+          model_key: ctx.mediaModel ?? null,
+        });
 
         const draft = await client.apiPost<{ campaignId: string; assetId: string }>(
           "/api/v1/arc/campaigns/draft-asset",
