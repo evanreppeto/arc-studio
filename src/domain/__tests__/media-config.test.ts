@@ -15,9 +15,24 @@ describe("parseMediaConfig", () => {
     }
   });
 
-  it("keeps a valid per-category override", () => {
+  it("keeps a valid per-category override, upgrading a bare id to its engine key", () => {
+    // Defaults are stored engine-qualified now that both engines are selectable;
+    // a bare id from the pre-namespace shape still reads as Higgsfield.
     const cfg = parseMediaConfig({ autoPick: false, defaults: { video: "veo3_1" } });
-    expect(cfg.defaults.video).toBe("veo3_1");
+    expect(cfg.defaults.video).toBe("higgsfield:veo3_1");
+    expect(parseMediaConfig({ autoPick: false, defaults: { video: "higgsfield:veo3_1" } }).defaults.video).toBe("higgsfield:veo3_1");
+  });
+
+  it("keeps a Gemini pick as a per-category override too", () => {
+    const cfg = parseMediaConfig({ autoPick: false, defaults: { image: "gemini:gemini-3-pro-image" } });
+    expect(cfg.defaults.image).toBe("gemini:gemini-3-pro-image");
+  });
+
+  it("does not report a Gemini pick to the runner as a Higgsfield lock", () => {
+    // The Gemini pick is enforced app-side as a real argument; telling Arc it was
+    // an operator-locked Higgsfield model would name an id Higgsfield can't run.
+    const cfg = parseMediaConfig({ autoPick: false, defaults: { image: "gemini:gemini-3-pro-image" } });
+    expect(resolveMediaDefaults(cfg).image?.explicit).toBe(false);
   });
 
   it("normalizes a wrong-category override back to auto (veo is a video model)", () => {

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { MEDIA_UNITS, parseArcRoute } from "@/domain";
+import { MEDIA_UNITS, geminiModelForTarget, parseArcRoute } from "@/domain";
 
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
 import { checkUsageAllowed, usageBlockMessage } from "@/lib/billing/entitlements";
 import { getMediaProviderWithKey } from "@/lib/media";
+import { resolveWorkspaceTarget } from "@/lib/media-config/target";
 import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { hardenImagePrompt } from "@/lib/media/prompt";
@@ -13,6 +14,7 @@ import { deriveImageRiskFlags } from "@/lib/media/risk";
 import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { storeGeneratedMedia } from "@/lib/media/storage";
 import { getAppSettings } from "@/lib/settings/store";
+import { getSupabaseAdminClient } from "@/lib/supabase/server";
 import { recordUsageEvent } from "@/lib/ai-usage/persistence";
 
 /**
@@ -36,7 +38,16 @@ export async function POST(request: Request) {
   // level -> env/default. Computed each call; the poll request may omit body.level
   // (start already picked the model), so it falls back safely either way.
   const level = parseArcRoute(body.level ?? settings.markDefaultRoute);
-  const provider = getMediaProviderWithKey(access.credential, { level, imageModel: settings.imageModel, videoModel: settings.videoModel });
+  // Same one resolution as Studio and the image route. A poll request carries no
+  // pick and needs none — the model was chosen when the operation started.
+  const target = await resolveWorkspaceTarget({
+    client: getSupabaseAdminClient(),
+    workspaceId: allowed.scope.workspaceId,
+    orgId: allowed.scope.orgId,
+    category: "video",
+    requestOverride: typeof body.model_key === "string" ? body.model_key : null,
+  });
+  const provider = getMediaProviderWithKey(access.credential, { level, videoModel: geminiModelForTarget(target) });
 
   const operationName = typeof body.operation_name === "string" ? body.operation_name.trim() : "";
 

@@ -120,10 +120,56 @@ describe("buildSystemPrompt", () => {
       },
     });
     expect(out).toContain("MEDIA MODEL DEFAULTS");
-    expect(out).toContain('use "nano_banana_pro"');
-    expect(out).toContain("operator-locked default");
-    expect(out).toContain('use "veo3_1"');
+    // Stated as the value of Higgsfield's REQUIRED `model` argument, not as a
+    // preference — a preference is what Arc was free to absorb and ignore.
+    expect(out).toContain('pass model: "nano_banana_pro"');
+    expect(out).toContain("locked this model for the workspace");
+    expect(out).toContain('pass model: "veo3_1"');
     expect(out).toContain("9:16");
+  });
+
+  it("lets the operator's pick for THIS turn beat the workspace default", () => {
+    const out = buildSystemPrompt("BASE", {
+      ...baseCtx,
+      mediaConfig: {
+        defaults: {
+          image: { id: "nano_banana_pro", label: "Nano Banana Pro", provider: "Google", explicit: true },
+          video: { id: "veo3_1", label: "Google Veo 3.1", provider: "Google", explicit: true },
+          audio: null,
+        },
+        autoPick: false,
+        allowVideo: true,
+        preferRealMedia: true,
+        defaultAspect: "9:16",
+      },
+      mediaPick: { key: "higgsfield:kling3_0", engine: "higgsfield", id: "kling3_0", category: "video", label: "Kling 3.0" },
+    });
+    expect(out).toContain('pass model: "kling3_0"');
+    expect(out).toContain("chose this model for THIS message");
+    // The pick is per-CATEGORY: image keeps the workspace default.
+    expect(out).toContain('pass model: "nano_banana_pro"');
+    expect(out).not.toContain('pass model: "veo3_1"');
+  });
+
+  it("never names a Gemini pick to Arc — that engine is pinned server-side", () => {
+    // Naming it here would invite Arc to pass an id Higgsfield has never heard of.
+    const out = buildSystemPrompt("BASE", {
+      ...baseCtx,
+      mediaConfig: {
+        defaults: {
+          image: { id: "nano_banana_pro", label: "Nano Banana Pro", provider: "Google", explicit: false },
+          video: null,
+          audio: null,
+        },
+        autoPick: true,
+        allowVideo: true,
+        preferRealMedia: true,
+        defaultAspect: "4:5",
+      },
+      mediaPick: { key: "gemini:gemini-3-pro-image", engine: "gemini", id: "gemini-3-pro-image", category: "image", label: "Gemini 3 Pro Image" },
+    });
+    expect(out).not.toContain("gemini-3-pro-image");
+    expect(out).toContain('pass model: "nano_banana_pro"');
   });
 
   it("tells Arc not to generate video when the operator disabled it", () => {

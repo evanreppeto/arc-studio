@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { MEDIA_UNITS, parseArcRoute } from "@/domain";
+import { MEDIA_UNITS, geminiModelForTarget, parseArcRoute } from "@/domain";
 
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
 import { checkUsageAllowed, usageBlockMessage } from "@/lib/billing/entitlements";
 import { getMediaProviderWithKey } from "@/lib/media";
+import { resolveWorkspaceTarget } from "@/lib/media-config/target";
 import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { hardenImagePrompt } from "@/lib/media/prompt";
@@ -13,6 +14,7 @@ import { deriveImageRiskFlags } from "@/lib/media/risk";
 import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { storeGeneratedImage } from "@/lib/media/storage";
 import { getAppSettings } from "@/lib/settings/store";
+import { getSupabaseAdminClient } from "@/lib/supabase/server";
 import { recordUsageEvent } from "@/lib/ai-usage/persistence";
 
 /**
@@ -54,7 +56,17 @@ export async function POST(request: Request) {
   // turn's level mapping, which beats the workspace default level, which beats
   // env/built-in default. The turn's level rides on body.level.
   const level = parseArcRoute(body.level ?? settings.markDefaultRoute);
-  const provider = getMediaProviderWithKey(access.credential, { level, imageModel: settings.imageModel, videoModel: settings.videoModel });
+  // One resolution shared with Studio and Settings: this request's pick, else
+  // the workspace default, else the legacy per-org setting, else Auto (which
+  // leaves the level -> env -> built-in chain below intact).
+  const target = await resolveWorkspaceTarget({
+    client: getSupabaseAdminClient(),
+    workspaceId: allowed.scope.workspaceId,
+    orgId: allowed.scope.orgId,
+    category: "image",
+    requestOverride: typeof body.model_key === "string" ? body.model_key : null,
+  });
+  const provider = getMediaProviderWithKey(access.credential, { level, imageModel: geminiModelForTarget(target) });
 
   try {
     // Harden the prompt (strip embedded text/branding, add quality + caller style)

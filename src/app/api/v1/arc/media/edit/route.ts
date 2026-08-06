@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { parseArcRoute } from "@/domain";
+import { geminiModelForTarget, parseArcRoute } from "@/domain";
 import { INVALID_JSON, arcGuard, fail, readJson } from "@/app/api/v1/arc/_lib/http";
 import { assertPublicHttpUrl } from "@/lib/brand-kit/website";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { getMediaProviderWithKey } from "@/lib/media";
+import { resolveWorkspaceTarget } from "@/lib/media-config/target";
 import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
 import { recordGeneratedMedia } from "@/lib/media/library-record";
 import { deriveImageRiskFlags } from "@/lib/media/risk";
 import { storeGeneratedMedia } from "@/lib/media/storage";
 import { ImageEditUnsupportedError } from "@/lib/media/types";
 import { getAppSettings } from "@/lib/settings/store";
+import { getSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -66,10 +68,16 @@ export async function POST(request: Request) {
     const sourceType = sourceRes.headers.get("content-type") ?? "image/png";
 
     const settings = await getAppSettings(allowed.scope.orgId);
+    const target = await resolveWorkspaceTarget({
+      client: getSupabaseAdminClient(),
+      workspaceId: allowed.scope.workspaceId,
+      orgId: allowed.scope.orgId,
+      category: "image",
+      requestOverride: str((body as Record<string, unknown>).model_key) || null,
+    });
     const provider = getMediaProviderWithKey(access.credential, {
       level: parseArcRoute(settings.markDefaultRoute),
-      imageModel: settings.imageModel,
-      videoModel: settings.videoModel,
+      imageModel: geminiModelForTarget(target),
     });
 
     const metered = await meterConnectorCall(

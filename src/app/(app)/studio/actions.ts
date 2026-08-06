@@ -8,6 +8,7 @@ import {
   type CreativeCopy,
   type CreativeLayoutOverride,
   MEDIA_UNITS,
+  geminiModelForTarget,
   normalizeCreativeFormat,
   parseArcRoute,
   selectCreativeTemplate,
@@ -21,6 +22,7 @@ import { listBrandLogos } from "@/lib/brand-kit/logos";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { promoteAssetToCampaign, resolveOrCreateCampaign } from "@/lib/campaigns/create";
 import { getMediaProviderWithKey, isMediaGenEnabled } from "@/lib/media";
+import { resolveWorkspaceTarget } from "@/lib/media-config/target";
 import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { renderCreative } from "@/lib/media/compose/renderer";
@@ -31,7 +33,7 @@ import { deriveImageRiskFlags } from "@/lib/media/risk";
 import { storeGeneratedImage, storeGeneratedMedia } from "@/lib/media/storage";
 import { signVideoTicket, verifyVideoTicket } from "@/lib/media/video-ticket";
 import { getAppSettings } from "@/lib/settings/store";
-import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
 /**
@@ -128,6 +130,13 @@ export type GenerateStudioAssetInput = {
   layoutOverride?: CreativeLayoutOverride;
   /** The campaign this draft attaches to — required so it enters the approval gate. */
   campaignId: string;
+  /**
+   * The operator's model pick for THIS generation, engine-qualified
+   * (`gemini:gemini-3-pro-image`). Omit for Auto. Re-resolved server-side against
+   * the roster and this workspace's reachable engines, so a stale or invented id
+   * from the client falls back to Auto rather than reaching the provider.
+   */
+  model?: string;
 };
 
 export type GenerateStudioAssetResult =
@@ -168,6 +177,17 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
     const access = await resolveMediaGeneration(tenant.workspace_id);
     if (!access.enabled) return { ok: false, code: "disabled", error: access.reason };
     const settings = await getAppSettings(ctx.orgId);
+    // One resolution for every image-producing engine below. Auto yields
+    // undefined and leaves Gemini's own chain (level → env → default) untouched;
+    // a pick is pinned as a real argument instead of a hoped-for preference.
+    const target = await resolveWorkspaceTarget({
+      client: getSupabaseAdminClient(),
+      workspaceId: tenant.workspace_id,
+      orgId: ctx.orgId,
+      category: "image",
+      requestOverride: input.model,
+    });
+    const pinnedImageModel = geminiModelForTarget(target);
 
     let media: StudioMedia;
     let objectPath: string;
@@ -199,7 +219,7 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const sourceType = sourceRes.headers.get("content-type") ?? "image/png";
 
       const level = parseArcRoute(settings.markDefaultRoute);
-      const provider = getMediaProviderWithKey(access.credential, { level, imageModel: settings.imageModel, videoModel: settings.videoModel });
+      const provider = getMediaProviderWithKey(access.credential, { level, imageModel: pinnedImageModel });
       const metered = await meterConnectorCall(
         undefined,
         { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: 1, costTier: access.costTier, context: { surface: "studio", engine: "edit" } },
@@ -236,7 +256,7 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       const prompt = (input.prompt ?? "").trim();
       if (!prompt) return { ok: false, code: "failed", error: "Describe the image you want Arc to generate." };
       const level = parseArcRoute(settings.markDefaultRoute);
-      const provider = getMediaProviderWithKey(access.credential, { level, imageModel: settings.imageModel, videoModel: settings.videoModel });
+      const provider = getMediaProviderWithKey(access.credential, { level, imageModel: pinnedImageModel });
       const aspectRatio = imageAspectFor(input.format);
       // Platform-credit generations are spend-capped; a workspace's own key bypasses.
       const metered = await meterConnectorCall(
@@ -393,6 +413,9 @@ export type StartStudioVideoInput = {
   /** A still to animate. Without it Veo invents a scene from the prompt, which
    *  is what "animate this image" used to do — silently ignoring the image. */
   sourceImageUrl?: string;
+  /** The operator's model pick for this clip, engine-qualified. Omit for Auto.
+   *  Re-resolved server-side — see GenerateStudioAssetInput.model. */
+  model?: string;
 };
 
 export type StartStudioVideoResult =
@@ -425,10 +448,16 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
     if (!access.enabled) return { ok: false, code: "disabled", error: access.reason };
     const settings = await getAppSettings(ctx.orgId);
     const level = parseArcRoute(settings.markDefaultRoute);
+    const target = await resolveWorkspaceTarget({
+      client: getSupabaseAdminClient(),
+      workspaceId: tenant.workspace_id,
+      orgId: ctx.orgId,
+      category: "video",
+      requestOverride: input.model,
+    });
     const provider = getMediaProviderWithKey(access.credential, {
       level,
-      imageModel: settings.imageModel,
-      videoModel: settings.videoModel,
+      videoModel: geminiModelForTarget(target),
     });
     const aspectRatio = videoAspectFor(input.format);
 

@@ -1,6 +1,6 @@
 # Model Selection — Design (three layers, not one picker)
 
-Status: proposed · Owner: Arc platform · Last updated: 2026-07-08
+Status: **built** · Owner: Arc platform · Last updated: 2026-08-06
 
 ## Problem
 
@@ -34,56 +34,79 @@ Higgsfield burns their own credits.
 
 ---
 
-## Layer 2 — Media model (which model *inside* Higgsfield)
+## Layer 2 — Media model (which model generates)
 
-**What the user chooses:** per output category, which specific model Arc generates
-with. **Status:** ✅ persistence + exposure shipped; ⏳ runner consumption pending.
-The picker now persists and is exposed to the runner; what remains is the runner
-*using* the config (see "Remaining" below).
+**What the user chooses:** per output category, which specific model generates —
+across **both** engines, not one. **Status:** ✅ built end to end.
 
-Shipped:
-- **Domain** — `src/domain/media-config.ts` (`MediaConfig`, `parseMediaConfig`,
-  `effectiveMediaModel`) + tests. The trusted boundary that validates any stored
-  model id against the live roster.
-- **Schema** — `workspace_media_config` (`20260708120000_...`), one row/workspace,
-  `config` jsonb; mirrors `workspace_connectors` keying.
-- **Lib** — `src/lib/media-config/{read-model,persistence}.ts`.
-- **Action** — `saveMediaConfigAction` (`src/app/(app)/settings/actions.ts`),
-  operator-gated via workspace context + `isSupabaseAdminConfigured`.
-- **UI** — Settings → Media models now persists (per-category default + auto-pick,
-  aspect, prefer-real-media, allow-video) with a Save control.
-- **Runner API** — `GET /api/v1/arc/media-config` (bearer-gated) returns the config.
+### The bug this layer shipped with, and what fixed it
 
-**Selectable options** (subset of the 44-model live roster; provider in parens):
+Until 2026-08-06 this was two disconnected settings over two rosters, and neither
+reached the wire:
 
-- **Image** — Auto (Arc's pick) · Marketing Studio Image *(recommended)* ·
-  Nano Banana / Nano Banana 2 / Nano Banana Pro (Google) · Flux 2.0 / Flux Kontext
-  Max (Black Forest Labs) · GPT Image 2 (OpenAI) · Seedream 4.5 (Bytedance) · …
-- **Video** — Auto (Arc's pick) · Marketing Studio *(recommended)* ·
-  Google Veo 3 / Veo 3.1 / Veo 3.1 Lite (Google) · Kling 3.0 (Kling) ·
-  Seedance 2.0 (Bytedance) · Grok Imagine (xAI) · …
-- **Audio** — Auto (Arc's pick) · Inworld TTS *(recommended)* · Mirelo SFX · Sonilo Music
+- `app_settings.image_model` / `video_model` — the **Gemini** roster, read by the
+  app-side `generate-*` routes. Settings had a picker for it.
+- `workspace_media_config.defaults` — the **Higgsfield** roster, injected into
+  Arc's prompt as prose. `saveMediaConfigAction` had **zero callers**; prod
+  carried **zero** `workspace_media_config` rows and zero `image_model` rows. The
+  44-model roster was unreachable by any operator.
 
-Design: **per-category** default (image/video/audio have separate overrides —
-"always Veo for video, let Arc pick images" is the real use case). "Auto" is the
-default and visibly recommended.
+So an operator could lock a model on one engine and watch generation run on the
+other, with no error anywhere. Worse, the Higgsfield half arrived as a
+suggestion — *"use `veo3_1` unless the task truly needs another model"* — when
+`model` is a **required argument** on Higgsfield's `generate_*` tools.
 
-### Runner consumption — ✅ shipped
-The override reaches **Arc's decision**: `GET /api/v1/arc/media-config` returns
-resolved per-category defaults (`resolveMediaDefaults`, computed app-side since the
-runner can't import `@/domain`); the runner fetches it in work modes
-(`apps/arc-runner/src/media-config.ts`) and injects a **MEDIA MODEL DEFAULTS** block
-into Arc's system prompt (`context.ts` → `mediaConfigBlock`). An operator-locked
-model reads as a firm default ("use `veo3_1` unless the task truly needs another");
-an auto-pick reads as a recommendation; `allowVideo:false` tells Arc not to generate
-video. Best-effort — a config miss never breaks a turn (Arc just auto-picks).
+**The fix is one resolution, shared by every surface.**
 
----
+- **Domain** — `src/domain/media-target.ts`. One roster (`GENERATION_MODELS`)
+  spanning both engines, ids namespaced `gemini:` / `higgsfield:` because both
+  engines have a "Veo 3.1" and a bare id can't say which is meant.
+  `resolveGenerationTarget` takes (category, workspace config, this request's
+  pick, engine availability, legacy per-org Gemini default) and returns ONE
+  `GenerationTarget`. `src/lib/settings/store.ts` now derives its allow-list from
+  this roster instead of re-listing the ids.
+- **Precedence** — this request's pick → workspace default → legacy per-org
+  Gemini setting → Auto. `autoPick` suppresses **both** stored layers.
+- **Enforcement** — `geminiModelForTarget` returns the id to put on the wire, or
+  `undefined` for Auto (which leaves Gemini's own `level → env → default` chain
+  intact, so Auto is behaviour-identical to before). A Higgsfield target returns
+  `undefined` here on purpose: the app cannot execute Higgsfield, so pinning its
+  id onto a Gemini call would send a model the API has never heard of.
+- **Availability** — `resolveWorkspaceEngines` (`src/lib/media-config/target.ts`).
+  A pick on a disconnected engine is ignored, and pickers only offer engines the
+  workspace can actually reach.
+- **Consumers** — Studio (`studio/actions.ts`), `/api/v1/arc/media/generate-image`,
+  `/generate-video`, `/edit`. Each resolves a target and passes its id as a real
+  provider argument. The per-request override arrives as `model_key` (NOT `model`
+  — the video *poll* request already carries `model`, the started Gemini id, for
+  metering).
+- **UI** — Settings → Media models is now ONE panel over both engines
+  (`saveMediaConfig`, which returns a real result instead of `void`), plus a
+  per-request picker in the Studio composer and the Arc composer.
+- **Runner** — `GET /api/v1/arc/media-config` still returns resolved per-category
+  Higgsfield defaults, but `context.ts` now states them as the **value of the
+  required `model` argument**, and a per-turn composer pick outranks the stored
+  default. The pick crosses to the runner **already resolved** (`MediaPick`), so
+  the runner never interprets a model reference — it relays `key` back to the
+  media endpoints, which validate it again.
+
+**Known boundary:** the app still cannot *execute* Higgsfield — Arc drives it
+through the `mcp__higgsfield` connector. A Higgsfield pick is therefore enforced
+as a prompt-level required argument, not an app-side parameter, and Studio (which
+runs in-process) offers Gemini models only when Higgsfield is the sole connection.
+Closing that means an app-side Higgsfield MCP client; `checkHiggsfieldToken`
+(`src/lib/connectors/higgsfield-health.ts`) already proves the transport works.
 
 ## Layer 3 — Reasoning model (which Claude model Arc *thinks* with)
 
 **What the user chooses:** the quality/speed of Arc's brain.
-**Status:** 🔒 hardcoded tiers in `apps/arc-runner/src/inference.ts`, not surfaced.
+**Status:** ✅ shipped — and it has been for a while. This doc claimed otherwise
+until 2026-08-06; the composer has a model pill (`arc-view.tsx`, `MODEL_OPTIONS`
++ `resolveArcModelRoute`) offering **Arc Auto / Arc Spark / Arc Forge**.
+
+⚠️ The **Pulse / Drive / Deep** names below appear nowhere in the code. Shipped
+naming is Spark (fast) / Forge (standard); treat the table as the mapping, not
+the labels.
 
 **Recommendation: expose a branded tier, NOT raw model ids.** Raw ids rot (the
 code is already a version behind — see below), users don't know Sonnet-vs-Opus,
@@ -127,9 +150,11 @@ Independent of the picker, bumping FAST to Sonnet 5 is a one-line quality win.
 | Layer | Choice | Default | State |
 |---|---|---|---|
 | 1. Backend | Higgsfield/Gemini on/off + credential | off until connected | ✅ done |
-| 2. Media model | per-category model within Higgsfield | Auto (Arc picks) | ✅ done (persist + expose + runner injection) |
-| 3. Reasoning | Arc Pulse / Drive / Deep tier | Arc Drive (Opus 4.8); ceiling Opus 4.8 for now | 🔒 build tier picker later |
+| 2. Media model | per-category model across BOTH engines | Auto (Arc picks) | ✅ done — one resolver, enforced as an argument |
+| 3. Reasoning | Arc Auto / Spark / Forge | Auto | ✅ done — composer pill |
 
-**Do next:** close the Layer 2 loop (it's the one that's visibly "wired" in the UI
-but silently does nothing). Layer 3 = bump FAST to Sonnet 5 now; build the tier
-picker only if a customer asks to control it.
+**Do next:** an app-side Higgsfield execution client, so a Higgsfield pick is a
+parameter on a call the app makes rather than a required argument stated in a
+prompt. Until then the Higgsfield half of Layer 2 is as strong as a prompt can
+be, and no stronger — verify a Higgsfield generation names the picked model
+before treating it as enforced.

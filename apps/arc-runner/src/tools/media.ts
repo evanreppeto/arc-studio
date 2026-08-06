@@ -29,7 +29,7 @@ export function mediaTools(
   client: ArcClient,
   step: StepFn,
   collectCard: (card: ArcActionCard) => void,
-  ctx: { level?: "fast" | "standard"; conversationId?: string | null; campaignId?: string | null } = {},
+  ctx: { level?: "fast" | "standard"; conversationId?: string | null; campaignId?: string | null; mediaModel?: string | null } = {},
 ) {
   const generateImage = tool(
     "generate_image",
@@ -62,6 +62,10 @@ export function mediaTools(
           style: args.style,
           aspect_ratio: args.aspect_ratio,
           level: ctx.level,
+          // The operator's composer pick for this turn. Sent as an engine-qualified
+          // key and re-resolved server-side, so a Higgsfield pick lands as "no
+          // Gemini override" rather than an id Gemini has never heard of.
+          model_key: ctx.mediaModel ?? null,
         });
         // "Just an image" now has somewhere to land. Until the Library recorded
         // generated media (BSR-634), a campaign was the ONLY way an image was
@@ -151,7 +155,7 @@ export function mediaTools(
         const promptWithStyle = args.style ? `${args.prompt}\n\nStyle: ${args.style}.` : args.prompt;
         const start = await client.apiPost<{ operationName: string; model: string; jobId?: string }>(
           "/api/v1/arc/media/generate-video",
-          { prompt: promptWithStyle, aspect_ratio: args.aspect_ratio, duration_seconds: args.duration_seconds, level: ctx.level },
+          { prompt: promptWithStyle, aspect_ratio: args.aspect_ratio, duration_seconds: args.duration_seconds, level: ctx.level, model_key: ctx.mediaModel ?? null },
         );
         let media: ArcMedia | null = null;
         let objectPath: string | undefined;
@@ -243,6 +247,7 @@ export function mediaTools(
             style: args.style,
             aspect_ratio: args.format ? (BG_ASPECT_FOR_FORMAT[args.format] ?? "1:1") : undefined,
             level: ctx.level,
+            model_key: ctx.mediaModel ?? null,
           });
           backgroundUrl = bg.media.url;
         }
@@ -324,7 +329,7 @@ export function mediaTools(
       try {
         const edited = await client.apiPost<{ media: ArcMedia; objectPath?: string }>(
           "/api/v1/arc/media/edit",
-          { image_url: args.image_url, instruction: args.instruction, format: args.format },
+          { image_url: args.image_url, instruction: args.instruction, format: args.format, model_key: ctx.mediaModel ?? null },
         );
 
         const draft = await client.apiPost<{ campaignId: string; assetId: string }>(

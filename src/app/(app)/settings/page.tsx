@@ -3,6 +3,7 @@ import { getViewerAvatarUrl } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import {
   CUSTOM_FIELD_OBJECT_KEYS,
+  DEFAULT_MEDIA_CONFIG,
   DEFAULT_PIPELINE_STAGES,
   PIPELINE_OBJECT_KEYS,
   type CustomFieldObjectKey,
@@ -26,8 +27,10 @@ import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getAppSettings } from "@/lib/settings/store";
+import { getWorkspaceMediaConfig } from "@/lib/media-config/read-model";
+import { resolveWorkspaceEngines } from "@/lib/media-config/target";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
-import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { getWaitlistView } from "@/lib/waitlist/read-model";
 import { getHealthConsoleView } from "@/lib/observability/health-console";
 import { getSuppressionView } from "@/lib/email-suppression/read-model";
@@ -132,6 +135,18 @@ export default async function SettingsPage() {
   // email card can tell the truth: an enabled Resend connection still sends
   // nothing while this is dark.
   const liveSendEnabled = isLiveSendEnabled();
+  // The workspace's media-model defaults, plus which engines it can actually
+  // reach. Offering a model on a disconnected engine is a menu of choices that
+  // fail on use, so the picker is built from availability, not from the roster.
+  //
+  // Correctly silent: both fall back to a usable shape (defaults / nothing
+  // reachable), and the panel says which engines are connected either way.
+  const [mediaConfig, mediaEngines] = ctx?.workspaceId && isSupabaseAdminConfigured()
+    ? await Promise.all([
+        getWorkspaceMediaConfig(getSupabaseAdminClient(), ctx.workspaceId).catch(() => DEFAULT_MEDIA_CONFIG),
+        resolveWorkspaceEngines(getSupabaseAdminClient(), ctx.workspaceId).catch(() => ({ gemini: false, higgsfield: false })),
+      ])
+    : [DEFAULT_MEDIA_CONFIG, { gemini: false, higgsfield: false }];
   // Whether the deployment has a HubSpot app configured — gates the OAuth "Connect
   // with HubSpot" button (falls back to the private-app-token form when absent).
   const hubspotOAuthConfigured = isHubspotOAuthConfigured();
@@ -201,5 +216,5 @@ export default async function SettingsPage() {
   const pipelineObjectLabels = Object.fromEntries(
     PIPELINE_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<PipelineObjectKey, string>;
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} mediaConfig={mediaConfig} mediaEngines={mediaEngines} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
 }

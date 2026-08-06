@@ -54,6 +54,7 @@ import {
   Search,
   Share2,
   ShieldCheck,
+  Image as ImageIcon,
   Sparkles,
   Info,
   Slash,
@@ -67,6 +68,10 @@ import { AnimatePresence, motion } from "motion/react";
 
 import {
   ARC_RUN_STALE_MS,
+  DEFAULT_MEDIA_CONFIG,
+  MEDIA_AUTO,
+  findGenerationModel,
+  generationModelsFor,
   isSearchableArcQuery,
   type ArcActionCard,
   type ArcAssetStatus,
@@ -74,6 +79,9 @@ import {
   type ArcMention,
   type ArcMode,
   type ArcRoute,
+  type EngineAvailability,
+  type MediaCategory,
+  type MediaConfig,
   type SharePermission,
   type ShareVisibility,
 } from "@/domain";
@@ -115,7 +123,7 @@ import {
   resolveArcComposerMode,
   type ArcComposerModePreference,
 } from "@/lib/arc-chat/composer-mode";
-import { resolveArcModelRoute, type ArcModelPreference } from "@/lib/arc-chat/model-routing";
+import { inferMediaCategory, resolveArcModelRoute, type ArcModelPreference } from "@/lib/arc-chat/model-routing";
 import { buildArcRunContract } from "@/lib/arc-chat/run-contract";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import {
@@ -1666,6 +1674,15 @@ function ShareDialog({ conversationId, onClose }: { conversationId: string | nul
   );
 }
 
+/**
+ * Stable identity for "no engine reachable". An object literal in the parameter
+ * default allocates a fresh value every render, which is enough for the React
+ * Compiler to give up on the component ("existing memoization could not be
+ * preserved") — the whole file then falls back to uncompiled. A module constant
+ * costs nothing and keeps the optimisation.
+ */
+const NO_MEDIA_ENGINES: EngineAvailability = { gemini: false, higgsfield: false };
+
 export function ArcView({
   brandName,
   operatorName,
@@ -1686,6 +1703,8 @@ export function ArcView({
   workspaceSkills: initialWorkspaceSkills = [],
   generatedSkills: initialGeneratedSkills = [],
   workspaceName = "",
+  mediaConfig = DEFAULT_MEDIA_CONFIG,
+  mediaEngines = NO_MEDIA_ENGINES,
 }: {
   brandName: string;
   operatorName?: string;
@@ -1706,6 +1725,10 @@ export function ArcView({
   workspaceSkills?: WorkspaceArcSkill[];
   generatedSkills?: GeneratedSkillRecord[];
   workspaceName?: string;
+  /** The workspace's generation default — the media picker opens on it. */
+  mediaConfig?: MediaConfig;
+  /** Which engines this workspace can reach; the picker offers only these. */
+  mediaEngines?: EngineAvailability;
 }) {
   const router = useRouter();
   const greetName = operatorName?.trim() || brandName?.trim() || "there";
@@ -1716,6 +1739,17 @@ export function ArcView({
   const [modePreference, setModePreference] = useState<ArcComposerModePreference>("auto");
   const [modelPreference, setModelPreference] = useState<ArcModelPreference>("auto");
   const [route, setRoute] = useState<ArcRoute>("fast");
+  /**
+   * Which model generates media on THIS turn, per output category.
+   *
+   * Separate from the reasoning pill beside it on purpose: `claude-opus` and
+   * `veo3_1` are not substitutable options on one list — one is Arc's brain, the
+   * other a tool the brain calls. Opens on the workspace default (Auto when the
+   * workspace says "let Arc choose"), and a pick here beats that default.
+   */
+  const [mediaPick, setMediaPick] = useState<Record<MediaCategory, string>>(() =>
+    mediaConfig.autoPick ? { image: MEDIA_AUTO, video: MEDIA_AUTO, audio: MEDIA_AUTO } : { ...mediaConfig.defaults },
+  );
   const [composerMenu, setComposerMenu] = useState<ComposerMenu>(null);
   const [selectedMentions, setSelectedMentions] = useState<ArcMention[]>([]);
   const [attachments, setAttachments] = useState<ArcAttachment[]>([]);
@@ -2212,6 +2246,17 @@ export function ArcView({
     closeComposerMenu(true);
   };
 
+  // The pick is per-category, and a chat turn has no image/video switch — the
+  // request is the only signal at send time, exactly as the route already is.
+  const mediaModelCategory: MediaCategory = inferMediaCategory(draft);
+  const mediaModelOptions = generationModelsFor(mediaModelCategory, mediaEngines);
+  const activeMediaModel = findGenerationModel(mediaPick[mediaModelCategory]);
+
+  const chooseMediaModel = (category: MediaCategory, key: string) => {
+    setMediaPick((prev) => ({ ...prev, [category]: key }));
+    closeComposerMenu(true);
+  };
+
   const chooseModePreference = (preference: ArcComposerModePreference) => {
     setModePreference(preference);
     setMode(inferComposerMode(draft, command, preference));
@@ -2359,6 +2404,7 @@ export function ArcView({
         attachments: pendingAttachments,
         mode: resolvedMode,
         route: resolvedRoute,
+        mediaModel: mediaPick[mediaModelCategory],
         command: pendingCommand,
         contextScopes,
       });
@@ -2753,6 +2799,16 @@ export function ArcView({
                     </>
                   ) : null}
 
+                  {composerMenu === "media" ? (
+                    <>
+                      <div className="arc-model-menu-label">Media model<span>{mediaModelCategory === "video" ? "Video" : "Image"}</span></div>
+                      <div className="arc-model-options">
+                        <button type="button" className="arc-model-option" role="menuitemradio" aria-checked={!activeMediaModel} onClick={() => chooseMediaModel(mediaModelCategory, MEDIA_AUTO)}><i className="arc-model-symbol" aria-hidden="true"><Sparkles size={16} /></i><span><b>Auto</b><small>Arc picks the model that suits the task</small></span><i className="arc-model-check" aria-hidden="true">{!activeMediaModel ? <Check size={14} /> : null}</i></button>
+                        {mediaModelOptions.map((option) => <button type="button" className="arc-model-option" role="menuitemradio" aria-checked={activeMediaModel?.key === option.key} key={option.key} onClick={() => chooseMediaModel(mediaModelCategory, option.key)}><i className="arc-model-symbol" aria-hidden="true"><ImageIcon size={16} /></i><span><b>{option.label}</b><small>{option.provider}</small></span><i className="arc-model-check" aria-hidden="true">{activeMediaModel?.key === option.key ? <Check size={14} /> : null}</i></button>)}
+                      </div>
+                    </>
+                  ) : null}
+
                   {composerMenu === "mode" ? (
                     <>
                       <div className="arc-model-menu-label">Capability{modePreference === "auto" ? <span>Automatic → {capabilityLabel}</span> : <span>Manual</span>}</div>
@@ -2834,6 +2890,14 @@ export function ArcView({
                 <button type="button" className="arc-composer-add" aria-label="Add attachment, mention, or command" aria-haspopup="menu" aria-controls={composerMenu === "tools" ? "arc-composer-menu" : undefined} aria-expanded={composerMenu === "tools"} onClick={(event) => toggleComposerMenu("tools", event.currentTarget)}><Plus size={18} /></button>
                 <button type="button" className="arc-composer-pill arc-mode-button" data-mode={mode === "ask" ? "ask" : "act"} aria-label={`Capability: ${capabilityLabel}. ${capabilityDetail}.`} aria-haspopup="menu" aria-controls={composerMenu === "mode" ? "arc-composer-menu" : undefined} aria-expanded={composerMenu === "mode"} disabled={Boolean(command)} title={command ? "This skill chooses the required capability" : "Choose whether Arc can change the workspace"} onClick={(event) => toggleComposerMenu("mode", event.currentTarget)}><ArcCapabilityIcon mode={mode} size={14} /><span>{capabilityLabel}</span><ChevronDown size={12} /></button>
                 <button type="button" className="arc-composer-pill arc-model-button" data-auto={modelPreference === "auto" ? "true" : "false"} title={modelPreference === "auto" ? `Arc Auto is routing this request to ${resolvedModelName}` : `Model: ${currentModel.label}`} aria-label={`Model: ${currentModel.label}${modelPreference === "auto" ? `. Currently routes to Arc ${resolvedModelName}.` : ""}`} aria-haspopup="menu" aria-controls={composerMenu === "model" ? "arc-composer-menu" : undefined} aria-expanded={composerMenu === "model"} onClick={(event) => toggleComposerMenu("model", event.currentTarget)}><ArcModelIcon model={modelPreference} size={14} /><span>{currentModel.label}{modelPreference === "auto" ? <small> · {resolvedModelName}</small> : null}</span><ChevronDown size={12} /></button>
+                {/* Media model — a SEPARATE control from the reasoning pill above.
+                    One list holding both would imply Arc's brain and the image
+                    engine it calls are interchangeable choices. Hidden entirely
+                    when no engine is reachable, rather than offering models that
+                    would fail on use. */}
+                {mediaModelOptions.length > 0 ? (
+                  <button type="button" className="arc-composer-pill arc-media-button" data-auto={activeMediaModel ? "false" : "true"} title={activeMediaModel ? `Media model: ${activeMediaModel.label} (${activeMediaModel.provider})` : "Media model: Auto — Arc picks per task"} aria-label={activeMediaModel ? `Media model: ${activeMediaModel.label}` : "Media model: Auto"} aria-haspopup="menu" aria-controls={composerMenu === "media" ? "arc-composer-menu" : undefined} aria-expanded={composerMenu === "media"} onClick={(event) => toggleComposerMenu("media", event.currentTarget)}><ImageIcon size={14} /><span>{activeMediaModel ? activeMediaModel.label : "Auto media"}</span><ChevronDown size={12} /></button>
+                ) : null}
                 {showContextMeter ? <div className="arc-context-control">
                   <button type="button" className="arc-context-meter" data-level={contextState.level} style={{ "--arc-ctx-pct": String(contextState.pct) } as React.CSSProperties} aria-label={`Context window: ${contextState.pct}% used. Full workspace memory is always on.`} aria-expanded={contextInfoOpen} aria-controls="arc-context-info" onClick={() => { setComposerMenu(null); setContextInfoOpen((current) => !current); }} onKeyDown={(event) => { if (event.key === "Escape") setContextInfoOpen(false); }}>
                     <span className="arc-context-ring" aria-hidden="true" />

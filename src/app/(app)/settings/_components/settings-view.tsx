@@ -27,6 +27,10 @@ import {
   formatFeedsInput,
   formatServicePointsInput,
   parseFeedsInput,
+  DEFAULT_MEDIA_CONFIG,
+  MEDIA_ASPECTS,
+  MEDIA_AUTO,
+  generationModelsFor,
   parseNewsQueriesInput,
   parseServicePointsInput,
   parseWeatherCategories,
@@ -37,6 +41,10 @@ import {
   workspaceInitials,
   type ConnectorCostTier,
   type ConnectorStatus,
+  type EngineAvailability,
+  type MediaAspect,
+  type MediaCategory,
+  type MediaConfig,
   type WeatherCategory,
   type WorkspaceAccentKey,
 } from "@/domain";
@@ -47,7 +55,7 @@ import type { SettingsBillingView } from "@/lib/billing/settings-billing";
 import { INDUSTRY_OPTIONS } from "@/lib/personas/industry-templates";
 import type { PersonaOption } from "@/lib/personas/read-model";
 import { canonicalIndustryKey, type CrmObjectLanguage, type ProductLanguageObjectKey } from "@/lib/product-language";
-import { IMAGE_MODELS, VIDEO_MODELS, type AppSettings } from "@/lib/settings/store";
+import { type AppSettings } from "@/lib/settings/store";
 
 import { createBillingPortalAction, createCheckoutSessionAction, updateOrgPlanAction } from "../billing-actions";
 
@@ -63,7 +71,7 @@ import {
   saveEmailIdentitySettings,
   suppressEmailAddress,
   saveGeneralSettings,
-  saveMediaDefaults,
+  saveMediaConfig,
   saveRunnerDisplayName,
   switchWorkspace,
   updateWorkspaceIdentityAction,
@@ -634,7 +642,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, suppression = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; suppression?: SuppressionView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
+export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, mediaConfig = DEFAULT_MEDIA_CONFIG, mediaEngines = { gemini: false, higgsfield: false }, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, suppression = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; mediaConfig?: MediaConfig; mediaEngines?: EngineAvailability; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; suppression?: SuppressionView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
   const [cur, setCur] = useState("overview");
   // Health and the waitlist are platform-level, not workspace-level: the server
   // sends null unless the viewer is a platform admin, so the group — and every
@@ -1233,7 +1241,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
             <div className="panel-f"><Ic d={CHECK} />Arc automatically chooses from this live roster. “Arc’s pick” marks the recommended default for each category.</div>
           </div>
         ) : (
-          <MediaDefaultsPanel settings={settings} />
+          <MediaDefaultsPanel config={mediaConfig} engines={mediaEngines} />
         )}
       </>
     ),
@@ -2182,46 +2190,84 @@ function AgentIdentityPanel({ settings }: { settings: AppSettings }) {
 }
 
 // ---- Media defaults (wired) ----
-// The built-in Gemini/Veo default — the only media-model default that's actually
-// consumed (settings.imageModel/videoModel → the generate-* routes). "" = Auto.
-const IMAGE_MODEL_LABELS: Record<string, string> = {
-  "": "Auto — Arc picks per task",
-  "gemini-3-pro-image": "Gemini 3 Pro Image",
-  "gemini-3.1-flash-image": "Gemini 3.1 Flash Image",
-  "gemini-2.5-flash-image": "Gemini 2.5 Flash Image",
-};
-const VIDEO_MODEL_LABELS: Record<string, string> = {
-  "": "Auto — Arc picks per task",
-  "veo-3.1-generate-preview": "Veo 3.1",
-  "veo-3.1-fast-generate-preview": "Veo 3.1 Fast",
-};
+//
+// ONE panel for the workspace's generation default, across both engines. There
+// used to be two: this one (the Gemini ids from app_settings) and a Higgsfield
+// per-category default that had no UI at all — `saveMediaConfigAction` shipped
+// with zero callers, and prod carried zero `workspace_media_config` rows. Two
+// pickers over two rosters is how an operator could lock a model on one engine
+// and watch generation run on the other. The old Gemini-only values are still
+// honoured as a lower-precedence fallback (see resolveGenerationTarget), they
+// are simply no longer a second place to set the same thing.
 
-function MediaDefaultsPanel({ settings }: { settings: AppSettings }) {
-  const [imageModel, setImageModel] = useState(settings.imageModel);
-  const [videoModel, setVideoModel] = useState(settings.videoModel);
+const CATEGORY_ROWS: Array<{ key: MediaCategory; label: string; desc: string }> = [
+  { key: "image", label: "Image model", desc: "Stills, backgrounds, and ad creative." },
+  { key: "video", label: "Video model", desc: "Short clips. Rendering is asynchronous." },
+  { key: "audio", label: "Audio model", desc: "Voiceover and sound. Higgsfield only." },
+];
+
+function MediaDefaultsPanel({ config, engines }: { config: MediaConfig; engines: EngineAvailability }) {
+  const [draft, setDraft] = useState<MediaConfig>(config);
   const [status, setStatus] = useState<SaveStatus>(null);
   const [pending, setPending] = useState(false);
+
+  const connected = [engines.gemini ? "Built-in (Gemini)" : null, engines.higgsfield ? "Higgsfield" : null].filter(Boolean);
+
+  function setDefault(category: MediaCategory, value: string) {
+    setDraft((d) => ({ ...d, defaults: { ...d.defaults, [category]: value } }));
+  }
 
   async function save() {
     setPending(true);
     setStatus(null);
-    const res = await saveMediaDefaults({ imageModel, videoModel });
+    // The action returns a real result rather than void, so a save that writes
+    // nothing says so instead of looking identical to one that worked.
+    const res = await saveMediaConfig(draft);
     setPending(false);
     setStatus(toStatus(res, "Saved."));
   }
 
   return (
-    <Panel title="Built-in generation default" tag={TGOK} foot="image_model / video_model · read by /api/v1/arc/media/generate-*">
-      <Row label="Default image model" desc="Used by the built-in Gemini path. Auto follows Arc’s per-task pick.">
-        <select className="sel" value={imageModel} onChange={(e) => setImageModel(e.target.value)}>
-          {["", ...IMAGE_MODELS].map((m) => <option key={m || "auto"} value={m}>{IMAGE_MODEL_LABELS[m] ?? m}</option>)}
+    <Panel
+      title="Generation default"
+      tag={TGOK}
+      foot={connected.length ? `Engines connected: ${connected.join(" · ")}` : "No generation engine is connected yet."}
+    >
+      <Row label="Let Arc choose" desc="Arc picks the model that suits each task. Turn this off to pin your own.">
+        <Seg opts={["On", "Off"]} value={draft.autoPick ? "On" : "Off"} onChange={(v) => setDraft((d) => ({ ...d, autoPick: v === "On" }))} />
+      </Row>
+
+      {CATEGORY_ROWS.map(({ key, label, desc }) => {
+        const options = generationModelsFor(key, engines);
+        return (
+          <Row key={key} label={label} desc={options.length === 0 ? "No connected engine can generate this yet." : desc}>
+            <select
+              className="sel"
+              value={draft.defaults[key]}
+              disabled={draft.autoPick || options.length === 0}
+              onChange={(e) => setDefault(key, e.target.value)}
+            >
+              <option value={MEDIA_AUTO}>Auto — Arc picks per task</option>
+              {options.map((m) => (
+                <option key={m.key} value={m.key}>{`${m.label} · ${m.provider}`}</option>
+              ))}
+            </select>
+          </Row>
+        );
+      })}
+
+      <Row label="Default aspect ratio" desc="Per-platform sizes still override this.">
+        <select className="sel" value={draft.defaultAspect} onChange={(e) => setDraft((d) => ({ ...d, defaultAspect: e.target.value as MediaAspect }))}>
+          {MEDIA_ASPECTS.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       </Row>
-      <Row label="Default video model" desc="Used by the built-in Veo path.">
-        <select className="sel" value={videoModel} onChange={(e) => setVideoModel(e.target.value)}>
-          {["", ...VIDEO_MODELS].map((m) => <option key={m || "auto"} value={m}>{VIDEO_MODEL_LABELS[m] ?? m}</option>)}
-        </select>
+      <Row label="Prefer your own photos" desc="Enhance approved brand media rather than generating a scene from nothing.">
+        <Seg opts={["On", "Off"]} value={draft.preferRealMedia ? "On" : "Off"} onChange={(v) => setDraft((d) => ({ ...d, preferRealMedia: v === "On" }))} />
       </Row>
+      <Row label="Allow video" desc="When off, Arc offers a still or a storyboard instead of rendering a clip.">
+        <Seg opts={["On", "Off"]} value={draft.allowVideo ? "On" : "Off"} onChange={(v) => setDraft((d) => ({ ...d, allowVideo: v === "On" }))} />
+      </Row>
+
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0 4px" }}>
         <button className="btn gold" onClick={save} disabled={pending}>{pending ? "Saving…" : "Save defaults"}</button>
         <Status status={status} />

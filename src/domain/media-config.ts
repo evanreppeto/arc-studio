@@ -11,9 +11,9 @@
 import {
   HIGGSFIELD_CATEGORIES,
   type HiggsfieldModel,
-  findHiggsfieldModel,
   resolveHiggsfieldModel,
 } from "./higgsfield-models";
+import { findGenerationModel } from "./media-target";
 
 /** The categories Arc actively offers media selection for (image/video/audio) —
  *  the offered subset of HiggsfieldCategory, excluding not-yet-offered "3d". */
@@ -47,12 +47,16 @@ export const DEFAULT_MEDIA_CONFIG: MediaConfig = {
   allowVideo: true,
 };
 
-/** A per-category default is valid only if it's MEDIA_AUTO or a real model in that
- *  category. A wrong-category or unknown id normalizes to MEDIA_AUTO. */
+/**
+ * A per-category default is valid only if it's MEDIA_AUTO or a real model in that
+ * category — on EITHER engine. A wrong-category or unknown id normalizes to
+ * MEDIA_AUTO. Stored as the engine-qualified key (`higgsfield:veo3_1`); a bare id
+ * from the pre-namespace shape still reads as Higgsfield and is upgraded here.
+ */
 function normalizeDefault(category: MediaCategory, value: unknown): string {
   if (typeof value !== "string" || value.trim() === "" || value === MEDIA_AUTO) return MEDIA_AUTO;
-  const model = findHiggsfieldModel(value.trim());
-  return model && model.category === category ? model.id : MEDIA_AUTO;
+  const model = findGenerationModel(value.trim());
+  return model && model.category === category ? model.key : MEDIA_AUTO;
 }
 
 function normalizeAspect(value: unknown): MediaAspect {
@@ -87,15 +91,25 @@ export function parseMediaConfig(raw: unknown): MediaConfig {
 }
 
 /**
- * The model Arc should generate with for a category, given the workspace config.
- * autoPick forces the recommended model; otherwise the per-category override wins
- * (falling back to recommended when it's MEDIA_AUTO or invalid). Returns null only
- * if the category has no recommended model at all.
+ * The HIGGSFIELD model Arc should generate with for a category — the engine Arc
+ * drives itself, through its MCP connector. autoPick forces the recommended
+ * model; otherwise the per-category override wins (falling back to recommended
+ * when it's MEDIA_AUTO or invalid). Returns null only if the category has no
+ * recommended model at all.
+ *
+ * A **Gemini** pick deliberately does not lock anything here: that engine is
+ * executed app-side, where `geminiModelForTarget` pins it as a real argument, so
+ * Higgsfield keeps its own default rather than inheriting an id it can't run.
  */
 export function effectiveMediaModel(config: MediaConfig, category: MediaCategory): HiggsfieldModel | null {
-  if (config.autoPick) return resolveHiggsfieldModel(category, null);
-  const override = config.defaults[category];
-  return resolveHiggsfieldModel(category, override === MEDIA_AUTO ? null : override);
+  return resolveHiggsfieldModel(category, higgsfieldOverrideIn(config, category));
+}
+
+/** The stored default for a category, but only when it names a Higgsfield model. */
+function higgsfieldOverrideIn(config: MediaConfig, category: MediaCategory): string | null {
+  if (config.autoPick) return null;
+  const model = findGenerationModel(config.defaults[category]);
+  return model && model.engine === "higgsfield" ? model.id : null;
 }
 
 /** A resolved per-category default, ready for the runner to inject into Arc's
@@ -117,7 +131,9 @@ export function resolveMediaDefaults(config: MediaConfig): Record<MediaCategory,
   const out = {} as Record<MediaCategory, ResolvedMediaDefault>;
   for (const category of HIGGSFIELD_CATEGORIES) {
     const model = effectiveMediaModel(config, category);
-    const explicit = !config.autoPick && config.defaults[category] !== MEDIA_AUTO;
+    // Explicit only when the operator locked a HIGGSFIELD model — a Gemini pick
+    // is enforced app-side and must not be reported to Arc as a Higgsfield lock.
+    const explicit = higgsfieldOverrideIn(config, category) !== null;
     out[category] = model ? { id: model.id, label: model.label, provider: model.provider, explicit } : null;
   }
   return out;

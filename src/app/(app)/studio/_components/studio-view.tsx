@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { type ChangeEvent, type CSSProperties, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { type CreativeLayoutOverride } from "@/domain";
+import {
+  DEFAULT_MEDIA_CONFIG,
+  MEDIA_AUTO,
+  generationModelsFor,
+  type CreativeLayoutOverride,
+  type EngineAvailability,
+  type MediaCategory,
+  type MediaConfig,
+} from "@/domain";
 
 import { resolveArcComposerMode } from "@/lib/arc-chat/composer-mode";
 import { hasRepliedToLastMessage } from "@/lib/arc-chat/thread-state";
@@ -260,7 +268,16 @@ const SAMPLE_COPY = {
 };
 const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
 
-export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null, initialAssetId = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null; /** ?asset=<media_assets uuid> — Library deep-links here so "Edit in Studio" opens on the asset the operator clicked rather than on whatever happens to be first. */ initialAssetId?: string | null }) {
+/**
+ * Stable identity for "no engine reachable". An object literal in the parameter
+ * default allocates a fresh value every render, which is enough for the React
+ * Compiler to give up on the component ("existing memoization could not be
+ * preserved") — the whole file then falls back to uncompiled. A module constant
+ * costs nothing and keeps the optimisation.
+ */
+const NO_MEDIA_ENGINES: EngineAvailability = { gemini: false, higgsfield: false };
+
+export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null, mediaConfig = DEFAULT_MEDIA_CONFIG, mediaEngines = NO_MEDIA_ENGINES, initialAssetId = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null; /** The workspace default the server would resolve anyway — the picker opens on it. */ mediaConfig?: MediaConfig; /** Which engines this workspace can reach; the picker offers only these. */ mediaEngines?: EngineAvailability; /** ?asset=<media_assets uuid> — Library deep-links here so "Edit in Studio" opens on the asset the operator clicked rather than on whatever happens to be first. */ initialAssetId?: string | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
   // The "Approved media" source shows the workspace's real media_assets. Live, it
   // shows ONLY those — never the built-in samples, which would present stock art as
@@ -627,6 +644,22 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
    *  nothing re-surfaces it on its own. */
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [videoPrompt, setVideoPrompt] = useState("");
+  /**
+   * The model this render uses, per output category.
+   *
+   * Opens on the workspace default so the picker states what would happen
+   * anyway rather than implying Auto when a default is pinned, and the server
+   * re-resolves whatever is sent — this control chooses, it does not decide.
+   */
+  const [modelPick, setModelPick] = useState<Record<MediaCategory, string>>(() =>
+    // "Let Arc choose" is the workspace's stance, so the picker opens on Auto
+    // there. A pick made HERE still beats it — a deliberate per-render choice
+    // outranks a standing preference (see resolveGenerationTarget).
+    mediaConfig.autoPick ? { image: MEDIA_AUTO, video: MEDIA_AUTO, audio: MEDIA_AUTO } : { ...mediaConfig.defaults },
+  );
+  const modelCategory: MediaCategory = mode === "video" ? "video" : "image";
+  const modelOptions = generationModelsFor(modelCategory, mediaEngines);
+  const activeModel = modelPick[modelCategory];
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoNote, setVideoNote] = useState<string | null>(null);
   // The video poll loop outlives a fast unmount; this stops it writing state
@@ -707,6 +740,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         format: FORMATS[fmt].r,
         title: instruction.slice(0, 60),
         campaignId,
+        model: modelPick.image,
       });
       if (res.ok && res.assetId && res.media) {
         const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: res.media.url, source: res.media.source, format: res.media.format, title: instruction.slice(0, 60), status: "pending_approval", at: Date.now(), origin: "studio" };
@@ -791,7 +825,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
       // Animate the photo on the canvas when there is one. Without it Veo
       // invents a scene from the words and the picture the operator picked is
       // silently ignored — which is what "Animate" has always done.
-      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId, sourceImageUrl: bg?.url });
+      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId, sourceImageUrl: bg?.url, model: modelPick.video });
       if (!started.ok) {
         setGenErr(started.error);
         return;
@@ -1468,6 +1502,27 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
               <div className="ifoot">
                 {genErr ? <div role="alert" className="ifooterr">{genErr}</div> : null}
                 {draftNotice ? <div role="status" className="ifootwarn">{draftNotice}</div> : null}
+                {/* Which model renders this — at the point of rendering, not
+                    buried in Settings. Only engines this workspace can reach are
+                    offered, so the list can't fail on use. Auto keeps whatever
+                    the workspace default resolves to. */}
+                {modelOptions.length > 0 ? (
+                  <div className="field">
+                    <div className="fieldl"><span>Model</span></div>
+                    <select
+                      className="input"
+                      aria-label={`Model for this ${modelCategory}`}
+                      value={activeModel}
+                      disabled={gen || videoBusy}
+                      onChange={(e) => setModelPick((prev) => ({ ...prev, [modelCategory]: e.target.value }))}
+                    >
+                      <option value={MEDIA_AUTO}>Auto — Arc picks per task</option>
+                      {modelOptions.map((m) => (
+                        <option key={m.key} value={m.key}>{`${m.label} · ${m.provider}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 {mode === "video" ? (
                   <>
                     {/* Video doesn't composite over the selected photo — Veo renders
