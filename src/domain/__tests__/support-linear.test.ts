@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSupportLinearIssue,
   parseSupportRequest,
+  SUPPORT_APP_LABEL,
   SUPPORT_FEEDBACK_LABEL,
   supportLinearLabelNames,
   supportLinearLabels,
@@ -42,15 +43,21 @@ describe("supportLinearLabels", () => {
     }
   });
 
-  it("adds the type label for every category that has one", () => {
-    expect(supportLinearLabels("bug")).toEqual([SUPPORT_FEEDBACK_LABEL, "Bug"]);
-    expect(supportLinearLabels("question")).toEqual([SUPPORT_FEEDBACK_LABEL, "Question"]);
-    expect(supportLinearLabels("feature")).toEqual([SUPPORT_FEEDBACK_LABEL, "Feature"]);
-    expect(supportLinearLabels("billing")).toEqual([SUPPORT_FEEDBACK_LABEL, "Billing"]);
+  it("always says which app the report came from — one Linear team holds two products", () => {
+    for (const category of ["bug", "question", "feature", "billing", "other"] as const) {
+      expect(supportLinearLabels(category)).toContain(SUPPORT_APP_LABEL);
+    }
   });
 
-  it("leaves 'other' with only the marker — a made-up Other label carries no triage signal", () => {
-    expect(supportLinearLabels("other")).toEqual([SUPPORT_FEEDBACK_LABEL]);
+  it("adds the type label for every category that has one", () => {
+    expect(supportLinearLabels("bug")).toEqual([SUPPORT_FEEDBACK_LABEL, SUPPORT_APP_LABEL, "Bug"]);
+    expect(supportLinearLabels("question")).toEqual([SUPPORT_FEEDBACK_LABEL, SUPPORT_APP_LABEL, "Question"]);
+    expect(supportLinearLabels("feature")).toEqual([SUPPORT_FEEDBACK_LABEL, SUPPORT_APP_LABEL, "Feature"]);
+    expect(supportLinearLabels("billing")).toEqual([SUPPORT_FEEDBACK_LABEL, SUPPORT_APP_LABEL, "Billing"]);
+  });
+
+  it("leaves 'other' with only the markers — a made-up Other label carries no triage signal", () => {
+    expect(supportLinearLabels("other")).toEqual([SUPPORT_FEEDBACK_LABEL, SUPPORT_APP_LABEL]);
   });
 
   it("declares every name it can emit, so the id lookup can prefetch them all", () => {
@@ -115,7 +122,7 @@ describe("buildSupportLinearIssue", () => {
 
   it("carries the labels and priority for the request's own category and impact", () => {
     const draft = buildSupportLinearIssue(context({ request: request({ category: "feature", impact: "minor" }) }));
-    expect(draft.labels).toEqual([SUPPORT_FEEDBACK_LABEL, "Feature"]);
+    expect(draft.labels).toEqual([SUPPORT_FEEDBACK_LABEL, SUPPORT_APP_LABEL, "Feature"]);
     expect(draft.priority).toBe(4);
   });
 });

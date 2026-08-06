@@ -1506,31 +1506,28 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
             <div className="ipane">
               <div className="iscroll">
               <div className="dwrap">
-                <div className="brief">
-                  <div className="bh"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Campaign context</div>
-                  <div className="bn">{campaigns.find((c) => c.id === campaignId)?.name ?? "No campaign selected"}</div>
-                  {/* The angle and proof chips are sample brief copy — there is no
-                      wired source for a campaign's angle here yet. Showing them
-                      live would put another tenant's positioning on this canvas
-                      and read as this workspace's own brief. */}
-                  {live ? (
-                    // Says what is true. This line read "Attach this creative to a
-                    // campaign to work from its angle and proof points" DIRECTLY
-                    // UNDER the name of the campaign it was already attached to —
-                    // instructing the operator to do the thing they had done, on
-                    // every live workspace, always.
-                    <div className="brow">
-                      {campaignId
-                        ? "Anything you generate here lands on this campaign for approval."
-                        : "Pick a campaign above so what you make here has somewhere to land."}
-                    </div>
-                  ) : (
-                    <>
-                      <div className="brow"><b>Angle:</b> Act before the next storm — protect the home you&rsquo;ve already invested in.</div>
-                      <div className="bchips"><span className="bchip per">Homeowners · storm-exposed</span><span className="bchip">Proof: before/after</span><span className="bchip">Proof: 4.9★ reviews</span><span className="bchip">Same-week scheduling</span></div>
-                    </>
-                  )}
-                </div>
+                {/* The campaign a draft lands on is chosen — and named — in the
+                    bar at the top of this screen. This block used to name it
+                    again, and restate the same "it attaches for approval" line
+                    the bar carries, so the screen answered "which campaign?"
+                    twice, in two different sentences, in one viewport. Worse
+                    when there were none: the bar said "No campaigns yet" while
+                    this said "No campaign selected" — two phrasings of one fact,
+                    the second implying a selection was available to make.
+
+                    So the block is now only the brief: the angle and proof the
+                    creative should work from. It renders when there is one to
+                    show, and stays out of the way when there isn't. (The angle
+                    and proof chips are sample copy — there is no wired source
+                    for a campaign's angle yet, and showing them live would put
+                    another tenant's positioning on this canvas.) */}
+                {!live && (
+                  <div className="brief">
+                    <div className="bh"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Work from this angle</div>
+                    <div className="brow"><b>Angle:</b> Act before the next storm — protect the home you&rsquo;ve already invested in.</div>
+                    <div className="bchips"><span className="bchip per">Homeowners · storm-exposed</span><span className="bchip">Proof: before/after</span><span className="bchip">Proof: 4.9★ reviews</span><span className="bchip">Same-week scheduling</span></div>
+                  </div>
+                )}
 
                 {/* Right under the brief, not buried at the bottom of the pane:
                     this is what you just made and the only place to act on it. */}
