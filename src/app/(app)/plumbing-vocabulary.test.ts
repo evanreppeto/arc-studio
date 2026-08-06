@@ -220,3 +220,85 @@ describe("plumbing vocabulary never reaches the customer", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * The hole every check above shares: they walk `src/app/(app)` and read JSX.
+ * Copy AUTHORED IN `src/lib/` and handed to a screen as a prop is invisible to
+ * all of them.
+ *
+ * That is not hypothetical. Studio's "why can't I generate?" line is
+ * `MediaGenerationAccess.reason`, written in `src/lib/media/enablement.ts`, and
+ * it read:
+ *
+ *   "Media generation is off for this workspace. Enable the Media Generation
+ *    connector in Settings → Connections (included on platform credits, or add
+ *    your own Gemini API key)."
+ *
+ * — a vendor name, a billing noun and two architecture nouns, rendered in the
+ * corner of the canvas, past a guard built for exactly this and passing.
+ *
+ * Scope is deliberately the `reason` channel: these are the strings whose whole
+ * job is to be shown to an operator when something is switched off, so any one
+ * of them is customer copy by construction. It does not attempt to find every
+ * user-facing literal in `lib/` — a general sweep there is mostly log lines and
+ * error messages, and a guard that cries wolf gets suppressed.
+ */
+const LIB_DIR = new URL("../../lib/", import.meta.url).pathname;
+
+/** Vocabulary §4.2 keeps out of copy the customer reads. */
+const NOT_FOR_CUSTOMERS: { pattern: RegExp; why: string }[] = [
+  { pattern: /\b(Gemini|Resend|Higgsfield|Veo)\b/, why: "a vendor's name; the operator bought Arc, not this" },
+  { pattern: /\bplatform credits\b/i, why: "billing-system vocabulary" },
+  { pattern: /\bAPI (key|token)\b/i, why: "say what to open, not what to paste" },
+  { pattern: /\bcredential\b/i, why: "architecture noun" },
+];
+
+function libTsFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      if (entry !== "__tests__") libTsFiles(full, out);
+    } else if (full.endsWith(".ts") && !full.endsWith(".test.ts")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * String literals that become an operator-visible `reason`: `reason: "…"`,
+ * `reason = "…"`, and the `const *REASON* = "…"` constants they are built from.
+ */
+function reasonLiterals(source: string): string[] {
+  const out: string[] = [];
+  for (const [, dq, sq] of source.matchAll(/\breason\s*[:=]\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/g)) {
+    out.push(dq ?? sq ?? "");
+  }
+  for (const [, dq, sq] of source.matchAll(/\bconst\s+\w*REASON\w*\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/g)) {
+    out.push(dq ?? sq ?? "");
+  }
+  return out.filter((text) => text.trim().length > 0);
+}
+
+describe("off-switch copy written in lib/ is still customer copy", () => {
+  const files = libTsFiles(LIB_DIR);
+
+  it("finds the library (guards against an empty sweep passing)", () => {
+    expect(files.length).toBeGreaterThan(50);
+  });
+
+  it("finds reason strings to check (guards against a regex that matches nothing)", () => {
+    const total = files.reduce((n, file) => n + reasonLiterals(stripComments(readFileSync(file, "utf8"))).length, 0);
+    expect(total).toBeGreaterThan(5);
+  });
+
+  it.each(NOT_FOR_CUSTOMERS)("no reason string says $pattern — $why", ({ pattern }) => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      for (const text of reasonLiterals(stripComments(readFileSync(file, "utf8")))) {
+        if (pattern.test(text)) offenders.push(`${file.replace(LIB_DIR, "")}: ${text.slice(0, 90)}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});

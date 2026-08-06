@@ -27,7 +27,6 @@ export type BrainStat = { label: string; value: number; sub: string; color: stri
 
 export type BrainData = {
   stats: BrainStat[];
-  coverageNote: string;
   facts: FactVM[];
   /** Whole-brain node total (exact count), so the capped facts page can say
    *  "showing N of TOTAL" instead of implying the page is the whole memory. */
@@ -362,12 +361,6 @@ export function BrainView({
             tone: s.color === "var(--warn-text)" ? ("attention" as const) : s.color === "var(--ok-text)" ? ("ok" as const) : undefined,
           }))}
         />
-        {data.coverageNote && review.length > 0 && (
-          <div className="covbanner">
-            {IconResync}
-            <span className="ct">{data.coverageNote}</span>
-          </div>
-        )}
         <HowThisWorks>
           <p>
             Everything Arc has learned about your business lives here — from your website, the documents you upload, and
