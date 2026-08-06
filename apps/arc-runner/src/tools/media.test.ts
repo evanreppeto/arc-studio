@@ -168,10 +168,32 @@ describe("branding revisions route to compositing, not regeneration", () => {
     expect(descriptions().compose_creative).toMatch(/background_url/);
   });
 
-  it("states the lockup limit rather than letting the operator discover it", () => {
-    // "put our logo on the truck" yields a branded creative, NOT a branded
-    // truck — the logo is positioned by the layout, not painted into the scene.
-    expect(descriptions().compose_creative).toMatch(/not painted onto an object|NOT painted onto an object/i);
+  /**
+   * This test used to assert the OPPOSITE — that compose_creative tells the
+   * operator a branded truck is impossible. It was pinning a false limit.
+   *
+   * Nothing forbade it. There was simply no edit path: the provider could only
+   * generate, so the mark could only be a lockup positioned over the photo. The
+   * operator's word for that was "stupid", and they were right. `edit_image`
+   * exists now, and the description must ROUTE to it rather than refuse.
+   */
+  it("routes a mark-on-an-object request to edit_image instead of refusing it", () => {
+    const compose = descriptions().compose_creative;
+    expect(compose).toMatch(/edit_image/);
+    // The old refusal must not come back in any wording.
+    expect(compose).not.toMatch(/branded creative rather than a branded truck/i);
+    expect(compose).toMatch(/not tell them a branded truck is impossible/i);
+  });
+
+  it("tells edit_image it owns changing an existing picture", () => {
+    const edit = descriptions().edit_image;
+    expect(edit).toMatch(/ALREADY EXISTS/);
+    expect(edit).toMatch(/image_url/);
+    expect(edit).toMatch(/instruction/);
+    // Why it is not "just regenerate": that discards the picture being edited.
+    expect(edit).toMatch(/rolls the dice|throws that picture away/i);
+    // An edit inherits the original's claims and adds the model's on top.
+    expect(edit).toMatch(/risk-flagged|inherits/i);
   });
 });
 
@@ -337,5 +359,48 @@ describe("generate_video", () => {
       "/api/v1/arc/media/generate-video",
       expect.objectContaining({ level: "standard" }),
     );
+  });
+});
+
+/**
+ * The four places that must agree about a tool.
+ *
+ * BSR-759 was exactly this drift: a tool existed, and the allowlist or the prompt
+ * did not know about it, so Arc either could not call it or was never told to.
+ * The failure is silent — the tool is simply never used, and the operator gets
+ * the old answer forever.
+ *
+ * `edit_image` is the tool most likely to suffer it, because the prompt actively
+ * used to say the thing it makes possible was impossible.
+ */
+describe("edit_image is wired everywhere, not just defined", () => {
+  const read = (rel: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { join } = require("node:path") as typeof import("node:path");
+    return readFileSync(join(__dirname, "..", rel), "utf8");
+  };
+
+  it("is in the skills allowlist, or Arc cannot call it", () => {
+    expect(read("skills.ts")).toMatch(/"edit_image"/);
+  });
+
+  it("is in the act-mode capability line, or Arc is not told it has it", () => {
+    expect(read("context.ts")).toMatch(/edit_image/);
+  });
+
+  it("is in the app map's writes for the campaigns surface", () => {
+    expect(read("app-map.ts")).toMatch(/edit_image/);
+  });
+
+  it("is named in the system prompt, with the old refusal retired", () => {
+    const prompt = read("prompt.ts");
+    expect(prompt).toMatch(/edit_image/);
+    // The prompt used to forbid logos in images flatly. That rule is about
+    // GENERATION; stated flatly it also forbade the edit that makes a branded
+    // truck possible.
+    expect(prompt).toMatch(/GENERATED image/);
+    expect(prompt).toMatch(/never tell an operator a branded truck is impossible/i);
   });
 });

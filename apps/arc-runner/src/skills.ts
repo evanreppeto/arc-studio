@@ -157,6 +157,7 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
       // which is exactly what happened to the copy revisions on prod (BSR-759).
       "revise_campaign_asset",
       "generate_image",
+      "edit_image",
       "generate_video",
       // Required, not optional, alongside generate_image: the prompt tells Arc
       // that a request to put a logo / phone number / any words onto an existing
