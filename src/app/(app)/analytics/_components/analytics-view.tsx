@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { formatRate } from "@/domain";
 import { ANALYTICS_WINDOWS } from "@/lib/analytics/overview";
@@ -52,15 +52,40 @@ function curve(pts: [number, number][]): string {
   return d;
 }
 
+/** What a day is worth, in the words the readout uses. */
+function readoutValue(metric: TrendKey, v: number): string {
+  if (metric !== "revenue") return Math.round(v).toLocaleString();
+  const d = Math.round(v / 100);
+  return `$${d.toLocaleString()}`;
+}
+
 function TrendChart({ metric, series, labels }: { metric: TrendKey; series: TrendSeries; labels: string[] }) {
   const W = 720, H = 216, padL = 46, padR = 14, padT = 12, padB = 24;
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  // The day the reader is pointing at (or has arrowed to). null = not reading.
+  const [active, setActive] = useState<number | null>(null);
+
   const n = series.cur.length;
-  if (n < 2) return null;
   const cur = smoothed(series.cur);
   const prev = smoothed(series.prev);
   const max = Math.max(1, ...cur, ...prev);
   const x = (i: number) => padL + (i / (n - 1)) * (W - padL - padR);
   const y = (v: number) => padT + (1 - v / max) * (H - padT - padB);
+
+  // Pointer x -> nearest day. Reading the SVG's rendered box rather than assuming
+  // the viewBox scale, because the chart is fluid-width.
+  const dayAt = (clientX: number): number => {
+    const box = svgRef.current?.getBoundingClientRect();
+    if (!box || box.width === 0) return 0;
+    const vx = ((clientX - box.left) / box.width) * W;
+    const i = Math.round(((vx - padL) / (W - padL - padR)) * (n - 1));
+    return Math.min(n - 1, Math.max(0, i));
+  };
+
+  const step = (delta: number) => setActive((a) => Math.min(n - 1, Math.max(0, (a ?? n - 1) + delta)));
+
+  if (n < 2) return null;
+
   const pts = (arr: number[]): [number, number][] => arr.map((v, i) => [x(i), y(v)]);
   const curPath = curve(pts(cur));
   const area = `${curPath} L${x(n - 1).toFixed(1)},${H - padB} L${x(0).toFixed(1)},${H - padB} Z`;
@@ -68,36 +93,111 @@ function TrendChart({ metric, series, labels }: { metric: TrendKey; series: Tren
   // Label roughly every 6th day so the axis isn't crowded.
   const tickEvery = Math.ceil(n / 5);
 
+  // The readout reports the day's ACTUAL value. The line is a 5-day centred mean
+  // — a readability device, stated as such in `smoothed` — so reporting the
+  // smoothed figure would answer a question nobody asked. The marker still sits
+  // on the curve, because that is where the line is.
+  const rawCur = active === null ? 0 : series.cur[active];
+  const rawPrev = active === null ? 0 : series.prev[active];
+  const diff = rawCur - rawPrev;
+  const pct = rawPrev > 0 ? Math.round((diff / rawPrev) * 100) : null;
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${metric} trend, last ${n} days vs previous period`}>
-      <defs>
-        <linearGradient id="trendfill" x1="0" y1="0" x2="0" y2="1">
-          {/* Neutral, matching the .cur stroke. This fill was the single largest
-              gold region on the screen, which is what drained the accent of its
-              "needs you" meaning (§4.4). */}
-          <stop offset="0%" stopColor="var(--text-2)" stopOpacity="0.22" />
-          <stop offset="100%" stopColor="var(--text-2)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {gridLines.map((g) => {
-        const gy = padT + g * (H - padT - padB);
-        const val = max * (1 - g);
-        return (
-          <g key={g}>
-            <line className="grid" x1={padL} y1={gy} x2={W - padR} y2={gy} />
-            <text className="axis" x={padL - 8} y={gy + 3} textAnchor="end">{axisValue(metric, val)}</text>
+    // focus/blur sit on the wrapper, not the <svg>: React's onFocus maps to
+    // `focusin`, which does not fire for an SVG root here (verified in the
+    // browser — the handler never ran, so tabbing to the chart showed nothing
+    // until the first arrow key). focusin bubbles, so the parent catches it.
+    <div
+      className="chartwrap"
+      onFocus={() => setActive((a) => a ?? n - 1)}
+      onBlur={() => setActive(null)}
+    >
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        role="application"
+        tabIndex={0}
+        aria-label={`${metric} trend, last ${n} days against the previous period. Use the arrow keys to read a day.`}
+        onPointerMove={(e) => setActive(dayAt(e.clientX))}
+        onPointerLeave={() => setActive(null)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
+          else if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
+          else if (e.key === "Home") { e.preventDefault(); setActive(0); }
+          else if (e.key === "End") { e.preventDefault(); setActive(n - 1); }
+          else if (e.key === "Escape") setActive(null);
+        }}
+      >
+        <defs>
+          <linearGradient id="trendfill" x1="0" y1="0" x2="0" y2="1">
+            {/* Neutral, matching the .cur stroke. This fill was the single largest
+                gold region on the screen, which is what drained the accent of its
+                "needs you" meaning (§4.4). */}
+            <stop offset="0%" stopColor="var(--text-2)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--text-2)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {gridLines.map((g) => {
+          const gy = padT + g * (H - padT - padB);
+          const val = max * (1 - g);
+          return (
+            <g key={g}>
+              <line className="grid" x1={padL} y1={gy} x2={W - padR} y2={gy} />
+              <text className="axis" x={padL - 8} y={gy + 3} textAnchor="end">{axisValue(metric, val)}</text>
+            </g>
+          );
+        })}
+        {labels.map((lab, i) =>
+          i % tickEvery === 0 || i === n - 1 ? (
+            <text key={i} className="axis" x={x(i)} y={H - 8} textAnchor="middle">{lab}</text>
+          ) : null,
+        )}
+        <path className="area" d={area} />
+        <path className="prev" d={curve(pts(prev))} />
+        <path className="cur" d={curPath} />
+        {/* Where the series ends — the reader's "we are here" without a label. */}
+        <circle className="endcap" cx={x(n - 1)} cy={y(cur[n - 1])} r={3} />
+        {active !== null && (
+          <g className="xhair" aria-hidden="true">
+            <line x1={x(active)} y1={padT} x2={x(active)} y2={H - padB} />
+            <circle className="mk prev" cx={x(active)} cy={y(prev[active])} r={3} />
+            <circle className="mk cur" cx={x(active)} cy={y(cur[active])} r={4} />
           </g>
-        );
-      })}
-      {labels.map((lab, i) =>
-        i % tickEvery === 0 || i === n - 1 ? (
-          <text key={i} className="axis" x={x(i)} y={H - 8} textAnchor="middle">{lab}</text>
-        ) : null,
+        )}
+      </svg>
+
+      {active !== null && (
+        <div
+          className={`ctip${x(active) > W * 0.62 ? " flip" : ""}`}
+          style={{ left: `${(x(active) / W) * 100}%` }}
+          aria-hidden="true"
+        >
+          <div className="ctday">{labels[active]}</div>
+          <div className="ctrow">
+            <span className="ctk cur" />
+            <span className="ctv">{readoutValue(metric, rawCur)}</span>
+            <span className="ctl">This period</span>
+          </div>
+          <div className="ctrow">
+            <span className="ctk prev" />
+            <span className="ctv">{readoutValue(metric, rawPrev)}</span>
+            <span className="ctl">Previous</span>
+          </div>
+          {pct !== null && (
+            <div className={`ctd${diff >= 0 ? " up" : " down"}`}>
+              {diff >= 0 ? "+" : ""}{pct}% against the previous period
+            </div>
+          )}
+        </div>
       )}
-      <path className="area" d={area} />
-      <path className="prev" d={curve(pts(prev))} />
-      <path className="cur" d={curPath} />
-    </svg>
+
+      {/* Keyboard and screen-reader path: the tooltip enhances, it never gates. */}
+      <p className="sr-only" role="status">
+        {active === null
+          ? ""
+          : `${labels[active]}: ${readoutValue(metric, rawCur)} this period, ${readoutValue(metric, rawPrev)} previous.`}
+      </p>
+    </div>
   );
 }
 
