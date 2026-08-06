@@ -162,6 +162,12 @@ export function createGeminiMediaProvider(
       const operation = await ai.models.generateVideos({
         model,
         prompt: input.prompt,
+        // With a still, Veo animates THAT frame instead of inventing a scene from
+        // the words — which is what "animate this image" has always meant and
+        // never did.
+        ...(input.image
+          ? { image: { imageBytes: input.image.bytes.toString("base64"), mimeType: input.image.contentType } }
+          : {}),
         config: {
           numberOfVideos: 1,
           personGeneration: resolvePersonGeneration(
