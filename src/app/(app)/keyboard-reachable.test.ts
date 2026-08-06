@@ -66,6 +66,17 @@ const BASELINE: Record<string, number> = {
   "_components/share-dialog.tsx": 1,
   "brand/_components/brand-view.tsx": 1,
   "campaigns/[campaignId]/_components/campaign-detail-view.tsx": 1,
+  // The review queue's backdrop `<div onClick>`, which dismisses the dialog.
+  //
+  // Honest at 1, and deliberately not "fixed". Escape already does exactly what
+  // clicking the backdrop does, by the same rule — back out of the revision box
+  // first, close the queue only once there is nothing half-written to lose — so
+  // a keyboard user loses nothing here; they have the better affordance of the
+  // two. Making the backdrop focusable would put a full-viewport tab stop
+  // inside a dialog, and giving it a role= would mark the problem rather than
+  // fix it. The backdrop only became clickable when the queue stopped being a
+  // full-screen takeover: there was no backdrop to click before.
+  "campaigns/[campaignId]/_components/review-queue.tsx": 1,
   // The card's `<article onClick>`, and honest at 1 for the same reason as
   // crm-board above: it is a redundant convenience target over real controls —
   // the name is a <Link> and the disclosure is a <button> — so keyboard users

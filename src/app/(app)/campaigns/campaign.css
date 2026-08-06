@@ -553,8 +553,70 @@
 .arc-campaign .rqstart b { color: var(--text); }
 .arc-campaign .rqstart .cbtn { margin-left: auto; }
 
-.arc-campaign .rqwrap { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--canvas-deep); }
-.arc-campaign .rqwrap:focus { outline: none; }
+/* ── The review queue: a dialog, not a takeover ────────────────────────────
+   It used to be `inset: 0` on an opaque surface, so deciding one deliverable
+   replaced the entire app and you lost every bit of context you were deciding
+   against. Now the page stays visible behind a dim + blur, and the queue is a
+   panel over it.
+
+   `.rqwrap` is the backdrop; `.rqpanel` is the dialog. */
+.arc-campaign .rqwrap {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  /* Generous vertical inset so the page stays visible above and below — a
+     dialog that reaches within 40px of both edges still reads as a takeover,
+     which is the thing this replaced. */
+  padding: clamp(20px, 7vh, 72px) clamp(16px, 4vw, 40px);
+  background: color-mix(in srgb, var(--canvas-deep) 68%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(115%);
+  backdrop-filter: blur(10px) saturate(115%);
+  animation: rqveil var(--dur-base) var(--ease) both;
+}
+.arc-campaign .rqpanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(940px, 100%);
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--canvas-deep);
+  border: 1px solid var(--line-2);
+  /* 12px literal, NOT var(--r-lg), which is what --r-lg is meant to be.
+     Measured on the running app: the `--r-*` declarations do not survive into
+     the served globals bundle — the string "--r-full" does not appear in it at
+     all, declaration or usage, so the optimizer inlined those values inside
+     globals.css and dropped the custom properties. Every `var(--r-lg)` in
+     arc-app.css and the route sheets therefore resolves to nothing and computes
+     to 0: `.cstate` and `.deliver` are both square right now. Filed separately;
+     this literal keeps the panel correct either way, and should become the
+     token again once the tokens actually reach the browser. */
+  border-radius: 12px;
+  /* Depth, not glow — the panel sits above a blurred page and needs an edge. */
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  animation: rqrise var(--dur-slow) var(--ease) both;
+}
+/* The "everything is decided" card is a short message, not a workspace. */
+.arc-campaign .rqpanel.is-done { width: min(520px, 100%); }
+.arc-campaign .rqpanel:focus { outline: none; }
+
+@keyframes rqveil {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rqrise {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+/* Calm rules still bind: the entrance is a short fade and a small rise, and it
+   goes away entirely for anyone who asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .arc-campaign .rqwrap,
+  .arc-campaign .rqpanel { animation: none; }
+}
 
 .arc-campaign .rqbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line-2); flex: none; }
 .arc-campaign .rqcount { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
@@ -578,8 +640,6 @@
 .arc-campaign .rqfoot { flex: none; border-top: 1px solid var(--line-2); background: var(--panel); padding: 13px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .arc-campaign .rqacts { display: flex; gap: 8px; flex-wrap: wrap; }
 .arc-campaign .rqacts .cbtn { height: 34px; }
-.arc-campaign .rqfoot kbd { font-family: var(--mono); font-size: 9px; line-height: 1; padding: 3px 4px; margin-left: 2px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--raised); color: var(--muted); }
-.arc-campaign .cbtn.gold kbd { border-color: rgba(32, 24, 8, 0.28); background: rgba(32, 24, 8, 0.12); color: #201808; }
 .arc-campaign .rqnav { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .arc-campaign .rqhint { font-family: var(--mono); font-size: 10px; color: var(--muted); }
 .arc-campaign .rqstep { display: flex; padding: 6px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--text-2); cursor: pointer; }
@@ -590,7 +650,7 @@
 .arc-campaign .rqrevise textarea { flex: 1; resize: vertical; font: inherit; font-size: 12.5px; color: var(--text); background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 8px 10px; }
 .arc-campaign .rqrevise textarea:focus { outline: none; border-color: var(--accent-border); }
 
-.arc-campaign .rqdone { margin: auto; text-align: center; max-width: 420px; padding: 0 24px; }
+.arc-campaign .rqdone { margin: auto; text-align: center; max-width: 420px; padding: 34px 24px; }
 .arc-campaign .rqdone b { display: block; font-family: var(--serif); font-weight: 500; font-size: 19px; color: var(--text); margin-bottom: 8px; }
 .arc-campaign .rqdone p { font-size: 12.5px; color: var(--text-2); line-height: 1.6; margin-bottom: 18px; }
 .arc-campaign .rqtick { display: inline-flex; padding: 11px; border-radius: var(--r-full); background: var(--ok-soft); color: var(--ok-text); margin-bottom: 14px; }
