@@ -8,7 +8,13 @@ import {
   ASSET_NOUN,
   assetSourceLabel,
   countOf,
+  composeMediaNote,
   deriveCampaignSpine,
+  describeRegion,
+  formatTimecode,
+  isMeaningfulRegion,
+  normalizeRegion,
+  type MediaRegion,
   humanizePersonaLabel as humanizePersona,
   reviewAgentLabel,
   reviewVerdictLabel,
@@ -245,10 +251,32 @@ function MediaTile({ media, onOpen }: { media: CampaignMediaAsset; onOpen: () =>
   );
 }
 
+/**
+ * What the reviewer pointed at on a piece of creative.
+ *
+ * A drawn box for a still, a moment for a video — the two ways of saying "this
+ * bit" when there is no text to select. Both end up as words in the note; see
+ * `composeMediaNote`.
+ */
+export type MediaAnnotation = { region?: MediaRegion | null; atSeconds?: number | null };
+
 /** The media itself, full size. Owns its own load-failure state so the parent
  *  can reset it with a key rather than an effect. */
-function LightboxStage({ media }: { media: CampaignMediaAsset }) {
+function LightboxStage({
+  media,
+  annotation,
+  onAnnotate,
+}: {
+  media: CampaignMediaAsset;
+  annotation: MediaAnnotation | null;
+  onAnnotate: (next: MediaAnnotation | null) => void;
+}) {
   const [failed, setFailed] = useState(false);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  /** The box being dragged right now, in normalized coordinates. */
+  const [drawing, setDrawing] = useState<MediaRegion | null>(null);
+  const origin = useRef<{ x: number; y: number } | null>(null);
 
   if (failed) {
     return (
@@ -257,14 +285,109 @@ function LightboxStage({ media }: { media: CampaignMediaAsset }) {
       </p>
     );
   }
+  /** Pointer position as a fraction of the rendered frame. */
+  function at(event: React.PointerEvent): { x: number; y: number } | null {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect || !rect.width || !rect.height) return null;
+    return { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
+  }
+
   if (media.type === "image") {
+    const shown = drawing ?? annotation?.region ?? null;
     return (
-      <AppImage className="lbimg" src={media.url} alt={media.title} loading="eager" onError={() => setFailed(true)} />
+      <div
+        ref={frameRef}
+        className={`lbdraw${drawing ? " drawing" : ""}`}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          const start = at(event);
+          if (!start) return;
+          event.preventDefault();
+          origin.current = start;
+          setDrawing({ x: start.x, y: start.y, width: 0, height: 0 });
+
+          // Tracked on the WINDOW, not on the element. Pointer capture makes
+          // the element's own pointerup conditional on the input source
+          // behaving, and a drag that ends outside the picture — which is
+          // exactly how you box something at its edge — then never commits.
+          let latest: MediaRegion | null = null;
+          const rect = frameRef.current?.getBoundingClientRect();
+          const move = (native: PointerEvent) => {
+            if (!rect || !rect.width || !rect.height) return;
+            const point = {
+              x: (native.clientX - rect.left) / rect.width,
+              y: (native.clientY - rect.top) / rect.height,
+            };
+            latest = normalizeRegion({
+              x: Math.min(start.x, point.x),
+              y: Math.min(start.y, point.y),
+              width: Math.abs(point.x - start.x),
+              height: Math.abs(point.y - start.y),
+            });
+            setDrawing(latest);
+          };
+          const up = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+            window.removeEventListener("pointercancel", up);
+            origin.current = null;
+            setDrawing(null);
+            // A click produces a zero-size drag. That is not pointing at
+            // anything, and clearing on it is what lets a stray click dismiss
+            // a box you no longer want.
+            onAnnotate(latest && isMeaningfulRegion(latest) ? { region: latest } : null);
+          };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", up);
+          window.addEventListener("pointercancel", up);
+        }}
+      >
+        <AppImage className="lbimg" src={media.url} alt={media.title} loading="eager" onError={() => setFailed(true)} />
+        {shown && (
+          <span
+            className="lbregion"
+            aria-hidden="true"
+            style={{
+              left: `${shown.x * 100}%`,
+              top: `${shown.y * 100}%`,
+              width: `${shown.width * 100}%`,
+              height: `${shown.height * 100}%`,
+            }}
+          />
+        )}
+      </div>
     );
   }
   if (media.type === "video") {
     return (
-      <video className="lbimg" src={media.url} poster={media.thumbnailUrl ?? undefined} controls onError={() => setFailed(true)} />
+      <div className="lbvideo">
+        <video
+          ref={videoRef}
+          className="lbimg"
+          src={media.url}
+          poster={media.thumbnailUrl ?? undefined}
+          controls
+          onError={() => setFailed(true)}
+        />
+        {/* No drag layer over a video: the surface belongs to the scrubber, and
+            a box over a moving picture is ambiguous anyway. A moment is the
+            useful unit here — "the logo flickers at 0:07". */}
+        <button
+          type="button"
+          className="cbtn ghost lbframe"
+          onClick={() =>
+            onAnnotate(
+              typeof annotation?.atSeconds === "number"
+                ? null
+                : { atSeconds: videoRef.current?.currentTime ?? 0 },
+            )
+          }
+        >
+          {typeof annotation?.atSeconds === "number"
+            ? `Noting ${formatTimecode(annotation.atSeconds)} — clear`
+            : "Note this moment"}
+        </button>
+      </div>
     );
   }
   // Embeds, files and links are somebody else's page. Show what we already
@@ -293,21 +416,40 @@ function LightboxStage({ media }: { media: CampaignMediaAsset }) {
 function MediaDecision({
   media,
   onDecide,
+  annotation,
+  onClearAnnotation,
 }: {
   media: CampaignMediaAsset;
-  onDecide: (media: CampaignMediaAsset, decision: AssetDecision, acknowledgement: string) => Promise<string | null>;
+  onDecide: (
+    media: CampaignMediaAsset,
+    decision: AssetDecision,
+    acknowledgement: string,
+    notes?: string | null,
+  ) => Promise<string | null>;
+  /** What the reviewer pointed at, if anything — a drawn box, or a video frame. */
+  annotation: MediaAnnotation | null;
+  onClearAnnotation: () => void;
 }) {
   /** The reviewer's written acknowledgement of the risk flags. */
   const [ack, setAck] = useState("");
+  /** What to change about the part they pointed at. */
+  const [note, setNote] = useState("");
   /** Which decision is in flight, so only that button says "Recording…". */
   const [deciding, setDeciding] = useState<AssetDecision | null>(null);
   const [error, setError] = useState<string | null>(null);
   const flagged = media.riskFlags.length > 0;
+  const pointing = Boolean(annotation?.region || typeof annotation?.atSeconds === "number");
 
   async function decide(decision: AssetDecision) {
     setError(null);
     setDeciding(decision);
-    setError(await onDecide(media, decision, ack));
+    // Composed the same way copy revisions are: the reviewer's words stay
+    // theirs, and where they pointed is added at submit time. With no
+    // annotation this is exactly the note they typed, or nothing at all.
+    const composed = note.trim()
+      ? composeMediaNote({ region: annotation?.region, atSeconds: annotation?.atSeconds, instruction: note })
+      : null;
+    setError(await onDecide(media, decision, ack, composed));
     setDeciding(null);
   }
 
@@ -327,6 +469,32 @@ function MediaDecision({
             disabled={deciding !== null}
           />
         </label>
+      )}
+      {/* Appears once the reviewer has pointed at something. The note is
+          optional on every decision — "Needs another pass" with nothing typed
+          behaves exactly as it did — but a drawn box with no words is a gesture
+          Arc cannot act on, so this is where the words go. */}
+      {pointing && (
+        <div className="lbmark">
+          <div className="lbmark-head">
+            <span className="lbmark-where">
+              {annotation?.region ? describeRegion(annotation.region) : null}
+              {annotation?.region && typeof annotation?.atSeconds === "number" ? " · " : null}
+              {typeof annotation?.atSeconds === "number" ? `at ${formatTimecode(annotation.atSeconds)}` : null}
+            </span>
+            <button type="button" className="lbmark-clear" onClick={onClearAnnotation} disabled={deciding !== null}>
+              Clear
+            </button>
+          </div>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            rows={2}
+            placeholder="What should change about it?"
+            disabled={deciding !== null}
+            aria-label="What should change about the part you marked"
+          />
+        </div>
       )}
       {error && (
         <p className="lbdecerr" role="alert">
@@ -381,10 +549,29 @@ function MediaLightbox({
   onClose: () => void;
   onStep: (delta: number) => void;
   /** Records a decision against THIS image. Resolves to an error string, or null on success. */
-  onDecide: (media: CampaignMediaAsset, decision: AssetDecision, acknowledgement: string) => Promise<string | null>;
+  onDecide: (
+    media: CampaignMediaAsset,
+    decision: AssetDecision,
+    acknowledgement: string,
+    notes?: string | null,
+  ) => Promise<string | null>;
 }) {
   const media = items[index];
   const many = items.length > 1;
+  /**
+   * An annotation belongs to the picture it was drawn on, so it carries that
+   * picture's index and is DERIVED away when the reviewer steps.
+   *
+   * Not reset in an effect: that fires a second render pass on every step, for
+   * state whose only requirement is to start empty — the same reasoning that
+   * keys `MediaDecision` on the asset instead.
+   */
+  const [marked, setMarked] = useState<{ at: number; value: MediaAnnotation } | null>(null);
+  const annotation = marked && marked.at === index ? marked.value : null;
+  const setAnnotation = useCallback(
+    (next: MediaAnnotation | null) => setMarked(next ? { at: index, value: next } : null),
+    [index],
+  );
 
   useEffect(() => {
     if (!many) return;
@@ -493,7 +680,7 @@ function MediaLightbox({
           {/* Keyed on the asset so stepping to the next one re-arms the load —
               a broken file must not leave its error over the working one. */}
           <div className="lbstage">
-            <LightboxStage key={media.id} media={media} />
+            <LightboxStage key={media.id} media={media} annotation={annotation} onAnnotate={setAnnotation} />
           </div>
 
           {/* The creative is the point of this dialog, so it keeps the width and
@@ -550,7 +737,13 @@ function MediaLightbox({
             {/* Keyed on the asset: stepping to the next image unmounts this and
                 mounts a fresh one, so a half-typed acknowledgement or a refusal
                 from the last picture can never be carried onto the next. */}
-            <MediaDecision key={media.id} media={media} onDecide={onDecide} />
+            <MediaDecision
+              key={media.id}
+              media={media}
+              onDecide={onDecide}
+              annotation={annotation}
+              onClearAnnotation={() => setAnnotation(null)}
+            />
 
 
             <dl className="lbmeta">
@@ -910,13 +1103,19 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
    * meantime, since the reviewer is still looking at it.
    */
   const decideMedia = useCallback(
-    async (target: CampaignMediaAsset, decision: AssetDecision, acknowledgement: string): Promise<string | null> => {
+    async (
+      target: CampaignMediaAsset,
+      decision: AssetDecision,
+      acknowledgement: string,
+      notes?: string | null,
+    ): Promise<string | null> => {
       const res = await decideCampaignMediaAction({
         campaignId: campaign.id,
         libraryAssetId: target.libraryAssetId,
         storagePath: target.storagePath,
         decision,
         acknowledgement,
+        notes: notes ?? null,
       });
       if (!res.ok) return res.error;
 
@@ -924,7 +1123,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
         state: mediaReviewStateFromStatus(res.status),
         reviewer: res.reviewer,
         reviewedAt: res.reviewedAt,
-        notes: null,
+        notes: notes?.trim() || null,
       };
       const apply = (list: CampaignMediaAsset[]) => list.map((m) => (m.id === target.id ? { ...m, review } : m));
       // Both copies: the dialog reads `lightbox.items`, while the tiles under the

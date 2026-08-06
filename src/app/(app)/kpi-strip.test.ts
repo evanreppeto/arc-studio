@@ -129,4 +129,30 @@ describe("the KPI strip is the only KPI strip", () => {
     const styled = [...CSS.matchAll(/\.kpistrip\[data-count="(\d+)"\] \{ grid-template-columns:/g)].map((m) => Number(m[1]));
     expect(Number(clamp![1])).toBe(Math.max(...styled));
   });
+
+  /**
+   * The strip clips to its rounded corners, so it must never be allowed to be
+   * SHORTER than its content — a clipped cell does not scroll, it just cuts the
+   * number in half.
+   *
+   * On Relationships it did exactly that. `.arc-grid` is a column flex
+   * container, `.kpistrip` was a flex item at the default `flex-shrink: 1`, and
+   * a 105px strip was squeezed into 59px: "11", "8", "4" and "$82,200" all
+   * rendered sliced through the middle, with every sublabel below them
+   * ("6 need review", "2 won outcomes") clipped away entirely. It reads as a
+   * styling choice rather than a bug, which is why it sat there.
+   *
+   * Outbox had already worked around it privately on `.okpis`. That local patch
+   * is the tell: the shrink has to be off on the strip itself, or the next
+   * column-flex screen rediscovers this the same way.
+   */
+  it("never lets a flex parent shrink the strip below its content", () => {
+    const block = CSS.match(/\.arc-app \.kpistrip \{([\s\S]*?)\}/);
+    expect(block, "the base .kpistrip rule should exist").toBeTruthy();
+    expect(block![1]).toMatch(/overflow:\s*hidden/);
+    expect(
+      block![1],
+      "`.kpistrip` clips its overflow, so it must set flex-shrink: 0 — otherwise a column-flex page cuts its numbers in half",
+    ).toMatch(/flex-shrink:\s*0/);
+  });
 });
