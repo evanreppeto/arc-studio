@@ -39,7 +39,12 @@ export function ImportCustomModal({
   const [titleHeader, setTitleHeader] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<{ created: number; skipped: number; fieldsCreated: string[] } | null>(null);
+  const [done, setDone] = useState<{
+    created: number;
+    skipped: number;
+    fieldsCreated: string[];
+    fieldsFailed: Array<{ label: string; error: string }>;
+  } | null>(null);
 
   const reset = () => {
     setCsvText("");
@@ -98,7 +103,12 @@ export function ImportCustomModal({
       setError(res.error);
       return;
     }
-    setDone({ created: res.created, skipped: res.skipped, fieldsCreated: res.fieldsCreated });
+    setDone({
+      created: res.created,
+      skipped: res.skipped,
+      fieldsCreated: res.fieldsCreated,
+      fieldsFailed: res.fieldsFailed,
+    });
     router.refresh();
   };
 
@@ -122,6 +132,29 @@ export function ImportCustomModal({
             {done.fieldsCreated.length > 0 && (
               <p className="cxm-hint" style={{ margin: 0 }}>
                 New fields: {done.fieldsCreated.join(", ")}. Edit them in the Columns menu.
+              </p>
+            )}
+            {/* Named as a warning, not a hint. A column that did not become a
+                field is data the operator believes they imported and did not —
+                the failure mode that let an import of names only read as a
+                clean success. */}
+            {/* Leads with the column NAME, because that is what the operator
+                goes looking for in their file. The reason follows when there is
+                one column to blame it on; with several it would be a wall. */}
+            {done.fieldsFailed.length === 1 && (
+              <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--red-text)" }}>
+                {/* Explicit {" "}: the space after </strong> is swallowed when
+                    JSX collapses the line, and the column name ran straight
+                    into the next word. */}
+                <strong>{done.fieldsFailed[0].label}</strong>{" "}
+                couldn&rsquo;t be saved as a field, so its values were not imported.{" "}
+                {done.fieldsFailed[0].error}
+              </p>
+            )}
+            {done.fieldsFailed.length > 1 && (
+              <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--red-text)" }}>
+                <strong>{done.fieldsFailed.map((f) => f.label).join(", ")}</strong>{" "}
+                couldn&rsquo;t be saved as fields, so their values were not imported.
               </p>
             )}
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
