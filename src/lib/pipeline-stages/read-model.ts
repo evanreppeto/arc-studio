@@ -4,6 +4,7 @@ import {
   DEFAULT_PIPELINE_STAGES,
   type PipelineObjectKey,
   type PipelineStage,
+  isPipelineObjectKey,
 } from "@/domain";
 
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -41,10 +42,23 @@ function rowToStage(row: Record<string, unknown>): PipelineStage {
  */
 export async function getPipelineStages(
   orgId: string,
-  objectKey: PipelineObjectKey,
+  // A built-in pipeline OR a tenant-defined record type's key. Widened from
+  // PipelineObjectKey because which keys are valid is per-workspace once a
+  // tenant can define its own types.
+  objectKey: PipelineObjectKey | string,
   opts: { client?: SupabaseClient } = {},
 ): Promise<PipelineStage[]> {
-  const fallback = [...DEFAULT_PIPELINE_STAGES[objectKey]];
+  /**
+   * A tenant-defined type gets NO fallback, and that asymmetry is the feature.
+   *
+   * The six have a default pipeline because the product knows the shape of a
+   * lead's lifecycle. It has no idea what "Equipment" moves through, and
+   * guessing wrong is worse than staying quiet — so an empty result means "this
+   * type has no pipeline", which is exactly what the UI keys off to stay out of
+   * the way. Handing back a lead's stages here would put "Qualified" on a
+   * forklift.
+   */
+  const fallback = isPipelineObjectKey(objectKey) ? [...DEFAULT_PIPELINE_STAGES[objectKey]] : [];
   if (!orgId) return fallback;
 
   // No database configured is not a failure to read — it is the backend-less

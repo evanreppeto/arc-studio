@@ -1,3 +1,4 @@
+import { findStage, statusTone, type PipelineStage } from "@/domain";
 import type { CustomRecord } from "@/lib/custom-objects/records";
 
 import type { CrmRowVM } from "../_components/crm-board";
@@ -40,16 +41,27 @@ function relativeTime(iso: string): { rel: string; time: string } {
   return { rel: `${days}d ago`, time: then.toLocaleDateString("en-US", { month: "short", day: "numeric" }) };
 }
 
-export function customRecordToRow(objectKey: string, record: CustomRecord): CrmRowVM {
+export function customRecordToRow(
+  objectKey: string,
+  record: CustomRecord,
+  /** The object's own stages, empty when it has no pipeline. */
+  stages: readonly PipelineStage[] = [],
+): CrmRowVM {
   const { rel, time } = relativeTime(record.updatedAt);
+  // Ask the stage for its label and meaning rather than matching the key to a
+  // word — the tenant renames these, and a name comparison fails silently.
+  // An unknown key (its stage archived) shows the raw value instead of
+  // vanishing, so the record is visibly odd rather than quietly stageless.
+  const stage = findStage(stages, record.status);
+  const statusLabel = stage?.label ?? (record.status ?? "");
   return {
     id: record.id,
     name: record.title,
     detail: record.subtitle ?? "",
     initials: initialsOf(record.title),
     isCompany: false,
-    statusLabel: "",
-    statusTone: "",
+    statusLabel,
+    statusTone: statusLabel ? statusTone(statusLabel, stage) : "",
     persona: "",
     dot: "var(--muted)",
     score: null,
