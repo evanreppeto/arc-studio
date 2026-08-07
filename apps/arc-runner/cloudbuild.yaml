@@ -6,7 +6,9 @@
 # Builds + pushes the runner image (tagged with the commit SHA), then rolls it
 # onto the existing service. The deploy step ONLY swaps --image, so all env vars,
 # secrets, and scaling flags set by deploy-cloud-run.sh are preserved (gcloud run
-# deploy merges; unspecified settings are retained). Config changes (new secrets,
+# deploy merges; unspecified settings are retained). The commit is passed as a
+# BUILD ARG rather than an env var for the same reason: `--set-env-vars` would
+# replace the whole set and drop those secrets. Config changes (new secrets,
 # flag changes) still go through deploy-cloud-run.sh / `gcloud run services update`.
 #
 # ⚠️ The trigger stores the GitHub repo as a literal {owner, name} — NOT a repo id.
@@ -29,6 +31,10 @@ steps:
       - build
       - -t
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      # So a running instance can say WHICH build it is. `docker build` ignores
+      # an unknown --build-arg with only a warning, so this cannot break the
+      # build if the Dockerfile's ARG is ever removed.
+      - --build-arg=ARC_RUNNER_COMMIT=$COMMIT_SHA
       - apps/arc-runner
 
   - id: push

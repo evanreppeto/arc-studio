@@ -67,6 +67,29 @@ so Arc's post-ack background work isn't killed). Expect a small constant cost
 rather than scale-to-zero.
 
 ## Continuous deploy (auto-deploy on push to main)
+## Which build is running
+
+`GET /health` reports the commit the image was built from:
+
+```bash
+curl -s "$ARC_RUNNER_URL/health" | jq '{service, commit}'
+```
+
+- a SHA → that is the commit this instance is running; compare it to `main`
+- `null` → the image was **not built by the pipeline** (a local `docker build`,
+  or an image predating this field). On Cloud Run that means the trigger did not
+  produce this revision, which is the silent failure described below.
+
+The commit is baked into the IMAGE (`--build-arg` → `ARG` → `ENV` in the
+Dockerfile), not set as a Cloud Run env var. Two reasons: `gcloud run deploy
+--set-env-vars` REPLACES the whole variable set and would drop the runner's
+secrets, and "which commit produced this artifact" is a property of the artifact
+rather than of the service it happens to be deployed to.
+
+Before this existed there was no way to answer "did my change deploy?" from
+outside — `/health` was byte-identical before a deploy, after a deploy, and
+after a deploy that never happened.
+
 A Cloud Build trigger rebuilds + redeploys the runner whenever `apps/arc-runner/**`
 changes on `main` — so you never hand-run `deploy-cloud-run.sh` for code changes.
 Build config: `apps/arc-runner/cloudbuild.yaml` (build → push → `gcloud run deploy

@@ -20,6 +20,18 @@ export type Config = {
   maxConcurrentRuns: number;
   /** Per-workspace cap on concurrent Arc runs, for cross-tenant fairness. */
   maxConcurrentRunsPerWorkspace: number;
+  /**
+   * The commit this image was built from, baked in by Cloud Build, or null when
+   * it wasn't built by the pipeline (a local `docker build`, or an image from
+   * before this existed).
+   *
+   * null is a real answer and must stay distinguishable from a SHA: "I don't
+   * know which build I am" is exactly the state worth surfacing. A deploy you
+   * cannot verify from outside looks identical to one that never happened —
+   * which is how the Cloud Build trigger could silently stop firing after the
+   * repo rename and nobody could tell (docs/arc-runner-cloud-run-runbook.md).
+   */
+  commit: string | null;
 };
 
 function required(name: string): string {
@@ -65,5 +77,6 @@ export function loadConfig(): Config {
     webhookPath: process.env.WEBHOOK_PATH?.trim() || "/webhooks/growth-chat",
     maxConcurrentRuns: positiveInt("ARC_MAX_CONCURRENT_RUNS", 4),
     maxConcurrentRunsPerWorkspace: positiveInt("ARC_MAX_CONCURRENT_RUNS_PER_WORKSPACE", 2),
+    commit: process.env.ARC_RUNNER_COMMIT?.trim() || null,
   };
 }
