@@ -55,7 +55,27 @@ const MEDIA_PRICING: Record<MediaUsageService, number> = {
  * Do NOT populate this by inference. A plausible wrong price in a billing meter
  * replaces a visible zero with an invisible error, which is strictly worse.
  */
-const EMBEDDING_PRICING: Record<string, number> = {};
+const EMBEDDING_PRICING: Record<string, number> = {
+  // $0.20 per 1M input tokens (text), Gemini API PAID tier, standard — read off
+  // Google's published pricing page 2026-08-07, not inferred. This is the only
+  // embedding model the ledger has ever seen (114 rows, all `gemini-embedding-2`).
+  //
+  // ⚠️ A FREE TIER exists, so if this workspace's key is under it the real cost
+  // is zero and this over-states. Priced at the paid rate deliberately: a plan
+  // has to be costed against what it costs at VOLUME, and a free allowance is
+  // exactly what disappears when volume arrives. Over-stating our own cost is
+  // also the safe direction to be wrong in when setting a price.
+  //
+  // ⚠️ Batch pricing is half this. Nothing here batches; revisit if that changes.
+  //
+  // ⚠️ The token count this multiplies is ITSELF an estimate — the developer API
+  // returns no token count for `embedContent`, so rows carry exact CHARACTERS
+  // and tokens at ~4 chars each (`token_source: estimated_from_chars`). This is
+  // an estimate of an estimate and should not be mistaken for a measurement.
+  //
+  // For reference if an older model ever appears: gemini-embedding-001 is $0.15.
+  "gemini-embedding-2": 20,
+};
 
 /** Resolve an embedding model's per-Mtok input rate, or null when unpriced. */
 export function resolveEmbeddingRate(model: string): number | null {
