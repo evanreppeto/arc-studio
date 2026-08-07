@@ -6,8 +6,24 @@ on:
     branches: [main]
 
 jobs:
-  verify:
+  # ── The four independent checks, run at the same time ─────────────────────
+  #
+  # These were one sequential `verify` job: typecheck 29s, lint 40s, test
+  # 1m47s, build 57s, packages 20s — ~4m32s of work done one after another,
+  # for steps that do not depend on each other at all. Split, the job takes as
+  # long as its slowest member instead of the sum.
+  #
+  # Each pays the ~19s setup (checkout, node, install) again. That is the
+  # trade: five short setups in parallel beats one long queue in series, and
+  # the pnpm store cache is shared between them.
+  #
+  # `verify` still exists below as a gate. It has to: branch protection
+  # requires a check named `verify` (with `e2e`), so renaming or removing it
+  # would leave main protected by a check that never reports.
+
+  typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v5
 
@@ -26,13 +42,54 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Typecheck (app)
         run: pnpm typecheck
 
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        # version is read from the "packageManager" field in package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          # Node 22 matches Vercel (where the app runs). Node 20 lacks the
+          # global WebSocket that supabase-js needs at runtime — pinning 20
+          # made route tests fail in CI while passing locally.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: Lint (app)
         run: pnpm lint
 
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        # version is read from the "packageManager" field in package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          # Node 22 matches Vercel (where the app runs). Node 20 lacks the
+          # global WebSocket that supabase-js needs at runtime — pinning 20
+          # made route tests fail in CI while passing locally.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: Test (app)
         run: pnpm test
 
@@ -40,13 +97,58 @@ jobs:
       # — a contended runner, which is the environment the timeout has to
       # absorb. Measuring this locally would report a margin CI does not have
       # (BSR-739). `always()` so a suite failure does not hide a timing warning.
+      #
+      # Must stay in THIS job: it reads that report off the filesystem, and a
+      # sibling job would start from a clean checkout with no report to read.
       - name: Test timing headroom (app)
         if: always()
         run: pnpm test:timing
 
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        # version is read from the "packageManager" field in package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          # Node 22 matches Vercel (where the app runs). Node 20 lacks the
+          # global WebSocket that supabase-js needs at runtime — pinning 20
+          # made route tests fail in CI while passing locally.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: Build (app)
         run: pnpm build
 
+  packages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        # version is read from the "packageManager" field in package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          # Node 22 matches Vercel (where the app runs). Node 20 lacks the
+          # global WebSocket that supabase-js needs at runtime — pinning 20
+          # made route tests fail in CI while passing locally.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: Typecheck (arc-runner)
         run: pnpm --filter ./apps/arc-runner typecheck
 
@@ -55,6 +157,45 @@ jobs:
 
       - name: Test (arc-connector)
         run: pnpm --filter ./packages/arc-connector test
+
+  # ── The gate branch protection actually requires ──────────────────────────
+  #
+  # `if: always()` matters. Without it a failed dependency SKIPS this job, and
+  # a skipped required check is not a failed one — the PR would sit forever
+  # waiting for a verdict that never comes. Running always and inspecting the
+  # results turns any non-success into a red `verify`, which is what the branch
+  # rule is there to enforce.
+  verify:
+    needs: [typecheck, lint, test, build, packages]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Each named on its own line rather than word-split out of one string:
+      # splitting depends on the shell's IFS behaviour, and a gate protecting
+      # main should not rest on that. This also names the offender in the log.
+      - name: Every check passed
+        run: |
+          set -u
+          failed=0
+          check() {
+            if [ "$2" != "success" ]; then
+              echo "::error::$1 did not succeed (result: $2)"
+              failed=1
+            else
+              echo "$1: ok"
+            fi
+          }
+          check typecheck "${{ needs.typecheck.result }}"
+          check lint      "${{ needs.lint.result }}"
+          check test      "${{ needs.test.result }}"
+          check build     "${{ needs.build.result }}"
+          check packages  "${{ needs.packages.result }}"
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::verify fails when any check does"
+            exit 1
+          fi
+          echo "All checks passed."
 
   e2e:
     # Playwright smoke tests (e2e/screens.spec.ts): the front door and the public
