@@ -53,9 +53,32 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "failed", "canceled"]);
  * How long a run may go without delivering before we stop claiming it's working.
  * Matches `STALE_RUNNING_MS` in `@/lib/arc-chat/inbox` on purpose — one
  * definition of "this run is dead", whether the reclaim path or the read model
- * is the one noticing.
+ * is the one noticing. Change both together.
+ *
+ * Raised from 3min to 10min on 2026-08-07, measured rather than guessed. Prod
+ * chat turns (n=55): p50 42s, p90 133s, p95 174s, p99 216s, max 232s. The old
+ * 3min cutoff sat between p95 and p99 — it fired on the slowest ~5% of PERFECTLY
+ * HEALTHY turns, telling the operator "Arc stopped responding, nothing was sent"
+ * about work that then delivered a reply and contradicted the message.
+ *
+ * Why 10min and not "a bit over the max":
+ * - Nothing bounds a run in wall-clock. The runner's rails are turn-based
+ *   (`maxTurns` 14/20/24/36 by route), so the deepest route has no time ceiling
+ *   to anchor to. At the observed ~6s/turn a 36-turn run is ~216s; at 15s/turn
+ *   it is ~540s. 10min covers that; 5min would not.
+ * - This timer is only the WEAK signal. A run that actually dies and settles is
+ *   caught immediately and without timing by the terminal-status check below, so
+ *   the timer's sole job is silent death (killed container, wake dropped after a
+ *   claim). A backstop should be generous.
+ * - The failure modes are not symmetric. Firing late costs a spinner; firing
+ *   early tells someone their work failed when it did not.
+ *
+ * Knock-on: `arc-view.tsx` derives its client polling ceiling as this + 60s, so
+ * the backstop now polls (slowly, every 15s past the 2min mark) out to 11min.
+ * That is deliberate — it is a backstop for a blocked SSE stream, and giving up
+ * before the verdict exists is the bug it was written to fix.
  */
-export const ARC_RUN_STALE_MS = 3 * 60_000;
+export const ARC_RUN_STALE_MS = 10 * 60_000;
 
 function parseMs(iso: string | null | undefined): number | null {
   if (!iso) return null;
