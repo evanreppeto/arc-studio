@@ -122,6 +122,31 @@ alter table public.custom_field_values
   add constraint custom_field_values_object_key_check
   check (object_key ~ '^[a-z][a-z0-9_]{0,62}$');
 
+-- ── Row-level security ───────────────────────────────────────────────────────
+--
+-- Both tables carry org_id, so both need RLS — a table with a tenancy column
+-- and no policy is readable across tenants by any authenticated role, and
+-- scripts/check-rls-cross-tenant.mjs fails the build for exactly that. It
+-- caught these two: I created them and forgot, which is what the check exists
+-- for.
+--
+-- Same shape as custom_field_definitions next door: membership-gated SELECT for
+-- `authenticated`, and full access for `service_role`, which is what the app's
+-- admin client uses and what every write above goes through.
+alter table public.custom_objects enable row level security;
+alter table public.custom_object_records enable row level security;
+
+create policy custom_objects_org_member_select on public.custom_objects
+  as permissive for select to authenticated
+  using ((select app_private.is_org_member(custom_objects.org_id)));
+
+create policy custom_object_records_org_member_select on public.custom_object_records
+  as permissive for select to authenticated
+  using ((select app_private.is_org_member(custom_object_records.org_id)));
+
+grant select, insert, update, delete on public.custom_objects to service_role;
+grant select, insert, update, delete on public.custom_object_records to service_role;
+
 comment on table public.custom_objects is
   'Tenant-defined CRM object types. The six built-ins are not rows here — they are tables.';
 comment on table public.custom_object_records is
