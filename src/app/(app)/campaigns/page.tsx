@@ -69,10 +69,10 @@ function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
   // deliverables inside it — and the board used to file by the second while
   // printing the first, so a card under "Needs you" wore an "Approved" pill.
   // See `deskTone`.
-  const tone = deskTone(toneFor(item.status), item.pendingCount);
+  const tone = deskTone(toneFor(item.status), item.awaitingOperatorCount);
   // launchState's counts, NOT item.rollup — the two disagree, and this column
   // has to match the page the row links to. See `DeliverableCounts`.
-  const { next, nextTone } = nextActionFor(tone, item.pendingCount, {
+  const { next, nextTone } = nextActionFor(tone, item.awaitingOperatorCount, {
     approved: item.approvedCount,
     required: item.requiredCount,
     // What the row will actually disclose. An archived campaign has zero
@@ -98,7 +98,7 @@ function toRow(item: CampaignWorkspaceListItem, nowMs: number): CampaignRow {
     statusLabel: TONE_LABEL[tone],
     next,
     nextTone,
-    pendingCount: item.pendingCount,
+    awaitingCount: item.awaitingOperatorCount,
     audience,
     dot: personaAccent(item.persona || audience),
     channels: item.channels.join(" · "),
@@ -188,7 +188,10 @@ export default async function CampaignsPage() {
 
   // The board groups by `needsOperatorAttention` itself; this page only needs
   // the finer count, which the header sentence and the review button share.
-  const pendingAssets = rows.reduce((sum, r) => sum + r.pendingCount, 0);
+  // The operator's queue, not the unresolved set: a deliverable they sent back
+  // is Arc's to rework, so counting it here told them 19 things needed them when
+  // 15 did — and the rail, which has always used the narrower rule, said 15.
+  const pendingAssets = rows.reduce((sum, r) => sum + r.awaitingCount, 0);
 
 
   // Passed as a NUMBER, not read back out of arcNote. Deriving a count from a

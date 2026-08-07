@@ -70,7 +70,7 @@ const CATEGORY_LABEL: Record<CampaignWorkspaceAssetCategory, string> = {
   virtual: "Email & messaging",
   ads: "Paid & social",
   media: "Creative & media",
-  other: "Other deliverables",
+  other: "Other assets",
 };
 const CATEGORY_ORDER: CampaignWorkspaceAssetCategory[] = ["virtual", "ads", "physical", "media", "other"];
 
@@ -711,7 +711,7 @@ function MediaLightbox({
                 reviewer looking straight at the creative had to leave to act
                 on it. */}
             {media.review.state === "unreviewed" && (
-              <p className="lbnote">Approving the deliverable does not record a decision on this image.</p>
+              <p className="lbnote">Approving the asset does not record a decision on this image.</p>
             )}
 
             {/* Ahead of the controls, not after them: a flag recorded against
@@ -1317,7 +1317,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       const results = await Promise.all(targets.map((t) => decideCampaignAsset(campaign.id, t.id, "approved")));
       const failed = targets.filter((_, i) => !results[i].ok);
       if (failed.length === 0) {
-        announce(`${targets.length} ${targets.length === 1 ? "deliverable" : "deliverables"} approved.`);
+        announce(`${countOf(targets.length, ASSET_NOUN)} approved.`);
         return;
       }
       // Put back only what actually failed — a partial success must not look
@@ -1490,7 +1490,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   }
 
   const TABS: Array<[string, string]> = [
-    ["deliverables", `Deliverables`],
+    ["deliverables", `Assets`],
     ["overview", "Overview"],
     ["performance", "Performance"],
     ["sources", "Sources"],
@@ -1635,7 +1635,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
           {tab === "deliverables" && queueAssets.length > 1 && (
             <div className="rqstart">
               <span>
-                <b>{queueAssets.length} deliverables</b> need a decision.
+                <b>{countOf(queueAssets.length, ASSET_NOUN)}</b> need a decision.
               </span>
               <button className="cbtn gold" onClick={() => { setErr(null); setQueueOpen(true); }} disabled={pending}>
                 {svg('<path d="M4 6h16M4 12h16M4 18h9"/>')}

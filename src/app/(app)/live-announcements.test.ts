@@ -95,7 +95,12 @@ describe("outcomes that are otherwise invisible get announced", () => {
     const src = read("campaigns", "[campaignId]", "_components", "campaign-detail-view.tsx");
     const bulk = src.match(/function approveAllClean\(\)[\s\S]*?\n  \}/)?.[0] ?? "";
     expect(bulk).not.toBe("");
-    expect(bulk, "the all-succeeded case").toMatch(/announce\(`\$\{targets\.length\}/);
+    // Intent, not the exact interpolation: the count must come from `targets`,
+    // however it is worded. Pinning the literal `${targets.length}` made this
+    // fail when the string moved to `countOf(..., ASSET_NOUN)` — the shared
+    // vocabulary helper the noun rule requires — which is the same claim said
+    // properly, not a regression.
+    expect(bulk, "the all-succeeded case").toMatch(/announce\(`[^`]*targets\.length/);
     // A partial success looks identical to a full one until you count the cards.
     expect(bulk, "the partial-failure case").toMatch(/announce\(message, "assertive"\)/);
   });
