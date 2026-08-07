@@ -33,7 +33,11 @@ export function createRunnerServer(config: Config) {
     const method = req.method ?? "GET";
 
     if (method === "GET" && (url === "/health" || url === "/")) {
-      sendJson(res, 200, { ok: true, service: "arc-runner", scheduler: scheduler.stats() });
+      // `commit` answers the question this endpoint could not: which build is
+      // actually running. Without it, "did my change deploy?" had no answer
+      // from outside — the response was identical before and after a deploy,
+      // and identical to one that never happened.
+      sendJson(res, 200, { ok: true, service: "arc-runner", commit: config.commit, scheduler: scheduler.stats() });
       return;
     }
 

@@ -11,6 +11,7 @@ const config: Config = {
   webhookPath: "/webhooks/growth-chat",
   maxConcurrentRuns: 4,
   maxConcurrentRunsPerWorkspace: 2,
+  commit: null,
 };
 
 function stubFetch() {

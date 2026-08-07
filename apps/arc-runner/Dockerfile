@@ -13,6 +13,18 @@ RUN npm run build
 FROM node:20-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Which build this is, answerable from outside. Baked into the IMAGE rather than
+# set as a Cloud Run env var on purpose: `gcloud run deploy --set-env-vars`
+# REPLACES the whole variable set, which would silently drop the runner's
+# secrets, and the merge-safe `--update-env-vars` would still make the answer a
+# property of the service rather than of the artifact. The commit that produced
+# an image is intrinsic to it.
+#
+# Empty for a local `docker build` with no --build-arg, which is honest: that
+# image did not come from the pipeline, and /health says so rather than
+# reporting a SHA it cannot stand behind.
+ARG ARC_RUNNER_COMMIT=""
+ENV ARC_RUNNER_COMMIT=$ARC_RUNNER_COMMIT
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 # The Claude Agent SDK spawns the Claude Code CLI at runtime — it must be on PATH.
