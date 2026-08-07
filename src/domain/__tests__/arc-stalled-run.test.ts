@@ -128,3 +128,18 @@ describe("arcStalledMessage", () => {
     }
   });
 });
+
+describe("the stale cutoff itself", () => {
+  /**
+   * Pinned deliberately. At 3min this fired on the slowest ~5% of HEALTHY prod
+   * turns (n=55: p95 174s, p99 216s, max 232s), telling the operator "Arc
+   * stopped responding, nothing was sent" about work that then delivered a
+   * reply. Nothing bounds a run in wall-clock — the runner's rails are
+   * turn-based — so this is a generous backstop, and the strong signal
+   * (terminal task status) is what catches a real death.
+   */
+  it("is 10 minutes", () => {
+    expect(ARC_RUN_STALE_MS).toBe(10 * 60_000);
+  });
+
+});
