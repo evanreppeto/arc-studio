@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import {
+  findGenerationModel,
   parseArcMode,
   parseArcRoute,
   parseMentions,
@@ -224,6 +225,9 @@ export async function sendArcMessageAction(input: {
   attachments?: ArcAttachment[];
   mode?: ArcMode;
   route?: ArcRoute;
+  /** The operator's media-model pick for this turn (composer picker),
+   *  engine-qualified. Omit for Auto. Validated here against the live roster. */
+  mediaModel?: string | null;
   command?: string | null;
   contextScopes?: string[];
 }): Promise<SendArcMessageResult> {
@@ -255,6 +259,9 @@ export async function sendArcMessageAction(input: {
     const attachments = parseArcAttachmentsJson(JSON.stringify(input.attachments ?? []));
     const mode = parseArcMode(input.mode);
     const route = parseArcRoute(input.route);
+    // A client-supplied model id is never trusted onto the wire: it has to name a
+    // real model on a real engine, or the turn falls back to Auto.
+    const mediaModel = findGenerationModel(input.mediaModel)?.key ?? null;
     const command = typeof input.command === "string" ? input.command.trim().replace(/^\//, "") || null : null;
     // Only resolved when a slash command is in play — a generated skill's
     // publisher is the workspace's own name.
@@ -320,6 +327,7 @@ export async function sendArcMessageAction(input: {
       attachments,
       mode,
       route,
+      mediaModel,
       command,
       skillId,
       inferredSkill,
@@ -337,6 +345,7 @@ export async function sendArcMessageAction(input: {
         operator,
         mode,
         route,
+        mediaModel,
         command,
         skillId,
         contextScopes,
@@ -391,6 +400,7 @@ async function reEnqueueTurn(operatorMessage: ArcMessage, body: string): Promise
     operator: await getOperatorActor(),
     mode,
     route: operatorMessage.route,
+    mediaModel: operatorMessage.mediaModel ?? null,
     command: operatorMessage.command,
     skillId: operatorMessage.skillId,
     contextScopes: operatorMessage.contextScopes,
