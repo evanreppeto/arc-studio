@@ -56,9 +56,19 @@ export function summarizeReview(asset: {
   // this module's — there is one vocabulary for it and it lives in the domain.
   const verdict = asset.recommendation?.verdict ?? "";
   const wantsChange = /revis|declin|reject|block/i.test(verdict);
-  // Nothing has weighed in at all. This is the state that used to look exactly
+  // Claims have not been checked. This is the state that used to look exactly
   // like a clean pass, which is the whole reason it gets its own tone.
-  const unchecked = !asset.claimsReviewed && !asset.recommendation;
+  //
+  // Keyed on `claimsReviewed` ALONE. It also required the absence of any
+  // recommendation, and `claimsReviewed` is `recommendation?.agent ===
+  // "draft-critic"` — so a recommendation from any other reviewer left this
+  // false while suppressing `unchecked`, and a finding-free draft fell through
+  // to the green "Nothing flagged" below. Today `draft-critic` is the only agent
+  // that writes one, so nothing hits it; the day a second reviewer ships, every
+  // review it wrote would render as a clean pass. That is precisely the failure
+  // the gray tone exists to prevent, so it should not depend on a string
+  // comparison against one agent's name staying true forever.
+  const unchecked = !asset.claimsReviewed;
 
   let headline = "";
   let chip = "";
