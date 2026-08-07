@@ -199,13 +199,24 @@ describe("embedding pricing (BSR-502 Finding 1)", () => {
   });
 
   it("records ZERO for an unpriced embedding model — and says so", () => {
-    // The rate table is deliberately empty: no published figure has been
-    // supplied, and inferring one would swap a visible zero for an invisible
-    // wrong number. What matters is that the zero is DECLARED unpriced, so
-    // recordUsageEvent reports it instead of filing it silently — the exact
-    // failure that let claude-sonnet-5 bill nothing for three weeks.
-    expect(estimateEmbeddingCostCents("gemini-embedding-2", 10_000)).toBe(0);
-    expect(isPricedUsage("gemini_embedding", "gemini-embedding-2")).toBe(false);
+    // What matters is that a zero is DECLARED unpriced, so recordUsageEvent
+    // reports it instead of filing it silently — the exact failure that let
+    // claude-sonnet-5 bill nothing for three weeks.
+    //
+    // `gemini-embedding-2` was the example here while the table was empty; it
+    // now has a published rate (2026-08-07), so the guarantee is asserted on a
+    // model that genuinely has none. The rule is unchanged: a rate is supplied
+    // from a published figure or not at all, because inferring one swaps a
+    // visible zero for an invisible wrong number.
+    expect(estimateEmbeddingCostCents("some-future-embedder", 10_000)).toBe(0);
+    expect(isPricedUsage("gemini_embedding", "some-future-embedder")).toBe(false);
+  });
+
+  it("counts a priced embedding model as priced", () => {
+    // The other half: supplying one rate must actually take that model out of
+    // the unpriced-and-loud bucket, or the Sentry report never stops.
+    expect(isPricedUsage("gemini_embedding", "gemini-embedding-2")).toBe(true);
+    expect(estimateEmbeddingCostCents("gemini-embedding-2", 10_000_000)).toBe(200);
   });
 
   it("does not let a Claude-only priced check vouch for another service", () => {
