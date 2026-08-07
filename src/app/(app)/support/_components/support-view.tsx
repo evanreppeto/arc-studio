@@ -267,7 +267,7 @@ export function SupportView({
                 </p>
               )}
               {sent.persisted && !sent.notified && (
-                <p className="sup-warn">
+                <p className="sup-warn" role="status">
                   Your request is saved, but our notification email didn&rsquo;t go out. To be sure a human sees it
                   today, email us directly as well.
                 </p>
@@ -399,7 +399,7 @@ export function SupportView({
                 <p>Nothing else is collected. Your campaign, contact, and message content is never attached.</p>
               </details>
 
-              {error && <div className="sup-err">{error}</div>}
+              {error && <div className="sup-err" role="alert">{error}</div>}
               {!canPersist && !error && (
                 <div className="sup-note">
                   This workspace isn&rsquo;t connected to a database right now, so requests can&rsquo;t be logged —

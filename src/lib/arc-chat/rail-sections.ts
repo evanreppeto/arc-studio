@@ -148,3 +148,39 @@ export function groupRailConversations<T extends RailConversation>(conversations
 }
 
 const FALLBACK_NAME = "Campaign";
+
+/**
+ * Which chats should be saying "Done".
+ *
+ * A finished run has no field of its own — the server only ever says whether a
+ * chat is running NOW — so "it just finished" only exists as the difference
+ * between two renders. That made it the one part of the rail's live story with
+ * no representation at all: the spinner stopped existing, a timestamp appeared,
+ * and unless you were watching that row you learned nothing.
+ *
+ * Pure and here rather than inline in the effect because the transition cannot
+ * be observed in the dev preview — Fast Refresh remounts the client component
+ * whenever the fixture it reads from changes, and a remount is exactly the case
+ * the mount guard suppresses. So this is the part that gets tested directly.
+ *
+ * @param previouslyRunning ids running at the LAST render, or null on mount.
+ *        Null returns nothing: on a fresh mount every idle chat has "stopped
+ *        running" in the trivial sense, and announcing that would flash Done
+ *        across the whole rail on load.
+ * @param nowRunning ids running at this render.
+ * @param showingDone ids currently showing Done, so a still-visible one is kept.
+ */
+export function resolveFinishedRuns(
+  previouslyRunning: ReadonlySet<string> | null,
+  nowRunning: ReadonlySet<string>,
+  showingDone: ReadonlySet<string>,
+): { showingDone: Set<string>; ended: string[] } {
+  if (previouslyRunning === null) return { showingDone: new Set(showingDone), ended: [] };
+
+  const ended = [...previouslyRunning].filter((id) => !nowRunning.has(id));
+  // A chat that started running again drops its Done in the same pass: the two
+  // states contradict each other and the newer one is true.
+  const next = new Set([...showingDone].filter((id) => !nowRunning.has(id)));
+  for (const id of ended) next.add(id);
+  return { showingDone: next, ended };
+}
