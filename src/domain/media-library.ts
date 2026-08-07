@@ -2,8 +2,6 @@
 
 export type MediaKind = "image" | "video" | "logo" | "document";
 
-export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
-
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/avif", "image/x-icon"];
 const VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm"];
 const DOC_TYPES = [
@@ -32,27 +30,6 @@ export function classifyKind(contentType: string, fileName: string): MediaKind {
   if (VIDEO_TYPES.includes(contentType)) return "video";
   if (DOC_TYPES.includes(contentType)) return "document";
   return "document";
-}
-
-export type UploadCheck = { contentType: string; byteSize: number };
-export type ValidationResult = { ok: true } | { ok: false; reason: string };
-
-/**
- * ⚠️ NO CALLERS. The live gate is `acceptUpload` in
- * `src/lib/media-library/upload-policy.ts` — that is what the Library action,
- * the Brand action, `/api/v1/media` and the remote-URL fetcher all go through.
- * This function is reachable only from its own test.
- *
- * Kept in step with the real gate rather than left behind: a dead duplicate
- * that stays superficially current is how `decideApprovalItem` preserved a live
- * bug for months (see CLAUDE.md). It should probably be deleted outright, but
- * that is a separate change from a security fix.
- */
-export function validateUpload({ contentType, byteSize }: UploadCheck): ValidationResult {
-  const allowed = [...IMAGE_TYPES, ...VIDEO_TYPES, ...DOC_TYPES];
-  if (!allowed.includes(contentType)) return { ok: false, reason: `Unsupported file type: ${contentType}` };
-  if (byteSize > MAX_UPLOAD_BYTES) return { ok: false, reason: "File exceeds the 50 MB limit." };
-  return { ok: true };
 }
 
 /**
