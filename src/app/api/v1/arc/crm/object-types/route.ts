@@ -2,7 +2,8 @@ import { arcGuard, fail, ok } from "@/app/api/v1/arc/_lib/http";
 import { listFieldDefinitions } from "@/lib/custom-fields/definitions";
 import { listCustomObjects } from "@/lib/custom-objects/definitions";
 import { countCustomRecords } from "@/lib/custom-objects/records";
-import type { CustomFieldObjectKey } from "@/domain";
+import { orderedStages, type CustomFieldObjectKey } from "@/domain";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 
 /**
  * The workspace's OWN record types — discovery for everything else Arc can do
@@ -37,16 +38,28 @@ export async function GET(request: Request) {
       objects.map(async (object) => {
         // Fields and count per type. Both are small reads and both are what the
         // model needs before it can ask a useful second question.
-        const [fields, count] = await Promise.all([
+        const [fields, count, stages] = await Promise.all([
           listFieldDefinitions(orgId, object.key as CustomFieldObjectKey).catch(() => []),
           countCustomRecords(orgId, object).catch(() => 0),
+          // Stages are opt-in per type, so this is empty for most. Returned with
+          // the type for the same reason the fields are: without it Arc cannot
+          // know a record HAS a lifecycle, and would report an equipment list
+          // with no idea half of it is retired.
+          getPipelineStages(orgId, object.key).catch(() => []),
         ]);
+        const live = orderedStages(stages);
         return {
           key: object.key,
           label: object.labelPlural,
           singular: object.labelSingular,
           description: object.description,
           record_count: count,
+          // Absent rather than empty when the type has no pipeline: an empty
+          // array reads as "stages exist and there are none", which is a
+          // different and wrong thing.
+          stages: live.length
+            ? live.map((st) => ({ key: st.key, label: st.label, terminal: st.isTerminal }))
+            : undefined,
           fields: fields.map((f) => ({
             key: f.key,
             label: f.label,
