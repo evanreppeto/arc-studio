@@ -439,15 +439,25 @@ function csvValue(col: Col, r: CrmRowVM): string | number {
  * filter, not a column, but it is worth having in a file you open in a
  * spreadsheet. `sel`/`act` are chrome and carry no value.
  */
-function rowsToCsv(rows: CrmRowVM[], cols: Col[], headerFor: (c: Col) => string): string {
+export function rowsToCsv(rows: CrmRowVM[], cols: Col[], headerFor: (c: Col) => string): string {
   const dataCols = cols.filter((c) => !LOCKED_COLUMNS.has(c.k) || c.k === "primary");
+  // The name cell renders a subtitle under the name, and it is the only place
+  // some records carry a way to reach anyone: on the live workspace every one of
+  // 243 contacts has an empty Company and shows its PHONE there. Exporting the
+  // name alone produced a contact list with no contact details in it. It rides
+  // beside the name rather than inside it so the name column stays sortable.
+  const nameIdx = dataCols.findIndex((c) => c.k === "primary");
   const header = [...dataCols.map(headerFor), "Owner"];
-  const body = rows.map((r) => [...dataCols.map((c) => csvValue(c, r)), r.owner].map(csvCell).join(","));
-  return [header.join(","), ...body].join("\n");
+  const body = rows.map((r) => [...dataCols.map((c) => csvValue(c, r)), r.owner]);
+  if (nameIdx >= 0) {
+    header.splice(nameIdx + 1, 0, "Details");
+    for (const [i, row] of body.entries()) row.splice(nameIdx + 1, 0, rows[i].detail);
+  }
+  return [header.join(","), ...body.map((row) => row.map(csvCell).join(","))].join("\n");
 }
 
 // Per-object columns, verbatim from build-crm.html's COLS config.
-type Col = { k: string; t?: string };
+export type Col = { k: string; t?: string };
 const COLS: Record<string, Col[]> = {
   contacts: [{ k: "sel" }, { k: "primary", t: "Contact" }, { k: "company", t: "Company" }, { k: "persona", t: "Persona" }, { k: "status", t: "Status" }, { k: "last", t: "Last activity" }, { k: "tasks", t: "Tasks" }, { k: "act" }],
   companies: [{ k: "sel" }, { k: "primary", t: "Company" }, { k: "persona", t: "Persona" }, { k: "status", t: "Status" }, { k: "tier", t: "Tier" }, { k: "last", t: "Last activity" }, { k: "act" }],
