@@ -111,10 +111,10 @@ export function toTeamView(
 function demoActivity(nowMs: number): WorkspaceActivityEntry[] {
   const at = (mins: number) => new Date(nowMs - mins * 60_000).toISOString();
   return [
-    { id: "act-1", action: "member.role_changed", summary: "Changed priya@bigshouldersrestoration.com to Marketer", actorEmail: "owner@bigshouldersrestoration.com", createdAt: at(95) },
-    { id: "act-2", action: "member.invited", summary: "Invited jordan@bigshouldersrestoration.com as Marketer", actorEmail: "dana@bigshouldersrestoration.com", createdAt: at(60 * 21) },
-    { id: "act-3", action: "workspace.renamed", summary: "Renamed the workspace to Big Shoulders Restoration", actorEmail: "owner@bigshouldersrestoration.com", createdAt: at(60 * 24 * 4) },
-    { id: "act-4", action: "member.removed", summary: "Removed alex@bigshouldersrestoration.com", actorEmail: "owner@bigshouldersrestoration.com", createdAt: at(60 * 24 * 9) },
+    { id: "act-1", action: "member.role_changed", summary: "Changed priya@meridianfield.example to Marketer", actorEmail: "owner@meridianfield.example", createdAt: at(95) },
+    { id: "act-2", action: "member.invited", summary: "Invited jordan@meridianfield.example as Marketer", actorEmail: "dana@meridianfield.example", createdAt: at(60 * 21) },
+    { id: "act-3", action: "workspace.renamed", summary: "Renamed the workspace to Meridian Field Services", actorEmail: "owner@meridianfield.example", createdAt: at(60 * 24 * 4) },
+    { id: "act-4", action: "member.removed", summary: "Removed alex@meridianfield.example", actorEmail: "owner@meridianfield.example", createdAt: at(60 * 24 * 9) },
   ];
 }
 
@@ -124,12 +124,12 @@ function demoTeamView(nowMs: number): SettingsTeamView {
     isDemo: true,
     failed: null,
     members: [
-      { id: "demo-owner", email: "owner@bigshouldersrestoration.com", role: "owner", roleLabel: "Owner", isOwner: true, pending: false },
-      { id: "demo-admin", email: "dana@bigshouldersrestoration.com", role: "admin", roleLabel: "Admin", isOwner: false, pending: false },
-      { id: "demo-marketer", email: "priya@bigshouldersrestoration.com", role: "marketer", roleLabel: "Marketer", isOwner: false, pending: false },
-      { id: "demo-reviewer", email: "sam@bigshouldersrestoration.com", role: "reviewer", roleLabel: "Reviewer", isOwner: false, pending: false },
+      { id: "demo-owner", email: "owner@meridianfield.example", role: "owner", roleLabel: "Owner", isOwner: true, pending: false },
+      { id: "demo-admin", email: "dana@meridianfield.example", role: "admin", roleLabel: "Admin", isOwner: false, pending: false },
+      { id: "demo-marketer", email: "priya@meridianfield.example", role: "marketer", roleLabel: "Marketer", isOwner: false, pending: false },
+      { id: "demo-reviewer", email: "sam@meridianfield.example", role: "reviewer", roleLabel: "Reviewer", isOwner: false, pending: false },
     ],
-    invites: [{ id: "demo-invite", email: "jordan@bigshouldersrestoration.com", role: "Marketer", note: "Marketer · expires in 12 days" }],
+    invites: [{ id: "demo-invite", email: "jordan@meridianfield.example", role: "Marketer", note: "Marketer · expires in 12 days" }],
     activity: demoActivity(nowMs),
   };
 }

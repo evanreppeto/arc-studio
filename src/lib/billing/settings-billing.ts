@@ -1,7 +1,7 @@
 import { DEFAULT_PLAN_TIER, PLAN_TIERS, planForTier, type PlanTier } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isWorkspaceAdminRole } from "@/lib/auth/workspace-roles";
-import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+import { DEMO_PLAN_TIER, isDemoDataEnabled } from "@/lib/demo/demo-mode";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
 import { resolveOrgPlan } from "./entitlements";
@@ -76,7 +76,7 @@ export async function getSettingsBillingView(): Promise<SettingsBillingView> {
     // Offline preview: coherent with the demo usage card (Starter), interactive so
     // the picker can be tried; a real write no-ops (persisted:false).
     return isDemoDataEnabled()
-      ? viewForTier("starter", false, true)
+      ? viewForTier(DEMO_PLAN_TIER, false, true)
       : viewForTier(DEFAULT_PLAN_TIER, false, false);
   }
   try {
