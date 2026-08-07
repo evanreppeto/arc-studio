@@ -151,7 +151,13 @@ function buildRows(campaigns: CampaignWorkspaceListItem[]): CampaignRow[] {
   return campaigns.map((item) => toRow(item, nowMs));
 }
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ new?: string }>;
+}) {
+  // `?new=1` opens the New-campaign modal on arrival — see `openNew`.
+  const { new: openNewParam } = await searchParams;
   const ctx = await getCurrentWorkspaceContext();
   const [list, storedPersonaOptions] = await Promise.all([
     // Keep the reason. This used to be `.catch(() => ({ status: "unavailable" }))`,
@@ -212,6 +218,7 @@ export default async function CampaignsPage() {
       undecidedCount={pendingAssets}
       personaOptions={personaOptions}
       loadError={loadError}
+      openNew={openNewParam === "1"}
     />
   );
 }

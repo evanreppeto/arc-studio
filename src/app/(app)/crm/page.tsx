@@ -35,7 +35,14 @@ export async function generateMetadata() {
 
 const OBJECT_KEYS: CrmObjectKey[] = ["companies", "contacts", "properties", "leads", "jobs", "outcomes"];
 
-export default async function CrmPage() {
+export default async function CrmPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ o?: string; add?: string }>;
+}) {
+  // `?o=leads&add=1` lands on Leads with the Add modal open — what Home's
+  // "Add a lead" quick action actually means.
+  const { o: requestedObject, add: openAddParam } = await searchParams;
   const tenant = await getCurrentWorkspaceContext().catch(() => null);
   const orgId = tenant?.orgId ?? "";
   const workspaceId = tenant?.workspaceId ?? null;
@@ -223,5 +230,9 @@ export default async function CrmPage() {
     );
   }
 
-  return <CrmBoard loadError={loadError} objects={objects} rowsByKey={rowsByKey} defaultKey="contacts" kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} customColumnsByKey={customColumnsByKey} customFieldDefsByKey={customFieldDefsByKey} customObjects={allCustomObjects} stageOptions={stageOptions} />;
+  // Only a key this workspace actually has — a bad `?o=` must not land on a
+  // blank board, and a tenant-defined type is as valid a target as the six.
+  const defaultKey = objects.some((o) => o.key === requestedObject) ? (requestedObject as string) : "contacts";
+
+  return <CrmBoard loadError={loadError} objects={objects} rowsByKey={rowsByKey} defaultKey={defaultKey} kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} customColumnsByKey={customColumnsByKey} customFieldDefsByKey={customFieldDefsByKey} customObjects={allCustomObjects} stageOptions={stageOptions} openAdd={openAddParam === "1"} />;
 }

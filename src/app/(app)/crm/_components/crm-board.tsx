@@ -707,9 +707,19 @@ export function CrmBoard({
   customFieldDefsByKey = {},
   customObjects = [],
   stageOptions = {},
+  openAdd = false,
 }: {
   /** Why the read FAILED, vs returning nothing. Null when it succeeded. */
   loadError?: string | null;
+  /**
+   * Open the Add-record modal on arrival (`/crm?add=1`), on whichever object
+   * `defaultKey` selected — so `/crm?o=leads&add=1` is genuinely "add a lead".
+   *
+   * Home's "Add a lead" quick action pointed at `/crm` and stopped there, which
+   * landed you on Contacts with nothing open: an action named for a thing that
+   * merely put you near it, on the wrong tab.
+   */
+  openAdd?: boolean;
   objects: CrmObjectVM[];
   rowsByKey: Record<string, CrmRowVM[]>;
   defaultKey: string;
@@ -769,7 +779,7 @@ export function CrmBoard({
   // Client-only rows for records created this session, keyed by object. They sit
   // on top of the server rows until a real DB write revalidates the page.
   const [localByKey, setLocalByKey] = useState<Record<string, CrmRowVM[]>>({});
-  const [addOpen, setAddOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(openAdd);
   const [fieldsOpen, setFieldsOpen] = useState(false);
   const [typesOpen, setTypesOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -1217,6 +1227,17 @@ export function CrmBoard({
       if (visible.every((r) => prev.has(r.id))) return new Set();
       return new Set(visible.map((r) => r.id));
     });
+  // Drop the marker so a reload doesn't reopen a modal the operator just
+  // dismissed. replaceState, not push — this is not a step back.
+  const closeAdd = () => {
+    setAddOpen(false);
+    if (typeof window !== "undefined" && window.location.search.includes("add=")) {
+      const params = new URLSearchParams(window.location.search);
+      params.delete("add");
+      window.history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params}` : ""}`);
+    }
+  };
+
   const switchObject = (key: string) => {
     setActiveKey(key);
     setQ("");
@@ -1703,7 +1724,7 @@ export function CrmBoard({
           open={addOpen}
           singular={active.addLabel.replace(/^Add\s+/i, "")}
           stageOptions={stageOptions[active.key]}
-          onClose={() => setAddOpen(false)}
+          onClose={closeAdd}
           onSubmit={(v) => handleCreate({ name: v.name, detail: v.detail, status: v.status } as AddRecordValue)}
         />
       ) : (
@@ -1716,7 +1737,7 @@ export function CrmBoard({
         personaOptions={personaOptions}
         stageOptions={stageOptions[active.key]}
         customFieldDefs={customFieldDefsByKey[active.key] ?? []}
-        onClose={() => setAddOpen(false)}
+        onClose={closeAdd}
         onSubmit={handleCreate}
       />
       )}
