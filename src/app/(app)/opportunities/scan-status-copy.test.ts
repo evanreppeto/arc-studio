@@ -47,7 +47,7 @@ describe("scanStatusLine", () => {
   it("distinguishes all six outcomes", () => {
     const lines = (["never", "running", "stalled", "failed", "added", "empty"] as const).map(
       (outcome) =>
-        scanStatusLine(status({ outcome, startedAt: "2026-08-04T13:00:00Z", finishedAt: "2026-08-04T13:02:00Z", proposed: 2 }), NOW)
+        scanStatusLine(status({ outcome, startedAt: "2026-08-04T13:00:00Z", finishedAt: "2026-08-04T13:02:00Z", proposed: 2 }), NOW)!
           .text,
     );
 
@@ -61,12 +61,12 @@ describe("scanStatusLine", () => {
       status({ outcome: "added", proposed: 3, finishedAt: "2026-08-04T13:02:00Z" }),
       NOW,
     );
-    expect(line.text).toBe("Arc scanned 3h ago and added 3 opportunities.");
-    expect(line.tone).toBe("ok");
+    expect(line!.text).toBe("Arc scanned 3h ago and added 3 opportunities.");
+    expect(line!.tone).toBe("ok");
   });
 
   it("counts one opportunity singular", () => {
-    expect(scanStatusLine(status({ outcome: "added", proposed: 1, finishedAt: "2026-08-04T13:02:00Z" }), NOW).text).toContain(
+    expect(scanStatusLine(status({ outcome: "added", proposed: 1, finishedAt: "2026-08-04T13:02:00Z" }), NOW)!.text).toContain(
       "added 1 opportunity.",
     );
   });
@@ -81,9 +81,9 @@ describe("scanStatusLine", () => {
       }),
       NOW,
     );
-    expect(line.text).toBe("Arc scanned 3h ago and found nothing new.");
-    expect(line.detail).toBe("Every gap I can see is already open in the inbox.");
-    expect(line.tone).toBe("muted");
+    expect(line!.text).toBe("Arc scanned 3h ago and found nothing new.");
+    expect(line!.detail).toBe("Every gap I can see is already open in the inbox.");
+    expect(line!.tone).toBe("muted");
   });
 
   /**
@@ -93,8 +93,8 @@ describe("scanStatusLine", () => {
    */
   it("says a stalled scan never finished, and flags it", () => {
     const line = scanStatusLine(status({ outcome: "stalled", startedAt: "2026-08-04T13:00:00Z" }), NOW);
-    expect(line.text).toBe("Arc's scan started 3h ago and never finished.");
-    expect(line.tone).toBe("warn");
+    expect(line!.text).toBe("Arc's scan started 3h ago and never finished.");
+    expect(line!.tone).toBe("warn");
   });
 
   it("flags a failed scan with its error", () => {
@@ -102,22 +102,51 @@ describe("scanStatusLine", () => {
       status({ outcome: "failed", finishedAt: "2026-08-04T13:01:00Z", detail: "Arc hit an error: boom" }),
       NOW,
     );
-    expect(line.text).toBe("Arc's last scan 3h ago failed.");
-    expect(line.detail).toBe("Arc hit an error: boom");
-    expect(line.tone).toBe("warn");
+    expect(line!.text).toBe("Arc's last scan 3h ago failed.");
+    expect(line!.detail).toBe("Arc hit an error: boom");
+    expect(line!.tone).toBe("warn");
   });
 
   it("is calm about a workspace that has never been scanned", () => {
     const line = scanStatusLine(status({ outcome: "never" }), NOW);
-    expect(line.text).toBe("Arc hasn't scanned this workspace yet.");
-    expect(line.tone).toBe("muted");
+    expect(line!.text).toBe("Arc hasn't scanned this workspace yet.");
+    expect(line!.tone).toBe("muted");
   });
 
   it("never dangles a time it does not have", () => {
     for (const outcome of ["stalled", "failed", "added", "empty"] as const) {
       const line = scanStatusLine(status({ outcome, proposed: 1 }), NOW);
-      expect(line.text).not.toContain("  ");
-      expect(line.text).not.toMatch(/\s\./);
+      expect(line!.text).not.toContain("  ");
+      expect(line!.text).not.toMatch(/\s\./);
+    }
+  });
+});
+
+/**
+ * `never` and `unknown` are different claims and must not render alike.
+ *
+ * `never` says something about Arc — "it has not scanned this workspace" — and
+ * in the offline preview that sentence rendered directly above five
+ * opportunities each labelled "Found by Arc", with confidence scores and Arc's
+ * own reasoning beneath them. One screen contradicting itself, because a read
+ * that could not happen was reported as a fact about the agent.
+ */
+describe("a scan nobody could look up is not a scan that never happened", () => {
+  it("says nothing at all when there was no backend to ask", () => {
+    expect(scanStatusLine(status({ outcome: "unknown" }), NOW)).toBeNull();
+  });
+
+  it("still says the calm thing when the workspace genuinely has no history", () => {
+    const line = scanStatusLine(status({ outcome: "never" }), NOW);
+    expect(line).not.toBeNull();
+    expect(line!.text).toBe("Arc hasn't scanned this workspace yet.");
+  });
+
+  it("returns a line for every outcome that IS a fact about a scan", () => {
+    // A new outcome added without a branch would fall to the `empty` default and
+    // silently claim "Arc scanned and found nothing new".
+    for (const outcome of ["never", "running", "stalled", "failed", "added", "empty"] as const) {
+      expect(scanStatusLine(status({ outcome }), NOW), outcome).not.toBeNull();
     }
   });
 });
