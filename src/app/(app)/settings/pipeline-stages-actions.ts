@@ -13,6 +13,7 @@ import {
   type PipelineObjectKey,
   type StageSetEdit,
 } from "@/domain";
+import { getCustomObjectByKey } from "@/lib/custom-objects/definitions";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -32,6 +33,23 @@ import type { SettingsWriteResult } from "./actions";
  * other structural settings writes, and org-scoped from the session rather than
  * from the request.
  */
+/**
+ * Is this a pipeline the caller may edit?
+ *
+ * The three built-ins always are. A tenant-defined record type is too, once its
+ * org has defined it — validity is per-workspace, so it cannot come from a
+ * constant. Without this the settings panel listed a custom type's pipeline and
+ * then refused every write against it: a screen that reads correctly and does
+ * nothing.
+ */
+async function editablePipeline(orgId: string, objectKey: string): Promise<boolean> {
+  if (isPipelineObjectKey(objectKey)) return true;
+  const object = await getCustomObjectByKey(orgId, objectKey).catch(() => null);
+  return object !== null;
+}
+
+const NOT_A_PIPELINE = "Pick which pipeline this stage belongs to.";
+
 async function operatorOrg(): Promise<{ orgId: string } | { error: string }> {
   await requireOperator();
   if (!isSupabaseAdminConfigured()) {
@@ -67,8 +85,8 @@ async function editStages(
   const scope = await operatorOrg();
   if ("error" in scope) return { ok: false, error: scope.error };
 
-  if (!isPipelineObjectKey(objectKey)) {
-    return { ok: false, error: "Pick which pipeline this stage belongs to." };
+  if (!(await editablePipeline(scope.orgId, objectKey))) {
+    return { ok: false, error: NOT_A_PIPELINE };
   }
 
   let current;
@@ -176,7 +194,7 @@ export async function getPipelineStageOccupancy(input: {
 }): Promise<{ ok: true; occupancy: StageOccupancy } | { ok: false; error: string }> {
   const scope = await operatorOrg();
   if ("error" in scope) return { ok: false, error: scope.error };
-  if (!isPipelineObjectKey(input.objectKey)) {
+  if (!(await editablePipeline(scope.orgId, input.objectKey))) {
     return { ok: false, error: "Unknown pipeline." };
   }
 
@@ -208,10 +226,10 @@ export async function archivePipelineStage(input: {
 }): Promise<SettingsWriteResult> {
   const scope = await operatorOrg();
   if ("error" in scope) return { ok: false, error: scope.error };
-  if (!isPipelineObjectKey(input.objectKey)) {
+  if (!(await editablePipeline(scope.orgId, input.objectKey))) {
     return { ok: false, error: "Unknown pipeline." };
   }
-  const objectKey: PipelineObjectKey = input.objectKey;
+  const objectKey: string = input.objectKey;
 
   let occupied: number;
   let current;

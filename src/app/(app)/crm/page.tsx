@@ -77,7 +77,7 @@ export default async function CrmPage() {
         orderedStages(await getPipelineStages(orgId, key)).map((s) => ({ key: s.key, label: s.label })),
       ]),
     ),
-  ) as Record<PipelineObjectKey, { key: string; label: string }[]>;
+  ) as Record<string, { key: string; label: string }[]>;
   const productLanguage = getProductLanguage(appSettings?.industry || businessProfile?.industry, appSettings?.objectLabels);
 
   // A failed counts read is NOT an empty CRM. Without this the object tiles
@@ -147,11 +147,18 @@ export default async function CrmPage() {
 
   for (const object of customObjects) {
     try {
-      const [records, count] = await Promise.all([
+      // Stages are OPT-IN for a tenant-defined type: getPipelineStages returns
+      // the org's own rows and, unlike the six, no defaults. Empty means this
+      // type has no lifecycle, and the board leaves the status column off
+      // entirely rather than showing a column of dashes.
+      const [records, count, stages] = await Promise.all([
         listCustomRecords(orgId, object),
         countCustomRecords(orgId, object),
+        getPipelineStages(orgId, object.key).catch(() => []),
       ]);
-      rowsByKey[object.key] = records.map((r) => customRecordToRow(object.key, r));
+      const live = orderedStages(stages);
+      if (live.length > 0) stageOptions[object.key] = live.map((s) => ({ key: s.key, label: s.label }));
+      rowsByKey[object.key] = records.map((r) => customRecordToRow(object.key, r, live));
       objects.push({
         key: object.key,
         isCustom: true,
@@ -161,6 +168,7 @@ export default async function CrmPage() {
         addLabel: `Add ${object.labelSingular.toLowerCase()}`,
         filterPlaceholder: `Filter ${object.labelPlural.toLowerCase()}…`,
         count,
+        hasPipeline: live.length > 0,
       });
     } catch (error) {
       reportDegraded(error, { scope: "crm.customObjectRows", surface: "primary", detail: { orgId, object: object.key } });

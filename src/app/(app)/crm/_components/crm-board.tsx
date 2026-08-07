@@ -604,6 +604,12 @@ export type CrmObjectVM = {
   key: string;
   /** A tenant-defined type (a row in custom_objects), not one of the six tables. */
   isCustom?: boolean;
+  /**
+   * This type has stages of its own. Opt-in: the six always do, a tenant-defined
+   * type only once its org defines some, and until then the board leaves the
+   * status column and filter off entirely rather than showing empty ones.
+   */
+  hasPipeline?: boolean;
   label: string;
   noun: string;
   nameHeader: string;
@@ -797,7 +803,16 @@ export function CrmBoard({
   const totalRows = localRows.length + (rowsByKey[active.key] ?? []).length;
   // Splice the tenant's custom columns in just before the trailing actions cell.
   const allCols = (() => {
-    const base = COLS[active.key] ?? (active.isCustom ? CUSTOM_OBJECT_COLS : COLS.contacts);
+    const base =
+      COLS[active.key] ??
+      (active.isCustom
+        ? active.hasPipeline
+          // Spliced before "Updated" so the stage reads beside the name, where
+          // the six put it. Only present when there are stages to show — a
+          // Status column over a type with no lifecycle is a column of dashes.
+          ? ([{ k: "sel" }, { k: "primary", t: "Name" }, { k: "status", t: "Status" }, { k: "last", t: "Updated" }, { k: "act" }] as Col[])
+          : CUSTOM_OBJECT_COLS
+        : COLS.contacts);
     const custom = customColumnsByKey[active.key] ?? [];
     if (custom.length === 0) return base;
     const actIdx = base.findIndex((c) => c.k === "act");
@@ -1175,7 +1190,7 @@ export function CrmBoard({
     setLocalByKey((prev) => ({ ...prev, [objectKey]: [buildOptimisticRow(objectKey, tempId, value, stageOptions[objectKey] ?? []), ...(prev[objectKey] ?? [])] }));
 
     const res = active.isCustom
-      ? await createCustomObjectRecord({ objectKey, title: value.name, subtitle: value.detail })
+      ? await createCustomObjectRecord({ objectKey, title: value.name, subtitle: value.detail, status: value.status })
       : await createCrmRecord({ objectKey, ...value });
 
     if (!res.ok) {
@@ -1319,9 +1334,21 @@ export function CrmBoard({
             aria-label={`Filter ${active.noun}`}
           />
         </span>
-        {/* Persona, Status and Owner describe the six. A tenant-defined type
-            has none of them — its shape is its custom fields — so the filters
-            are absent rather than present and always empty. */}
+        {/* Persona and Owner describe the six. A tenant-defined type has
+            neither — its shape is its custom fields — so those filters are
+            absent rather than present and always empty. Status is different: a
+            custom type has stages once its org defines some, and then filtering
+            by them is the point. */}
+        {active.isCustom && active.hasPipeline && (
+          <FilterMenu
+            icon={<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9 12l2 2 4-4" /></svg>}
+            label="Status"
+            options={options.status}
+            value={statusF}
+            onChange={setStatusF}
+            footer={{ href: `/settings?s=records&t=Stages&o=${encodeURIComponent(active.key)}`, label: "Edit stages" }}
+          />
+        )}
         {!active.isCustom && (
         <>
         <FilterMenu
@@ -1675,8 +1702,9 @@ export function CrmBoard({
           key={`${active.key}:${addOpen ? "open" : "closed"}`}
           open={addOpen}
           singular={active.addLabel.replace(/^Add\s+/i, "")}
+          stageOptions={stageOptions[active.key]}
           onClose={() => setAddOpen(false)}
-          onSubmit={(v) => handleCreate({ name: v.name, detail: v.detail } as AddRecordValue)}
+          onSubmit={(v) => handleCreate({ name: v.name, detail: v.detail, status: v.status } as AddRecordValue)}
         />
       ) : (
       <AddRecordModal

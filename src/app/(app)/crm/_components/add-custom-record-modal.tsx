@@ -17,16 +17,22 @@ export function AddCustomRecordModal({
   open,
   onClose,
   singular,
+  stageOptions = [],
   onSubmit,
 }: {
   open: boolean;
   onClose: () => void;
   /** The tenant's own word — "Equipment item", not "record". */
   singular: string;
-  onSubmit: (value: { name: string; detail: string }) => Promise<{ ok: boolean; error?: string }>;
+  /** This type's stages, in the tenant's words. Empty when it has no pipeline. */
+  stageOptions?: { key: string; label: string }[];
+  onSubmit: (value: { name: string; detail: string; status?: string }) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [name, setName] = useState("");
   const [detail, setDetail] = useState("");
+  // First stage by default: a record has to enter the pipeline somewhere, and
+  // making the operator choose on every add is friction for the common case.
+  const [status, setStatus] = useState(stageOptions[0]?.key ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -38,7 +44,7 @@ export function AddCustomRecordModal({
     }
     setSaving(true);
     setError(null);
-    const res = await onSubmit({ name: title, detail: detail.trim() });
+    const res = await onSubmit({ name: title, detail: detail.trim(), status: status || undefined });
     setSaving(false);
     if (!res.ok) {
       setError(res.error ?? "Could not save that.");
@@ -79,6 +85,17 @@ export function AddCustomRecordModal({
             }}
           />
         </label>
+
+        {stageOptions.length > 0 && (
+          <label style={{ display: "grid", gap: 6 }}>
+            <span className="cxm-label">Status</span>
+            <select className="sel" value={status} onChange={(e) => setStatus(e.target.value)}>
+              {stageOptions.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {/* Custom fields are filled in on the record itself rather than here:
             an object with a dozen of them would make this a form nobody
