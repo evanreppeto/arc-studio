@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { createSupabaseQueryMock, type MockSupabase } from "@/lib/repos/__tests__/test-helpers";
 
-import { cancelChatTask, claimChatTask, listQueuedChatTasks, reclaimStaleChatTasks, settleChatTask } from "./inbox";
+import { ARC_RUN_STALE_MS } from "@/domain/arc-stalled-run";
+
+import { cancelChatTask, claimChatTask, listQueuedChatTasks, reclaimStaleChatTasks, settleChatTask, STALE_RUNNING_MS } from "./inbox";
 
 function calls(supabase: MockSupabase, method: string): Array<Record<string, unknown>> {
   return supabase.calls.filter(([m]) => m === method).map(([, arg]) => arg as Record<string, unknown>);
@@ -221,5 +223,20 @@ describe("settleChatTask", () => {
 
     const update = calls(supabase, "update").find((u) => u.status === "failed");
     expect(update?.completed_at).toEqual(expect.any(String));
+  });
+});
+
+describe("the reclaim cutoff", () => {
+  /**
+   * These two constants encode ONE definition of "this run is dead" and their
+   * comments say to change them together — which nothing enforced. Drift is not
+   * cosmetic: THIS side re-dispatches the turn, so if it were the shorter of the
+   * two, a turn the read model still considers alive would be answered twice.
+   *
+   * Unreachable while chat tasks never entered `running` (the query matched
+   * nothing); live as of 2026-08-07 the moment anything polls the inbox route.
+   */
+  it("matches the read model's stale cutoff", () => {
+    expect(STALE_RUNNING_MS).toBe(ARC_RUN_STALE_MS);
   });
 });
