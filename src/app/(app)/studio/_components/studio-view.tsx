@@ -49,7 +49,7 @@ type Prov = "real" | "ai" | "comp" | "upload" | "stock";
 export type Item = { s: string; l: string; p: Prov; url?: string; id?: string };
 const PVLABEL: Record<Prov, string> = { real: "Real media", ai: "AI-generated", comp: "Composite", upload: "Imported", stock: "Stock" };
 const SRC: Record<string, { title: string; items: Item[] }> = {
-  library: { title: "Approved media", items: [{ s: SC.roof, l: "Roof — exterior", p: "real" }, { s: SC.beforeafter, l: "Before / after", p: "real" }, { s: SC.roof, l: "Crew on site", p: "real" }, { s: SC.comp, l: "Logo lockup", p: "comp" }] },
+  library: { title: "From your library", items: [{ s: SC.roof, l: "Roof — exterior", p: "real" }, { s: SC.beforeafter, l: "Before / after", p: "real" }, { s: SC.roof, l: "Crew on site", p: "real" }, { s: SC.comp, l: "Logo lockup", p: "comp" }] },
   ai: { title: "Generated this session", items: [{ s: SC.ai, l: "AI hero", p: "ai" }, { s: SC.ai2, l: "AI · seasonal", p: "ai" }, { s: SC.video, l: "AI video still", p: "ai" }] },
   uploads: { title: "Imported", items: [{ s: SC.ai2, l: "midjourney_03.png", p: "upload" }, { s: SC.comp, l: "canva_export.png", p: "upload" }] },
   stock: { title: "Stock", items: [{ s: SC.roof, l: "Stock · house", p: "stock" }, { s: SC.beforeafter, l: "Stock · street", p: "stock" }] },
@@ -510,10 +510,22 @@ function ModelControl({
 
 export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null, mediaConfig = DEFAULT_MEDIA_CONFIG, mediaEngines = NO_MEDIA_ENGINES, promptExamples = NEUTRAL_PROMPT_EXAMPLES, initialAssetId = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null; /** The workspace default the server would resolve anyway — the picker opens on it. */ mediaConfig?: MediaConfig; /** Which engines this workspace can reach; the picker offers only these. */ mediaEngines?: EngineAvailability; /** Example scenes for this workspace's industry — placeholders teach by example, so they must not teach another vertical's. */ promptExamples?: { image: string; video: string }; /** ?asset=<media_assets uuid> — Library deep-links here so "Edit in Studio" opens on the asset the operator clicked rather than on whatever happens to be first. */ initialAssetId?: string | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
-  // The "Approved media" source shows the workspace's real media_assets. Live, it
-  // shows ONLY those — never the built-in samples, which would present stock art as
-  // the workspace's approved media and let an operator compose over it believing it
-  // was theirs. Offline (backend-less preview) the samples keep the tool usable.
+  // This source shows the workspace's real media_assets. Live, it shows ONLY
+  // those — never the built-in samples, which would present stock art as the
+  // workspace's own media and let an operator compose over it believing it was
+  // theirs. Offline (backend-less preview) the samples keep the tool usable.
+  //
+  // It was titled "Approved media", which it is not: the query filters on kind
+  // and a present url, nothing else. On the live workspace that panel offered 16
+  // assets under the word "Approved" while /library graded the same 16 as
+  // Arc-ready 0 — 13 carrying a risk flag and 3 never reviewed. Approval is the
+  // load-bearing idea in this product; a panel must not assert it on the
+  // strength of a url being non-null.
+  //
+  // The fix is the LABEL, not the filter. `isArc` means "Arc may use this on its
+  // own", which is a different question from "the operator may compose with it"
+  // — Studio is operator-driven, so the full library belongs here. Filtering to
+  // Arc-ready would have emptied the panel on the live workspace.
   const [uploaded, setUploaded] = useState<Item[]>([]);
   /** Images generated in this session, so the AI source tab shows real work
    *  instead of sample art — and so a fresh render is immediately selectable
@@ -522,7 +534,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
   const sources = useMemo<Record<string, { title: string; items: Item[] }>>(
     () => ({
       ...SRC,
-      library: live ? { title: "Approved media", items: libraryItems ?? [] } : SRC.library,
+      library: live ? { title: "From your library", items: libraryItems ?? [] } : SRC.library,
       // Imported art: real uploads live-first (empty until you add some); demo samples offline.
       uploads: uploaded.length || live ? { title: "Imported", items: [...uploaded, ...(live ? [] : SRC.uploads.items)] } : SRC.uploads,
       // Live, this tab shows what was actually generated here — the sample tiles
