@@ -1197,7 +1197,24 @@ export function LibraryView({
                 as a third category of filter that isn't there. */}
             <span className="chipgrp" role="group" aria-label="Readiness">
               {COLLECTIONS.map(([k, label]) => (
-                <button type="button" key={k} className={`chip${curColl === k ? " on" : ""}`} aria-pressed={curColl === k} onClick={() => setCurColl(k)}>
+                <button
+                  type="button"
+                  key={k}
+                  className={`chip${curColl === k ? " on" : ""}`}
+                  aria-pressed={curColl === k}
+                  onClick={() => {
+                    setCurColl(k);
+                    // "All" is the reset, and its label promises everything —
+                    // so it has to clear the TYPE group too. It didn't: with
+                    // Videos active on the live workspace, "All 16" rendered
+                    // lit beside "Videos 2" while two cards showed, and
+                    // clicking it changed nothing. The only way back to all 16
+                    // was remembering which type chip you had pressed and
+                    // pressing it again. A control that reads "All", counts 16,
+                    // looks active and does nothing reads as broken.
+                    if (k === "all") setCurKind("all");
+                  }}
+                >
                   {k === "arc" ? <>{label}<Define term="arc_ready" /></> : label}
                   {collectionCount[k] != null ? <span className="cn">{collectionCount[k]}</span> : null}
                 </button>
