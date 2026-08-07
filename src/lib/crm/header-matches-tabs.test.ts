@@ -46,6 +46,46 @@ const HEADER_STAT_FOR_TAB: Array<{ stat: string; tab: "leads" | "companies" | "j
   { stat: "Projects tracked", tab: "jobs" },
 ];
 
+/**
+ * Counting the same records was only half of it: the header also has to CALL
+ * them what the tabs call them.
+ *
+ * BSR-656 fixed the numbers and left the nouns hardcoded, because the read-model
+ * has no workspace vocabulary. So the strip rendered
+ *
+ *     Companies  8       …directly above…      Organizations  8
+ *
+ * one number under two names, with nothing to say they were the same thing.
+ * Every industry template mismatched on at least one stat — "general" on
+ * companies, "restoration" on jobs. Each object-backed stat now carries its
+ * `objectKey`, and the page renders the label from `getProductLanguage`.
+ */
+describe("the CRM header calls records what the tabs call them", () => {
+  it("tags every object-backed stat with the object it counts", async () => {
+    const overview = await getCrmOverviewData();
+    if (overview.status !== "live") throw new Error("expected live overview");
+    const tagged = Object.fromEntries(
+      overview.stats.filter((s) => s.objectKey).map((s) => [s.objectKey, s.qualifier ?? ""]),
+    );
+    // Without objectKey the page cannot relabel, and the hardcoded English wins.
+    expect(tagged).toEqual({ leads: "found", companies: "", jobs: "tracked" });
+  });
+
+  it("leaves the money stat untagged — it counts no object", async () => {
+    const overview = await getCrmOverviewData();
+    if (overview.status !== "live") throw new Error("expected live overview");
+    const revenue = overview.stats.find((s) => s.label === "Revenue linked");
+    expect(revenue?.objectKey).toBeUndefined();
+  });
+
+  it("builds its labels from the workspace vocabulary, not the read-model's", () => {
+    const page = readFileSync(new URL("../../app/(app)/crm/page.tsx", import.meta.url), "utf8");
+    expect(page).toContain("productLanguage.crmObjects[stat.objectKey].label");
+    // The bare `stat.label` may only be the fallback for an untagged stat.
+    expect(page).not.toMatch(/label: stat\.label,/);
+  });
+});
+
 describe("the CRM header and its tabs count the same records", () => {
   it.each(HEADER_STAT_FOR_TAB)('"$stat" equals the $tab tab', async ({ stat, tab }) => {
     const [overview, navCounts] = await Promise.all([getCrmOverviewData(), getCrmNavCounts()]);

@@ -425,19 +425,17 @@ export function RecordView({
             </a>
           </div>
         </div>
-        {record.headerMetrics.length > 0 && (
-          <div className="mstrip">
-            {record.headerMetrics.map((m) => (
-              <div className="mcell" key={m.label}>
-                <div className="ml">{m.label}</div>
-                <div className="mv">
-                  {cleanValue(m.label, m.value)}
-                  {m.hint && <span className="md">{m.hint}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* A four-cell metric strip sat here restating fields the page already
+            showed. On one contact this screen said Persona four times (this
+            strip, the chip above it, Details, At a glance), Title four times and
+            Email three — and it gave a 20px serif display treatment to values
+            like an email address, which is a sentence, not a number.
+
+            Every cell was a duplicate except three — contacts' relationship
+            stage and leads' received date and confidence — which now live in
+            Details, where the rest of the record's fields are. Same argument as
+            #1045 on Home: one list, not a tile row above a table saying the
+            same things. */}
       </div>
 
       {/* Was a row of clickable divs at tabIndex -1 — a record's tabs could not
@@ -776,12 +774,8 @@ export function RecordView({
           <div className="snsec">
             <h3 className="snh">At a glance</h3>
             <div className="glance">
-              {persona && (
-                <div className="gl">
-                  <span className="gk">Persona</span>
-                  <span className="gv">{persona}</span>
-                </div>
-              )}
+              {/* Persona is the first chip under the record's name, a few
+                  inches up, and a row in Details. It does not need a third. */}
               {record.confidence && (
                 <div className="gl">
                   <span className="gk">Confidence</span>

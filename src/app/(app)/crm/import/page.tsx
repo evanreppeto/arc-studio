@@ -20,7 +20,13 @@ import "./import.css";
  * action that belongs beside the records it writes, and the CRM board's existing
  * Import button now points here.
  */
-export default async function CrmImportPage() {
+export default async function CrmImportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ as?: string }>;
+}) {
+  // Which tab's Import button sent us here, so the wizard opens on that kind.
+  const { as: initialKind } = await searchParams;
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
 
   // The connector must be enabled with a default persona before an import can run:
@@ -38,14 +44,17 @@ export default async function CrmImportPage() {
     <div className="crm-import">
       <header className="imp-head">
         <h1>Import your records</h1>
+        {/* Said "Bring contacts in" under an h1 reading "Import your records",
+            directly above a picker offering four kinds — so the copy described
+            a quarter of the screen it introduced. */}
         <p>
-          Bring contacts in from a spreadsheet or a CRM export. You&apos;ll see exactly what will change before
-          anything is written, and importing the same file again updates your records rather than duplicating
-          them — so you can do this whenever you need to, not just once.
+          Bring people, companies, jobs or notes in from a spreadsheet or a CRM export. You&apos;ll see exactly
+          what will change before anything is written, and importing the same file again updates your records
+          rather than duplicating them — so you can do this whenever you need to, not just once.
         </p>
       </header>
 
-      <ImportWizard ready={ready} />
+      <ImportWizard ready={ready} initialKind={initialKind} />
 
       <section className="imp-step">
         <div className="imp-step-h">
