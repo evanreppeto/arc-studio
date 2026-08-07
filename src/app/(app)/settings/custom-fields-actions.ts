@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 
-import { isCustomFieldObjectKey, type CustomFieldObjectKey } from "@/domain";
 import { requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -35,7 +34,10 @@ async function operatorOrg(): Promise<{ orgId: string } | { error: string }> {
   return { orgId: ctx.orgId };
 }
 
-function revalidateFieldSurfaces(objectKey: CustomFieldObjectKey): void {
+// Takes a plain string: a tenant-defined type's key is per-org, and gating
+// revalidation on the six left custom objects showing a stale field list after
+// every edit.
+function revalidateFieldSurfaces(objectKey: string): void {
   revalidatePath("/settings");
   revalidatePath("/crm");
   revalidatePath(`/crm/${objectKey}`);
@@ -52,10 +54,9 @@ export async function createCustomField(input: {
   const scope = await operatorOrg();
   if ("error" in scope) return { ok: false, error: scope.error };
 
-  if (!isCustomFieldObjectKey(input.objectKey)) {
-    return { ok: false, error: "Pick which record type this field belongs to." };
-  }
-
+  // No key check here. `createFieldDefinition` resolves it against the org's
+  // own record types — a constant can't answer that, and this refusing on the
+  // six was why a tenant-defined type could never hold a single field.
   const result = await createFieldDefinition(scope.orgId, {
     objectKey: input.objectKey,
     label: input.label,
@@ -95,7 +96,7 @@ export async function updateCustomField(input: {
 
   if (!result.ok) return { ok: false, error: result.error };
 
-  if (isCustomFieldObjectKey(input.objectKey)) revalidateFieldSurfaces(input.objectKey);
+  revalidateFieldSurfaces(input.objectKey);
   return { ok: true, persisted: true, message: "Field updated." };
 }
 
@@ -113,7 +114,7 @@ export async function archiveCustomField(input: {
   const result = await archiveFieldDefinition(scope.orgId, input.fieldId);
   if (!result.ok) return { ok: false, error: result.error };
 
-  if (isCustomFieldObjectKey(input.objectKey)) revalidateFieldSurfaces(input.objectKey);
+  revalidateFieldSurfaces(input.objectKey);
   return { ok: true, persisted: true, message: "Field archived. Its saved values are kept." };
 }
 
@@ -127,6 +128,6 @@ export async function restoreCustomField(input: {
   const result = await restoreFieldDefinition(scope.orgId, input.fieldId);
   if (!result.ok) return { ok: false, error: result.error };
 
-  if (isCustomFieldObjectKey(input.objectKey)) revalidateFieldSurfaces(input.objectKey);
+  revalidateFieldSurfaces(input.objectKey);
   return { ok: true, persisted: true, message: "Field restored." };
 }

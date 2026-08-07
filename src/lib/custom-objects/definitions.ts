@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { parseCustomObject, type CustomObject, type CustomObjectInput } from "@/domain";
+import { isBuiltInObjectKey, parseCustomObject, type CustomObject, type CustomObjectInput } from "@/domain";
 
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
@@ -78,6 +78,30 @@ export async function getCustomObjectByKey(
     .maybeSingle();
   if (error) throw new Error(`Failed to load that record type: ${error.message}`);
   return data ? rowToObject(data as Record<string, unknown>) : null;
+}
+
+/**
+ * Resolve a caller-supplied object key to a record type this org actually has,
+ * or null.
+ *
+ * ONE resolver, deliberately. The six built-ins are tables and always valid; a
+ * tenant-defined type is a row, so validity is per-workspace. Arc's route, the
+ * operator's field editor and any future caller must agree on that answer —
+ * two copies drifting apart is how a key becomes readable by one path and
+ * refused by another, which is the exact bug this feature already shipped once.
+ *
+ * Returns the CANONICAL stored key, not the caller's string.
+ */
+export async function resolveOrgObjectKey(
+  orgId: string,
+  key: unknown,
+  opts: { client?: SupabaseClient } = {},
+): Promise<string | null> {
+  if (typeof key !== "string" || !key) return null;
+  if (isBuiltInObjectKey(key)) return key;
+  const custom = await getCustomObjectByKey(orgId, key, opts).catch(() => null);
+  // An archived type is not a place to put new data.
+  return custom && custom.active ? custom.key : null;
 }
 
 export async function createCustomObject(

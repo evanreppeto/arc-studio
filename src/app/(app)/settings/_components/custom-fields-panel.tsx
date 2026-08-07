@@ -11,7 +11,6 @@ import {
   CUSTOM_FIELD_OBJECT_KEYS,
   CUSTOM_FIELD_TYPES,
   type CustomFieldDefinition,
-  type CustomFieldObjectKey,
   type CustomFieldType,
 } from "@/domain";
 
@@ -41,17 +40,27 @@ export type CustomFieldsPanelProps = {
    * "Matters", not on "Properties" — this screen must not be the one place the
    * product reverts to our internal vocabulary.
    */
-  objectLabels: Record<CustomFieldObjectKey, string>;
+  objectLabels: Record<string, string>;
   /** CRM object a deep link arrived pointing at — narrows this editor to it. */
   focusObject?: string | null;
+  /**
+   * The tenant's OWN record types, key -> plural label, listed after the six.
+   *
+   * Without these this panel showed the six only — so the CRM's field editor
+   * linked here to manage a custom type's removed fields and landed on a page
+   * that could not show them. Archived fields on a tenant-defined type were
+   * unreachable, which is the one thing this screen exists to prevent.
+   */
+  customObjectLabels?: Record<string, string>;
 };
 
-function isFieldObjectKey(value: string): value is CustomFieldObjectKey {
-  return (CUSTOM_FIELD_OBJECT_KEYS as readonly string[]).includes(value);
-}
-
-export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: CustomFieldsPanelProps) {
-  const [openObject, setOpenObject] = useState<CustomFieldObjectKey | null>(null);
+export function CustomFieldsPanel({
+  definitions,
+  objectLabels,
+  focusObject,
+  customObjectLabels = {},
+}: CustomFieldsPanelProps) {
+  const [openObject, setOpenObject] = useState<string | null>(null);
   /** The field whose edit form is open, by id. One at a time. */
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -68,8 +77,10 @@ export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: Cu
   // A deep link naming a record type narrows the list to it. "Show all" is a
   // one-way local override, so navigating elsewhere in Settings (which clears
   // focusObject) widens it again on its own.
-  const scoped = !showAll && focusObject && isFieldObjectKey(focusObject) ? focusObject : null;
-  const shownKeys = scoped ? [scoped] : CUSTOM_FIELD_OBJECT_KEYS;
+  const labels: Record<string, string> = { ...objectLabels, ...customObjectLabels };
+  const allKeys: string[] = [...CUSTOM_FIELD_OBJECT_KEYS, ...Object.keys(customObjectLabels)];
+  const scoped = !showAll && focusObject && allKeys.includes(focusObject) ? focusObject : null;
+  const shownKeys = scoped ? [scoped] : allKeys;
 
   return (
     <div className="panel">
@@ -83,7 +94,7 @@ export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: Cu
           brought back.
         </p>
 
-        {scoped && <ScopedNotice label={objectLabels[scoped]} onShowAll={() => setShowAll(true)} />}
+        {scoped && <ScopedNotice label={labels[scoped]} onShowAll={() => setShowAll(true)} />}
 
         {feedback && (
           <div className="cxm-statusline" role="status" style={{ marginBottom: 14 }}>
@@ -102,7 +113,7 @@ export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: Cu
             <div key={objectKey} className="srow" style={{ display: "block" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                 <div className="sl">
-                  <div className="slt">{objectLabels[objectKey]}</div>
+                  <div className="slt">{labels[objectKey]}</div>
                   <div className="sld">
                     {active.length === 0
                       ? "No custom fields yet"
@@ -137,7 +148,7 @@ export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: Cu
                           // Remount per field, so opening a second one does not
                           // inherit the first one's half-typed values.
                           key={`edit-${d.id}`}
-                          objectLabel={objectLabels[objectKey]}
+                          objectLabel={labels[objectKey]}
                           pending={pending}
                           initial={d}
                           onCancel={() => setEditingId(null)}
@@ -164,7 +175,7 @@ export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: Cu
 
               {openObject === objectKey && (
                 <FieldForm
-                  objectLabel={objectLabels[objectKey]}
+                  objectLabel={labels[objectKey]}
                   pending={pending}
                   onCancel={() => setOpenObject(null)}
                   onSubmit={(input) =>

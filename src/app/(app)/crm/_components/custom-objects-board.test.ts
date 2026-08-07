@@ -47,14 +47,25 @@ describe("the board treats a tenant-defined type as its own thing", () => {
   });
 
   /**
-   * Arc reads the six. It cannot see a tenant-defined type yet, so the footer
-   * must not promise that it maintains them — and must not offer them a "lead
-   * score", which they do not have.
+   * The footer must not promise that Arc MAINTAINS a tenant-defined type, or
+   * offer it a "lead score" — neither is true, and both are true of the six.
+   *
+   * It used to pin the literal "doesn't read them yet". That was accurate when
+   * written and became false the moment `list_record_types` /
+   * `search_custom_records` / `read_custom_fields` shipped — a green test
+   * holding the UI to a claim the backend had already outgrown. So this asserts
+   * the invariant (no upkeep, no score) rather than one sentence.
    */
-  it("does not claim Arc maintains a tenant-defined type", () => {
+  it("does not claim Arc maintains or scores a tenant-defined type", () => {
     const footer = BOARD.slice(BOARD.indexOf('<span className="arcnote">'));
     const block = footer.slice(0, footer.indexOf("</span>"));
     expect(block).toMatch(/active\.isCustom/);
-    expect(block).toMatch(/doesn't read them yet/);
+
+    // The custom branch is the first template literal after the ternary.
+    const customBranch = block.slice(block.indexOf("?"), block.indexOf(":"));
+    expect(customBranch).not.toMatch(/lead score/i);
+    expect(customBranch).not.toMatch(/keeps? .* up to date/i);
+    // …and it still says these are the operator's to look after.
+    expect(customBranch).toMatch(/yours to maintain/i);
   });
 });

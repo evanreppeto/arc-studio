@@ -1,6 +1,9 @@
 import { arcGuard, fail, ok } from "@/app/api/v1/arc/_lib/http";
-import { isCustomFieldObjectKey, type CustomFieldObjectKey } from "@/domain";
-import { getCustomObjectByKey } from "@/lib/custom-objects/definitions";
+import { type CustomFieldObjectKey } from "@/domain";
+// One resolver, shared with the operator's field editor. Two copies of "is this
+// a record type this org has" drifting apart is how a key becomes writable by
+// one path and refused by another.
+import { resolveOrgObjectKey } from "@/lib/custom-objects/definitions";
 import { listFieldDefinitions } from "@/lib/custom-fields/definitions";
 import { getCustomFieldContextForRecord, saveCustomFieldValues } from "@/lib/custom-fields/values";
 
@@ -23,22 +26,6 @@ import { getCustomFieldContextForRecord, saveCustomFieldValues } from "@/lib/cus
  * fields invites it to fill them in with plausible inventions, which is the
  * failure the provenance work exists to prevent.
  */
-/**
- * Is `object` a record type this workspace actually has?
- *
- * The six built-ins are tables and always valid. A tenant-defined type is a row
- * in custom_objects, so validity is per-workspace and cannot be answered from a
- * constant — which is what the old `isCustomFieldObjectKey` check did, and why
- * custom objects could hold fields that Arc was then refused permission to
- * read. Their fields ARE their shape, so that refusal made them opaque.
- */
-async function resolveObjectKey(orgId: string, object: unknown): Promise<string | null> {
-  if (typeof object !== "string" || !object) return null;
-  if (isCustomFieldObjectKey(object)) return object;
-  const custom = await getCustomObjectByKey(orgId, object).catch(() => null);
-  return custom ? custom.key : null;
-}
-
 const INVALID_OBJECT =
   "`object` must be one of companies, contacts, properties, leads, jobs, outcomes, or one of this workspace's own record types (GET /api/v1/arc/crm/object-types).";
 
@@ -50,7 +37,7 @@ export async function GET(request: Request) {
   const object = url.searchParams.get("object");
   const recordId = url.searchParams.get("record_id");
 
-  const objectKey = await resolveObjectKey(allowed.scope.orgId, object);
+  const objectKey = await resolveOrgObjectKey(allowed.scope.orgId, object);
   if (!objectKey) return fail("invalid_object", INVALID_OBJECT, 400);
 
   try {
@@ -95,7 +82,7 @@ export async function POST(request: Request) {
   const recordId = typeof body.record_id === "string" ? body.record_id.trim() : "";
   const values = body.values;
 
-  const objectKey = await resolveObjectKey(allowed.scope.orgId, object);
+  const objectKey = await resolveOrgObjectKey(allowed.scope.orgId, object);
   if (!objectKey) return fail("invalid_object", INVALID_OBJECT, 400);
   if (!recordId) {
     return fail("invalid_record", "`record_id` is required.", 400);
@@ -113,10 +100,17 @@ export async function POST(request: Request) {
     );
 
     // A rejected value is the caller's problem to fix, not a server fault —
-    // 400 with the field-level message so Arc can correct and retry.
-    if (!result.ok) return fail("invalid_value", result.error, 400);
+    // 400 with the field-level message so Arc can correct and retry. An unknown
+    // field key gets its own status: it used to come back as `ok` with
+    // `saved: 0`, so Arc was told a write that never happened had succeeded.
+    if (!result.ok) {
+      return fail(result.reason === "unknown_field" ? "unknown_field" : "invalid_value", result.error, 400);
+    }
 
-    return ok({ object, record_id: recordId, saved: result.saved });
+    // The RESOLVED key, matching GET. Echoing the caller's raw string here
+    // meant the two halves of one route reported different things about the
+    // same write.
+    return ok({ object: objectKey, record_id: recordId, saved: result.saved });
   } catch (error) {
     return fail("failed", error instanceof Error ? error.message : "Failed to save custom fields.", 502);
   }

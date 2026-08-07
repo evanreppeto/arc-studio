@@ -149,7 +149,12 @@ export function ObjectTypesPanel({ objects }: { objects: CustomObject[] }) {
   );
 }
 
-function ObjectTypeForm({
+/**
+ * Exported so the CRM's own record-type modal renders THIS form rather than a
+ * second one over the same schema. Two forms drift; this codebase has already
+ * paid for that with `FieldForm`.
+ */
+export function ObjectTypeForm({
   pending,
   initial,
   onCancel,

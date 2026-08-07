@@ -124,7 +124,15 @@ export async function createCustomRecord(
   orgId: string,
   object: CustomObject,
   input: { title?: string; subtitle?: string | null },
-  opts: { client?: SupabaseClient } = {},
+  /**
+   * `origin` is the row's provenance and defaults to the human. It was
+   * hardcoded to "operator", so every record Arc created through
+   * `create_custom_record` claimed a person had typed it — and the board reads
+   * this exact column to attribute the owner (`customRecordToRow`), so Arc's
+   * work was displayed as the operator's. Provenance that only ever says
+   * "human" is not provenance.
+   */
+  opts: { client?: SupabaseClient; origin?: "operator" | "agent" } = {},
 ): Promise<RecordWriteResult> {
   const parsed = parseCustomRecord(input, object.labelSingular);
   if (!parsed.ok) return parsed;
@@ -141,7 +149,7 @@ export async function createCustomRecord(
       object_id: object.id,
       title: parsed.value.title,
       subtitle: parsed.value.subtitle,
-      origin: "operator",
+      origin: opts.origin ?? "operator",
     })
     .select("id")
     .single();
