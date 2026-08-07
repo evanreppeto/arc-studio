@@ -246,19 +246,24 @@
   & .nav.on .navbadge { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
   /* Recent Arc work gives the tall rail a useful second rhythm without turning
      every navigation row into a dense dashboard. */
-  /* `flex` + `min-height: 0`, so .rail-recents-list below has a definite height
-     to scroll against. The floor keeps a few rows visible on a short viewport
-     rather than collapsing to the search field; past that .navwrap scrolls. */
-  /* `flex` + `min-height: 0`, so .rail-recents-list below has a definite height
-     to scroll against.
+  /* ONE scroll in the rail, and it is `.navwrap`'s.
 
-     The floor is deliberately large enough for ~6 rows. Left to pure `flex: 1`
-     the twelve nav destinations claimed 566px of a 980px rail and the chat list
-     got 102 — three rows, in the surface that is now the only place chats are
-     listed. Past this floor `.navwrap` scrolls instead, which is the right thing
-     to give up: destinations are twelve fixed rows you can find by memory, and
-     the conversation list is not. */
-  & .rail-recents { flex: 1 1 auto; min-height: 248px; display: flex; flex-direction: column; margin: 20px 5px 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+     This section used to be a flex column with a 248px floor so the chat list
+     inside it could scroll against a definite height. That solved the right
+     problem — the twelve nav destinations were claiming 566px of a 980px rail
+     and leaving the list three rows — but it solved it by nesting a second
+     scroll region inside a scroll region. Measured on the demo tenant: a 216px
+     viewport over 262px of chats, so the only unattached chat was hidden behind
+     a 6px scrollbar that reads as a hairline against the rail. A list whose last
+     item is invisible and whose scrollability is invisible is a list you believe
+     you have finished reading.
+
+     So the section is plain flow now and the whole rail scrolls as one. The
+     height pressure is real and does not go away — it just resolves in
+     `.navwrap`, where the scrollbar is expected and one gesture reaches
+     everything. If the destinations start winning too much of the rail again,
+     the fix is collapsing the advanced nav groups, not a second scrollbar. */
+  & .rail-recents { margin: 20px 5px 4px; padding-top: 14px; border-top: 1px solid var(--line); }
   & .rail-recents-head { display: flex; align-items: center; justify-content: space-between; padding: 0 5px 6px; }
   & .rail-recents-head .rail-recents-title { margin: 0; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); font: 600 10.5px/1.4 var(--sans); letter-spacing: 0.11em; text-transform: uppercase; }
   & .rail-recents-head a { color: var(--muted); font-size: 10.5px; font-weight: 600; text-decoration: none; transition: color var(--dur-base) var(--ease); }
@@ -273,17 +278,16 @@
      siblings, so the only thing separating a folder from a loose row was 10px of
      indent — and the eye read five equal rows. Rows inside a block stay tight;
      the space goes BETWEEN blocks. */
-  & .rail-recents-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; display: grid; align-content: start; gap: 2px; padding-right: 2px; }
-  & .rail-recents-list::-webkit-scrollbar { width: 6px; }
-  & .rail-recents-list::-webkit-scrollbar-thumb { border-radius: var(--r-full); background: var(--line-2); }
-  & .rail-recents-list:hover::-webkit-scrollbar-thumb { background: var(--line-3); }
+  /* No `overflow` and no height of its own — see .rail-recents above. The
+     scrollbar rules that lived here went with it; `.navwrap` carries the only
+     one. This rule and its four scrollbar lines were also duplicated verbatim
+     twice over, one copy either side of the seam below: identical, so nothing
+     rendered differently, but the next person to change the list's spacing would
+     have edited one copy and been unable to see why nothing moved. */
+  & .rail-recents-list { display: grid; align-content: start; gap: 2px; }
   /* The seam between the folders and the unattached chats below them. Only the
      LAST folder pays it, so stacked folders stay one block. */
   & .rail-folder + :not(.rail-folder) { margin-top: 8px; }
-  & .rail-recents-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; display: grid; align-content: start; gap: 2px; padding-right: 2px; }
-  & .rail-recents-list::-webkit-scrollbar { width: 6px; }
-  & .rail-recents-list::-webkit-scrollbar-thumb { border-radius: var(--r-full); background: var(--line-2); }
-  & .rail-recents-list:hover::-webkit-scrollbar-thumb { background: var(--line-3); }
 
   /* Search — the field that makes this a sidebar rather than a shortcut list.
      Quieter than a nav row: it is a way through the list, not a destination. */
