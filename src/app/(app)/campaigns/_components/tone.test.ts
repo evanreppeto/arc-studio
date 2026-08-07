@@ -50,8 +50,8 @@ describe("deskTone", () => {
   it("cannot move a row between board sections", () => {
     for (const tone of ALL_TONES) {
       for (const pending of [0, 1, 6]) {
-        const before = needsOperatorAttention({ tone, pendingCount: pending });
-        const after = needsOperatorAttention({ tone: deskTone(tone, pending), pendingCount: pending });
+        const before = needsOperatorAttention({ tone, awaitingCount: pending });
+        const after = needsOperatorAttention({ tone: deskTone(tone, pending), awaitingCount: pending });
         expect(after, `${tone}/${pending}`).toBe(before);
       }
     }
@@ -88,23 +88,23 @@ describe("needsOperatorAttention", () => {
    * tab read 0 and returned an empty list.
    */
   it("counts a draft campaign that is holding undecided assets", () => {
-    expect(needsOperatorAttention({ tone: "draft", pendingCount: 5 })).toBe(true);
+    expect(needsOperatorAttention({ tone: "draft", awaitingCount: 5 })).toBe(true);
   });
 
   it("still counts a campaign put on the desk by its status alone", () => {
-    expect(needsOperatorAttention({ tone: "review", pendingCount: 0 })).toBe(true);
-    expect(needsOperatorAttention({ tone: "revise", pendingCount: 0 })).toBe(true);
+    expect(needsOperatorAttention({ tone: "review", awaitingCount: 0 })).toBe(true);
+    expect(needsOperatorAttention({ tone: "revise", awaitingCount: 0 })).toBe(true);
   });
 
   it("counts an approved campaign that still holds an undecided asset", () => {
     // The case the original design DID anticipate: approved by status, but one
     // deliverable never decided. It asks something of you either way.
-    expect(needsOperatorAttention({ tone: "approved", pendingCount: 1 })).toBe(true);
+    expect(needsOperatorAttention({ tone: "approved", awaitingCount: 1 })).toBe(true);
   });
 
   it("leaves alone the campaigns that want nothing", () => {
     for (const tone of ["live", "approved", "draft", "archived"] as CampaignTone[]) {
-      expect(needsOperatorAttention({ tone, pendingCount: 0 }), tone).toBe(false);
+      expect(needsOperatorAttention({ tone, awaitingCount: 0 }), tone).toBe(false);
     }
   });
 
@@ -112,9 +112,9 @@ describe("needsOperatorAttention", () => {
     // Whatever else changes, the tab may not start hiding a campaign that status
     // alone would have shown.
     for (const tone of ALL_TONES) {
-      for (const pendingCount of [0, 1, 9]) {
+      for (const awaitingCount of [0, 1, 9]) {
         if (needsOperatorApproval(tone)) {
-          expect(needsOperatorAttention({ tone, pendingCount }), `${tone}/${pendingCount}`).toBe(true);
+          expect(needsOperatorAttention({ tone, awaitingCount }), `${tone}/${awaitingCount}`).toBe(true);
         }
       }
     }
@@ -226,8 +226,18 @@ describe("one claim, one derivation", () => {
    * decision recorded, which is what the row-level "Approve N assets" labels add
    * up to. Two facts, said as two things — never one claim with two answers.
    */
-  it("counts undecided assets from data, not from the rendered label", () => {
-    expect(PAGE).toMatch(/rows\.reduce\(\(sum, r\) => sum \+ r\.pendingCount, 0\)/);
+  it("counts the operator's queue from data, not from the rendered label", () => {
+    expect(PAGE).toMatch(/rows\.reduce\(\(sum, r\) => sum \+ r\.awaitingCount, 0\)/);
+  });
+
+  it("sums what is waiting on the operator, not everything unresolved", () => {
+    // The sibling test below has always said a revision_requested asset is
+    // waiting on Arc, and the page's COPY has always honoured that. Its NUMBER
+    // did not: it summed `pendingCount`, the unresolved set, so the header read
+    // "Arc wrote 19 assets for you to check" beside a rail badge of 15 — the gap
+    // being exactly the four the operator had already sent back.
+    expect(PAGE).not.toMatch(/sum \+ r\.pendingCount/);
+    expect(PAGE).toMatch(/awaitingCount: item\.awaitingOperatorCount/);
   });
 
   it("keeps the campaign count and the asset count as separate claims", () => {

@@ -137,6 +137,9 @@ export type CampaignWorkspaceListItem = {
   status: string;
   lifecycle: CampaignLaunchState["lifecycle"];
   pendingCount: number;
+  /** Of those, the ones actually waiting on the operator — see the note on
+   *  `CampaignLaunchState.awaitingOperatorCount`. */
+  awaitingOperatorCount: number;
   /**
    * Approved / non-archived deliverable counts, straight off `buildLaunchState`
    * — the SAME numbers the campaign's own detail page renders in `.cstate`.
@@ -461,7 +464,13 @@ export type ArcMessage = {
 export type CampaignLaunchState = {
   requiredCount: number;
   approvedCount: number;
+  /** Unresolved pieces. Gates Ready and the Launch button — a piece sent back
+   *  for revision is unresolved, so it must keep the campaign out of Ready. */
   pendingCount: number;
+  /** Unresolved pieces that are waiting on the OPERATOR, which is a smaller set:
+   *  it excludes the ones they already sent back. Every "needs you" surface
+   *  reads this; nothing about launch readiness does. */
+  awaitingOperatorCount: number;
   deployedCount: number;
   ready: boolean;
   live: boolean;
@@ -1032,6 +1041,7 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
         status: statusLabel(campaign.status),
         lifecycle: launch.lifecycle,
         pendingCount: launch.pendingCount,
+        awaitingOperatorCount: launch.awaitingOperatorCount,
         approvedCount: launch.approvedCount,
         requiredCount: launch.requiredCount,
         pendingDeliverables: selectPendingDeliverables(campaignAssets),
@@ -1234,6 +1244,10 @@ function buildDemoListItem(campaign: DemoCampaign): CampaignWorkspaceListItem {
     status: campaign.status,
     lifecycle: campaign.lifecycle,
     pendingCount: pendingPieces.length,
+    // The demo fixture has no revision-requested pieces, so the operator queue
+    // and the unresolved set coincide here. Derived rather than hardcoded so a
+    // fixture that grows one still reports the two separately.
+    awaitingOperatorCount: pendingPieces.filter((piece) => !/revision_requested/i.test(piece.rawStatus)).length,
     approvedCount: approvedPieces.length,
     requiredCount: campaign.pieces.length,
     pendingDeliverables: pendingPieces.map((piece) => ({ assetId: piece.id, title: piece.title, kind: piece.kind })),
@@ -2676,6 +2690,29 @@ function assetDecisionState(asset: CampaignWorkspaceAsset): "approved" | "declin
   return "pending";
 }
 
+/**
+ * Is this deliverable waiting on the OPERATOR, as opposed to on Arc?
+ *
+ * `assetDecisionState` answers "is it resolved", which is the question the
+ * launch gate asks — a piece you sent back is not resolved, and must keep the
+ * campaign out of Ready. It is the wrong question for "how much is waiting on
+ * you", and using one count for both is why the rail read 15 beside a page
+ * reading 19: the gap was exactly the four `revision_requested` deliverables,
+ * which the operator has already decided on and Arc is reworking.
+ *
+ * `isWaitingOnOperator` in `@/lib/approvals/read-model` is the same rule, and
+ * has been the codified one since the approvals desk was built — its vocabulary
+ * literally reads "You asked for changes. Arc is reworking it." This aligns the
+ * campaigns side to it rather than adding a third opinion.
+ *
+ * `blocked` deliberately still counts: that one does need a person.
+ */
+function assetAwaitsOperator(asset: CampaignWorkspaceAsset): boolean {
+  if (assetDecisionState(asset) !== "pending") return false;
+  const status = (asset.approval?.status ?? asset.status ?? "").trim();
+  return !/revision_requested/i.test(status);
+}
+
 function collectPieceStatuses(assets: CampaignAssetRow[], approvals: ApprovalItemRow[]): string[] {
   const approvalByAssetId = new Map<string, ApprovalItemRow>();
   const standaloneApprovals: ApprovalItemRow[] = [];
@@ -2703,6 +2740,7 @@ export function buildLaunchState(assets: CampaignWorkspaceAsset[], launchLocked:
   const deployedCount = approved.filter((asset) => !asset.dispatchLocked).length;
   const decidedCount = considered.filter((asset) => assetDecisionState(asset) !== "pending").length;
   const pendingCount = requiredCount - decidedCount;
+  const awaitingOperatorCount = considered.filter(assetAwaitsOperator).length;
   const live = !launchLocked;
   const ready = !live && requiredCount > 0 && pendingCount === 0 && approvedCount > 0;
   const lifecycle: CampaignLaunchState["lifecycle"] = live
@@ -2713,7 +2751,7 @@ export function buildLaunchState(assets: CampaignWorkspaceAsset[], launchLocked:
         ? "In review"
         : "Ready";
 
-  return { requiredCount, approvedCount, pendingCount, deployedCount, ready, live, lifecycle };
+  return { requiredCount, approvedCount, pendingCount, awaitingOperatorCount, deployedCount, ready, live, lifecycle };
 }
 
 export type LinkedCampaignRecordKind = "company" | "contact" | "lead" | "property";
@@ -2832,6 +2870,7 @@ export async function getCampaignsForRecord(
         persona: humanize(campaign.persona),
         lifecycle: launch.lifecycle,
         pendingCount: launch.pendingCount,
+        awaitingOperatorCount: launch.awaitingOperatorCount,
         href: `/campaigns/${campaign.id}`,
       };
     });

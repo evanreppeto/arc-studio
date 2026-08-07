@@ -20,15 +20,29 @@ export type CampaignTone = "live" | "review" | "revise" | "approved" | "draft" |
 /** The two facts about a campaign that decide whether it is on the operator's desk. */
 export type CampaignDeskState = {
   tone: CampaignTone;
-  /** Deliverables on this campaign with no decision recorded. */
-  pendingCount: number;
+  /**
+   * Deliverables waiting on the OPERATOR.
+   *
+   * Was every deliverable with no decision recorded, which is a different and
+   * larger set: it included the ones the operator had already sent back for
+   * revision, so the board filed those under "Needs you" while the rail — which
+   * has always used the narrower rule — left them out. Same question, two
+   * answers, 19 against 15 on the live workspace.
+   */
+  awaitingCount: number;
 };
 
 /**
  * Does this campaign's own STATUS put it on a human's desk?
  *
- * `revise` counts: a revision-requested or blocked campaign is on the operator's
- * desk just as much as one pending approval.
+ * `revise` counts. Note the asymmetry with the DELIVERABLE rule next door:
+ * `assetAwaitsOperator` now excludes a deliverable sent back for revision,
+ * because `isWaitingOnOperator` (`@/lib/approvals/read-model`) has always said
+ * so — "You asked for changes. Arc is reworking it." The same argument probably
+ * applies to a campaign whose OWN status is revision-requested, but that is a
+ * different axis and no campaign in the live workspace is in that state, so
+ * there is nothing to measure the change against. Left as-is deliberately
+ * rather than changed on a hunch.
  *
  * Status alone is not the whole question — see `needsOperatorAttention`, which is
  * what the tab and its summary actually use. This stays exported because status
@@ -59,7 +73,7 @@ export function needsOperatorApproval(tone: CampaignTone): boolean {
  * every row beneath it already said.
  */
 export function needsOperatorAttention(row: CampaignDeskState): boolean {
-  return needsOperatorApproval(row.tone) || row.pendingCount > 0;
+  return needsOperatorApproval(row.tone) || row.awaitingCount > 0;
 }
 
 /**
