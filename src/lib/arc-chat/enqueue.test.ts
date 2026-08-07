@@ -181,3 +181,66 @@ describe("enqueueArcChatTask", () => {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
+
+/**
+ * REGRESSION GUARD: the operator's media-model pick has to survive the whole
+ * hop to the runner, RESOLVED — the runner cannot import the roster, so a bare
+ * id crossing this boundary would be a model reference nothing can interpret.
+ *
+ * This is the exact class of bug this feature was built to fix: a model choice
+ * that is recorded somewhere but never reaches the thing that generates.
+ */
+describe("enqueueArcChatTask media pick", () => {
+  function mock() {
+    return createSupabaseQueryMock({
+      agents: { data: { id: "agent-1" }, error: null },
+      agent_tasks: { data: { id: "task-1" }, error: null },
+      agent_task_inputs: { data: null, error: null },
+      arc_conversations: { data: { org_id: "org-1" }, error: null },
+      arc_messages: { data: PENDING_BUBBLE_ROW, error: null },
+    });
+  }
+
+  const base = {
+    conversationId: "conversation-1",
+    messageId: "message-1",
+    message: "Make a clip for the fall push.",
+    mentions: [],
+    operator: "Operator",
+  };
+
+  it("sends the pick to the runner already resolved", async () => {
+    notifyArcWebhook.mockClear();
+    await enqueueArcChatTask({ ...base, mediaModel: "higgsfield:veo3_1" }, mock());
+
+    expect(notifyArcWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mediaPick: { key: "higgsfield:veo3_1", engine: "higgsfield", id: "veo3_1", category: "video", label: "Google Veo 3.1" },
+      }),
+    );
+  });
+
+  it("records the pick on the task row, so a replay knows what was chosen", async () => {
+    const supabase = mock();
+    await enqueueArcChatTask({ ...base, mediaModel: "higgsfield:veo3_1" }, supabase);
+
+    const taskInsert = supabase.calls.find(
+      (call) => call[0] === "insert" && isRecord(call[1]) && call[1].task_type === "arc_chat_message",
+    );
+    expect(taskInsert?.[1]).toMatchObject({ metadata: { media_model: "higgsfield:veo3_1" } });
+  });
+
+  it("drops a model id that no longer names a real model, rather than relaying junk", async () => {
+    notifyArcWebhook.mockClear();
+    await enqueueArcChatTask({ ...base, mediaModel: "higgsfield:retired_model" }, mock());
+
+    expect(notifyArcWebhook).toHaveBeenCalledWith(expect.objectContaining({ mediaPick: null }));
+  });
+
+  it("sends no pick at all when the operator left it on Auto", async () => {
+    notifyArcWebhook.mockClear();
+    await enqueueArcChatTask({ ...base, mediaModel: "auto" }, mock());
+
+    expect(notifyArcWebhook).toHaveBeenCalledWith(expect.objectContaining({ mediaPick: null }));
+  });
+});

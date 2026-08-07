@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import {
+  findGenerationModel,
   parseArcMode,
   parseArcRoute,
   parseMentions,
@@ -62,6 +63,7 @@ import { instructionForWorkspaceSkill, parseWorkspaceArcSkills, type WorkspaceAr
 import { ARC_CUSTOM_SKILLS_SETTING, getWorkspaceArcSkills, previewGithubArcSkill } from "@/lib/arc-skills/github";
 import { getAllWorkspaceArcSkills } from "@/lib/arc-skills/workspace-skills";
 import { getInstalledArcSkillKeys, ARC_INSTALLED_SKILLS_SETTING } from "@/lib/arc-skills/installation";
+import { inferArcSkill } from "@/lib/arc-skills/routing";
 import { generateExemplarSkill } from "@/lib/exemplar-skills/generate";
 import {
   deleteGeneratedSkill,
@@ -223,6 +225,9 @@ export async function sendArcMessageAction(input: {
   attachments?: ArcAttachment[];
   mode?: ArcMode;
   route?: ArcRoute;
+  /** The operator's media-model pick for this turn (composer picker),
+   *  engine-qualified. Omit for Auto. Validated here against the live roster. */
+  mediaModel?: string | null;
   command?: string | null;
   contextScopes?: string[];
 }): Promise<SendArcMessageResult> {
@@ -254,6 +259,9 @@ export async function sendArcMessageAction(input: {
     const attachments = parseArcAttachmentsJson(JSON.stringify(input.attachments ?? []));
     const mode = parseArcMode(input.mode);
     const route = parseArcRoute(input.route);
+    // A client-supplied model id is never trusted onto the wire: it has to name a
+    // real model on a real engine, or the turn falls back to Auto.
+    const mediaModel = findGenerationModel(input.mediaModel)?.key ?? null;
     const command = typeof input.command === "string" ? input.command.trim().replace(/^\//, "") || null : null;
     // Only resolved when a slash command is in play — a generated skill's
     // publisher is the workspace's own name.
@@ -272,6 +280,18 @@ export async function sendArcMessageAction(input: {
       : null;
     const skillId = workspaceSkill?.id ?? skillIdForArcCommand(command);
     const runnerMessage = workspaceSkill ? instructionForWorkspaceSkill(workspaceSkill, body) : body;
+    /**
+     * Shadow mode: record what skill auto-selection *would* have chosen on the
+     * turns it would serve — the ones with no explicit command, which is every
+     * turn on prod today.
+     *
+     * Deliberately applied to nothing. `skillId` and `runnerMessage` above are
+     * untouched, so this cannot change how a turn runs; it only accumulates
+     * real-traffic evidence for the thresholds in `routing.ts`, which were
+     * tuned against a historical corpus that is mostly operator testing. Wiring
+     * it for real is the next step, and needs this data first.
+     */
+    const inferredSkill = skillId ? null : inferArcSkill({ body, mode });
     const contextScopes = (input.contextScopes ?? []).filter((scope) => CONTEXT_SCOPES.has(scope));
     const selectedCampaignId = mentions.find((mention) => mention.type === "campaign")?.id ?? null;
 
@@ -307,8 +327,10 @@ export async function sendArcMessageAction(input: {
       attachments,
       mode,
       route,
+      mediaModel,
       command,
       skillId,
+      inferredSkill,
       contextScopes,
     });
     const [agentTaskId] = await Promise.all([
@@ -323,6 +345,7 @@ export async function sendArcMessageAction(input: {
         operator,
         mode,
         route,
+        mediaModel,
         command,
         skillId,
         contextScopes,
@@ -333,7 +356,12 @@ export async function sendArcMessageAction(input: {
     logArcChatStatus("queued", {
       agentTaskId,
       conversationId,
-      detail: `accepted_ms=${Date.now() - acceptedAt} mode=${mode} route=${route}`,
+      // `shadow_skill` rides the same line as mode/route so a single
+      // `gcloud logging read` shows what routing would have done per turn,
+      // without waiting on a DB query.
+      detail:
+        `accepted_ms=${Date.now() - acceptedAt} mode=${mode} route=${route}` +
+        ` shadow_skill=${inferredSkill ? `${inferredSkill.id}:${inferredSkill.confidence}:m${inferredSkill.margin}` : "none"}`,
     });
 
     revalidatePath("/arc");
@@ -372,6 +400,7 @@ async function reEnqueueTurn(operatorMessage: ArcMessage, body: string): Promise
     operator: await getOperatorActor(),
     mode,
     route: operatorMessage.route,
+    mediaModel: operatorMessage.mediaModel ?? null,
     command: operatorMessage.command,
     skillId: operatorMessage.skillId,
     contextScopes: operatorMessage.contextScopes,

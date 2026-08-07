@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { KpiStrip } from "../../../../_components/kpi-strip";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { humanizePersonaLabel } from "@/domain";
@@ -9,6 +10,7 @@ import { type CrmRecordData, type CrmRecordGraphNode, type CrmRecordRelationship
 import { type NoteEntry, type TaskEntry, type TimelineEntry } from "@/lib/interactions/read-model";
 
 import { addRecordNote, addRecordTask, completeRecordTask, reopenRecordTask, setRecordNotePinned, updateCrmRecord } from "../actions";
+import { archiveCrmRecordsAction } from "../../../actions";
 import { EditRecordModal } from "./edit-record-modal";
 import type { CustomFieldEntry } from "@/lib/custom-fields/values";
 
@@ -222,6 +224,29 @@ export function RecordView({
   const [dispPersona, setDispPersona] = useState(persona);
   const [dispStatus, setDispStatus] = useState(record.lifecycleStatus);
 
+  const [archiving, setArchiving] = useState(false);
+  const router = useRouter();
+
+  /**
+   * Archive this record and leave — the page you are on is about to describe a
+   * record that is in no list. Staying would show a live-looking record with no
+   * hint that it has been removed.
+   */
+  const archiveThisRecord = async () => {
+    const name = record.name || "this record";
+    if (!window.confirm(`Archive ${name}?\n\nIt leaves your lists and counts. Nothing is deleted — you can restore it from Archived.`)) {
+      return;
+    }
+    setArchiving(true);
+    const res = await archiveCrmRecordsAction(record.key, [record.id]);
+    if (!res.ok) {
+      setArchiving(false);
+      window.alert(res.error);
+      return;
+    }
+    router.push("/crm");
+  };
+
   const handleEdit = async (value: { persona?: string; status?: string }): Promise<{ ok: boolean; error?: string }> => {
     const res = await updateCrmRecord(record.key, record.id, value);
     if (res.ok) {
@@ -381,6 +406,19 @@ export function RecordView({
               {svg('<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 5l4 4"/>')}
               Edit
             </button>
+            {/* The record's own delete. Confirmed because it is reached from the
+                record itself, where there is no selection to re-check — but it
+                is reversible, so a confirm is enough and a typed name would be
+                theatre. */}
+            <button
+              type="button"
+              className="gbtn gbtn-danger"
+              disabled={archiving}
+              onClick={archiveThisRecord}
+            >
+              {svg('<path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1z"/><path d="M3 4h18v4H3z"/><path d="M10 12h4"/>')}
+              {archiving ? "Archiving…" : "Archive"}
+            </button>
             <a className="gbtn gold" href="/arc">
               {svg(ARC_IC)}
               Draft outreach
@@ -402,13 +440,15 @@ export function RecordView({
         )}
       </div>
 
-      <div className="rectabs">
+      {/* Was a row of clickable divs at tabIndex -1 — a record's tabs could not
+          be reached from a keyboard. */}
+      <div className="rectabs" role="tablist" aria-label="Record sections">
         {TABS.map((t) => (
-          <div key={t[0]} className={`rectab${tab === t[0] ? " on" : ""}`} onClick={() => setTab(t[0])}>
+          <button type="button" role="tab" key={t[0]} className={`rectab${tab === t[0] ? " on" : ""}`} aria-selected={tab === t[0]} onClick={() => setTab(t[0])}>
             {svg(t[2])}
             {t[1]}
             {tabCount[t[0]] > 0 && <span className="cnt">{tabCount[t[0]]}</span>}
-          </div>
+          </button>
         ))}
       </div>
 
@@ -483,11 +523,11 @@ export function RecordView({
 
           {tab === "activity" && (
             <div>
-              <div className="tabsmini">
+              <div className="tabsmini" role="tablist" aria-label="Activity view">
                 {(["timeline", "tasks", "notes"] as const).map((m) => (
-                  <span key={m} className={`tabmini${actView === m ? " on" : ""}`} onClick={() => setActView(m)}>
+                  <button type="button" role="tab" key={m} className={`tabmini${actView === m ? " on" : ""}`} aria-selected={actView === m} onClick={() => setActView(m)}>
                     {m.charAt(0).toUpperCase() + m.slice(1)}
-                  </span>
+                  </button>
                 ))}
               </div>
 

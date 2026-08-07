@@ -141,7 +141,11 @@
      with `overflow: hidden` that clips the bottom strip with no way to reach it
      — the same failure the <main> passthrough rule above fixes, phone-only. The
      100vh line stays as the fallback for anything without dvh support. */
-  & .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
+  /* 252px, not 236. The rail carries a workspace name, 13 destinations and now
+     campaign folder names, and at 236 the first and last of those ellipsized on
+     the dogfood tenant before they had said anything useful ("Big Shoulders
+     Resto…"). The 16px buys back a word. */
+  & .app { display: grid; grid-template-columns: 252px minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
 
   /* Embedded in the mockup gallery's crossfade iframe: the host already renders
      the sidebar, so drop ours (otherwise the two rails stack — the double
@@ -202,11 +206,23 @@
      scroll. The `min-width: 0` below is the actual fix; this is the backstop
      that stops the next long string doing it again. */
   & .navwrap { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 4px; }
+  /* Destinations get room to be separate things. Rows were 32px tall, flush
+     against each other, under group headers 13px away — thirteen of them in a
+     column read as one striped block rather than a list you scan. The rail had
+     ~600px of unused height below the chats to pay for this. */
+  & .nav-primary, & .nav-group { display: grid; gap: 2px; }
   & .nav-primary { padding-bottom: 2px; }
-  & .grp { font-size: 10.5px; font-weight: 600; letter-spacing: 0.11em; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); padding: 13px 10px 6px; }
-  & .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r-md); color: var(--text-2); font-size: 13px; font-weight: 500; position: relative; cursor: pointer; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
-  & .nav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; opacity: 0.85; }
-  & .nav .nav-image-icon { width: 16px; height: 16px; flex: 0 0 16px; color: currentColor; background: currentColor; opacity: 0.85; -webkit-mask: var(--nav-icon) center / contain no-repeat; mask: var(--nav-icon) center / contain no-repeat; }
+  /* Space ABOVE a group header is what separates two groups; the header's own
+     bottom gap stays tight so it reads as attached to the rows it labels. */
+  & .grp { font-size: 10.5px; font-weight: 600; letter-spacing: 0.11em; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); padding: 16px 10px 6px; }
+  /* 36px on a 2px rhythm, up from 32px flush. Deliberately short of the 44px
+     the mobile drawer uses: thirteen destinations at 44 would put the chat list
+     two screens down on a 900px-tall laptop, and the rail's job is to hold both.
+     What actually separates these rows is the gap and the 17px icons, not raw
+     height — measured cost of the whole change is +93px of rail. */
+  & .nav { display: flex; align-items: center; gap: 11px; min-height: 36px; padding: 7px 10px; border-radius: var(--r-md); color: var(--text-2); font-size: 13.5px; font-weight: 500; position: relative; cursor: pointer; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+  & .nav svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.7; opacity: 0.85; }
+  & .nav .nav-image-icon { width: 17px; height: 17px; flex: 0 0 17px; color: currentColor; background: currentColor; opacity: 0.85; -webkit-mask: var(--nav-icon) center / contain no-repeat; mask: var(--nav-icon) center / contain no-repeat; }
   & .nav:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
   & .nav.on { color: var(--text); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); }
   & .nav.on svg { color: var(--accent); opacity: 1; }
@@ -230,10 +246,13 @@
   & .rail-recents-head a.rail-recents-new:hover { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
   /* Blocks, not one undifferentiated column. At a 1px rhythm a campaign folder's
      last child and the next ungrouped chat sat the same distance apart as two
-     siblings, so the only thing separating a group from a loose row was 10px of
+     siblings, so the only thing separating a folder from a loose row was 10px of
      indent — and the eye read five equal rows. Rows inside a block stay tight;
-     the space goes BETWEEN blocks (see .rail-recent-group's margin). */
+     the space goes BETWEEN blocks. */
   & .rail-recents-list { display: grid; gap: 2px; }
+  /* The seam between the folders and the unattached chats below them. Only the
+     LAST folder pays it, so three stacked folders stay one block. */
+  & .rail-folder + :not(.rail-folder) { margin-top: 8px; }
   & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: var(--r-md); color: var(--text-2); text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .rail-recent:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
   /* The chat you're reading, marked the same way the rail marks the page you're
@@ -256,11 +275,6 @@
   /* The row is a link plus an options button, so the wrapper positions the menu
      without the button living inside the anchor. */
   & .rail-recent-wrap { position: relative; display: block; }
-  & .rail-recent-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  /* `min-width: 0` so it can actually ellipsize: as a flex item its default
-     `min-width: auto` floors it at the text's intrinsic width, and the
-     overflow/text-overflow pair below then never gets a chance to fire. */
-  & .rail-recent-campaign { min-width: 0; color: var(--muted); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   & .rail-recent-more { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: var(--r-sm); background: var(--panel); color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
   & .rail-recent-wrap:hover .rail-recent-more, & .rail-recent-more[aria-expanded="true"] { display: inline-flex; }
   & .rail-recent-more:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
@@ -268,26 +282,42 @@
   & .rail-recent-menu button { width: 100%; padding: 6px 8px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
   & .rail-recent-menu button:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   & .rail-recent-menu button.danger:hover { color: var(--red-text); background: var(--red-soft); }
-  /* A campaign that owns two or more chats. Collapsible, open by default —
-     closing it is the operator tidying, not a state we choose for them. */
-  & .rail-recent-group { display: grid; gap: 1px; }
-  & .rail-recent-group > summary { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 5px; border-radius: var(--r-sm); color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; list-style: none; }
-  & .rail-recent-group > summary::-webkit-details-marker { display: none; }
-  /* A folder is a control, so the triangle reads as one: full-strength accent-ish
-     text against the label's muted grey, rather than one more grey glyph. */
-  & .rail-recent-group > summary::before { content: "\25B8"; font-size: 8px; color: color-mix(in srgb, var(--accent) 55%, var(--muted)); transition: transform var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
-  & .rail-recent-group[open] > summary::before { transform: rotate(90deg); }
-  & .rail-recent-group > summary:hover { color: var(--text-2); background: rgba(255, 255, 255, 0.03); }
-  & .rail-recent-group > summary:hover::before { color: var(--accent); }
-  /* The folder's own name, held a step brighter than a row's campaign caption so
-     "this is a heading" and "this row belongs to that campaign" are not the same
-     grey at the same size. */
-  & .rail-recent-group-name { min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--muted) 55%, var(--text-2)); text-overflow: ellipsis; white-space: nowrap; }
-  & .rail-recent-group .rail-recent-count { margin-left: auto; font: 500 9px/1 var(--mono); }
+  /* A campaign folder. Standing structure, not a grouping that has to earn its
+     place — so it renders at a chat count of one, and the head reads as a
+     control (a real button, a caret that turns) rather than a caption. */
+  /* `min-width: 0` at EVERY level, not just on the label. A grid item defaults
+     to `min-width: auto`, which floors it at its content's intrinsic width — so
+     the folder and its head both grew to fit the whole campaign name and the
+     `text-overflow: ellipsis` on the label never got a chance to fire. Measured
+     with prod's own longest name ("Chicago Flood Response — Emergency Homeowner
+     (Aug 2026)"): a 386px head inside a 252px rail, 175px of it clipped, taking
+     the chat count with it. Same failure as the #978 sideways-scroll bug, one
+     nesting level deeper; `.navwrap`'s `overflow-x: hidden` hid it as clipping
+     rather than scrolling, which is why demo names never showed it. */
+  & .rail-folder { min-width: 0; display: grid; gap: 2px; }
+  /* Sentence case at row size, not an uppercase microlabel: this is a name the
+     operator gave a campaign, and setting it like a section header made two
+     kinds of heading — "CAMPAIGNS" and a campaign — look like the same thing.
+     It also cost the ~11% tracking, which a 252px rail cannot spare on a string
+     as long as "Chicago Flood Response — Emergency Homeowner (Aug 2026)". */
+  & .rail-folder-head { width: 100%; min-width: 0; display: flex; align-items: center; gap: 7px; min-height: 30px; padding: 5px 5px 5px 3px; border: 0; border-radius: var(--r-md); background: none; color: color-mix(in srgb, var(--text-2) 88%, var(--muted)); font: inherit; font-size: 11.5px; font-weight: 600; text-align: left; cursor: pointer; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+  & .rail-folder-head:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
+  & .rail-folder-caret { flex: none; width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); transition: transform var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+  & .rail-folder[data-open="true"] .rail-folder-caret { transform: rotate(90deg); }
+  & .rail-folder-head:hover .rail-folder-caret { color: var(--accent); }
+  & .rail-folder-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .rail-folder-count { flex: none; color: var(--muted); font: 500 9.5px/1 var(--mono); }
+  /* Arc is running inside this campaign — the reason a collapsed folder is still
+     worth glancing at. One dot, and only on a folder that is actually closed
+     over live work; an open folder shows the running row itself. */
+  & .rail-folder-dot { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
   /* The membership rule. A hairline down the left of the children says which
      rows the folder owns without boxing them in — the indent alone was doing
      that job and losing. */
-  & .rail-recent-group-items { display: grid; gap: 1px; margin-left: 9px; padding-left: 8px; border-left: 1px solid var(--line-2); }
+  & .rail-folder-body { min-width: 0; display: grid; gap: 2px; margin-left: 9px; padding-left: 8px; border-left: 1px solid var(--line-2); }
+  & .rail-folder-body .rail-recent-wrap { min-width: 0; }
+  & .rail-folder-more { justify-self: start; padding: 4px 5px; border: 0; border-radius: var(--r-sm); background: none; color: var(--muted); font: inherit; font-size: 10.5px; cursor: pointer; transition: color var(--dur-base) var(--ease); }
+  & .rail-folder-more:hover { color: var(--accent); }
   & .rail-recents-empty { margin: 0; padding: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; }
   & .nav-more { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding: 7px 10px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; transition: color var(--dur-base) var(--ease); }
   & .nav-more:hover { color: var(--text-2); }
@@ -584,6 +614,7 @@
     & .menubtn { display: inline-grid; width: 44px; height: 44px; }
     & .nav,
     & .rail-recent,
+    & .rail-folder-head,
     & .rail-recents-head a,
     & .railhelp,
     & .user,
@@ -816,6 +847,40 @@
 .arc-app .arc-grid .gbtn:hover { border-color: var(--accent-border); color: var(--text); }
 .arc-app .arc-grid .gbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .arc-app .arc-grid .gbtn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
+/* Archive on a record page. Muted until hovered: it sits beside Edit in the
+   header of every record, and a permanently red control there would shout on
+   every visit at something that is reversible in one click. */
+.arc-app .arc-grid .gbtn.gbtn-danger:hover { border-color: rgba(204, 106, 106, 0.5); color: var(--red-text); }
+.arc-app .arc-grid .gbtn.gbtn-danger:disabled { opacity: 0.6; cursor: default; }
+
+/* ============================================================
+   `.arc-fieldkit` — the field editor's primitives, portable.
+
+   The custom-field editor (Field / FieldForm) is shared between Settings and
+   the CRM board's Fields modal. Its `.btn` / `.inp` / `.sel` / `.cxm-*` styles
+   lived only in settings.css, which `settings/page.tsx` imports — so on /crm
+   they were not loaded AT ALL and `.btn` fell through to `.arc-app .btn`, the
+   app's gold primary. Edit and Remove rendered as filled gold buttons, with a
+   destructive action the loudest thing in the dialog.
+
+   Here rather than in settings.css because this sheet is loaded app-wide, and
+   at three levels so it beats `.arc-app .btn` on specificity rather than on
+   file order. Deliberately NOT `.arc-settings`: that root is a 230px sidebar
+   grid and cannot be borrowed as a style scope.
+   ============================================================ */
+.arc-app .arc-fieldkit .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: none; color: var(--text-2); font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; box-shadow: none; transition: var(--dur-base); white-space: nowrap; }
+.arc-app .arc-fieldkit .btn:hover { border-color: var(--accent-border); color: var(--text); transform: none; }
+.arc-app .arc-fieldkit .btn.sm { height: 28px; padding: 0 11px; font-size: 11.5px; }
+.arc-app .arc-fieldkit .btn.gold { border: 1px solid #b8974a; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); color: #201808; }
+.arc-app .arc-fieldkit .btn.gold:hover { filter: brightness(1.04); }
+.arc-app .arc-fieldkit .btn:disabled { opacity: 0.55; cursor: default; }
+.arc-app .arc-fieldkit .inp, .arc-app .arc-fieldkit .sel { background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-md); color: var(--text); font: inherit; font-size: 12.5px; padding: 8px 11px; outline: none; }
+.arc-app .arc-fieldkit .inp:focus, .arc-app .arc-fieldkit .sel:focus { border-color: var(--accent-border); }
+.arc-app .arc-fieldkit .inp { min-width: 230px; max-width: 100%; }
+.arc-app .arc-fieldkit .sel { cursor: pointer; min-width: 150px; }
+.arc-app .arc-fieldkit textarea.inp { display: block; width: 100%; min-width: 0; resize: vertical; line-height: 1.5; }
+.arc-app .arc-fieldkit .cxm-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.arc-app .arc-fieldkit .cxm-hint { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin: 0; }
 .arc-app .arc-grid .gbtn.gold:hover { transform: translateY(-1px); filter: brightness(1.04); }
 
 .arc-app .arc-grid .subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line-2); flex-wrap: wrap; }
@@ -2047,6 +2112,12 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
    a shipped feature was unbuilt. The capability exists; it just belongs to the
    People tab (BSR-688). */
 .arc-app .selbar .sa.is-inapplicable { opacity: 0.45; cursor: default; }
+/* Archive: removes records from every list, but nothing is destroyed and it
+   restores in one click. So it is tinted, not red — DESIGN.md §4.2 keeps full
+   `--priority` for the irreversible, and spending it here would leave nothing
+   louder to say when something really cannot be undone. */
+.arc-app .selbar .sa.sa-danger { color: var(--red-text); }
+.arc-app .selbar .sa.sa-danger:hover { background: var(--red-soft); color: var(--red-text); }
 .arc-app .selbar .sa-wrap { position: relative; display: inline-flex; }
 .arc-app .selbar .sa-backdrop { position: fixed; inset: 0; z-index: 40; background: none; border: none; cursor: default; }
 .arc-app .selbar .sa-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; min-width: 200px; max-height: 300px; overflow-y: auto; padding: 5px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; gap: 1px; }

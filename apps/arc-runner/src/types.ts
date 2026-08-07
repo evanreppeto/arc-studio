@@ -38,6 +38,11 @@ export type MarkChatMessagePayload = ArcSkillSelection & WakeTenantIdentity & {
   mentions: MarkMention[];
   operator: string;
   route: "fast" | "standard";
+  /** The media model the operator picked for this turn, resolved app-side, or
+   *  null for Auto. The runner never interprets a model reference: it relays
+   *  `key` back to the media endpoints and passes `id` to Higgsfield's required
+   *  `model` argument. */
+  mediaPick?: ArcMediaPick | null;
   mode: "ask" | "act" | "draft";
   assistantTone?: string;
   assistantResponseStyle?: string;
@@ -46,6 +51,15 @@ export type MarkChatMessagePayload = ArcSkillSelection & WakeTenantIdentity & {
   attachments?: ArcAttachment[];
   /** Bounded prior turns (oldest → newest), excluding the current message. */
   history?: ArcHistoryTurn[];
+};
+
+/** Mirrors the app's ArcMediaPick (src/lib/arc-chat/notify.ts). */
+export type ArcMediaPick = {
+  key: string;
+  engine: string;
+  id: string;
+  category: string;
+  label: string;
 };
 
 export type MarkPingPayload = { type: "ping"; workspaceId?: string; nonce?: string; at?: string };

@@ -55,7 +55,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const userName = resolvedName || (isDemoDataEnabled() ? "Maya Ellis" : "");
   // Rail attention counts from the shared summary — same source the screens
   // render, so a badge never disagrees with the page it points at.
-  const navBadges = await getNavBadges(ctx.orgId).catch(() => ({}));
+  const navBadges = await getNavBadges(ctx.orgId, "Arc", ctx.workspaceId).catch(() => ({}));
   // Trial position + quota pressure resolve to ONE console-wide notice, so the
   // operator never gets two stacked strips. Never throws — a billing read must
   // not be able to take down every signed-in screen.

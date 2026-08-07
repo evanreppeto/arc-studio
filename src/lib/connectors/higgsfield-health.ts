@@ -1,50 +1,23 @@
-const MCP_URL = "https://mcp.higgsfield.ai/mcp";
+import { HIGGSFIELD_MCP_URL } from "./higgsfield-mcp";
+import { callMcpTool } from "./mcp-client";
 
-function parseMcpBody(text: string, contentType: string): unknown {
-  if (contentType.includes("text/event-stream")) {
-    const lines = text.split(/\n/).filter((l) => l.startsWith("data:"));
-    const parsed = lines.map((l) => {
-      try {
-        return JSON.parse(l.slice(5).trim());
-      } catch {
-        return null;
-      }
-    });
-    return parsed;
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-/** Validate a Higgsfield access token by calling the zero-credit `balance` tool. */
+/**
+ * Validate a Higgsfield access token by calling the zero-credit `balance` tool.
+ *
+ * `balance` is chosen precisely because it costs nothing: a health check that
+ * spends the customer's credits is a health check nobody dares run.
+ *
+ * The handshake used to live here, hand-rolled. It now goes through the shared
+ * MCP client — the same one that executes generations — so a protocol change
+ * cannot leave the health check passing while real calls fail.
+ */
 export async function checkHiggsfieldToken(accessToken: string): Promise<{ ok: boolean; error?: string }> {
-  const headers = {
-    Authorization: `Bearer ${accessToken}`,
-    "Content-Type": "application/json",
-    Accept: "application/json, text/event-stream",
-  };
-  try {
-    const init = await fetch(MCP_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "arc-health", version: "0" } } }),
-    });
-    if (init.status === 401 || init.status === 403) return { ok: false, error: `auth rejected (${init.status})` };
-    const sid = init.headers.get("mcp-session-id");
-    const callHeaders = sid ? { ...headers, "Mcp-Session-Id": sid } : headers;
-    const call = await fetch(MCP_URL, {
-      method: "POST",
-      headers: callHeaders,
-      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "balance", arguments: {} } }),
-    });
-    if (call.status !== 200) return { ok: false, error: `balance call failed (${call.status})` };
-    const body = parseMcpBody(await call.text(), call.headers.get("content-type") ?? "");
-    const ok = JSON.stringify(body).includes("subscription_plan_type") || JSON.stringify(body).includes("credits");
-    return ok ? { ok: true } : { ok: false, error: "unexpected balance response" };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "health check error" };
-  }
+  const res = await callMcpTool({ url: HIGGSFIELD_MCP_URL, token: accessToken, name: "balance", args: {}, timeoutMs: 15_000 });
+  if (!res.ok) return { ok: false, error: res.error };
+
+  // Assert on the SHAPE of a balance, not merely on a 200: an authorized call
+  // that answers with something else is not a working connector.
+  const text = JSON.stringify(res.result ?? "");
+  const looksLikeBalance = text.includes("subscription_plan_type") || text.includes("credits");
+  return looksLikeBalance ? { ok: true } : { ok: false, error: "unexpected balance response" };
 }

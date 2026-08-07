@@ -411,7 +411,7 @@ export function AppShell({
               </div>
             ))}
             {navGroups.slice(1).map((g) => (
-              <div key={g.group}>
+              <div key={g.group} className="nav-group">
                 <div className="grp">{g.group.toUpperCase()}</div>
                 {g.items.map((it) => {
                   const active = pathname === it.href || pathname.startsWith(`${it.href}/`);

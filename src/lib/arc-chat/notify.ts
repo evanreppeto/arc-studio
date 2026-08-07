@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-import { type ArcMention } from "@/domain";
+import { type ArcMention, type MediaPick } from "@/domain";
 import { type ApprovalStrictness, type AssistantResponseStyle, type AssistantTone } from "@/lib/settings/store";
 
 import { resolveAgentConnection } from "@/lib/agent/connection";
@@ -30,6 +30,17 @@ export type ArcNotifyPayload = {
    * keys — this is only advisory metadata for Arc's own router.
    */
   route: "fast" | "standard";
+  /**
+   * The media model the operator picked for THIS turn, already resolved against
+   * the live roster, or null for Auto. Sent resolved (not as a bare id) so the
+   * runner never has to parse or interpret a model reference — it only relays
+   * `key` back to the media endpoints, which validate it again before use.
+   *
+   * Unlike `route`, this is not merely advisory: for Gemini it is pinned as a
+   * real provider argument, and for Higgsfield it is the value of the REQUIRED
+   * `model` argument on its generate_* tools.
+   */
+  mediaPick?: MediaPick | null;
   /** Operator stance (ask/act/draft); advisory for Arc's worker. */
   mode: "ask" | "act" | "draft";
   /** Operator-selected behavior hints from Settings -> Agent behavior. */

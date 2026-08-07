@@ -11,7 +11,20 @@ import {
   type FieldDefinitionInput,
 } from "@/domain";
 
-import { getSupabaseAdminClient } from "@/lib/supabase/server";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+
+import { allDemoFieldDefinitions, demoFieldDefinitions } from "./demo";
+
+/**
+ * The offline preview has no database, so every read below would return nothing
+ * and the whole custom-fields surface would render its empty state. Gated on
+ * Supabase being ABSENT, never on the flag alone — a configured workspace must
+ * always see its own fields, empty or not, even with ARC_DEMO_DATA set.
+ */
+function serveDemoFields(client?: SupabaseClient): boolean {
+  return !client && !isSupabaseAdminConfigured() && isDemoDataEnabled();
+}
 
 // Untyped SupabaseClient: `custom_field_definitions` isn't in the generated
 // database.types yet (that regenerates against a DB with the migration applied),
@@ -50,6 +63,11 @@ export async function listFieldDefinitions(
   objectKey: CustomFieldObjectKey,
   opts: { includeArchived?: boolean; client?: SupabaseClient } = {},
 ): Promise<CustomFieldDefinition[]> {
+  if (serveDemoFields(opts.client)) {
+    const demo = demoFieldDefinitions(objectKey);
+    return opts.includeArchived ? demo : demo.filter((d) => d.active);
+  }
+
   const client = opts.client ?? getSupabaseAdminClient();
   let query = client
     .from(TABLE)
@@ -70,6 +88,11 @@ export async function listAllFieldDefinitions(
   orgId: string,
   opts: { includeArchived?: boolean; client?: SupabaseClient } = {},
 ): Promise<CustomFieldDefinition[]> {
+  if (serveDemoFields(opts.client)) {
+    const demo = allDemoFieldDefinitions();
+    return opts.includeArchived ? demo : demo.filter((d) => d.active);
+  }
+
   const client = opts.client ?? getSupabaseAdminClient();
   let query = client
     .from(TABLE)

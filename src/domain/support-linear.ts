@@ -25,6 +25,21 @@ import {
 export const SUPPORT_FEEDBACK_LABEL = "user-feedback";
 
 /**
+ * Which product the report came from.
+ *
+ * One Linear team holds tickets for Arc Studio *and* the BSR Manager App, and
+ * both file in-app feedback into it. Without this, a single Slack feed can't
+ * tell the two apart — which is exactly what it did. It's a member of the `app`
+ * label group, so Linear enforces one app per ticket, and the per-app Slack
+ * views filter on it.
+ *
+ * Deliberately NOT derived from `LINEAR_PROJECT_ID`: an env var that isn't set
+ * is the failure this replaces. A ticket that reaches Linear at all carries its
+ * origin, whatever the deploy is configured with.
+ */
+export const SUPPORT_APP_LABEL = "Arc Studio";
+
+/**
  * The second label, saying what KIND of feedback it is. `other` deliberately
  * maps to nothing: a made-up "Other" label carries no triage information, and
  * the marker label already says where it came from.
@@ -46,14 +61,15 @@ const IMPACT_PRIORITY: Record<SupportImpact, number> = {
 
 /** Every label name this module can ever ask for — what the id lookup prefetches. */
 export function supportLinearLabelNames(): string[] {
-  const names = new Set<string>([SUPPORT_FEEDBACK_LABEL]);
+  const names = new Set<string>([SUPPORT_FEEDBACK_LABEL, SUPPORT_APP_LABEL]);
   for (const name of Object.values(CATEGORY_LABEL)) if (name) names.add(name);
   return [...names];
 }
 
 export function supportLinearLabels(category: SupportCategory): string[] {
   const specific = CATEGORY_LABEL[category];
-  return specific ? [SUPPORT_FEEDBACK_LABEL, specific] : [SUPPORT_FEEDBACK_LABEL];
+  const base = [SUPPORT_FEEDBACK_LABEL, SUPPORT_APP_LABEL];
+  return specific ? [...base, specific] : base;
 }
 
 export function supportLinearPriority(impact: SupportImpact): number {

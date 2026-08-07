@@ -1879,6 +1879,16 @@
   color: var(--accent-contrast);
   font-weight: 600;
 }
+/* Media model — the engine Arc generates WITH, beside the model it thinks with.
+   Deliberately quieter than the reasoning pill: on Auto it reads as muted chrome,
+   and only warms once the operator has actually pinned a model, so a pinned
+   engine is visible at a glance and an unpinned one doesn't compete. */
+.arc-media-button { padding-left: 7px; }
+.arc-media-button > svg:first-child { color: var(--muted); }
+.arc-media-button[data-auto="false"] > svg:first-child,
+.arc-media-button[data-auto="false"] span { color: var(--accent-contrast); }
+.arc-media-button[data-auto="false"] { border-color: var(--accent-border); }
+
 .arc-auto-mark { color: currentColor; overflow: visible; }
 .arc-auto-mark path,
 .arc-auto-mark circle {
@@ -3087,6 +3097,11 @@ a.arc-work-finding:hover > svg { color: var(--accent); }
   .arc-model-button { width: 44px; padding: 0; }
   .arc-model-button span,
   .arc-model-button > svg:last-child { display: none; }
+  /* Same collapse as the reasoning pill — the toolbar cannot hold two labelled
+     pills at this width, and the icon still carries the pinned/auto state. */
+  .arc-media-button { width: 44px; padding: 0; }
+  .arc-media-button span,
+  .arc-media-button > svg:last-child { display: none; }
   .arc-composer-add,
   .arc-composer-pill,
   .arc-context-meter { --arc-context-ring: 21px; min-height: 44px; }

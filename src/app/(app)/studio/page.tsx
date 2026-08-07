@@ -1,9 +1,11 @@
-import { toBrandTokens } from "@/domain";
+import { DEFAULT_MEDIA_CONFIG, toBrandTokens } from "@/domain";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getBrandProfileView } from "@/lib/brand-kit/profile-view";
 import { listCampaignNames } from "@/lib/campaigns/read-model";
 import { resolveMediaGeneration } from "@/lib/media/enablement";
+import { getWorkspaceMediaConfig } from "@/lib/media-config/read-model";
+import { resolveWorkspaceEngines } from "@/lib/media-config/target";
 import { getMediaSpendMeter } from "@/lib/media/spend-meter";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import type { MediaAssetView } from "@/lib/media-library/types";
@@ -110,6 +112,19 @@ export default async function StudioPage({
         .catch(() => [])
     : [];
 
+  // The workspace's model default + which engines it can reach, so the composer's
+  // model picker offers what this workspace can actually run and starts on the
+  // same default the server would resolve anyway.
+  //
+  // Correctly silent: both degrade to a usable shape (defaults / nothing
+  // reachable), and the picker simply shows Auto.
+  const [mediaConfig, mediaEngines] = ctx?.workspaceId && isSupabaseAdminConfigured()
+    ? await Promise.all([
+        getWorkspaceMediaConfig(getSupabaseAdminClient(), ctx.workspaceId).catch(() => DEFAULT_MEDIA_CONFIG),
+        resolveWorkspaceEngines(getSupabaseAdminClient(), ctx.workspaceId).catch(() => ({ gemini: false, higgsfield: false })),
+      ])
+    : [DEFAULT_MEDIA_CONFIG, { gemini: mediaAccess.enabled, higgsfield: false }];
+
   // Spend meter: what generation has cost this period and what the next job
   // costs, shown here rather than only in Settings (BSR-515). Never throws.
   const spendMeter = await getMediaSpendMeter();
@@ -137,6 +152,8 @@ export default async function StudioPage({
       mediaEnabled={mediaEnabled}
       mediaOffReason={mediaOffReason}
       brandPalette={brandPalette}
+      mediaConfig={mediaConfig}
+      mediaEngines={mediaEngines}
       />
     </>
   );

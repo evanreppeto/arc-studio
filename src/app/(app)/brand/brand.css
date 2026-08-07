@@ -62,17 +62,20 @@
 /* palette */
 .arc-brand .swrow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
 @media (max-width: 520px) { .arc-brand .swrow { grid-template-columns: repeat(2, 1fr); } }
-.arc-brand .sw { border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden; cursor: pointer; transition: var(--dur-base) var(--ease); background: var(--inset); }
+/* A real <button>: it was a clickable div at tabIndex -1, so the palette could
+   not be changed from a keyboard. UA defaults reset to keep the look. */
+.arc-brand .sw { display: block; width: 100%; padding: 0; text-align: left; font-family: inherit; color: inherit; border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden; cursor: pointer; transition: var(--dur-base) var(--ease); background: var(--inset); }
 .arc-brand .sw:hover { border-color: var(--line-3); }
+.arc-brand .sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-brand .sw.on { border-color: #fff; box-shadow: 0 0 0 1px #fff, 0 10px 26px -14px rgba(0, 0, 0, 0.8); }
 /* display/width/padding are set explicitly to defeat the broadly-scoped
    `.arc-app .chip` (Home task chip: inline-flex + padding) which otherwise
    collapses this full-width color bar to ~18px and clips the role label. */
 .arc-brand .sw .chip { display: block; width: 100%; padding: 0; height: 62px; position: relative; }
 .arc-brand .sw .chip .role { position: absolute; left: 8px; bottom: 7px; font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255, 255, 255, 0.92); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
-.arc-brand .sw .meta { padding: 7px 9px; }
-.arc-brand .sw .nm { font-size: 11.5px; font-weight: 600; line-height: 1.2; }
-.arc-brand .sw .hx { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; }
+.arc-brand .sw .meta { display: block; padding: 7px 9px; }
+.arc-brand .sw .nm { display: block; font-size: 11.5px; font-weight: 600; line-height: 1.2; }
+.arc-brand .sw .hx { display: block; font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; }
 
 /* typography */
 .arc-brand .typ { display: flex; flex-direction: column; gap: 12px; }

@@ -148,8 +148,16 @@
 .arc-settings .ccard .cnm { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
 .arc-settings .ccard .ccat { font-size: 10px; color: var(--muted); margin-top: 2px; }
 .arc-settings .ccard .cdsc { font-size: 11px; color: var(--muted); line-height: 1.45; flex: 1; }
-.arc-settings .ccard .cfoot { display: flex; align-items: center; gap: 8px; }
-.arc-settings .ccard .cfoot .grow { flex: 1; }
+/* The footer carries up to three items (status pill, cost badge, CTA) inside a
+   214px-min card. It was a single nowrap row with `overflow: visible`, so a
+   three-item footer — "Connected · Included · Manage →", "Not available yet ·
+   Metered · Connect →" — spilled past the card border and pushed .conngrid and
+   the whole settings pane into horizontal overflow. Wrapping keeps every item
+   whole and inside its card; the CTA stays right-aligned on whichever row it
+   lands on. */
+.arc-settings .ccard .cfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.arc-settings .ccard .cfoot .grow { flex: 1 1 0; min-width: 0; }
+.arc-settings .ccard .cfoot .cb-open { margin-left: auto; white-space: nowrap; }
 .arc-settings .badge { font-size: 9px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; border-radius: var(--r-sm); padding: 2px 7px; border: 1px solid var(--line-2); color: var(--muted); }
 .arc-settings .cb-add { font-size: 11.5px; font-weight: 600; color: #201808; background: linear-gradient(180deg, #dcbd6e, #c8a24a 55%, #ad8838); border: 1px solid #b8974a; border-radius: var(--r-md); padding: 5px 13px; cursor: pointer; }
 .arc-settings .cb-add:hover { filter: brightness(1.05); }

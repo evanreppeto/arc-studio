@@ -11,6 +11,10 @@ import { getInstalledArcSkillKeys } from "@/lib/arc-skills/installation";
 import { listGeneratedSkills } from "@/lib/exemplar-skills/persistence";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { getWorkspaceSummary } from "@/lib/workspace-summary/read-model";
+import { getWorkspaceMediaConfig } from "@/lib/media-config/read-model";
+import { resolveWorkspaceEngines } from "@/lib/media-config/target";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { DEFAULT_MEDIA_CONFIG } from "@/domain";
 
 import { ArcView } from "./_components/arc-view";
 import "./arc.css";
@@ -61,6 +65,18 @@ export default async function ArcPage({
   // A genuine failure is "error", which keeps the real composer rather than
   // quietly showing mock data in place of a broken workspace.
   const live = chat.status !== "not_configured";
+
+  // The workspace's generation default + which engines it can reach, so the
+  // composer's media-model pill offers what this workspace can actually run.
+  //
+  // Correctly silent: both degrade to a usable shape, and the pill hides itself
+  // entirely when no engine is reachable rather than listing dead options.
+  const [mediaConfig, mediaEngines] = ctx?.workspaceId && isSupabaseAdminConfigured()
+    ? await Promise.all([
+        getWorkspaceMediaConfig(getSupabaseAdminClient(), ctx.workspaceId).catch(() => DEFAULT_MEDIA_CONFIG),
+        resolveWorkspaceEngines(getSupabaseAdminClient(), ctx.workspaceId).catch(() => ({ gemini: false, higgsfield: false })),
+      ])
+    : [DEFAULT_MEDIA_CONFIG, { gemini: false, higgsfield: false }];
   const waiting = summary
     ? {
         approvals: summary.approvals.length,
@@ -93,6 +109,8 @@ export default async function ArcPage({
       workspaceSkills={workspaceSkills}
       generatedSkills={generatedSkills}
       workspaceName={ctx?.workspaceName || brandName}
+      mediaConfig={mediaConfig}
+      mediaEngines={mediaEngines}
     />
   );
 }

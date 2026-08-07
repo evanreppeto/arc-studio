@@ -3,6 +3,7 @@ import { cache } from "react";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  geminiModelIds,
   normalizeConsentMode,
   parseObjectLabelOverride,
   type ArcMode,
@@ -187,12 +188,12 @@ export function appApprovalStrictness(value: unknown): ApprovalStrictness {
     : DEFAULT_APP_SETTINGS.approvalStrictness;
 }
 
-export const IMAGE_MODELS = [
-  "gemini-3-pro-image",
-  "gemini-3.1-flash-image",
-  "gemini-2.5-flash-image",
-] as const;
-export const VIDEO_MODELS = ["veo-3.1-generate-preview", "veo-3.1-fast-generate-preview"] as const;
+// Derived from the one generation roster (src/domain/media-target.ts) rather than
+// hand-listed a second time. These two lists and that roster used to be separate
+// copies of the same ids, which is how "which model generates" ended up meaning
+// different things on different code paths.
+export const IMAGE_MODELS: readonly string[] = geminiModelIds("image");
+export const VIDEO_MODELS: readonly string[] = geminiModelIds("video");
 
 /** "" = Auto (inherit env/default); otherwise must be an allow-listed id. */
 export function appImageModel(value: unknown): string {

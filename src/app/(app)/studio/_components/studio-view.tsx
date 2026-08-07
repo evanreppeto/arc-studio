@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { type ChangeEvent, type CSSProperties, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { type ChangeEvent, type CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { type CreativeLayoutOverride } from "@/domain";
+import {
+  DEFAULT_MEDIA_CONFIG,
+  MEDIA_AUTO,
+  generationModelsFor,
+  type CreativeLayoutOverride,
+  type EngineAvailability,
+  type MediaCategory,
+  type MediaConfig,
+} from "@/domain";
 
 import { resolveArcComposerMode } from "@/lib/arc-chat/composer-mode";
 import { hasRepliedToLastMessage } from "@/lib/arc-chat/thread-state";
@@ -13,7 +21,7 @@ import { wantsBrandingInScene } from "./logo-hint";
 
 import { decideArcDraftAction, getArcConversationTailAction, requestArcDraftRevisionAction, sendArcMessageAction, type ArcThreadMessage } from "../../arc/actions";
 import { uploadLibraryAsset } from "../../library/actions";
-import { generateStudioAsset, pollStudioVideo, startStudioVideo } from "../actions";
+import { generateStudioAsset, pollStudioImage, pollStudioVideo, startStudioVideo } from "../actions";
 import { StudioCanvas, type CanvasBrand, type CanvasLayer } from "./studio-canvas";
 import { AppImage } from "../../_components/app-image";
 
@@ -90,6 +98,30 @@ const ItemMedia = ({ item }: { item: Item }) =>
   );
 
 /**
+ * One tile in the Sources rail.
+ *
+ * Module scope and memoised on purpose — this used to be declared inside
+ * StudioView, and that is what made the whole rail blink on every keystroke.
+ * A component defined in a render body is a NEW component type each render, so
+ * React cannot reconcile it: it unmounts the old subtree and mounts a fresh one.
+ * Every `AppImage` therefore remounted with `loadedSrc = null`, which paints
+ * `data-loaded="false"` — the shimmer sweep — and then runs the 260ms opacity
+ * fade back in. Typing one character into the Arc composer calls `setMsg`, so
+ * all 15 tiles ran that skeleton→fade cycle per keypress.
+ *
+ * `Section` below already carries this exact warning; `Tile` was the copy that
+ * never got it. Keep both at module scope.
+ */
+const Tile = memo(function Tile({ item, index, selected, onPick }: { item: Item; index: number; selected: boolean; onPick: (index: number, item: Item) => void }) {
+  return (
+    <button type="button" className={`mtile${selected ? " on" : ""}`} aria-pressed={selected} onClick={() => onPick(index, item)}>
+      <span className="mt"><ItemMedia item={item} /><span className={`pv ${item.p}`}>{PVLABEL[item.p]}</span></span>
+      <span className="ml">{item.l}</span>
+    </button>
+  );
+});
+
+/**
  * The stage toolbar — the controls that act on the CANVAS.
  *
  * - `focus` — scrolls the Design pane to the section that control belongs to
@@ -164,6 +196,12 @@ function Section({ id, title, tag, open = true, children }: { id: string; title:
  * button" are craft words a roofer has no reason to know, and the Edit-copy
  * panel taught a SECOND one ("eyebrow") for the same element.
  */
+/** The two glyphs the layer rows use — a photo well, and a run of copy. */
+const LAYER_ICON = {
+  background: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 15l4-3 3 2 4-3 5 4"/>',
+  text: '<path d="M5 8h14M5 12h9"/>',
+};
+
 const LAYER_LABEL: Record<string, string> = {
   Background: "Photo",
   Logo: "Logo",
@@ -172,6 +210,39 @@ const LAYER_LABEL: Record<string, string> = {
   Subhead: "Supporting line",
   "CTA button": "Button",
 };
+
+/**
+ * One row of "Parts of this ad" — pick the layer, or toggle its visibility.
+ *
+ * Two controls, so two buttons, side by side. It used to be a `div role="button"
+ * tabIndex={0}` with a **second** `span role="button" tabIndex={0}` nested
+ * inside it for the eye. Nesting one button inside another is invalid — the
+ * inner control is not reliably reachable, and a screen reader is handed a
+ * button whose accessible name contains another button's. Both also hand-rolled
+ * the Enter/Space handling that a real <button> gets from the UA.
+ *
+ * Module scope, for the reason `Tile` and `Section` are: a component declared in
+ * a render body remounts its whole subtree on every keystroke.
+ */
+const LayerRow = memo(function LayerRow({ icon, label, detail, selected, visible, onSelect, onToggle }: { icon: string; label: string; detail: string; selected: boolean; visible: boolean; onSelect: () => void; onToggle: () => void }) {
+  return (
+    <div className={`layer${selected ? " sel" : ""}`} style={visible ? undefined : { opacity: 0.5 }}>
+      {/* Named explicitly: without it the accessible name is the label and the
+          detail run together ("Headline The one line that has to land"), which
+          says what the row contains but not what pressing it does. */}
+      <button type="button" className="layerpick" aria-pressed={selected} aria-label={`Select ${label} layer`} onClick={onSelect}>
+        <span className="li"><svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: icon }} /></span>
+        <span className="lb">
+          <span className="lt">{label}</span>
+          <span className="ld">{detail}</span>
+        </span>
+      </button>
+      <button type="button" className="eye" aria-pressed={visible} title={visible ? "Hide layer" : "Show layer"} aria-label={`${visible ? "Hide" : "Show"} ${label} layer`} onClick={onToggle}>
+        {visible ? "◉" : "◎"}
+      </button>
+    </div>
+  );
+});
 
 const FORMATS = [
   { ar: "1 / 1", dim: "1080 × 1080", label: "Square", r: "1:1", use: "Feed post" },
@@ -244,6 +315,10 @@ type StudioDraft = { campaignId: string; assetId: string; url: string; source: s
 /** Veo renders asynchronously; poll about every 10s for up to ~6 minutes. */
 const VIDEO_POLL_MS = 10_000;
 const VIDEO_MAX_POLLS = 36;
+// An edit on a job-based engine is minutes-scale like video, but usually much
+// shorter — a tighter interval keeps the canvas responsive without hammering.
+const EDIT_POLL_MS = 5_000;
+const EDIT_MAX_POLLS = 48;
 
 /**
  * Starting copy for the canvas text layers. The sample set is restoration
@@ -260,21 +335,37 @@ const SAMPLE_COPY = {
 };
 const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
 
-export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null, initialAssetId = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null; /** ?asset=<media_assets uuid> — Library deep-links here so "Edit in Studio" opens on the asset the operator clicked rather than on whatever happens to be first. */ initialAssetId?: string | null }) {
+/**
+ * Stable identity for "no engine reachable". An object literal in the parameter
+ * default allocates a fresh value every render, which is enough for the React
+ * Compiler to give up on the component ("existing memoization could not be
+ * preserved") — the whole file then falls back to uncompiled. A module constant
+ * costs nothing and keeps the optimisation.
+ */
+const NO_MEDIA_ENGINES: EngineAvailability = { gemini: false, higgsfield: false };
+
+export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null, mediaConfig = DEFAULT_MEDIA_CONFIG, mediaEngines = NO_MEDIA_ENGINES, initialAssetId = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null; /** The workspace default the server would resolve anyway — the picker opens on it. */ mediaConfig?: MediaConfig; /** Which engines this workspace can reach; the picker offers only these. */ mediaEngines?: EngineAvailability; /** ?asset=<media_assets uuid> — Library deep-links here so "Edit in Studio" opens on the asset the operator clicked rather than on whatever happens to be first. */ initialAssetId?: string | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
   // The "Approved media" source shows the workspace's real media_assets. Live, it
   // shows ONLY those — never the built-in samples, which would present stock art as
   // the workspace's approved media and let an operator compose over it believing it
   // was theirs. Offline (backend-less preview) the samples keep the tool usable.
   const [uploaded, setUploaded] = useState<Item[]>([]);
+  /** Images generated in this session, so the AI source tab shows real work
+   *  instead of sample art — and so a fresh render is immediately selectable
+   *  as a background to compose over. */
+  const [generated, setGenerated] = useState<Item[]>([]);
   const sources = useMemo<Record<string, { title: string; items: Item[] }>>(
     () => ({
       ...SRC,
       library: live ? { title: "Approved media", items: libraryItems ?? [] } : SRC.library,
       // Imported art: real uploads live-first (empty until you add some); demo samples offline.
       uploads: uploaded.length || live ? { title: "Imported", items: [...uploaded, ...(live ? [] : SRC.uploads.items)] } : SRC.uploads,
+      // Live, this tab shows what was actually generated here — the sample tiles
+      // are offline-only, same rule the library tab follows.
+      ai: generated.length || live ? { title: "Generated this session", items: [...generated, ...(live ? [] : SRC.ai.items)] } : SRC.ai,
     }),
-    [libraryItems, uploaded, live],
+    [libraryItems, uploaded, generated, live],
   );
   const [srcTab, setSrcTab] = useState("library");
   // May be undefined: a live workspace with no approved media (media_assets empty)
@@ -627,8 +718,27 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
    *  nothing re-surfaces it on its own. */
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [videoPrompt, setVideoPrompt] = useState("");
+  /**
+   * The model this render uses, per output category.
+   *
+   * Opens on the workspace default so the picker states what would happen
+   * anyway rather than implying Auto when a default is pinned, and the server
+   * re-resolves whatever is sent — this control chooses, it does not decide.
+   */
+  const [modelPick, setModelPick] = useState<Record<MediaCategory, string>>(() =>
+    // "Let Arc choose" is the workspace's stance, so the picker opens on Auto
+    // there. A pick made HERE still beats it — a deliberate per-render choice
+    // outranks a standing preference (see resolveGenerationTarget).
+    mediaConfig.autoPick ? { image: MEDIA_AUTO, video: MEDIA_AUTO, audio: MEDIA_AUTO } : { ...mediaConfig.defaults },
+  );
+  const modelCategory: MediaCategory = mode === "video" ? "video" : "image";
+  const modelOptions = generationModelsFor(modelCategory, mediaEngines);
+  const activeModel = modelPick[modelCategory];
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoNote, setVideoNote] = useState<string | null>(null);
+  const [editNote, setEditNote] = useState<string | null>(null);
+  const [scenePrompt, setScenePrompt] = useState("");
+  const [imageNote, setImageNote] = useState<string | null>(null);
   // The video poll loop outlives a fast unmount; this stops it writing state
   // into a component that is gone.
   const aliveRef = useRef(true);
@@ -659,6 +769,90 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         : !bg?.url
           ? "Select an approved photo as the background"
           : null;
+
+  /** Generating a scene from words needs no background — that requirement belongs
+   *  to compose, which composites OVER one. Sharing genGate would have refused
+   *  the very action that produces the missing background. */
+  const sceneGate = !mediaEnabled
+    ? mediaOffReason ?? "Image generation isn't switched on for this workspace yet."
+    : !live
+      ? "Connect a workspace to generate"
+      : !campaignId
+        ? campaignGateText
+        : !scenePrompt.trim()
+          ? "Describe the image you want first"
+          : null;
+
+  /**
+   * Generate a picture from a description — the thing Studio could never do.
+   *
+   * It composited over media you already had and edited media you already had,
+   * so a workspace with no approved photos had nothing to start from at all. The
+   * result lands as an approval-gated draft like every other output AND becomes
+   * the selected background, because the next thing anyone wants is to compose
+   * over the image they just made.
+   */
+  const runGenerateImage = () => {
+    if (sceneGate || gen) return;
+    const prompt = scenePrompt.trim();
+    setGenErr(null);
+    startGen(async () => {
+      const title = prompt.slice(0, 60);
+      const land = (campaign: string, assetId: string, media: { url: string; source: StudioDraft["source"]; format: string }) => {
+        const draft: StudioDraft = { campaignId: campaign, assetId, url: media.url, source: media.source, format: media.format, title, status: "pending_approval", at: Date.now(), origin: "studio" };
+        setDrafts((prev) => [draft, ...prev]);
+        setPreview(draft);
+        const tile: Item = { s: media.url, l: title, p: "ai", url: media.url, id: assetId };
+        setGenerated((prev) => [tile, ...prev]);
+        setBg(tile);
+        setScenePrompt("");
+      };
+
+      const res = await generateStudioAsset({
+        engine: "image",
+        prompt,
+        format: FORMATS[fmt].r,
+        title,
+        campaignId,
+        model: modelPick.image,
+      });
+      if (!res.ok) {
+        setGenErr(res.error);
+        return;
+      }
+      if (res.status === "running") {
+        setImageNote("Generating — this can take a minute.");
+        for (let i = 0; i < EDIT_MAX_POLLS; i++) {
+          await new Promise((r) => setTimeout(r, EDIT_POLL_MS));
+          if (!aliveRef.current) return;
+          const poll = await pollStudioImage({
+            operationName: res.operationName,
+            ticket: res.ticket,
+            engine: res.engine,
+            instruction: prompt,
+            format: FORMATS[fmt].r,
+            title,
+            campaignId,
+          });
+          if (!aliveRef.current) return;
+          if (!poll.ok) {
+            setImageNote(null);
+            setGenErr(poll.error);
+            return;
+          }
+          if (poll.status === "done") {
+            setImageNote(null);
+            land(poll.campaignId, poll.assetId, poll.media);
+            return;
+          }
+        }
+        setImageNote(null);
+        setGenErr("Still rendering after a few minutes — it was submitted and will appear in your Library when it finishes.");
+        return;
+      }
+      if (res.assetId && res.media) land(res.campaignId ?? campaignId, res.assetId, res.media);
+    });
+  };
 
   // The one media guardrail this app can honestly compute: the provenance tag of the
   // background you actually picked (Item.p), plus whether it resolves to a real stored
@@ -707,14 +901,61 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         format: FORMATS[fmt].r,
         title: instruction.slice(0, 60),
         campaignId,
+        model: modelPick.image,
       });
-      if (res.ok && res.assetId && res.media) {
-        const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: res.media.url, source: res.media.source, format: res.media.format, title: instruction.slice(0, 60), status: "pending_approval", at: Date.now(), origin: "studio" };
+      if (!res.ok) {
+        setGenErr(res.error);
+        return;
+      }
+      const title = instruction.slice(0, 60);
+      const land = (campaign: string, assetId: string, media: { url: string; source: StudioDraft["source"]; format: string }) => {
+        const draft: StudioDraft = { campaignId: campaign, assetId, url: media.url, source: media.source, format: media.format, title, status: "pending_approval", at: Date.now(), origin: "studio" };
         setDrafts((prev) => [draft, ...prev]);
         setPreview(draft);
-      } else if (!res.ok) {
-        setGenErr(res.error);
+      };
+
+      // A job-based engine renders for longer than one request can wait, so the
+      // action hands back an operation name and we finish it here — the same
+      // shape the video button has always used.
+      if (res.status === "running") {
+        setEditNote("Editing — this can take a minute.");
+        for (let i = 0; i < EDIT_MAX_POLLS; i++) {
+          await new Promise((r) => setTimeout(r, EDIT_POLL_MS));
+          if (!aliveRef.current) return;
+          const poll = await pollStudioImage({
+            operationName: res.operationName,
+            ticket: res.ticket,
+            // Round-tripped so the poll asks the engine that started it; the
+            // server checks it against the signed ticket, so the client cannot
+            // redirect it at the other provider.
+            engine: res.engine,
+            instruction,
+            edited: true,
+            format: FORMATS[fmt].r,
+            title,
+            campaignId,
+          });
+          if (!aliveRef.current) return;
+          if (!poll.ok) {
+            setEditNote(null);
+            setGenErr(poll.error);
+            return;
+          }
+          if (poll.status === "done") {
+            setEditNote(null);
+            land(poll.campaignId, poll.assetId, poll.media);
+            return;
+          }
+        }
+        setEditNote(null);
+        // The edit is real and paid for; it finishes on the engine's side and
+        // lands in the Library. Saying "failed" would be a false statement
+        // about the operator's credits.
+        setGenErr("Still rendering after a few minutes — it was submitted and will appear in your Library when it finishes.");
+        return;
       }
+
+      if (res.assetId && res.media) land(res.campaignId ?? campaignId, res.assetId, res.media);
     });
   };
 
@@ -748,7 +989,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           accent,
           campaignId,
         });
-        if (res.ok && res.assetId && res.media) {
+        if (res.ok && res.status !== "running" && res.assetId && res.media) {
           const media = res.media;
           const draft: StudioDraft = { campaignId: res.campaignId ?? campaignId, assetId: res.assetId, url: media.url, source: media.source, format: media.format, title: headline || "Studio creative", status: "pending_approval", at: Date.now(), origin: "studio" };
           setDrafts((prev) => [draft, ...prev]);
@@ -791,7 +1032,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
       // Animate the photo on the canvas when there is one. Without it Veo
       // invents a scene from the words and the picture the operator picked is
       // silently ignored — which is what "Animate" has always done.
-      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId, sourceImageUrl: bg?.url });
+      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId, sourceImageUrl: bg?.url, model: modelPick.video });
       if (!started.ok) {
         setGenErr(started.error);
         return;
@@ -803,6 +1044,10 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         const poll = await pollStudioVideo({
           operationName: started.operationName,
           ticket: started.ticket,
+          // Round-tripped so the poll asks the engine that started the job. The
+          // server verifies it against the signed ticket, so this is a hint the
+          // client cannot lie with.
+          engine: started.engine,
           model: started.model,
           prompt,
           format: started.aspectRatio,
@@ -1023,12 +1268,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     shortMark: brandTokens?.shortMark ?? logoInitial,
   };
 
-  const Tile = ({ item, i }: { item: Item; i: number }) => (
-    <div className={`mtile${selTile === i ? " on" : ""}`} onClick={() => { setSelTile(i); setBg(item); }}>
-      <div className="mt"><ItemMedia item={item} /><span className={`pv ${item.p}`}>{PVLABEL[item.p]}</span></div>
-      <div className="ml">{item.l}</div>
-    </div>
-  );
+  // Stable identity, so a memoised Tile is not invalidated by every render of
+  // this component. Both setters are React state setters and never change.
+  const pickTile = useCallback((index: number, item: Item) => { setSelTile(index); setBg(item); }, []);
 
   return (
     <div className="arc-studio">
@@ -1071,22 +1313,39 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         {/* SOURCES */}
         <aside className="sources">
           <div className="seyl">Sources</div>
-          <div className="stabs">
+          {/* `aria-pressed`, matching the Design pane's swatches and template
+              tiles (#1017): the repo's convention for a mutually exclusive
+              selection. These were `<span onClick>` at tabIndex -1 — the list
+              could not be changed from a keyboard at all. */}
+          <div className="stabs" role="group" aria-label="Media sources">
             {["library", "ai", "uploads", "stock"].map((s) => (
-              <span key={s} className={`stab${srcTab === s ? " on" : ""}`} onClick={() => { setSrcTab(s); setSelTile(-1); }}>
+              <button type="button" key={s} className={`stab${srcTab === s ? " on" : ""}`} aria-pressed={srcTab === s} onClick={() => { setSrcTab(s); setSelTile(-1); }}>
                 {s === "ai" ? "AI" : s.charAt(0).toUpperCase() + s.slice(1)}
-              </span>
+              </button>
             ))}
           </div>
           <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUploadFiles} style={{ display: "none" }} />
-          <div className="drop" onClick={() => { if (live) fileRef.current?.click(); }} style={live ? { cursor: "pointer" } : undefined} {...(!live ? { "data-soon": "Connect a workspace to import art" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><div className="dt">{uploading ? "Uploading…" : "Upload or import art"}</div><div className="dd">{uploadNote ?? "Bring in art from Canva, Midjourney, DALL·E — anything"}</div></div>
+          <button type="button" className="drop" onClick={() => { if (live) fileRef.current?.click(); }} style={live ? { cursor: "pointer" } : undefined} {...(!live ? { "data-soon": "Connect a workspace to import art" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><span className="dt">{uploading ? "Uploading…" : "Upload or import art"}</span><span className="dd">{uploadNote ?? "Bring in art from Canva, Midjourney, DALL·E — anything"}</span></button>
           <div className="srchead"><span className="st">{sources[srcTab].title}</span><span className="sc">{sources[srcTab].items.length} items</span></div>
-          <div className="mgrid2">{sources[srcTab].items.map((it, i) => <Tile key={i} item={it} i={i} />)}</div>
+          {/* Keyed by the asset, not the index: the tabs render different lists
+              into the same slots, so an index key made React reuse tile 0's
+              <img> across a tab switch and swap its src in place. */}
+          <div className="mgrid2">{sources[srcTab].items.map((it, i) => <Tile key={it.id ?? it.url ?? `${srcTab}-${i}`} item={it} index={i} selected={selTile === i} onPick={pickTile} />)}</div>
           {srcTab === "library" && sources.library.items.length === 0 ? (
             <div className="srcempty">No approved media yet. Upload real photos in the <a href="/library">Library</a> and mark them available to Arc.</div>
           ) : null}
           {srcTab === "ai" && (
-            <div className="enginenote"><b>AI generation runs on Higgsfield.</b> Image, video, reframe, upscale, cut-out &amp; motion all come from the connected engine.<span className="ed"><i />Connector off — enable in Settings → Connectors</span></div>
+            // The "Connector off" chip here used to be hardcoded, so it went on
+            // saying off after Higgsfield was connected AND after the app could
+            // execute it. Status that is painted rather than read is worse than
+            // no status: it argues with the picker two panels over.
+            <div className="enginenote">
+              <b>AI generation runs on {mediaEngines.higgsfield ? "Higgsfield and the built-in engine" : "the built-in engine"}.</b>{" "}
+              Describe an image in the panel on the right to make one — it lands here and on the canvas, held for your approval.
+              {!mediaEngines.higgsfield && !mediaEngines.gemini ? (
+                <span className="ed"><i />No engine connected — enable one in Settings → Connections</span>
+              ) : null}
+            </div>
           )}
           <div className="legend">
             <span className="lg pv real">Real media</span><span className="lg pv comp">Composite</span><span className="lg pv ai">AI-generated</span><span className="lg pv upload">Imported</span><span className="lg pv stock">Stock</span>
@@ -1133,34 +1392,32 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           </div>
 
           <div className="formats">
-            <div className="modeseg">
-              <span className={mode === "image" ? "on" : ""} onClick={() => setMode("image")}><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-4 4 3 3-2 5 4" /></svg>Image</span>
-              <span className={mode === "video" ? "on" : ""} onClick={() => setMode("video")}><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3" /></svg>Video</span>
+            <div className="modeseg" role="group" aria-label="What you are making">
+              <button type="button" className={mode === "image" ? "on" : ""} aria-pressed={mode === "image"} onClick={() => setMode("image")}><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-4 4 3 3-2 5 4" /></svg>Image</button>
+              <button type="button" className={mode === "video" ? "on" : ""} aria-pressed={mode === "video"} onClick={() => setMode("video")}><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3" /></svg>Video</button>
             </div>
             <span className="fmdiv" />
-            <span className="fl">Format</span>
+            <span className="fl" id="studio-format-label">Format</span>
             {FORMATS.map((f, i) => (
-              <span key={f.r} className={`fchip${fmt === i ? " on" : ""}`} title={`${f.use} · ${f.dim} px`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></span>
+              <button type="button" key={f.r} className={`fchip${fmt === i ? " on" : ""}`} aria-pressed={fmt === i} aria-describedby="studio-format-label" title={`${f.use} · ${f.dim} px`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></button>
             ))}
             {/* Only offered once something has been moved — an always-present
                 "Reset layout" on an untouched canvas is noise. */}
             {nudged && (
-              <span
+              <button
+                type="button"
                 className="szbtn"
-                role="button"
-                tabIndex={0}
                 onClick={() => setLayoutOverride({})}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLayoutOverride({}); } }}
                 title="Put the copy back where the template puts it"
               >
                 <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" /></svg>
                 Reset layout
-              </span>
+              </button>
             )}
             <span className="fspacer" />
             {/* "Zoom 100%" sat here: a static string, no zoom control anywhere,
                 permanently reading 100% whatever the artboard was doing. */}
-            <span className={`szbtn${safe ? " on" : ""}`} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Keep text clear of edges</span>
+            <button type="button" className={`szbtn${safe ? " on" : ""}`} aria-pressed={safe} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Keep text clear of edges</button>
           </div>
 
           {/* A stage-wide mode banner, not a caption on the artboard: keeping it
@@ -1269,14 +1526,13 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <span className="sl" style={{ textTransform: "none", letterSpacing: 0 }}>Nothing rendered yet</span>
               ) : (
                 allDrafts.slice(0, 8).map((d) => (
-                  <span
+                  <button
+                    type="button"
                     key={d.assetId}
                     className={`vthumb${preview?.assetId === d.assetId ? " on" : ""}`}
-                    role="button"
-                    tabIndex={0}
+                    aria-pressed={preview?.assetId === d.assetId}
                     title={`${d.title} · ${d.format}`}
                     onClick={() => setPreview(d)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPreview(d); } }}
                   >
                     {d.kind === "video" ? (
                       <video src={d.url} muted playsInline preload="metadata" />
@@ -1284,18 +1540,18 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       <AppImage src={d.url} alt="" />
                     )}
                     <span className="vtag">{d.format}</span>
-                  </span>
+                  </button>
                 ))
               )
             ) : (
               <>
                 {SESSION.slice(0, 3).map((v) => (
-                  <span key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></span>
+                  <button type="button" key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} aria-pressed={selSession === v.id} title={v.item.l} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></button>
                 ))}
                 <span className="vsdiv" />
                 <span className="sl">Drafts · 3 awaiting</span>
                 {SESSION.slice(3).map((v) => (
-                  <span key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></span>
+                  <button type="button" key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} aria-pressed={selSession === v.id} title={v.item.l} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></button>
                 ))}
               </>
             )}
@@ -1381,9 +1637,26 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 )}
 
                 <Section id="sec-parts" title="Parts of this ad">
-                  <div className={`layer${selectedLayer === "Background" ? " sel" : ""}`} role="button" tabIndex={0} onClick={() => setSelectedLayer("Background")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer("Background"); } }} style={shown("Background") ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL.Background}</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
-                  {[["Kicker", kicker], ["Headline", headline], ["Subhead", sub], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
-                    <div className={`layer${selectedLayer === lt ? " sel" : ""}`} key={lt} role="button" tabIndex={0} onClick={() => setSelectedLayer(lt as CanvasLayer)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer(lt as CanvasLayer); } }} style={shown(lt) ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL[lt as string] ?? lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
+                  <LayerRow
+                    icon={LAYER_ICON.background}
+                    label={LAYER_LABEL.Background}
+                    detail={bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}
+                    selected={selectedLayer === "Background"}
+                    visible={shown("Background")}
+                    onSelect={() => setSelectedLayer("Background")}
+                    onToggle={() => toggleLayer("Background")}
+                  />
+                  {([["Kicker", kicker], ["Headline", headline], ["Subhead", sub], ["CTA button", cta], ["Logo", brandName]] as const).map(([lt, ld]) => (
+                    <LayerRow
+                      key={lt}
+                      icon={LAYER_ICON.text}
+                      label={LAYER_LABEL[lt] ?? lt}
+                      detail={ld || "Empty"}
+                      selected={selectedLayer === lt}
+                      visible={shown(lt)}
+                      onSelect={() => setSelectedLayer(lt as CanvasLayer)}
+                      onToggle={() => toggleLayer(lt)}
+                    />
                   ))}
                 </Section>
 
@@ -1465,6 +1738,27 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
               <div className="ifoot">
                 {genErr ? <div role="alert" className="ifooterr">{genErr}</div> : null}
                 {draftNotice ? <div role="status" className="ifootwarn">{draftNotice}</div> : null}
+                {/* Which model renders this — at the point of rendering, not
+                    buried in Settings. Only engines this workspace can reach are
+                    offered, so the list can't fail on use. Auto keeps whatever
+                    the workspace default resolves to. */}
+                {modelOptions.length > 0 ? (
+                  <div className="field">
+                    <div className="fieldl"><span>Model</span></div>
+                    <select
+                      className="input"
+                      aria-label={`Model for this ${modelCategory}`}
+                      value={activeModel}
+                      disabled={gen || videoBusy}
+                      onChange={(e) => setModelPick((prev) => ({ ...prev, [modelCategory]: e.target.value }))}
+                    >
+                      <option value={MEDIA_AUTO}>Auto — Arc picks per task</option>
+                      {modelOptions.map((m) => (
+                        <option key={m.key} value={m.key}>{`${m.label} · ${m.provider}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 {mode === "video" ? (
                   <>
                     {/* Video doesn't composite over the selected photo — Veo renders
@@ -1482,23 +1776,22 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                         disabled={videoBusy}
                       />
                     </div>
-                    {/* role + tabIndex + Enter/Space, not a bare onClick div: the
-                        surrounding .exrow controls are the keyboard-unreachable
-                        debt BSR-664 ratchets down, and a new control must not add
-                        to it. */}
-                    <div
+                    {/* Was `role` + `tabIndex` + a hand-written Enter/Space
+                        handler, written that way because .exrow was a clickable
+                        div at the time. #1017 made those real buttons; this was
+                        the one left reimplementing what the UA already does. */}
+                    <button
+                      type="button"
                       className="exrow gold"
-                      role="button"
-                      tabIndex={videoGate || videoBusy ? -1 : 0}
-                      aria-disabled={Boolean(videoGate) || videoBusy}
                       onClick={runVideo}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); runVideo(); } }}
-                      style={!videoGate && !videoBusy ? { cursor: "pointer" } : { opacity: 0.55 }}
+                      disabled={Boolean(videoGate) || videoBusy}
+                      aria-busy={videoBusy}
+                      title={videoGate ?? undefined}
                       {...(videoGate ? { "data-soon": videoGate } : {})}
                     >
                       <svg viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2" /><path d="M17 9l4-2v10l-4-2" /></svg>
                       {videoBusy ? "Rendering video…" : `Generate video · ${videoAspect}`}
-                    </div>
+                    </button>
                     <div className="scapt">
                       {videoNote
                         ? videoNote
@@ -1515,17 +1808,52 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                         accessible description rather than only a hover toast. */}
                     {/* Editing the chosen photo, above generating a new creative
                         from it — it acts on what is already on the canvas. */}
+                    {/* Generate a picture from words. Studio could only ever
+                        composite over media you already had and edit media you
+                        already had, so a workspace with no approved photos had
+                        nothing to start from at all. */}
+                    <div className="field">
+                      <div className="fieldl"><span>Describe an image</span></div>
+                      <textarea
+                        className="input"
+                        rows={2}
+                        style={{ resize: "vertical", lineHeight: 1.45 }}
+                        placeholder="e.g. A clean service van in a suburban driveway on a bright morning"
+                        value={scenePrompt}
+                        onChange={(e) => setScenePrompt(e.target.value)}
+                        disabled={gen}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="exrow"
+                      onClick={runGenerateImage}
+                      disabled={Boolean(sceneGate) || gen}
+                      aria-busy={Boolean(imageNote)}
+                      title={sceneGate ?? undefined}
+                      {...(sceneGate ? { "data-soon": sceneGate } : {})}
+                    >
+                      <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10z" /></svg>
+                      {imageNote ? "Generating…" : `Generate image · ${FORMATS[fmt].r}`}
+                    </button>
+                    {imageNote ? <div className="scapt" role="status">{imageNote}</div> : null}
                     <button
                       type="button"
                       className="exrow"
                       onClick={runEdit}
                       disabled={Boolean(editGate) || gen}
+                      aria-busy={Boolean(editNote)}
                       title={editGate ?? undefined}
                       {...(editGate ? { "data-soon": editGate } : {})}
                     >
                       <svg viewBox="0 0 24 24"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
-                      Change this image…
+                      {editNote ? "Editing…" : "Change this image…"}
                     </button>
+                    {/* An edit used to return within one request. On a job-based
+                        engine it renders for a minute or more, so the wait needs
+                        saying — a button that looks idle for 60s reads as broken
+                        and gets pressed again, paying twice. */}
+                    {editNote ? <div className="scapt" role="status">{editNote}</div> : null}
                     <button
                       type="button"
                       className="exrow gold"

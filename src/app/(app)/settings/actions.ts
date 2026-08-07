@@ -21,8 +21,6 @@ import {
   appAppearanceAccent,
   appAppearanceDensity,
   appAppearanceMotion,
-  appImageModel,
-  appVideoModel,
   appWorkspaceProfile,
   DEFAULT_APP_SETTINGS,
   isValidSupportEmail,
@@ -46,22 +44,40 @@ export type SettingsWriteResult =
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Persist the workspace's media generation config (Layer 2 model selection).
- * Operator-gated through the authenticated workspace context; scoped to the
- * caller's workspace. The payload is re-normalized via parseMediaConfig so an
- * invalid model id from the client is dropped to "auto" before it lands. Nothing
- * outbound — this only records how Arc should generate on the next run.
+ * Persist the workspace's media generation config — the model default for BOTH
+ * engines, per output category. Operator-gated and scoped to the caller's
+ * workspace. The payload is re-normalized via parseMediaConfig so an invalid or
+ * retired model id from the client is dropped to "auto" before it lands.
+ * Nothing outbound: this only records how the next generation resolves.
+ *
+ * Returns a real result rather than `void`. The previous signature could not
+ * distinguish "saved", "no backend", and "no workspace" — every one of them
+ * returned undefined, so an operator's Save looked identical whether it wrote a
+ * row or silently did nothing. It had no caller at all when it was written, so
+ * nobody found out; the panel now reports what actually happened.
  */
-export async function saveMediaConfigAction(config: MediaConfig): Promise<void> {
-  if (!isSupabaseAdminConfigured()) return;
+export async function saveMediaConfig(config: MediaConfig): Promise<SettingsWriteResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
+
   const ctx = await getCurrentWorkspaceContext();
-  if (!ctx.workspaceId) return; // no workspace yet — the (app) layout redirects to onboarding
-  await saveWorkspaceMediaConfig(getSupabaseAdminClient(), {
-    workspaceId: ctx.workspaceId,
-    orgId: ctx.orgId,
-    config: parseMediaConfig(config),
-  });
+  // No workspace yet — the (app) layout redirects to onboarding, so this is a
+  // race rather than a normal state. Say so instead of reporting a phantom save.
+  if (!ctx.workspaceId) return { ok: false, error: "Finish setting up your workspace first." };
+
+  try {
+    await saveWorkspaceMediaConfig(getSupabaseAdminClient(), {
+      workspaceId: ctx.workspaceId,
+      orgId: ctx.orgId,
+      config: parseMediaConfig(config),
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save the generation defaults." };
+  }
+
   revalidatePath("/settings");
+  revalidatePath("/studio");
+  return { ok: true, persisted: true, message: "Saved." };
 }
 
 /**
@@ -458,36 +474,6 @@ export async function suppressEmailAddress(input: { address: string; note?: stri
   return { ok: true, persisted: true };
 }
 
-/**
- * Built-in (Gemini/Veo) generation default. This is the only media-model default
- * that's actually consumed — the /api/v1/arc/media/generate-* routes read
- * settings.imageModel/videoModel. "" = Auto (inherit the level mapping / env
- * default). The Higgsfield roster is auto-picked per task by the runner and has
- * no persisted per-category default, so it isn't written here.
- */
-export async function saveMediaDefaults(input: {
-  imageModel: string;
-  videoModel: string;
-}): Promise<SettingsWriteResult> {
-  await requireOperator();
-  if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
-
-  const org = await resolveOrgForSave();
-  if (!org.ok) return org;
-
-  try {
-    await saveAppSettings(getSupabaseAdminClient(), org.orgId, {
-      image_model: appImageModel(input.imageModel),
-      video_model: appVideoModel(input.videoModel),
-    });
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not save media defaults." };
-  }
-
-  revalidatePath("/settings");
-  return { ok: true, persisted: true, message: "Saved." };
-}
-
 export async function saveRunnerDisplayName(input: { assistantName: string }): Promise<SettingsWriteResult> {
   await requireOperator();
 
@@ -544,13 +530,19 @@ export async function saveGeneralSettings(input: {
 
   try {
     const client = getSupabaseAdminClient();
-    const industry = canonicalIndustryKey(input.industry);
+    // Blank stays blank. `canonicalIndustryKey("")` returns "general", so saving
+    // ANY unrelated field on this panel used to quietly commit an industry the
+    // operator never picked — and "general" is a real choice, not a null. That
+    // is what left three surfaces disagreeing about one empty field: the picker
+    // showed "General / other", the overview said "Not set", and Connections
+    // asked you to set an industry you appeared to have.
+    const industry = input.industry.trim() ? canonicalIndustryKey(input.industry) : "";
     await saveAppSettings(client, ctx.orgId, {
       workspace_profile: appWorkspaceProfile(input.workspaceProfile),
-      industry: normalizeDisplayLabel(industry, DEFAULT_APP_SETTINGS.industry, 60),
+      industry: industry ? normalizeDisplayLabel(industry, DEFAULT_APP_SETTINGS.industry, 60) : "",
       support_email: supportEmail,
     });
-    const { error: profileError } = await client.from("business_profiles").update({ industry }).eq("org_id", ctx.orgId);
+    const { error: profileError } = await client.from("business_profiles").update({ industry: industry || null }).eq("org_id", ctx.orgId);
     if (profileError) throw profileError;
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save general settings." };
