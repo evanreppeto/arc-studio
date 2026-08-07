@@ -7,9 +7,16 @@ import {
   type CustomFieldObjectKey,
 } from "@/domain";
 
-import { getSupabaseAdminClient } from "@/lib/supabase/server";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 
 import { listFieldDefinitions } from "./definitions";
+import { demoFieldValue } from "./demo";
+
+/** See the note in ./demo — Supabase ABSENT, not merely the flag set. */
+function serveDemoValues(client?: SupabaseClient): boolean {
+  return !client && !isSupabaseAdminConfigured() && isDemoDataEnabled();
+}
 
 const TABLE = "custom_field_values";
 
@@ -37,6 +44,15 @@ export async function getCustomFieldsForRecord(
   recordId: string,
   opts: { client?: SupabaseClient } = {},
 ): Promise<CustomFieldEntry[]> {
+  if (serveDemoValues(opts.client)) {
+    return listFieldDefinitions(orgId, objectKey).then((definitions) =>
+      definitions.map((definition) => {
+        const hit = demoFieldValue(definition, recordId);
+        return { definition, value: hit?.value ?? null, display: hit?.display ?? "" };
+      }),
+    );
+  }
+
   const client = opts.client ?? getSupabaseAdminClient();
   const definitions = await listFieldDefinitions(orgId, objectKey, { client });
   if (definitions.length === 0) return [];
@@ -76,6 +92,18 @@ export async function getCustomFieldsForRecords(
 ): Promise<Map<string, CustomFieldEntry[]>> {
   const out = new Map<string, CustomFieldEntry[]>();
   if (recordIds.length === 0) return out;
+
+  if (serveDemoValues(opts.client)) {
+    const definitions = await listFieldDefinitions(orgId, objectKey);
+    for (const recordId of recordIds) {
+      const entries = definitions
+        .map((definition) => ({ definition, hit: demoFieldValue(definition, recordId) }))
+        .filter((e) => e.hit)
+        .map((e) => ({ definition: e.definition, value: e.hit!.value, display: e.hit!.display }));
+      if (entries.length > 0) out.set(recordId, entries);
+    }
+    return out;
+  }
 
   const client = opts.client ?? getSupabaseAdminClient();
   const definitions = await listFieldDefinitions(orgId, objectKey, { client });

@@ -13,6 +13,9 @@ import { getAppSettings } from "@/lib/settings/store";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 
 import { RecordView, type RecordActivity } from "./_components/record-view";
+import { CustomRecordView } from "./_components/custom-record-view";
+import { getCustomObjectByKey } from "@/lib/custom-objects/definitions";
+import { getCustomRecord } from "@/lib/custom-objects/records";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 import "./record.css";
 
@@ -28,7 +31,12 @@ export default async function CrmRecordPage({
   params: Promise<{ objectKey: string; recordId: string }>;
 }) {
   const { objectKey, recordId } = await params;
-  if (!VALID_KEYS.includes(objectKey as CrmObjectKey)) notFound();
+  // A key that is not one of the six may still be a tenant-defined type. The
+  // built-in wins on purpose — that is why those keys are reserved when a
+  // custom object is created.
+  if (!VALID_KEYS.includes(objectKey as CrmObjectKey)) {
+    return <CustomRecordPage objectKey={objectKey} recordId={decodeURIComponent(recordId)} />;
+  }
 
   const id = decodeURIComponent(recordId);
   const record = await getCrmRecordData(objectKey as CrmObjectKey, id, undefined, "Arc");
@@ -124,4 +132,50 @@ export default async function CrmRecordPage({
       crmLabel={crmLabel}
       customFields={customFields}
       record={record} activity={activity} personaOptions={personaOptions} stageOptions={stageOptions} />;
+}
+
+
+/**
+ * A record of a tenant-defined object type.
+ *
+ * Split out rather than branched inline: almost none of the built-in page's
+ * loads apply — no pipeline stages, no personas, no relationship graph, no
+ * interactions — and running them for an object that has none would be a page
+ * of empty panels built from six wasted queries.
+ */
+async function CustomRecordPage({ objectKey, recordId }: { objectKey: string; recordId: string }) {
+  const ctx = await getCurrentWorkspaceContext().catch(() => null);
+  const orgId = ctx?.orgId ?? "";
+  const object = await getCustomObjectByKey(orgId, objectKey).catch(() => null);
+  if (!object) notFound();
+
+  const record = await getCustomRecord(orgId, object, recordId).catch(() => null);
+  if (!record) notFound();
+
+  const [customFields, appSettings, businessProfile] = await Promise.all([
+    getCustomFieldsForRecord(orgId, objectKey as CustomFieldObjectKey, recordId).catch(() => []),
+    getAppSettings(orgId).catch(() => null),
+    orgId ? getBusinessProfile(orgId).catch(() => null) : Promise.resolve(null),
+  ]);
+  const { crmLabel } = getProductLanguage(
+    appSettings?.industry || businessProfile?.industry,
+    appSettings?.objectLabels,
+  );
+
+  return (
+    <CustomRecordView
+      objectKey={object.key}
+      objectLabel={object.labelPlural}
+      singularLabel={object.labelSingular}
+      crmLabel={crmLabel}
+      record={{
+        id: record.id,
+        title: record.title,
+        subtitle: record.subtitle,
+        updatedAt: record.updatedAt,
+        archivedAt: record.archivedAt,
+      }}
+      customFields={customFields}
+    />
+  );
 }

@@ -8,10 +8,11 @@ import type { SettingsTeamInvite, SettingsTeamMember, SettingsTeamView, Workspac
 import type { WaitlistView } from "@/lib/waitlist/read-model";
 import type { HealthConsoleView } from "@/lib/observability/health-console";
 import type { SuppressionView } from "@/lib/email-suppression/read-model";
-import type { CustomFieldDefinition, CustomFieldObjectKey, ObjectLabelOverride, PipelineObjectKey, PipelineStage } from "@/domain";
+import type { CustomFieldDefinition, CustomFieldObjectKey, CustomObject, ObjectLabelOverride, PipelineObjectKey, PipelineStage } from "@/domain";
 
 import { CATS, CONNECTORS, DCAT } from "./connector-catalog";
 import { CustomFieldsPanel } from "./custom-fields-panel";
+import { ObjectTypesPanel } from "./object-types-panel";
 import { ObjectLabelsPanel } from "./object-labels-panel";
 import { PipelineStagesPanel } from "./pipeline-stages-panel";
 import type { LoopState } from "@/lib/observability/health-grading";
@@ -146,7 +147,8 @@ const SUBTABS: Record<string, string[]> = {
   general: ["Organization", "Agent", "Email"],
   team: ["Members", "Invites", "Roles", "Activity"],
   connections: ["Live", "Roadmap"],
-  records: ["Fields", "Stages", "Names"],
+  media: ["Defaults", "Roster"],
+  records: ["Types", "Fields", "Stages", "Names"],
   usage: ["Overview", "Connectors", "By day", "By model", "Recent"],
 };
 
@@ -655,7 +657,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, workspaceName = "", email, viewerName = "", session = null, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, suppression = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; viewerName?: string; session?: AccountSession | null; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; suppression?: SuppressionView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
+export function SettingsView({ brandName, workspaceName = "", email, viewerName = "", session = null, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, suppression = null, customFields = [], customObjects = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; viewerName?: string; session?: AccountSession | null; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; suppression?: SuppressionView | null; customFields?: CustomFieldDefinition[]; customObjects?: CustomObject[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
   const [cur, setCur] = useState("overview");
   // Health and the waitlist are platform-level, not workspace-level: the server
   // sends null unless the viewer is a platform admin, so the group — and every
@@ -902,7 +904,16 @@ export function SettingsView({ brandName, workspaceName = "", email, viewerName 
         : "Waiting for work";
 
   const sections: Record<string, ReactNode> = {
-    records: activeSub === "Names" ? (
+    records: activeSub === "Types" ? (
+      <>
+        <Head
+          t="Record types"
+          d="The six built-in types cover most of the work. Add your own for anything they don't — each becomes a tab in your CRM with its own records and fields."
+        />
+        {subBar}
+        <ObjectTypesPanel objects={customObjects} />
+      </>
+    ) : activeSub === "Names" ? (
       <>
         <Head
           t="Object names"
