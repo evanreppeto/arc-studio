@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 
 import type { SharePermission, ShareVisibility } from "@/domain";
 
 import { OverlayPortal } from "./overlay-portal";
+import { useDialogFocus } from "./use-dialog-focus";
 
 export type ShareMemberVM = { userId: string; email: string | null; permission: SharePermission | null };
 export type SharingStateVM = {
@@ -81,12 +82,19 @@ export function ShareDialog({
   const overlay: CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 };
   const card: CSSProperties = { width: "min(460px, 92vw)", maxHeight: "82vh", overflow: "auto", background: "var(--panel, #1a1c22)", border: "1px solid var(--line, rgba(255,255,255,.12))", borderRadius: 14, padding: 18, boxShadow: "0 20px 60px rgba(0,0,0,.5)" };
   const seg = (active: boolean): CSSProperties => ({ padding: "5px 12px", borderRadius: 8, cursor: "pointer", fontSize: 13, border: `1px solid ${active ? "var(--gold, #c8a24a)" : "var(--line, rgba(255,255,255,.14))"}`, background: active ? "var(--gold, #c8a24a)22" : "transparent", color: active ? "var(--gold, #c8a24a)" : "inherit" });
+  /* Escape, the Tab trap and focus restoration. This dialog had NONE of the
+     three while claiming `aria-modal="true"` — the doc-comment above already
+     said the nav rail "must not stay clickable behind it", which the scrim does
+     for the mouse and nothing did for the keyboard. There was no Escape at all. */
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDialogFocus({ open: true, containerRef: cardRef, onEscape: onClose });
+
   const label: CSSProperties = { marginBottom: 8, fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em", opacity: 0.6 };
 
   return (
     <OverlayPortal>
       <div style={overlay} onClick={onClose} role="dialog" aria-label={`Share ${subjectNoun}`} aria-modal="true">
-        <div className="sharecard" style={card} onClick={(e) => e.stopPropagation()}>
+        <div className="sharecard" ref={cardRef} style={card} onClick={(e) => e.stopPropagation()}>
           <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
             <h3 style={{ margin: 0, fontSize: 16, textTransform: "capitalize" }}>Share {subjectNoun}</h3>
             <button className="btn sm" style={{ marginLeft: "auto" }} onClick={onClose} aria-label="Close">Done</button>

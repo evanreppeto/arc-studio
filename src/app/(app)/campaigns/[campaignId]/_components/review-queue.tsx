@@ -6,6 +6,7 @@ import { composeRevisionInstruction, truncateQuote } from "@/domain";
 import { type CampaignAssetFinding, type CampaignWorkspaceAsset, type ReviewQueueEntry } from "@/lib/campaigns/read-model";
 
 import { OverlayPortal } from "../../../_components/overlay-portal";
+import { useDialogFocus } from "../../../_components/use-dialog-focus";
 
 import { DeliverableCopy, markId, ReviewBlock, statusMeta, svg } from "./deliverable-review";
 import { pieceLabel } from "../../_components/board-derivations";
@@ -74,6 +75,12 @@ export function ReviewQueue({
   const [quote, setQuote] = useState<string | null>(null);
   /** Where to float the bubble, in viewport coordinates. Null while hidden. */
   const [anchor, setAnchor] = useState<AnchorPlacement | null>(null);
+  /* Trap + restore only. Escape stays with the component: it backs out one
+     layer at a time (the revision box first, the queue once nothing half-written
+     would be lost), and `onEscape` here would close the queue in one press.
+     `moveFocusIn` is off because the panel focuses itself below. */
+  useDialogFocus({ open: true, containerRef: wrapRef, moveFocusIn: false });
+
   const bubbleRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   // The selection listener is bound once, so it reads the mode through a ref.
