@@ -10,11 +10,12 @@ import type { HealthConsoleView } from "@/lib/observability/health-console";
 import type { SuppressionView } from "@/lib/email-suppression/read-model";
 import type { CustomFieldDefinition, CustomFieldObjectKey, ObjectLabelOverride, PipelineObjectKey, PipelineStage } from "@/domain";
 
+import { CATS, CONNECTORS, DCAT } from "./connector-catalog";
 import { CustomFieldsPanel } from "./custom-fields-panel";
 import { ObjectLabelsPanel } from "./object-labels-panel";
 import { PipelineStagesPanel } from "./pipeline-stages-panel";
 import type { LoopState } from "@/lib/observability/health-grading";
-import { WORKSPACE_ROLES } from "@/lib/auth/workspace-roles";
+import { ASSIGNABLE_WORKSPACE_ROLES, WORKSPACE_ROLES, roleLabel } from "@/lib/auth/workspace-roles";
 import type { SettingsWorkspace, SettingsWorkspacesView } from "@/lib/auth/workspaces-view";
 import type { SettingsUsageView } from "@/lib/ai-usage/settings-summary";
 import type { ConnectorSpendView } from "@/lib/connectors/spend-summary";
@@ -53,6 +54,7 @@ import { createBillingPortalAction, createCheckoutSessionAction, updateOrgPlanAc
 
 import { AppImage } from "../../_components/app-image";
 
+import { saveDisplayNameAction, sendPasswordResetAction } from "../account-actions";
 import {
   cancelInvite,
   changeMemberRole,
@@ -87,7 +89,15 @@ import { sendTestOpsAlert } from "../alert-actions";
 
 import { toStatus, type SaveStatus, type SettingsWriteResult } from "./save-status";
 
-const ROLE_OPTIONS = ["Owner", "Admin", "Marketer", "Reviewer", "Member", "Viewer"];
+/**
+ * Roles an owner/admin may actually assign, straight from the catalog the server
+ * guard uses. This was a hand-written array that led with "Owner" — a role
+ * `changeWorkspaceMemberRole` rejects unconditionally (`ASSIGNABLE_WORKSPACE_ROLES`
+ * excludes it by design, and the Roles tab says so: "Granted at onboarding").
+ * Picking it was a guaranteed error. The invite popup carried a third, separately
+ * hardcoded copy of the same list. One source now.
+ */
+const ROLE_OPTIONS = ASSIGNABLE_WORKSPACE_ROLES.map((role) => roleLabel(role));
 
 const ICON: Record<string, string> = {
   health: '<path d="M3 12h4l2-5 3 10 2-5h7"/>',
@@ -118,16 +128,24 @@ const NAVGROUPS = [
   { g: "WORKSPACE", items: [["overview", "Overview"], ["general", "Organization & brand"], ["appearance", "Appearance"], ["team", "Team"], ["workspaces", "Workspaces"], ["records", "Records"]] },
   { g: "ARC", items: [["connections", "Connections"]] },
   { g: "ACCOUNT", items: [["account", "Account"], ["usage", "Usage & billing"]] },
-  { g: "ADVANCED", items: [["media", "Media models"], ["system", "System status"]] },
+  // Labelled "Media models" in the rail while its own heading said "Image &
+  // video quality" and its breadcrumb said a third thing. One name.
+  { g: "ADVANCED", items: [["media", "Image & video"]] },
 ] as const;
-const DOTS: Record<string, string> = { connections: "var(--ok)", system: "var(--ok)" };
+/**
+ * Rail status dot colours by state. There used to be a constant map painting
+ * Connections and System status green permanently — a green dot beside
+ * "Connections" while zero connectors were active, and beside "System status"
+ * while every row under it read "Not connected". A dot that is always green
+ * reports nothing and quietly certifies everything. `dotFor` below derives it.
+ */
+const DOT_COLOR: Record<"ok" | "warn" | "err", string> = { ok: "var(--ok)", warn: "var(--warn)", err: "var(--priority)" };
 
 // Sections with in-section tabs. The breadcrumb + tab bar render from these.
 const SUBTABS: Record<string, string[]> = {
   general: ["Organization", "Agent", "Email"],
   team: ["Members", "Invites", "Roles", "Activity"],
   connections: ["Live", "Roadmap"],
-  media: ["Defaults", "Roster"],
   records: ["Fields", "Stages", "Names"],
   usage: ["Overview", "Connectors", "By day", "By model", "Recent"],
 };
@@ -141,6 +159,11 @@ const SUBTABS: Record<string, string[]> = {
 const LEGACY_SECTIONS: Record<string, { section: string; tab: string }> = {
   fields: { section: "records", tab: "Fields" },
   stages: { section: "records", tab: "Stages" },
+  // "System status" was three derived rows that restated the Overview cards and
+  // the Connections pills, under a green chip that contradicted them. The rows
+  // are worth keeping; a whole rail section for them was not — they live on
+  // Overview now, which already promises "your workspace at a glance — health".
+  system: { section: "overview", tab: "" },
 };
 const SECTION_LABEL: Record<string, string> = {
   ...Object.fromEntries(NAVGROUPS.flatMap((g) => g.items.map((it) => [it[0], it[1]]))),
@@ -150,19 +173,42 @@ const SECTION_LABEL: Record<string, string> = {
 
 // Synonyms so search jumps on intent, not just the literal section name.
 const SECTION_KEYWORDS: Record<string, string> = {
-  overview: "home dashboard health",
+  // Overview absorbed the old System status section, so it answers for services too.
+  overview: "home dashboard health status services supabase resend probe system",
   health: "health prod production status uptime env flags connectors runner heartbeat failures observability incident",
   waitlist: "waitlist signups leads early access launch interest",
-  general: "workspace name industry support email brand from-name identity",
+  general: "workspace name industry support email brand from-name identity logo image icon avatar mark upload account type agent assistant",
   appearance: "theme accent color colour dark light density motion look feel",
-  team: "members invite invitation role permission access seat",
-  workspaces: "switch organization org tenant",
-  connections: "integration api token credential connector gemini higgsfield mcp vault",
+  team: "members invite invitation role permission access seat owner admin remove leave",
+  workspaces: "switch organization org tenant logo sidebar colour color rename",
+  connections: "integration api token credential connector gemini higgsfield mcp vault resend slack hubspot mailchimp webhook weather csv import",
   records: "custom field property attribute column schema text number date choice currency link record type pipeline stage status funnel won lost qualified closed rename reorder archive vocabulary",
-  media: "models image video audio gemini veo higgsfield generation default aspect",
-  account: "profile photo security sign-in login session sign out",
+  media: "models image video audio gemini veo higgsfield generation default aspect quality",
+  account: "profile photo security sign-in login session sign out name display name avatar password reset credentials",
   usage: "billing cost spend tokens runs plan cap invoice budget",
-  system: "status health services supabase resend probe",
+};
+
+/**
+ * Extra search terms for individual sub-tabs.
+ *
+ * Tab destinations used to carry only `"<section label> <tab>"` as their haystack,
+ * so the two controls that most often send someone to Settings in the first place
+ * were unreachable by name: "logo" matched nothing, and "postal" — the field whose
+ * absence hard-blocks every outbound email — matched nothing either. Someone
+ * debugging "why won't my email send" got "No settings match “postal”."
+ */
+const TAB_KEYWORDS: Record<string, string> = {
+  "general/Email": "postal address mailing sender from name unsubscribe compliance can-spam permission reminder footer blocked",
+  "general/Agent": "agent assistant arc name display rename",
+  "general/Organization": "logo brand mark image upload industry vertical support email account type",
+  "team/Invites": "invite invitation pending revoke expire",
+  "team/Roles": "role permission capability owner admin marketer reviewer viewer",
+  "team/Activity": "audit log history changes",
+  "records/Fields": "custom field attribute column schema",
+  "records/Stages": "pipeline stage status funnel won lost qualified",
+  "records/Names": "rename label vocabulary object names wording",
+  "usage/Connectors": "spend cap metered lookups budget refuse",
+  "connections/Roadmap": "planned coming soon future integrations",
 };
 
 // ---- reusable controls ----
@@ -248,7 +294,11 @@ function Panel({ title, tag, foot, children }: { title: ReactNode; tag?: ReactNo
     </div>
   );
 }
-const TGOK = <span className="tg ok">Active</span>;
+// A green "Active" chip used to sit on nine panels — the plan, the member list,
+// the invite list, the agent name, the ROLES REFERENCE GUIDE, the activity log,
+// the spend cap. It graded nothing and was never false, so it read as
+// reassurance the panel had not earned. Panels that genuinely have a state
+// (Services, connectors, email) derive their own pill; the rest carry none.
 const Head = ({ t, d }: { t: string; d: string }) => <div className="sechead"><h2>{t}</h2><p>{d}</p></div>;
 
 // Breadcrumb trail: Settings › Section [› Sub-tab | › Detail]. Any crumb with an
@@ -267,30 +317,6 @@ function Crumbs({ trail }: { trail: Crumb[] }) {
   );
 }
 
-// ---- connectors ----
-const DCAT: Record<string, string> = { Research: "Grounded web research + citations.", Creative: "Generate & round-trip creative assets.", "Email & SMS": "Sync lists and deliver approved campaigns.", Social: "Schedule approved posts, pull engagement signals.", "CRM & Sales": "Two-way sync of contacts, companies, and deals.", Analytics: "Pull performance back into the learning loop.", Productivity: "Route approvals, files, and alerts." };
-type Conn = { n: string; cat: string; c: string; l: string; d?: string; live?: number; note?: string; auth?: string };
-const CONNECTORS: Conn[] = [
-  { n: "Gemini Web Research", cat: "Research", c: "#88b6d8", l: "Gem", d: "Grounded web search + citations for scouting & brand research.", live: 1, note: "read-only" },
-  { n: "Higgsfield", cat: "Creative", c: "#c8a24a", l: "Hf", d: "Cinematic image + video, UGC, virality scoring. Drafts only.", live: 1, note: "Ultra" },
-  { n: "Resend", cat: "Email & SMS", c: "#9aa0ac", l: "Re", d: "Transactional + campaign email delivery.", live: 1, note: "email" },
-  { n: "Instagram", cat: "Social", c: "#E1306C", l: "Ig", auth: "oauth" }, { n: "Facebook", cat: "Social", c: "#1877F2", l: "Fb", auth: "oauth" },
-  { n: "LinkedIn", cat: "Social", c: "#0A66C2", l: "Li", auth: "oauth" }, { n: "X (Twitter)", cat: "Social", c: "#aab2bd", l: "X", auth: "oauth" },
-  { n: "TikTok", cat: "Social", c: "#9cc1e0", l: "Tk", auth: "oauth" }, { n: "YouTube", cat: "Social", c: "#FF5252", l: "Yt", auth: "oauth" },
-  { n: "Pinterest", cat: "Social", c: "#E60023", l: "Pin", auth: "oauth" }, { n: "Threads", cat: "Social", c: "#c9ccd1", l: "Th", auth: "oauth" },
-  { n: "Mailchimp", cat: "Email & SMS", c: "#f3c64a", l: "Mc", auth: "api key" }, { n: "Klaviyo", cat: "Email & SMS", c: "#7fb89a", l: "Kl", auth: "api key" },
-  { n: "Twilio", cat: "Email & SMS", c: "#F22F46", l: "Tw", d: "SMS delivery for approved campaigns.", auth: "api key" }, { n: "Customer.io", cat: "Email & SMS", c: "#9678c8", l: "Cio", auth: "api key" },
-  { n: "HubSpot", cat: "CRM & Sales", c: "#FF7A59", l: "Hs", auth: "oauth" }, { n: "Salesforce", cat: "CRM & Sales", c: "#36b3e8", l: "Sf", auth: "oauth" },
-  { n: "Pipedrive", cat: "CRM & Sales", c: "#7fb89a", l: "Pd", auth: "oauth" }, { n: "Attio", cat: "CRM & Sales", c: "#88b6d8", l: "At", auth: "oauth" },
-  { n: "Google Analytics", cat: "Analytics", c: "#E37400", l: "GA", auth: "oauth" }, { n: "Segment", cat: "Analytics", c: "#52BD94", l: "Sg", auth: "api key" },
-  { n: "Amplitude", cat: "Analytics", c: "#5b8def", l: "Am", auth: "api key" }, { n: "Meta Pixel", cat: "Analytics", c: "#1877F2", l: "Mp", auth: "oauth" },
-  { n: "Canva", cat: "Creative", c: "#19c4cc", l: "Cv", auth: "oauth" }, { n: "Figma", cat: "Creative", c: "#F24E1E", l: "Fg", auth: "oauth" },
-  { n: "Midjourney", cat: "Creative", c: "#c9ccd1", l: "Mj", d: "Import generated art into the Library.", auth: "import" },
-  { n: "Slack", cat: "Productivity", c: "#c089cf", l: "Sl", d: "Route approvals + alerts to a channel.", auth: "oauth" }, { n: "Notion", cat: "Productivity", c: "#d6d6d6", l: "No", auth: "oauth" },
-  { n: "Google Drive", cat: "Productivity", c: "#1FA463", l: "Dr", auth: "oauth" }, { n: "Zapier", cat: "Productivity", c: "#FF6A3D", l: "Zp", d: "Trigger 6,000+ apps from Arc events.", auth: "api key" },
-  { n: "Webhooks", cat: "Productivity", c: "#9aa0ac", l: "Wh", d: "Post Arc events to any endpoint.", auth: "secret" },
-];
-const CATS = ["All", "Social", "Email & SMS", "CRM & Sales", "Analytics", "Creative", "Productivity"];
 
 // Real connectors (CONNECTOR_REGISTRY) get functional cards; the rest of the
 // catalog below is an honest roadmap. Logo + credential copy per real key.
@@ -478,7 +504,9 @@ const CONFIG_FIELDS: Record<string, ConfigField[]> = {
     },
     {
       key: "persona",
-      kind: "text",
+      // `text` here while the other three persona fields were `persona` pickers,
+      // so this one alone accepted a typo that fails silently at detection time.
+      kind: "persona",
       label: "Audience persona (optional)",
       placeholder: PERSONA_PLACEHOLDER,
       hint: "A persona key from your workspace's own taxonomy — who a weather-response campaign should target. Leave blank and the opportunity still carries the weather evidence; you pick the audience when you draft.",
@@ -599,25 +627,18 @@ const CONNECTOR_STATUS_PILL: Record<ConnectorStatus, { kind: string; label: stri
   unavailable: { kind: "off", label: "Not available yet" },
 };
 
-const MEDIA_MODELS: Record<string, [string, string, string, number?][]> = {
-  image: [["marketing_studio_image", "Marketing Studio Image", "Higgsfield", 1], ["ms_image", "DTC Ads", "Higgsfield"], ["soul_v2", "Higgsfield Soul 2.0", "Higgsfield"], ["soul_cast", "Soul Cast", "Higgsfield"], ["soul_cinematic", "Soul Cinema", "Higgsfield"], ["soul_location", "Soul Location", "Higgsfield"], ["cinematic_studio_2_5", "Cinema Studio Image 2.5", "Higgsfield"], ["image_auto", "Auto", "Higgsfield"], ["autosprite", "AutoSprite Animation", "Higgsfield"], ["flux_2", "Flux 2.0", "Black Forest Labs"], ["flux_kontext", "Flux Kontext Max", "Black Forest Labs"], ["gpt_image", "GPT Image 1.5", "OpenAI"], ["gpt_image_2", "GPT Image 2", "OpenAI"], ["grok_image", "Grok Imagine", "xAI"], ["nano_banana", "Nano Banana", "Google"], ["nano_banana_2", "Nano Banana 2", "Google"], ["nano_banana_pro", "Nano Banana Pro", "Google"], ["kling_omni_image", "Kling O1 Image", "Kling"], ["recraft-v4-1", "Recraft 4.1", "Recraft"], ["seedream_v4_5", "Seedream 4.5", "Bytedance"], ["seedream_v5_lite", "Seedream 5.0 Lite", "Bytedance"], ["z_image", "Z Image", "Tongyi-MAI"]],
-  video: [["marketing_studio_video", "Marketing Studio", "Higgsfield", 1], ["cinematic_studio_video", "Cinema Studio Video", "Higgsfield"], ["cinematic_studio_3_0", "Cinema Studio Video 3.0", "Higgsfield"], ["higgsfield_preset", "Higgsfield Preset", "Higgsfield"], ["clipify", "Personal Clipper", "Higgsfield"], ["veo3", "Google Veo 3", "Google"], ["veo3_1", "Google Veo 3.1", "Google"], ["veo3_1_lite", "Google Veo 3.1 Lite", "Google"], ["grok_video", "Grok Imagine", "xAI"], ["grok_video_v15", "Grok Imagine 1.5", "xAI"], ["kling2_6", "Kling 2.6", "Kling"], ["kling3_0", "Kling 3.0", "Kling"], ["kling3_0_turbo", "Kling 3.0 Turbo", "Kling"], ["seedance_1_5", "Seedance 1.5 Pro", "Bytedance"], ["seedance_2_0", "Seedance 2.0", "Bytedance"], ["seedance_2_0_mini", "Seedance 2.0 Mini", "Bytedance"], ["minimax_hailuo", "Minimax Hailuo", "Hailuo"], ["wan2_6", "Wan 2.6", "Wan"], ["wan2_7", "Wan 2.7", "Wan"]],
-  audio: [["inworld_text_to_speech", "Inworld TTS", "Inworld", 1], ["mirelo_text_to_audio", "Mirelo SFX", "Mirelo"], ["sonilo_music", "Sonilo Text-to-Music", "Sonilo"]],
-};
-const PCOL: Record<string, string> = { Higgsfield: "#c8a24a", Google: "#5b8def", "Black Forest Labs": "#9678c8", OpenAI: "#7fb89a", xAI: "#aab2bd", Kling: "#E1306C", Bytedance: "#88b6d8", Recraft: "#c47055", "Tongyi-MAI": "#19c4cc", Inworld: "#9678c8", Mirelo: "#7fb89a", Sonilo: "#f3c64a", Hailuo: "#FF7A59", Wan: "#52BD94" };
+// The 44-entry MEDIA_MODELS literal, PCOL provider colours, and the
+// RosterModel/MODEL_CAT_* metadata that fed the removed "Roster" tab lived
+// here. They were a hand-copy of src/domain/higgsfield-models.ts kept in sync
+// by memory. The catalog has one home again.
+/** Two-letter monogram for a brand mark (still used by the logo upload field). */
 const pinit = (p: string) => { const w = p.split(/[\s-]+/); return (w.length > 1 ? w[0][0] + w[1][0] : p.slice(0, 2)).toUpperCase(); };
-// One roster model, captured on card click for the detail popup.
-type RosterModel = { id: string; label: string; prov: string; rec?: number; cat: "image" | "video" | "audio" };
-const MODEL_CAT_LABEL: Record<RosterModel["cat"], string> = { image: "Image", video: "Video", audio: "Audio" };
-const MODEL_CAT_OUTPUT: Record<RosterModel["cat"], string> = {
-  image: "still images — ads, hero shots, product frames",
-  video: "short video — reels, UGC, and cinematic spots",
-  audio: "voiceover, music, and sound effects",
-};
 
 const EMPTY_USAGE: SettingsUsageView = {
   isDemo: false, configured: false, tokensLabel: "0", runsLabel: "0", costLabel: "$0.00",
-  capLabel: "$80", pctOfCap: 0, isNearCap: false, rangeLabel: "Last 30 days",
+  // No invented cap. "$80" matched no plan tier we sell ($2 / $25 / $75 / $250),
+  // and it was rendered verbatim whenever the usage read failed.
+  capLabel: "—", pctOfCap: 0, isNearCap: false, rangeLabel: "Last 30 days",
   daily: [], recent: [], byModel: [],
 };
 
@@ -634,7 +655,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, workspaceName = "", email, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, suppression = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; suppression?: SuppressionView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
+export function SettingsView({ brandName, workspaceName = "", email, viewerName = "", session = null, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, suppression = null, customFields = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; viewerName?: string; session?: AccountSession | null; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; suppression?: SuppressionView | null; customFields?: CustomFieldDefinition[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
   const [cur, setCur] = useState("overview");
   // Health and the waitlist are platform-level, not workspace-level: the server
   // sends null unless the viewer is a platform admin, so the group — and every
@@ -648,12 +669,15 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     : NAVGROUPS;
   const memberCount = team.members.length;
   const pendingCount = team.invites.length;
+  // `usage === null` means the read FAILED (page.tsx reports it as degraded), not
+  // that the workspace spent nothing. Keep the two apart everywhere a figure is
+  // rendered — EMPTY_USAGE is a shape to render empty states from, never an
+  // answer about money.
+  const usageUnavailable = usage === null;
   const usageView = usage ?? EMPTY_USAGE;
   const [navQ, setNavQ] = useState("");
   const [connCat, setConnCat] = useState("All");
   const [connQ, setConnQ] = useState("");
-  const [mediaCat, setMediaCat] = useState<"image" | "video" | "audio">("image");
-  const [modelSel, setModelSel] = useState<RosterModel | null>(null);
   const [sub, setSub] = useState<Record<string, string>>({});
   const [connSel, setConnSel] = useState<string | null>(null);
   // Which CRM object a deep link arrived pointing at (?o=leads). The Records
@@ -777,7 +801,12 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     for (const [key, label] of grp.items) {
       destinations.push({ label, keywords: `${label} ${grp.g} ${SECTION_KEYWORDS[key] ?? ""}`, go: () => navTo(key) });
       for (const tab of SUBTABS[key] ?? []) {
-        destinations.push({ label, sub: tab, keywords: `${label} ${tab}`, go: () => navTo(key, tab) });
+        destinations.push({
+          label,
+          sub: tab,
+          keywords: `${label} ${tab} ${TAB_KEYWORDS[`${key}/${tab}`] ?? ""}`,
+          go: () => navTo(key, tab),
+        });
       }
     }
   }
@@ -805,7 +834,9 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
   // Active in-section tab + the tab bar for the current section (null if none).
   const activeSub = SUBTABS[cur] ? sub[cur] ?? SUBTABS[cur][0] : null;
   const subCounts: Record<string, Record<string, number>> = {
-    connections: { Live: connectors.connectors.length },
+    // The Live grid renders the email connection alongside the connector rows,
+    // so counting only `connectors` said 15 while 16 cards were on screen.
+    connections: { Live: connectors.connectors.length + (emailConnection ? 1 : 0) },
     team: { Members: team.members.length, Invites: team.invites.length },
     // Fields counts what you've defined; Stages counts pipelines, not stages —
     // there is no single stage count across three separate pipelines.
@@ -820,6 +851,13 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
       ))}
     </div>
   ) : null;
+  // Every connector that actually exists for this workspace, including the email
+  // connection (which is its own read-model, not a `connectors` row). The
+  // Roadmap tab subtracts this set so nothing shipped can be listed as planned.
+  const liveConnectorKeys = new Set<string>([
+    ...connectors.connectors.map((v) => v.key),
+    ...(emailConnection ? ["resend"] : []),
+  ]);
   const selectedConnector = connSel && connSel !== "resend" ? connectors.connectors.find((v) => v.key === connSel) ?? null : null;
   const resendModalOpen = connSel === "resend";
   // "Recommended for your business" — real connectors whose verticals match the
@@ -839,6 +877,20 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
     INDUSTRY_OPTIONS.find((o) => o.value === settings.industry)?.label ?? "Not set";
 
   const activeConnections = connectors.connectors.filter((c) => c.enabled).length + (emailConnection?.enabled ? 1 : 0);
+
+  // Rail dots, derived from the same rows the sections render. `systemStatus`
+  // already grades itself; take its worst row rather than asserting green.
+  const worstKind = (kinds: string[]): "ok" | "warn" | "err" =>
+    kinds.includes("err") ? "err" : kinds.includes("warn") ? "warn" : "ok";
+  const dots: Record<string, string> = {
+    connections: DOT_COLOR[
+      connectors.connectors.some((c) => c.status === "error")
+        ? "err"
+        : activeConnections === 0
+          ? "warn"
+          : "ok"
+    ],
+  };
   // "Runner" is what we call the Cloud Run worker; a customer has no idea what
   // one is, and "Idle" told them nothing about whether Arc was working (BSR-657).
   const runnerValue = !agentConnection?.enabled
@@ -1109,14 +1161,43 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         <Panel title="Workspace">
           <Row label="Plan"><span className="pillrow"><Pill kind="ok">{billing?.planLabel ?? "—"}</Pill><button className="btn sm" onClick={() => navTo("usage")}>Manage plan</button></span></Row>
           <Row label="Business type"><span className="pillrow"><span className="ptxt">{businessTypeLabel}</span><button className="btn sm" onClick={() => navTo("general")}>Change</button></span></Row>
-          <Row label="Team"><span className="pillrow"><span className="ptxt">{memberCount} {memberCount === 1 ? "member" : "members"}{pendingCount > 0 ? ` · ${pendingCount} pending` : ""}</span><button className="btn sm" onClick={() => navTo("team")}>Manage</button></span></Row>
+          {/* A failed team read leaves `members` empty, which rendered "0
+              members" — a workspace being told it has nobody in it. Same
+              distinction the Members list itself draws (BSR-578). */}
+          <Row label="Team"><span className="pillrow"><span className="ptxt">{team.failed ? "Couldn’t be read" : `${memberCount} ${memberCount === 1 ? "member" : "members"}${pendingCount > 0 ? ` · ${pendingCount} pending` : ""}`}</span><button className="btn sm" onClick={() => navTo("team")}>Manage</button></span></Row>
           <Row label="Arc" desc="Whether the agent is picking up work right now."><span className="pillrow"><span className="ptxt">{runnerValue}</span><button className="btn sm" onClick={() => navTo("general", "Agent")}>Open</button></span></Row>
           <Row label="Connections" desc="Tools Arc can use on your behalf."><span className="pillrow"><span className="ptxt">{activeConnections === 0 ? "None yet" : `${activeConnections} on`}</span><button className="btn sm" onClick={() => navTo("connections")}>Manage</button></span></Row>
           {/* "Of this month’s budget" was billing-system vocabulary in the
               primary UI (§4.2). Say what it is: how much of the month’s
               allowance Arc has used. */}
-          <Row label="Usage this month" desc="How much of your monthly allowance Arc has used."><span className="pillrow"><span className="ptxt">{usageView.pctOfCap}% used</span><button className="btn sm" onClick={() => navTo("usage")}>See usage</button></span></Row>
+          {/* "0% used" when the read FAILED is a statement about spend we can't
+              stand behind — the operator relaxes about a cap they may be near. */}
+          <Row label="Usage this month" desc="How much of your monthly allowance Arc has used."><span className="pillrow"><span className="ptxt">{usageUnavailable ? "Couldn’t be read" : `${usageView.pctOfCap}% used`}</span><button className="btn sm" onClick={() => navTo("usage")}>See usage</button></span></Row>
         </Panel>
+        {/* Formerly its own "System status" rail section. Every row is derived
+            from the same props the rest of Settings renders from, and each links
+            to the screen where you'd fix it. */}
+        <Panel
+          title="Services"
+          tag={(() => {
+            const kind = worstKind(systemStatus.map((s) => s.kind));
+            return <Pill kind={kind}>{kind === "ok" ? "All good" : kind === "warn" ? "Needs attention" : "Failing"}</Pill>;
+          })()}
+        >
+          {systemStatus.map((s) => (
+            <Row key={s.label} label={s.label} desc={s.desc}>
+              <span className="pillrow">
+                <Pill kind={s.kind}>{s.value}</Pill>
+                {s.go && <button type="button" className="btn sm" onClick={s.go.run}>{s.go.label}</button>}
+              </span>
+            </Row>
+          ))}
+        </Panel>
+        <div>
+          <button type="button" className="btn" onClick={() => router.refresh()}>
+            <Ic d='<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 00-14-3M4 14a8 8 0 0014 3"/>' />Re-check
+          </button>
+        </div>
       </>
     ),
     general: (
@@ -1131,6 +1212,8 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
             <SuppressionPanel view={suppression} />
           </>
         ) : (
+          /* The panel inside repeated this section's own H1 verbatim — "Organization
+             & brand" stacked directly on "Organization & brand". */
           <GeneralPanel brandName={brandName} workspaceName={workspaceName || brandName} settings={settings} workspaceLogoUrl={workspaceLogoUrl} />
         )}
       </>
@@ -1172,7 +1255,13 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
             <div className="connhub-search"><Ic d='<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>' /><input value={connQ} onChange={(e) => setConnQ(e.target.value)} placeholder="Search planned integrations…" /></div>
             <div className="catchips">{CATS.map((c) => <button type="button" key={c} className={`catchip${connCat === c ? " on" : ""}`} aria-pressed={connCat === c} onClick={() => setConnCat(c)}>{c}</button>)}</div>
             <div className="conngrid">
-              {CONNECTORS.filter((x) => x.n !== "Gemini Web Research" && x.n !== "Higgsfield").filter((x) => {
+              {/* Roadmap = what is NOT built. This used to exclude exactly two
+                  connectors by hardcoded display name, so Resend, Slack,
+                  HubSpot, Mailchimp and Webhooks — all shipped, all with a
+                  working card one tab away in Live — rendered under a "Planned"
+                  badge. Derive it from the Live list instead: a connector that
+                  ships now leaves the roadmap on its own. */}
+              {CONNECTORS.filter((x) => !x.liveKey || !liveConnectorKeys.has(x.liveKey)).filter((x) => {
                 const okCat = connCat === "All" || x.cat === connCat;
                 const okQ = !connQ || x.n.toLowerCase().includes(connQ.toLowerCase());
                 return okCat && okQ;
@@ -1193,7 +1282,13 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
             {!workspaceIndustry ? (
               <div className="cnote" style={{ marginBottom: 14 }}>
                 <Ic d='<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>' />
-                <div>Set your <b>industry</b> in <b>General</b> to get connector recommendations tailored to your business.</div>
+                {/* Pointed at "General" — a section name that hasn't existed in
+                    the rail since it became "Organization & brand". Send people
+                    there instead of naming a label they can't find. */}
+                <div>
+                  Set your <b>industry</b> to get connector recommendations tailored to your business.{" "}
+                  <button type="button" className="btn sm" style={{ marginLeft: 4 }} onClick={() => navTo("general", "Organization")}>Set industry</button>
+                </div>
               </div>
             ) : recommendedConnectors.length > 0 ? (
               <div style={{ marginBottom: 22 }}>
@@ -1217,52 +1312,21 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         )}
       </>
     ),
+    // The "Roster" sub-tab lived here: a scrolling, read-only list of 44 vendor
+    // model names with a per-model popup, in a section whose own copy says "Arc
+    // picks the best one for each job — you don't choose one every time". It
+    // offered no control, and it duplicated src/domain/higgsfield-models.ts as a
+    // hand-copied literal in the view. Deleted, along with its detail popup.
     media: (
       <>
-        <Head t="Image &amp; video quality" d="Two engines make your creative, and both produce a draft that waits for your approval — nothing goes out on its own. Arc picks the best one for each job automatically; the setting below only chooses the fallback." />
-        {subBar}
-        {activeSub === "Roster" ? (
-          <div className="panel">
-            <div className="panel-h"><h2>Higgsfield roster</h2><span className="ph-d" style={{ marginLeft: 6 }}>44 models</span><span className="tg ok" style={{ marginLeft: "auto" }}>live</span></div>
-            <div className="panel-b" style={{ paddingBottom: 14 }}>
-              <div className="msub">{(["image", "video", "audio"] as const).map((c) => <button key={c} className={mediaCat === c ? "on" : ""} onClick={() => setMediaCat(c)}>{c.charAt(0).toUpperCase() + c.slice(1)} <span className="mct">{MEDIA_MODELS[c].length}</span></button>)}</div>
-              <div className="modellist">
-                {MEDIA_MODELS[mediaCat].map((m) => {
-                  const [id, label, prov, rec] = m; const col = PCOL[prov] || "#9aa0ac";
-                  const open = () => setModelSel({ id, label, prov, rec, cat: mediaCat });
-                  return (
-                    <button type="button" className="mrow mrow-btn" key={id} onClick={open}>
-                      <BrandBadge className="mlogo" name={prov} initials={pinit(prov)} color={col} glyphSize={16} />
-                      <div className="mi"><div className="mn">{label}{rec ? <span className="mbadge">Arc’s pick</span> : null}</div><div className="mp">{prov}</div></div>
-                      <span className="mrow-go" aria-hidden="true">→</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="panel-f"><Ic d={CHECK} />Arc automatically chooses from this live roster. “Arc’s pick” marks the recommended default for each category.</div>
-          </div>
-        ) : (
-          <MediaDefaultsPanel settings={settings} />
-        )}
+        <Head t="Image & video" d="Arc picks the best engine for each job automatically, and everything it makes is a draft that waits for your approval. The setting below only chooses the fallback." />
+        <MediaDefaultsPanel settings={settings} />
       </>
     ),
     account: (
       <>
-        <Head t="Account" d="Your profile and active sign-in session." />
-        <Panel title="Profile">
-          <Row label="Signed in as"><span style={{ display: "flex", alignItems: "center", gap: 9 }}><span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", fontFamily: "var(--serif)", fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-border)" }}>{(email || "O").charAt(0).toUpperCase()}</span><span><span style={{ fontSize: "12.5px", fontWeight: 600, display: "block" }}>{email.split("@")[0] || "Operator"}</span><span style={{ fontSize: 11, color: "var(--muted)" }}>{email || "No email on this session"}</span></span></span></Row>
-          <Row label="Profile photo" desc="Shown on your account and across the app. Square works best.">
-            <ImageUploadField
-              currentUrl={avatarUrl}
-              fallback={(email || "O").charAt(0).toUpperCase()}
-              shape="circle"
-              uploadAction={saveUserAvatarAction}
-              removeAction={removeUserAvatarAction}
-            />
-          </Row>
-          <div style={{ padding: "13px 0 4px" }}><form action="/api/auth/sign-out" method="post"><button type="submit" className="btn danger">Sign out</button></form></div>
-        </Panel>
+        <Head t="Account" d="Your name, photo, password, and the session you're signed in on." />
+        <AccountPanel email={email} displayName={viewerName} avatarUrl={avatarUrl} session={session} />
       </>
     ),
     usage: (
@@ -1277,6 +1341,25 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
           <UsageByModel usage={usageView} />
         ) : activeSub === "Recent" ? (
           <UsageRecent usage={usageView} />
+        ) : usageUnavailable ? (
+          <>
+            {/* The read failed. Falling through to EMPTY_USAGE printed "0 tokens
+                · $0.00 · 0% of your $80 plan cap" — three confident figures
+                about money, none of them read from anything, and "$80" matches
+                no plan tier we sell. An operator either relaxes about a cap they
+                are near or files a bug because their spend vanished. */}
+            <div className="panel">
+              <div className="panel-h"><h2>This month</h2><Pill kind="warn">Unavailable</Pill></div>
+              <div className="panel-b" style={{ padding: 16 }}>
+                <p className="cxm-hint" style={{ margin: 0 }}>
+                  Your usage couldn&apos;t be read just now, so no figures are shown — a zero here would be a
+                  statement about your spend that we can&apos;t stand behind. Nothing has changed, and nothing
+                  has stopped. Reload to try again.
+                </p>
+              </div>
+            </div>
+            <BillingPlanControl billing={billing} />
+          </>
         ) : (
           <>
             <div className="panel">
@@ -1299,35 +1382,11 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
               <div className="panel-f"><Ic d={CHECK} />Usage is scoped to this workspace.</div>
             </div>
             <BillingPlanControl billing={billing} />
-            <div style={{ display: "flex", gap: 9 }}><button type="button" className="btn gold" onClick={() => navTo("usage")}><Ic d='<path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-6"/>' />Open usage &amp; billing</button></div>
+            {/* A gold primary button reading "Open usage & billing" used to sit
+                here, on the Usage & billing page, calling navTo("usage") — the
+                section it was already in. It could not do anything. */}
           </>
         )}
-      </>
-    ),
-    system: (
-      <>
-        <Head t="System status" d="What this workspace actually has configured, read from the same sources the features use." />
-        {/* This board used to be a hardcoded array of all-green pills — "Gemini API
-            key: Present", "Arc runner: Connected · 2m ago" — shown identically to
-            every deployment regardless of reality. It carried a "placeholder" note,
-            but a green pill reading "Connected · 2m ago" is a claim, not a mockup.
-            Every row below is now derived from the same props the rest of Settings
-            renders from, and each links to the page where you'd actually fix it. */}
-        <Panel title="Services" tag={<span className="tg ok">Live</span>}>
-          {systemStatus.map((s) => (
-            <Row key={s.label} label={s.label} desc={s.desc}>
-              <span className="pillrow">
-                <Pill kind={s.kind}>{s.value}</Pill>
-                {s.go && <button type="button" className="btn sm" onClick={s.go.run}>{s.go.label}</button>}
-              </span>
-            </Row>
-          ))}
-        </Panel>
-        <div>
-          <button type="button" className="btn" onClick={() => router.refresh()}>
-            <Ic d='<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 00-14-3M4 14a8 8 0 0014 3"/>' />Re-check
-          </button>
-        </div>
       </>
     ),
   };
@@ -1371,7 +1430,7 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
               <div className="setgrp">{grp.g}</div>
               {grp.items.map((it) => (
                 <button type="button" key={it[0]} className={`setitem${it[0] === cur ? " on" : ""}`} aria-current={it[0] === cur ? "page" : undefined} onClick={() => navTo(it[0])}>
-                  <Ic d={ICON[it[0]]} /><span>{it[1]}</span>{DOTS[it[0]] && <span className="sd" style={{ background: DOTS[it[0]] }} />}
+                  <Ic d={ICON[it[0]]} /><span>{it[1]}</span>{dots[it[0]] && <span className="sd" style={{ background: dots[it[0]] }} />}
                 </button>
               ))}
             </div>
@@ -1388,7 +1447,6 @@ export function SettingsView({ brandName, workspaceName = "", email, avatarUrl =
         <ConnectorModal view={selectedConnector} configured={connectors.configured} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} onClose={closeConnector} />
       )}
       {resendModalOpen && emailConnection && <ResendModal view={emailConnection} liveSendEnabled={liveSendEnabled} onClose={closeConnector} />}
-      {modelSel && <ModelModal model={modelSel} onClose={() => setModelSel(null)} />}
     </div>
     </PersonaOptionsContext.Provider>
   );
@@ -1449,19 +1507,37 @@ function BillingPlanControl({ billing }: { billing: SettingsBillingView | null }
 
   const statusSuffix = billing.subscriptionStatus ? ` · ${billing.subscriptionStatus}` : "";
 
+  // The cap this workspace ACTUALLY spends against, not the tier's list price.
+  // `billing.capLabel` is resolved from org_plans and honours a negotiated
+  // `monthly_cap_cents` override; the `options` catalog never can. Reading the
+  // catalog here printed "$2/mo monthly cap" directly beneath a usage meter
+  // reading "6% of your $250 Free plan cap" — two answers about the same money,
+  // one screen apart, and the wrong one is the reassuring one. The catalog cap
+  // is right only while the picker is showing some OTHER tier the operator is
+  // considering, which has no resolved cap of its own yet.
+  const showingServerTier = tier === billing.tier;
+  const effectiveCapLabel = showingServerTier ? billing.capLabel : current.capLabel;
+  const capIsNegotiated = showingServerTier && billing.capLabel !== current.capLabel;
+
   return (
-    <Panel title="Plan" tag={TGOK} foot="Your monthly budget applies to paid lookups and creative.">
+    <Panel title="Plan" foot="Your monthly budget applies to paid lookups and creative.">
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ fontWeight: 600 }}>{current.label}{statusSuffix}</div>
-          <div style={{ fontSize: 12, color: "var(--muted)" }}>{current.capLabel} monthly cap</div>
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+            {effectiveCapLabel} monthly cap
+            {capIsNegotiated ? <> · custom cap for this workspace (the {current.label} default is {current.capLabel})</> : null}
+          </div>
         </div>
         {billing.stripeConfigured ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <select className="sel" value={checkoutTier} disabled={!billing.canManage || busy} onChange={(e) => setCheckoutTier(e.target.value)}>
               <option value="">Choose a plan…</option>
+              {/* "Starter — $25/mo" reads as the PRICE. It is the monthly spend
+                  cap; the tier itself sells for something else entirely. Name
+                  the number. */}
               {billing.purchasableTiers.map((t) => (
-                <option key={t} value={t}>{optionFor(t)?.label} — {optionFor(t)?.capLabel}</option>
+                <option key={t} value={t}>{optionFor(t)?.label} — {optionFor(t)?.capLabel} cap</option>
               ))}
             </select>
             <button className="btn gold" disabled={!billing.canManage || busy || !checkoutTier} onClick={() => checkout(checkoutTier)}>Subscribe / Upgrade</button>
@@ -1476,7 +1552,7 @@ function BillingPlanControl({ billing }: { billing: SettingsBillingView | null }
             onChange={(e) => change(e.target.value)}
           >
             {billing.options.map((o) => (
-              <option key={o.tier} value={o.tier}>{o.label} — {o.capLabel}</option>
+              <option key={o.tier} value={o.tier}>{o.label} — {o.capLabel} cap</option>
             ))}
           </select>
         )}
@@ -1505,7 +1581,7 @@ function TeamMembers({ team }: { team: SettingsTeamView }) {
 
   return (
     <>
-      <Panel title={<>Members <span className="ph-d" style={{ marginLeft: 6 }}>{members.length}</span></>} tag={TGOK}>
+      <Panel title={<>Members <span className="ph-d" style={{ marginLeft: 6 }}>{members.length}</span></>}>
         {/* "No members yet" and "we could not read your team" are opposite
             statements, and the second one used to render as the first — which
             invites an operator to re-invite people who are already there
@@ -1580,6 +1656,10 @@ function MemberModal({ member, workspaceId, onClose, onRoleChanged, onRemoved }:
           <p className="cxm-hint">Controls what they can do across the workspace — approve, draft, or view.</p>
           <div className="cxm-field">
             <select className="sel" value={role} disabled={member.isOwner || pending} onChange={(e) => setRole(e.target.value)}>
+              {/* Owner is not assignable, so it is not in ROLE_OPTIONS. The
+                  owner's own row still has to render its current role rather
+                  than an empty select, so add it back for that row only. */}
+              {!ROLE_OPTIONS.includes(role) ? <option key={role}>{role}</option> : null}
               {ROLE_OPTIONS.map((o) => <option key={o}>{o}</option>)}
             </select>
             <button className="btn gold" disabled={member.isOwner || pending || role === member.roleLabel} onClick={saveRole}>{pending ? "Saving…" : "Save"}</button>
@@ -1622,7 +1702,7 @@ function TeamInvites({ workspaceId, seedInvites }: { workspaceId: string | null;
 
   return (
     <>
-      <Panel title={<>Pending invites <span className="ph-d" style={{ marginLeft: 6 }}>{invites.length}</span></>} tag={TGOK}>
+      <Panel title={<>Pending invites <span className="ph-d" style={{ marginLeft: 6 }}>{invites.length}</span></>}>
         {invites.length === 0 ? (
           <div className="me" style={{ padding: "6px 2px", color: "var(--muted)" }}>No pending invites — invite a teammate below.</div>
         ) : (
@@ -1695,7 +1775,7 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <div className="cxm-label">Role</div>
           <p className="cxm-hint">Roles map to what they can do — approve, draft, view.</p>
           <select className="sel" value={role} onChange={(e) => setRole(e.target.value)}>
-            <option>Admin</option><option>Marketer</option><option>Reviewer</option><option>Member</option><option>Viewer</option>
+            {ROLE_OPTIONS.map((o) => <option key={o}>{o}</option>)}
           </select>
         </div>
         <div className="cxm-sec">
@@ -2079,7 +2159,11 @@ function GeneralPanel({ brandName, workspaceName, settings, workspaceLogoUrl }: 
   const [name, setName] = useState(workspaceName);
   const [orgName, setOrgName] = useState(brandName);
   const [profile, setProfile] = useState<AppSettings["workspaceProfile"]>(settings.workspaceProfile);
-  const [industry, setIndustry] = useState(canonicalIndustryKey(settings.industry));
+  // Seeded from the RAW stored value, not the canonicalised one. Canonicalising
+  // turned "" into "general", so an untouched workspace opened this panel and
+  // read "General / other" — a decision it had never made, and one Connections
+  // was simultaneously asking it to make.
+  const [industry, setIndustry] = useState(settings.industry?.trim() ? canonicalIndustryKey(settings.industry) : "");
   const [email, setEmail] = useState(settings.supportEmail ?? "");
   const [status, setStatus] = useState<SaveStatus>(null);
   const [pending, setPending] = useState(false);
@@ -2093,7 +2177,7 @@ function GeneralPanel({ brandName, workspaceName, settings, workspaceLogoUrl }: 
   }
 
   return (
-      <Panel title="Organization & brand" foot="Changes apply across Arc and to generated creative.">
+      <Panel title="Identity" foot="Changes apply across Arc and to generated creative.">
         <Row label="Workspace name" desc="The bold line in the sidebar. Its subtitle, label, and color live under Workspaces → Customize."><input className="inp" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></Row>
         <Row label="Organization" desc="Your brand name — used in Arc’s outbound from-name and on generated creative. Separate from the workspace name, so a workspace can be labelled for what it does."><input className="inp" value={orgName} onChange={(e) => setOrgName(e.target.value)} maxLength={80} /></Row>
         <Row label="Brand logo" desc="Stamped on generated creative and used as the default sidebar logo. A workspace-specific override under Workspaces can replace it in the sidebar. Square PNG or SVG works best.">
@@ -2105,7 +2189,12 @@ function GeneralPanel({ brandName, workspaceName, settings, workspaceLogoUrl }: 
           />
         </Row>
         <Row label="Account type" desc="How Arc frames personas, detectors, and templates."><Seg opts={["Individual", "Company", "Agency"]} value={PROFILE_LABEL[profile]} onChange={(v) => setProfile(v.toLowerCase() as AppSettings["workspaceProfile"])} /></Row>
-        <Row label="Industry" desc="Tailors starter audiences and workspace language. Existing records stay unchanged."><select className="sel" value={industry} onChange={(e) => setIndustry(canonicalIndustryKey(e.target.value))}>{INDUSTRY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Row>
+        <Row label="Industry" desc="Tailors starter audiences, workspace language, and which connectors Arc recommends. Existing records stay unchanged.">
+          <select className="sel" value={industry} onChange={(e) => setIndustry(e.target.value ? canonicalIndustryKey(e.target.value) : "")}>
+            <option value="">Not set — choose your industry</option>
+            {INDUSTRY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </Row>
         <Row label="Support email" desc="Used as reply-to on transactional email."><input className="inp" value={email} placeholder="support@yourcompany.com" onChange={(e) => setEmail(e.target.value)} /></Row>
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0 4px" }}>
           <button className="btn gold" onClick={save} disabled={pending}>{pending ? "Saving…" : "Save changes"}</button>
@@ -2179,7 +2268,7 @@ function AgentIdentityPanel({ settings }: { settings: AppSettings }) {
   }
 
   return (
-    <Panel title="Agent identity" tag={TGOK} foot="Shown wherever Arc is named.">
+    <Panel title="Agent identity" foot="Shown wherever Arc is named.">
       <Row label="Display name" desc="What the agent is called across the app and in Arc’s replies.">
         <span className="pillrow">
           <input className="inp" value={name} onChange={(e) => setName(e.target.value)} onBlur={save} onKeyDown={(e) => { if (e.key === "Enter") save(); }} style={{ minWidth: 160 }} maxLength={32} />
@@ -2188,6 +2277,104 @@ function AgentIdentityPanel({ settings }: { settings: AppSettings }) {
         </span>
       </Row>
     </Panel>
+  );
+}
+
+// ---- Account (wired) ----
+/**
+ * Your own profile. Previously three read-only rows plus Sign out, under a
+ * heading that promised a "session" it never showed.
+ *
+ * `full_name` was the sharpest gap: written once at sign-up, then read forever
+ * by the sidebar, the greeting, and the "X invited you" line on every invitation
+ * this workspace sends — with nothing anywhere in the product to correct it.
+ */
+export type AccountSession = { lastSignInAt: string | null; createdAt: string | null; provider: string | null };
+
+function AccountPanel({ email, displayName, avatarUrl, session }: {
+  email: string;
+  displayName: string;
+  avatarUrl: string | null;
+  session: AccountSession | null;
+}) {
+  const [name, setName] = useState(displayName);
+  const [savedName, setSavedName] = useState(displayName);
+  const [nameStatus, setNameStatus] = useState<SaveStatus>(null);
+  const [namePending, setNamePending] = useState(false);
+  const [pwStatus, setPwStatus] = useState<SaveStatus>(null);
+  const [pwPending, setPwPending] = useState(false);
+  const initial = (displayName || email || "O").charAt(0).toUpperCase();
+
+  async function saveName() {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === savedName) return;
+    setNamePending(true);
+    setNameStatus(null);
+    const res = await saveDisplayNameAction({ fullName: trimmed });
+    setNamePending(false);
+    if (!res.ok) { setNameStatus({ tone: "err", text: res.error }); return; }
+    setSavedName(trimmed);
+    setNameStatus({ tone: "ok", text: res.persisted ? res.message ?? "Saved." : "Saved here — connect your account to keep it." });
+  }
+
+  async function resetPassword() {
+    setPwPending(true);
+    setPwStatus(null);
+    const res = await sendPasswordResetAction();
+    setPwPending(false);
+    setPwStatus(res.ok ? { tone: "ok", text: res.message ?? "Reset link sent." } : { tone: "err", text: res.error });
+  }
+
+  return (
+    <>
+      <Panel title="Profile" foot="Your name and photo appear across the app and on invitations you send.">
+        <Row label="Signed in as">
+          <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", fontFamily: "var(--serif)", fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-border)" }}>{initial}</span>
+            <span>
+              <span style={{ fontSize: "12.5px", fontWeight: 600, display: "block" }}>{savedName || email.split("@")[0] || "Operator"}</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>{email || "No email on this session"}</span>
+            </span>
+          </span>
+        </Row>
+        <Row label="Display name" desc="What teammates see next to your activity, and the name on invitations you send.">
+          <span className="pillrow">
+            <input className="inp" value={name} maxLength={80} style={{ minWidth: 170 }} placeholder="Your name" onChange={(e) => setName(e.target.value)} onBlur={saveName} onKeyDown={(e) => { if (e.key === "Enter") saveName(); }} />
+            <button className="btn sm gold" disabled={namePending || !name.trim() || name.trim() === savedName} onClick={saveName}>{namePending ? "Saving…" : "Save"}</button>
+            <Status status={nameStatus} />
+          </span>
+        </Row>
+        <Row label="Profile photo" desc="Shown on your account and across the app. Square works best.">
+          <ImageUploadField
+            currentUrl={avatarUrl}
+            fallback={initial}
+            shape="circle"
+            uploadAction={saveUserAvatarAction}
+            removeAction={removeUserAvatarAction}
+          />
+        </Row>
+      </Panel>
+
+      <Panel title="Sign-in & security" foot="Arc never asks for your password here — the link goes to your email.">
+        {/* The heading always claimed to show "your active sign-in session" and
+            never showed one. These come from the Supabase user record. */}
+        <Row label="Last signed in" desc={session?.provider ? `Signed in with ${session.provider}.` : undefined}>
+          <span className="ptxt">{session?.lastSignInAt ? relTime(session.lastSignInAt) : "Not recorded"}</span>
+        </Row>
+        <Row label="Account created">
+          <span className="ptxt">{session?.createdAt ? new Date(session.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "Not recorded"}</span>
+        </Row>
+        <Row label="Password" desc="Sends a reset link to your email address. The old password stays valid until you use it.">
+          <span className="pillrow">
+            <button className="btn sm" disabled={pwPending || !email} onClick={resetPassword}>{pwPending ? "Sending…" : "Email me a reset link"}</button>
+            <Status status={pwStatus} />
+          </span>
+        </Row>
+        <div style={{ padding: "13px 0 4px" }}>
+          <form action="/api/auth/sign-out" method="post"><button type="submit" className="btn danger">Sign out</button></form>
+        </div>
+      </Panel>
+    </>
   );
 }
 
@@ -2220,8 +2407,11 @@ function MediaDefaultsPanel({ settings }: { settings: AppSettings }) {
     setStatus(toStatus(res, "Saved."));
   }
 
+  // The footer here read "image_model / video_model · read by
+  // /api/v1/arc/media/generate-*" — two column names and an API route, shown to
+  // an owner-operator on a settings screen.
   return (
-    <Panel title="Built-in generation default" tag={TGOK} foot="image_model / video_model · read by /api/v1/arc/media/generate-*">
+    <Panel title="Built-in generation default" foot="Applies when Arc falls back to the built-in engine. Everything it makes is still a draft that waits for your approval.">
       <Row label="Default image model" desc="Used by the built-in Gemini path. Auto follows Arc’s per-task pick.">
         <select className="sel" value={imageModel} onChange={(e) => setImageModel(e.target.value)}>
           {["", ...IMAGE_MODELS].map((m) => <option key={m || "auto"} value={m}>{IMAGE_MODEL_LABELS[m] ?? m}</option>)}
@@ -2248,7 +2438,12 @@ function ConnectorCard({ view, onOpen }: { view: ConnectorView; onOpen: () => vo
   const pill = CONNECTOR_STATUS_PILL[view.status];
   const cost = costBadgeFor(view);
   const kindLabel = CONNECTOR_KIND_LABEL[view.kind] ?? view.kind;
-  const cta = view.credentialPresent || view.enabled ? "Manage" : view.credentialOptional || view.platformCredentialAvailable ? "Set up" : "Connect";
+  // A connector whose integration doesn't exist can't be connected — the popup
+  // says exactly that. The card still invited you to "Connect →", which is the
+  // control-that-refuses-on-click the popup copy was written to avoid.
+  const cta = view.status === "unavailable"
+    ? "Details"
+    : view.credentialPresent || view.enabled ? "Manage" : view.credentialOptional || view.platformCredentialAvailable ? "Set up" : "Connect";
   return (
     <button type="button" className="ccard ccard-btn" onClick={onOpen}>
       <div className="ct">
@@ -2893,51 +3088,12 @@ function ResendModal({ view, liveSendEnabled, onClose }: { view: ConnectionView;
   );
 }
 
-// ---- Media roster model detail (read-only) ----
-// A model card opens this popup. The roster is Arc's auto-pick pool (no per-
-// generation choice), so this is informational — provider, output, whether it's
-// Arc's default pick, and how Arc uses it. Data is what the catalog actually
-// carries (id/label/provider/category/recommended) — no invented capabilities.
-function ModelModal({ model, onClose }: { model: RosterModel; onClose: () => void }) {
-  const col = PCOL[model.prov] || "#9aa0ac";
-  const catLabel = MODEL_CAT_LABEL[model.cat];
-  const isPick = Boolean(model.rec);
-  return (
-    <Modal open onClose={onClose} width={440} title={model.label} description={`${model.prov} · ${catLabel.toLowerCase()} model`}>
-      <div className="cxm">
-        <div className="cxm-status">
-          <span className="pillrow">
-            <BrandBadge className="mlogo" name={model.prov} initials={pinit(model.prov)} color={col} glyphSize={18} style={{ width: 30, height: 30 }} />
-            <span className="badge">{catLabel}</span>
-            {isPick ? <Pill kind="ok">Arc’s pick</Pill> : <Pill kind="off">In roster</Pill>}
-          </span>
-        </div>
-
-        <div className="cxm-sec">
-          <div className="cxm-label">About this model</div>
-          <dl className="cxm-about">
-            <div><dt>Provider</dt><dd>{model.prov}</dd></div>
-            <div><dt>Output</dt><dd>{MODEL_CAT_OUTPUT[model.cat]}</dd></div>
-            <div><dt>Role</dt><dd>{isPick ? `Arc’s default ${catLabel.toLowerCase()} pick` : "In the auto-pick roster"}</dd></div>
-            <div><dt>Model ID</dt><dd style={{ fontFamily: "var(--mono)", fontSize: 11.5 }}>{model.id}</dd></div>
-          </dl>
-        </div>
-
-        <div className="cxm-sec">
-          <div className="cxm-label">How Arc uses it</div>
-          <p className="cxm-hint">Arc picks the best model for each job — you don’t choose one every time. Everything it makes is a draft that records where it came from, and nothing goes out until you approve it.</p>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 // ---- Roles & permissions (real reference) ----
 // Renders WORKSPACE_ROLES — the same catalog that powers the invite picker and
 // the member-management guards, so this guide can't drift from what's enforced.
 function RolesGuide() {
   return (
-    <Panel title="Roles & permissions" tag={TGOK} foot="These permissions are shared by invitations and workspace access controls.">
+    <Panel title="Roles & permissions" foot="These permissions are shared by invitations and workspace access controls.">
       <div className="roles">
         {WORKSPACE_ROLES.map((r) => (
           <div className="rolecard" key={r.role}>
@@ -2973,13 +3129,13 @@ function actionAccent(action: string): string {
 function ActivityLog({ entries, isDemo }: { entries: WorkspaceActivityEntry[]; isDemo: boolean }) {
   if (!entries.length) {
     return (
-      <Panel title="Recent activity" tag={TGOK}>
+      <Panel title="Recent activity">
         <div style={{ padding: "8px 2px", fontSize: 12.5, color: "var(--muted)" }}>No activity yet — member and workspace changes will show up here.</div>
       </Panel>
     );
   }
   return (
-    <Panel title="Recent activity" tag={TGOK} foot={isDemo ? "Demo activity is shown until the workspace is connected." : "Member and workspace changes, newest first."}>
+    <Panel title="Recent activity" foot={isDemo ? "Demo activity is shown until the workspace is connected." : "Member and workspace changes, newest first."}>
       {entries.map((e) => (
         <div className="actrow" key={e.id}>
           <span className="actdot" style={{ background: actionAccent(e.action) }} />
@@ -3104,7 +3260,7 @@ function ConnectorSpendPanel({ spend }: { spend: ConnectorSpendView | null }) {
         </div>
       </Panel>
 
-      <Panel title="Spend cap" tag={TGOK} foot="Raising the cap is how you approve more spend. Anything over it is refused.">
+      <Panel title="Spend cap" foot="Raising the cap is how you approve more spend. Anything over it is refused.">
         {!spend.configured && <div style={{ fontSize: 11.5, color: "var(--muted)", padding: "10px 0 4px", lineHeight: 1.5 }}>You’re previewing without a connected workspace — changes won’t persist here.</div>}
         <Row label="Monthly cap" desc="Paid data lookups (contact details, property records) can spend up to this each month. Anything that would go over is refused — raising the cap is how you approve the extra spend.">
           <span className="pillrow" style={{ alignItems: "center", gap: 8 }}>

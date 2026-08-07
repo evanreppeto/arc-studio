@@ -544,13 +544,19 @@ export async function saveGeneralSettings(input: {
 
   try {
     const client = getSupabaseAdminClient();
-    const industry = canonicalIndustryKey(input.industry);
+    // Blank stays blank. `canonicalIndustryKey("")` returns "general", so saving
+    // ANY unrelated field on this panel used to quietly commit an industry the
+    // operator never picked — and "general" is a real choice, not a null. That
+    // is what left three surfaces disagreeing about one empty field: the picker
+    // showed "General / other", the overview said "Not set", and Connections
+    // asked you to set an industry you appeared to have.
+    const industry = input.industry.trim() ? canonicalIndustryKey(input.industry) : "";
     await saveAppSettings(client, ctx.orgId, {
       workspace_profile: appWorkspaceProfile(input.workspaceProfile),
-      industry: normalizeDisplayLabel(industry, DEFAULT_APP_SETTINGS.industry, 60),
+      industry: industry ? normalizeDisplayLabel(industry, DEFAULT_APP_SETTINGS.industry, 60) : "",
       support_email: supportEmail,
     });
-    const { error: profileError } = await client.from("business_profiles").update({ industry }).eq("org_id", ctx.orgId);
+    const { error: profileError } = await client.from("business_profiles").update({ industry: industry || null }).eq("org_id", ctx.orgId);
     if (profileError) throw profileError;
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save general settings." };
