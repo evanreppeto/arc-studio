@@ -14,6 +14,7 @@ import {
   type ArcConversation,
   type ArcMessage,
 } from "./persistence";
+import { RAIL_LOOSE_LIMIT, selectRailConversations } from "./rail-sections";
 import { getShareViewer } from "./sharing";
 
 /** A run older than this is treated as stale (an orphaned/stuck task) and no
@@ -178,8 +179,9 @@ export type ArcRecentConversationVM = {
   /** The thread `/arc` opens when the URL names no conversation, so the rail can
    *  mark the current chat the way it marks the current destination. */
   defaultActive: boolean;
-  /** The campaign this chat belongs to, when it has one. 5 of prod's 25
-   *  conversations do, so the rail groups on it rather than assuming it. */
+  /** The campaign this chat belongs to, when it has one — the folder the rail
+   *  files it under. 5 of prod's 25 conversations carry one, which is why the
+   *  folders get a reserved budget instead of competing on recency. */
   campaignId?: string | null;
   campaignName?: string | null;
 };
@@ -203,14 +205,20 @@ function relativeWhen(iso: string, nowMs: number): string {
  *
  * `null` means no backend is configured, which lets the offline demo use its
  * illustrative threads without ever masking a configured workspace read error.
+ *
+ * Returns a flat list, still — the rail groups it into campaign folders on the
+ * client. What travels is chosen by `selectRailConversations`, so the payload
+ * stays bounded (folders + unattached chats) no matter how many conversations a
+ * workspace has: this ships inside the layout, on every route.
  */
 export async function getRecentArcConversations(
   {
-    limit = 5,
+    limit = RAIL_LOOSE_LIMIT,
     nowMs = Date.now(),
     orgId,
     workspaceId,
   }: {
+    /** Cap on UNATTACHED chats. Campaign folders carry their own budget. */
     limit?: number;
     nowMs?: number;
     orgId?: string;
@@ -227,7 +235,7 @@ export async function getRecentArcConversations(
       // run read means no dots, not a shell without recent chats.
       listActiveArcRunConversationIds().catch(() => []),
     ]);
-    const safeLimit = Math.max(0, Math.min(limit, 5));
+    const looseLimit = Math.max(0, Math.min(limit, RAIL_LOOSE_LIMIT));
     // Mirrors getArcChatModel's own fallback: with no `?c=` in the URL, /arc
     // opens listConversationsForViewer's first row (pinned first, then newest).
     // Read from the unsorted list so the two screens can never disagree.
@@ -240,11 +248,16 @@ export async function getRecentArcConversations(
         .map((run) => run.conversationId),
     );
 
-    const rows = [...conversations]
+    const visible = [...conversations]
       .filter((conversation) => !orgId || conversation.orgId === orgId)
       .filter((conversation) => !workspaceId || !conversation.workspaceId || conversation.workspaceId === workspaceId)
-      .sort((left, right) => Date.parse(right.lastMessageAt) - Date.parse(left.lastMessageAt))
-      .slice(0, safeLimit)
+      .sort((left, right) => Date.parse(right.lastMessageAt) - Date.parse(left.lastMessageAt));
+
+    // Campaign folders get their own budget rather than competing with recency.
+    // Under the old flat top-5 the rail's grouping had literally never rendered
+    // on prod — the newest five chats carry no campaign, and the ones that do
+    // sit further down than the cap ever reached. See rail-sections.ts.
+    const rows = selectRailConversations(visible, { looseLimit, pinnedIds: [defaultActiveId] })
       .map((conversation) => ({
         id: conversation.id,
         title: conversation.title.trim() || "Untitled chat",
