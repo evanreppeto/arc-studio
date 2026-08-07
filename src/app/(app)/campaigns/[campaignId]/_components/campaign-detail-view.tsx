@@ -1268,7 +1268,12 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     document.getElementById(id)?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
   }, [openFindings, fullCopy]);
 
-  function decide(asset: CampaignWorkspaceAsset, decision: "approved" | "declined" | "archived") {
+  function decide(
+    asset: CampaignWorkspaceAsset,
+    decision: "approved" | "declined" | "archived",
+    /** How the reviewer addressed this draft's blockers, when it has any. */
+    acknowledgement?: string,
+  ) {
     if (pending) return;
     setErr(null);
     const prev = asset.status;
@@ -1281,7 +1286,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       return next;
     });
     startTransition(async () => {
-      const res = await decideCampaignAsset(campaign.id, asset.id, decision);
+      const res = await decideCampaignAsset(campaign.id, asset.id, decision, acknowledgement);
       if (!res.ok) {
         setAssetStatus(asset.id, prev);
         setOpenCards((current) => new Set(current).add(asset.id));

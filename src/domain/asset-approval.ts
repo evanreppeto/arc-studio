@@ -19,6 +19,18 @@ export type AssetDecision = "approved" | "declined" | "needs_revision" | "archiv
 /** The approval_status an asset sits in. */
 export type AssetApprovalStatus = "draft" | "pending_approval" | AssetDecision;
 
+/**
+ * What to call the things being acknowledged, in the refusal message.
+ *
+ * The rule below is the same for a photo and for a paragraph, but the words are
+ * not: media carries "risk flags", copy carries blocking review findings. The
+ * campaigns path passes its own noun rather than telling a reviewer that a
+ * sentence about a 60-minute response time "carries a risk flag".
+ */
+export type ConcernNoun = { one: string; many: string };
+
+const RISK_FLAG_NOUN: ConcernNoun = { one: "a risk flag", many: "risk flags" };
+
 export type AssetApprovalRequest = {
   decision: AssetDecision;
   /** Risk flags currently on the asset, including provenance-derived ones. */
@@ -28,14 +40,21 @@ export type AssetApprovalRequest = {
    * flagged asset; ignored otherwise.
    */
   acknowledgement?: string | null;
+  /** Defaults to risk-flag wording; campaigns pass blocker wording. */
+  concernNoun?: ConcernNoun;
 };
 
 export type AssetApprovalVerdict =
   | { allowed: true; requiresAcknowledgement: boolean }
   | { allowed: false; reason: "acknowledgement_required"; message: string; flags: string[] };
 
-/** Minimum length for an acknowledgement to count as considered rather than clicked-through. */
-const MIN_ACKNOWLEDGEMENT_CHARS = 3;
+/**
+ * Minimum length for an acknowledgement to count as considered rather than
+ * clicked-through. Exported so the form that collects it disables its submit on
+ * the same number the server refuses on — a UI that enables Approve at two
+ * characters just moves the refusal to after the click.
+ */
+export const MIN_ACKNOWLEDGEMENT_CHARS = 3;
 
 /**
  * Whether a decision may proceed.
@@ -53,13 +72,14 @@ export function checkAssetApproval(request: AssetApprovalRequest): AssetApproval
 
   const ack = (request.acknowledgement ?? "").trim();
   if (ack.length < MIN_ACKNOWLEDGEMENT_CHARS) {
+    const noun = request.concernNoun ?? RISK_FLAG_NOUN;
     return {
       allowed: false,
       reason: "acknowledgement_required",
       message:
         flags.length === 1
-          ? `This asset carries a risk flag (${flags[0]}). Say how it was addressed before approving.`
-          : `This asset carries ${flags.length} risk flags. Say how they were addressed before approving.`,
+          ? `This asset carries ${noun.one} (${flags[0]}). Say how it was addressed before approving.`
+          : `This asset carries ${flags.length} ${noun.many}. Say how they were addressed before approving.`,
       flags,
     };
   }

@@ -499,6 +499,12 @@
 .arc-campaign .lback { display: flex; flex-direction: column; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); }
 .arc-campaign .lback textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-family: inherit; font-size: 12px; line-height: 1.5; padding: 7px 9px; }
 .arc-campaign .lback textarea:focus-visible { outline: 2px solid var(--accent-border-strong); outline-offset: 1px; }
+/* The blocker acknowledgement in the review queue. Same shape as `.lback`
+   above — the media path's flag acknowledgement — because it is the same act:
+   saying how a blocking concern was addressed before approving past it. */
+.arc-campaign .rqack { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; font-size: 11px; font-weight: 600; color: var(--text-2); }
+.arc-campaign .rqack textarea { width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-family: inherit; font-size: 12px; line-height: 1.5; padding: 7px 9px; }
+.arc-campaign .rqack textarea:focus-visible { outline: 2px solid var(--accent-border-strong); outline-offset: 1px; }
 .arc-campaign .lbdecerr { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--red-text); }
 .arc-campaign .lbdecnote { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--muted); }
 
