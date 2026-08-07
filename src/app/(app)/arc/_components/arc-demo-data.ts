@@ -42,15 +42,28 @@ export const DEMO_THREADS: ArcThreadGroupVM[] = [
 // Carries `running`/`active` straight off the thread fixtures so the offline
 // preview shows the same rail states a live workspace does — a fixture that
 // flattened them would make the preview lie about a field prod really sets.
-/** Names for the campaigns the demo threads belong to, so the preview shows the
- *  rail's campaign label and grouping. The live path resolves these from the
- *  campaigns table; dropping them here left the preview unable to render either,
- *  which is how a fixture hides a feature rather than demonstrating it. */
-const DEMO_CAMPAIGN_NAMES: Record<string, string> = {
-  "demo-camp": "Pricing-Intent Fast Track",
-  "past-customer": "Past-customer win-back",
-  "property-partners": "Multi-seat expansion",
-};
+/**
+ * The campaigns the demo threads belong to.
+ *
+ * One list, in mention shape, because two things read it: the rail's campaign
+ * labels and folders, and the header's campaign picker. The live path resolves
+ * both from the campaigns table. Dropping this left the preview unable to
+ * render either — which is how a fixture hides a feature rather than
+ * demonstrating it, and it is the surface the design actually gets reviewed on.
+ *
+ * There used to be a second copy of these names inside arc-view.tsx, and the two
+ * had already drifted: this file called one "Past-customer win-back" while the
+ * drawer's copy called the same id "Past Customer Re-engagement".
+ */
+export const DEMO_CAMPAIGNS: ArcMention[] = [
+  { type: "campaign", id: "demo-camp", label: "Pricing-Intent Fast Track", href: "/campaigns" },
+  { type: "campaign", id: "past-customer", label: "Past-customer win-back", href: "/campaigns" },
+  { type: "campaign", id: "property-partners", label: "Multi-seat expansion", href: "/campaigns" },
+];
+
+const DEMO_CAMPAIGN_NAMES: Record<string, string> = Object.fromEntries(
+  DEMO_CAMPAIGNS.map((campaign) => [campaign.id, campaign.label]),
+);
 
 /**
  * Budgeted by the same function the live read model uses, rather than a hand-cut
@@ -61,11 +74,12 @@ const DEMO_CAMPAIGN_NAMES: Record<string, string> = {
  * height on.
  */
 export const DEMO_RECENT_CONVERSATIONS: ArcRecentConversationVM[] = selectRailConversations(
-  DEMO_THREADS.flatMap((group) => group.items).map(({ id, title, when, running, active, campaignId }) => ({
+  DEMO_THREADS.flatMap((group) => group.items).map(({ id, title, when, running, active, pinned, campaignId }) => ({
     id,
     title,
     when,
     running,
+    pinned,
     defaultActive: active,
     campaignId: campaignId ?? null,
     campaignName: campaignId ? DEMO_CAMPAIGN_NAMES[campaignId] ?? null : null,

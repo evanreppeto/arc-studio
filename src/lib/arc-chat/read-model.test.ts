@@ -201,16 +201,21 @@ describe("getRecentArcConversations", () => {
       orgId: "org-1",
       workspaceId: "workspace-1",
     })).resolves.toEqual([
-        { id: "conversation-2", title: "Untitled chat", when: "30m", running: false, defaultActive: false, campaignId: null, campaignName: null },
-        { id: "conversation-1", title: "Growth plan", when: "2h", running: false, defaultActive: true, campaignId: null, campaignName: null },
+        { id: "conversation-2", title: "Untitled chat", when: "30m", running: false, pinned: false, defaultActive: false, campaignId: null, campaignName: null },
+        { id: "conversation-1", title: "Growth plan", when: "2h", running: false, pinned: false, defaultActive: true, campaignId: null, campaignName: null },
       ]);
   });
 
-  // The rail marks the open chat, and with no `?c=` /arc opens
-  // listConversationsForViewer's first row — pinned-first, NOT newest-first.
-  // Deriving it from the rail's own display order would mark the wrong row for
-  // any workspace with a pinned chat.
-  it("flags the thread /arc opens by default from the unsorted access order", async () => {
+  /**
+   * The rail's first row is the chat `/arc` opens.
+   *
+   * These were two different threads: `defaultActive` came from the unsorted
+   * access order (pinned first), while the rail displayed by recency alone — so
+   * a pinned-but-older chat was marked active in second place while a newer one
+   * sat above it looking like the current one. Pinning also visibly did nothing,
+   * which is the whole of what pinning is for. Both orders are pinned-first now.
+   */
+  it("puts the thread /arc opens by default at the top of the rail", async () => {
     mocks.listConversations.mockResolvedValue([
       { ...conversation, id: "pinned", pinnedAt: "2026-07-20T00:00:00.000Z", lastMessageAt: "2026-07-21T00:00:00.000Z" },
       { ...conversation, id: "newest", lastMessageAt: "2026-07-22T13:00:00.000Z" },
@@ -218,7 +223,11 @@ describe("getRecentArcConversations", () => {
 
     const recents = await getRecentArcConversations({ nowMs: Date.parse("2026-07-22T14:00:00.000Z") });
 
-    expect(recents?.map((r) => [r.id, r.defaultActive])).toEqual([["newest", false], ["pinned", true]]);
+    expect(recents?.map((r) => [r.id, r.defaultActive, r.pinned])).toEqual([
+      ["pinned", true, true],
+      ["newest", false, false],
+    ]);
+    expect(recents?.[0]?.defaultActive).toBe(true);
   });
 
   it("marks a thread with a fresh run as working and ignores a stale one", async () => {

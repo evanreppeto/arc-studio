@@ -184,6 +184,10 @@ export type ArcRecentConversationVM = {
    *  folders get a reserved budget instead of competing on recency. */
   campaignId?: string | null;
   campaignName?: string | null;
+  /** Pinned to the top of the list. The rail's row menu can toggle this now
+   *  that it is the conversation sidebar — the control used to live only in the
+   *  drawer's copy of this list, which no longer exists. */
+  pinned: boolean;
 };
 
 const DAY_MS = 86_400_000;
@@ -251,7 +255,14 @@ export async function getRecentArcConversations(
     const visible = [...conversations]
       .filter((conversation) => !orgId || conversation.orgId === orgId)
       .filter((conversation) => !workspaceId || !conversation.workspaceId || conversation.workspaceId === workspaceId)
-      .sort((left, right) => Date.parse(right.lastMessageAt) - Date.parse(left.lastMessageAt));
+      // Pinned first, then newest — the order `listConversationsForViewer`
+      // already documents and `/arc` already opens by. Sorting on recency alone
+      // meant pinning a chat in the rail changed nothing about where it sat,
+      // which is the entire point of pinning it. It feeds the selection below
+      // rather than replacing it: order within each part, budget across them.
+      .sort((left, right) =>
+        (right.pinnedAt ? 1 : 0) - (left.pinnedAt ? 1 : 0)
+        || Date.parse(right.lastMessageAt) - Date.parse(left.lastMessageAt));
 
     // Campaign folders get their own budget rather than competing with recency.
     // Under the old flat top-5 the rail's grouping had literally never rendered
@@ -266,6 +277,7 @@ export async function getRecentArcConversations(
         defaultActive: conversation.id === defaultActiveId,
         campaignId: conversation.campaignId,
         campaignName: null as string | null,
+        pinned: Boolean(conversation.pinnedAt),
       }));
 
     // Names for the handful of campaigns actually referenced — one query, and

@@ -108,7 +108,10 @@ describe("app shell navigation contract", () => {
     // 13 destinations at 32px, flush, under headers 13px away read as one
     // striped block. The rail had the height to spare.
     expect(APP_SHELL).toContain('className="nav-group"');
-    expect(APP_SHELL_CSS).toContain("& .nav-primary, & .nav-group { display: grid; gap: 2px; }");
+    // `flex: none` because .navwrap is a flex column now (the chat list below is
+    // the part that flexes). Without it these default to `flex: 0 1 auto` and
+    // squash on a short viewport, which is the striped block this fixed.
+    expect(APP_SHELL_CSS).toContain("& .nav-primary, & .nav-group { flex: none; display: grid; gap: 2px; }");
     expect(APP_SHELL_CSS).toContain("min-height: 36px");
     expect(APP_SHELL_CSS).toContain("& .grp { font-size: 10.5px; font-weight: 600; letter-spacing: 0.11em; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); padding: 16px 10px 6px; }");
   });

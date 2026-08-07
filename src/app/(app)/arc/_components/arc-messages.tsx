@@ -677,7 +677,16 @@ export { isDecidedAssetStatus };
 /** How wide the workspace sidebar sits. Wide enough to read a deliverable's
  *  title and channel without truncating; narrow enough that it stays a list and
  *  never tries to be the reader — the full-pane preview is the reader. */
-const WORK_PANEL_WIDTH = 400;
+export const WORK_PANEL_WIDTH = 400;
+/**
+ * The pane width at which the workspace can dock instead of cover.
+ *
+ * Docking costs the conversation `WORK_PANEL_WIDTH`, and it is only worth it
+ * while what remains is still a comfortable reading measure. Below this the
+ * panel goes back to overlaying, because a 500px chat column beside a 400px
+ * panel serves neither.
+ */
+export const WORK_PANEL_DOCK_MIN_PANE = 1040;
 
 export function ArcWorkPanel({
   message,
@@ -689,6 +698,7 @@ export function ArcWorkPanel({
   demoRequest,
   demoOutcome,
   paneBox,
+  docked = false,
   onReview,
   onRecover,
   onClose,
@@ -701,16 +711,32 @@ export function ArcWorkPanel({
   demoPending: boolean;
   demoRequest?: string;
   demoOutcome?: "complete" | "canceled";
-  /** Where the content pane is, in viewport coordinates. The panel covers the
-   *  pane rather than docking beside it, and it is portaled out to the shell, so
-   *  it has to be told the box — see usePaneBox in arc-view.tsx. */
+  /** Where the content pane is, in viewport coordinates. The panel is portaled
+   *  out to the shell, so it has to be told the box — see usePaneBox in
+   *  arc-view.tsx. */
   paneBox?: PaneBox | null;
+  /**
+   * The pane is wide enough that the chat gave up room for this panel rather
+   * than being covered by it. Decided in arc-view.tsx from the measured pane
+   * width, not here — and not by a container query either, because this whole
+   * subtree is portaled outside `.arc-chat`, where `@container arcpane` would
+   * silently never match.
+   *
+   * When docked there is no scrim: nothing is being obscured, so a click
+   * outside is a click on the conversation, which stays live and readable.
+   */
+  docked?: boolean;
   onReview: (cards: ArcActionCard[]) => void;
   onRecover: (prompt: string) => void;
   onClose: () => void;
 }) {
   const reduceMotion = useReducedMotion();
-  const [openSections, setOpenSections] = useState<Record<WorkSectionId, boolean>>(DEFAULT_WORK_SECTIONS);
+  /**
+   * What the operator chose, or null while the adaptive default below is still
+   * in force. One state rather than a value plus a "have they chosen" flag, so
+   * "no choice yet" is unrepresentable as anything else.
+   */
+  const [chosenSections, setChosenSections] = useState<Record<WorkSectionId, boolean> | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [demoActiveIndex, setDemoActiveIndex] = useState(0);
@@ -718,16 +744,8 @@ export function ArcWorkPanel({
   useEffect(() => {
     const stored = readWorkSectionPreference();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- restored after hydration so server and client markup stay identical
-    if (stored) setOpenSections(stored);
+    if (stored) setChosenSections(stored);
   }, []);
-
-  const toggleSection = (id: WorkSectionId) => {
-    setOpenSections((current) => {
-      const next = { ...current, [id]: !current[id] };
-      writeWorkSectionPreference(next);
-      return next;
-    });
-  };
 
   const conversation = messages ?? (message ? [message] : []);
   const liveRuns = buildArcWorkspaceRuns(conversation);
@@ -807,6 +825,29 @@ export function ArcWorkPanel({
   const { deliverables, findings, awaiting: awaitingCards, approvedCount } = partitionArcWorkspaceCards(scopedCards, statuses);
   const isEmpty = runs.length === 0 && scopedCards.length === 0;
 
+  /**
+   * Evidence stays collapsed by default because on a real turn it is 65 rows,
+   * and opening it would bury the deliverables the panel was opened for. When
+   * there are no deliverables it has nothing to bury — and collapsing it then
+   * leaves three header rows above 750px of empty panel, which reads as broken
+   * rather than as tidy. So the default follows the contents; an explicit
+   * choice still wins, and is still what gets stored.
+   */
+  const sections = chosenSections
+    ?? (deliverables.length > 0 || awaitingCards.length > 0
+      ? DEFAULT_WORK_SECTIONS
+      : { evidence: evidenceCount > 0, runs: evidenceCount === 0 && runs.length > 0 });
+
+  /** Flips what is on screen, not a stored value behind it. While the adaptive
+   *  default is in force those two differ, and toggling the stored value would
+   *  make the first click on an already-open section appear to do nothing.
+   *  Declared here, below `sections`, so it closes over what actually rendered. */
+  const toggleSection = (id: WorkSectionId) => {
+    const next = { ...sections, [id]: !sections[id] };
+    setChosenSections(next);
+    writeWorkSectionPreference(next);
+  };
+
   const summary = [
     awaitingCards.length > 0 ? `${awaitingCards.length} waiting on you` : null,
     deliverables.length > 0 ? `${deliverables.length} ${deliverables.length === 1 ? "deliverable" : "deliverables"}` : null,
@@ -815,26 +856,33 @@ export function ArcWorkPanel({
 
   return (
     <OverlayPortal>
-      {/* Scrim and panel portal together — see overlay-portal.tsx. */}
-      <motion.button
-        type="button"
-        className="arc-dlv-scrim"
-        aria-label="Close conversation workspace"
-        initial={reduceMotion ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={reduceMotion ? undefined : { opacity: 0 }}
-        onClick={onClose}
-      />
+      {/* Scrim and panel portal together — see overlay-portal.tsx. Docked, there
+          is no scrim: the conversation beside it is not being covered, and
+          dimming a pane the reader is meant to be reading against is the thing
+          this docking exists to stop. */}
+      {docked ? null : (
+        <motion.button
+          type="button"
+          className="arc-dlv-scrim"
+          aria-label="Close conversation workspace"
+          initial={reduceMotion ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={reduceMotion ? undefined : { opacity: 0 }}
+          onClick={onClose}
+        />
+      )}
     <motion.aside
       className="arc-artifact-workspace arc-work-panel"
+      data-docked={docked ? "true" : undefined}
       aria-label="Conversation workspace"
-      /* A right-hand sidebar again, but an OVERLAYING one. The original rail
-         docked, which meant it paid for itself out of the conversation's width
-         (`margin-right: clamp(340px, 30cqi, 420px)`) and squeezed the reading
-         column every time it opened. Anchored to the pane's right edge and
-         floated over it, the list is where a list belongs and the chat keeps
-         its full measure — and picking something here opens it big rather than
-         trying to render it in 390px. */
+      /* A right-hand sidebar, docked where the pane can afford it and overlaying
+         where it cannot.
+         It used to always overlay, because the original rail docked
+         unconditionally and squeezed the reading column at every width. The
+         answer to "sometimes too narrow" is a width condition, not a permanent
+         overlay: covering the conversation to show what the run did means you
+         cannot read the run and the answer at the same time, which is the one
+         thing this panel is for. See WORK_PANEL_DOCK_MIN_PANE. */
       style={paneBox ? {
         top: paneBox.top,
         left: paneBox.left + Math.max(0, paneBox.width - Math.min(WORK_PANEL_WIDTH, paneBox.width)),
@@ -942,13 +990,13 @@ export function ArcWorkPanel({
         {runs.length > 0 ? (
           <section className="arc-work-section">
             <h3 className="arc-work-section-title">
-              <button type="button" className="arc-work-section-head is-toggle" aria-expanded={openSections.evidence} onClick={() => toggleSection("evidence")}>
+              <button type="button" className="arc-work-section-head is-toggle" aria-expanded={sections.evidence} onClick={() => toggleSection("evidence")}>
                 <span className="arc-work-section-name">Evidence</span>
                 <span className="arc-work-section-meta">{evidenceCount > 0 ? `${evidenceCount} ${evidenceCount === 1 ? "source" : "sources"}` : "None recorded"}</span>
-                <ChevronDown size={14} className={openSections.evidence ? "is-open" : ""} />
+                <ChevronDown size={14} className={sections.evidence ? "is-open" : ""} />
               </button>
             </h3>
-            {openSections.evidence ? (
+            {sections.evidence ? (
               evidence.length > 0 ? (
                 <div className="arc-work-evidence">
                   {evidence.map((group) => {
@@ -1005,13 +1053,13 @@ export function ArcWorkPanel({
         {runs.length > 0 ? (
           <section className="arc-work-section">
             <h3 className="arc-work-section-title">
-              <button type="button" className="arc-work-section-head is-toggle" aria-expanded={openSections.runs} onClick={() => toggleSection("runs")}>
+              <button type="button" className="arc-work-section-head is-toggle" aria-expanded={sections.runs} onClick={() => toggleSection("runs")}>
                 <span className="arc-work-section-name">Run history</span>
                 <span className="arc-work-section-meta">{runs.length} {runs.length === 1 ? "run" : "runs"}</span>
-                <ChevronDown size={14} className={openSections.runs ? "is-open" : ""} />
+                <ChevronDown size={14} className={sections.runs ? "is-open" : ""} />
               </button>
             </h3>
-            {openSections.runs ? (
+            {sections.runs ? (
               <div className="arc-work-runs">
                 {runs.map((run) => {
                   const open = expandedRun === run.id;

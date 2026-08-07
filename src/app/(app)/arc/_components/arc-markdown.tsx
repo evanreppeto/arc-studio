@@ -253,11 +253,28 @@ export function LiveReasoning({ text, streaming }: { text: string; streaming: bo
   const shown = useSmoothStream(text, streaming);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(false);
+  /**
+   * Whether there is anything above the visible window.
+   *
+   * The porthole's top fade used to be unconditional, so the first line of a run
+   * — the one moment someone is actually watching the thinking form — was
+   * rendered half-transparent by a gradient whose whole job is to say "there is
+   * more above this". A partial first sentence under a fade reads as a broken
+   * render, not as a stream. The fade is a claim about the content, so it is
+   * only made when the content backs it up.
+   */
+  const [scrolledPast, setScrolledPast] = useState(false);
+  /** Whether the window is actually clipping anything, which is the only state
+   *  in which "Expand thinking" has something to reveal. */
+  const [overflowing, setOverflowing] = useState(false);
   const { pinned, pinnedRef, repin } = useBottomPin(scrollRef, { threshold: 24 });
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (pinnedRef.current) el.scrollTop = el.scrollHeight;
+    setScrolledPast(el.scrollTop > 1);
+    setOverflowing(el.scrollHeight - el.clientHeight > 1);
   }, [shown, expanded, pinnedRef]);
 
   const followLatest = () => {
@@ -268,19 +285,26 @@ export function LiveReasoning({ text, streaming }: { text: string; streaming: bo
 
   return (
     <div className="arc-live-reasoning" data-expanded={expanded ? "true" : undefined}>
-      <div className="arc-live-reasoning-scroll" ref={scrollRef}>
+      <div
+        className="arc-live-reasoning-scroll"
+        ref={scrollRef}
+        data-clipped={scrolledPast ? "true" : undefined}
+        onScroll={(event) => setScrolledPast(event.currentTarget.scrollTop > 1)}
+      >
         <ReasoningMarkdown text={shown} streaming={streaming} />
       </div>
-      <div className="arc-live-reasoning-controls">
-        <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
-          {expanded ? "Collapse thinking" : "Expand thinking"}
-        </button>
-        {!pinned ? (
-          <button type="button" className="is-follow" onClick={followLatest}>
-            <ArrowDown size={11} /> Follow latest
+      {overflowing || expanded ? (
+        <div className="arc-live-reasoning-controls">
+          <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
+            {expanded ? "Collapse thinking" : "Expand thinking"}
           </button>
-        ) : null}
-      </div>
+          {!pinned ? (
+            <button type="button" className="is-follow" onClick={followLatest}>
+              <ArrowDown size={11} /> Follow latest
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
