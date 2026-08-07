@@ -29,6 +29,7 @@ import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
 import type { CustomFieldDefinition, CustomObject } from "@/domain";
 import { ManageFieldsModal } from "./manage-fields-modal";
 import { RecordTypesModal } from "./record-types-modal";
+import { ImportCustomModal } from "./import-custom-modal";
 
 type FilterOption = { value: string; label: string; count: number };
 
@@ -765,6 +766,7 @@ export function CrmBoard({
   const [addOpen, setAddOpen] = useState(false);
   const [fieldsOpen, setFieldsOpen] = useState(false);
   const [typesOpen, setTypesOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
    * Records archived this session, per object, so the row leaves at once.
@@ -1139,7 +1141,19 @@ export function CrmBoard({
     // display preference living in localStorage, and letting invisible state
     // silently shape a file is the worse failure of the two. Hiding a column to
     // read the table should not quietly delete it from the export.
-    const blob = new Blob([rowsToCsv(filteredAll, allCols, (c) => headerLabel(c, active, objects))], { type: "text/csv;charset=utf-8;" });
+    //
+    // Then EVERY custom field, not just the ones that became columns. The table
+    // shows at most MAX_CUSTOM_COLUMNS of them because its columns are
+    // fixed-width — a display constraint a file does not have. Exporting only
+    // those silently dropped the rest, which on the six loses a field and on a
+    // tenant-defined type loses the record: those carry a name and their custom
+    // fields, so a 12-field object exported as name + two.
+    const columned = new Set(allCols.map((c) => c.k));
+    const extraFields: Col[] = (customFieldDefsByKey[active.key] ?? [])
+      .filter((d) => !columned.has(`cf:${d.key}`))
+      .map((d) => ({ k: `cf:${d.key}`, t: d.label }));
+    const exportCols = [...allCols, ...extraFields];
+    const blob = new Blob([rowsToCsv(filteredAll, exportCols, (c) => headerLabel(c, active, objects))], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1225,12 +1239,21 @@ export function CrmBoard({
           </div>
         </div>
         <div className="sp">
-          {IMPORTABLE_OBJECTS.has(active.key) && (
-          <Link className="gbtn" href={`/crm/import?as=${active.key}`} title={`Import ${active.noun} from a CSV`}>
-            <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
-            Import
-          </Link>
-          )}
+          {/* Two importers, because they import different shapes. The wizard
+              builds a company -> contact -> property -> lead bundle; a
+              tenant-defined type is a name plus its own fields, and the wizard
+              has no kind for it. */}
+          {active.isCustom ? (
+            <button type="button" className="gbtn" onClick={() => setImportOpen(true)} title={`Import ${active.noun} from a CSV`}>
+              <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
+              Import
+            </button>
+          ) : IMPORTABLE_OBJECTS.has(active.key) ? (
+            <Link className="gbtn" href={`/crm/import?as=${active.key}`} title={`Import ${active.noun} from a CSV`}>
+              <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
+              Import
+            </Link>
+          ) : null}
           <button type="button" className="gbtn" onClick={exportCsv} disabled={filteredAll.length === 0} title={`Download ${filteredAll.length} ${active.noun} as CSV`}>
             <svg viewBox="0 0 24 24"><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3M8 9l4 4 4-4M12 13V3" /></svg>
             Export
@@ -1619,6 +1642,16 @@ export function CrmBoard({
           </button>
         </div>
       </div>
+
+      {active.isCustom && (
+        <ImportCustomModal
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          objectKey={active.key}
+          objectLabel={active.label}
+          singular={active.addLabel.replace(/^Add\s+/i, "")}
+        />
+      )}
 
       <ManageFieldsModal
         open={fieldsOpen}

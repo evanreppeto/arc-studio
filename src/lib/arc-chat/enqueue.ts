@@ -9,6 +9,7 @@ import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
 import { getCurrentAgentTaskTenantFields } from "../agent-tasks/scope";
 import { getSupabaseAdminClient } from "../supabase/server";
 import { markAgentKeys } from "./agent-config";
+import { claimChatTask } from "./inbox";
 import { notifyArcWebhook } from "./notify";
 import { insertPendingArcMessage, type ArcAttachment } from "./persistence";
 import { logArcChatStatus } from "./status-log";
@@ -172,10 +173,31 @@ export async function enqueueArcChatTask(
       assistantResponseStyle: input.assistantResponseStyle,
       approvalStrictness: input.approvalStrictness,
     });
+    // Claim on a delivered wake — the thing `delivered` was always for. Its
+    // doc has said since it was written that "the caller uses this to decide
+    // whether to claim the task now (push path) or leave it queued for the
+    // inbox fallback"; the caller only ever logged it. The cost was that a task
+    // Arc was actively working read `queued` with a null started_at, i.e. byte
+    // for byte identical to one the wake never reached, so neither a person nor
+    // the stalled-run detector could tell "in flight" from "dropped".
+    //
+    // Safe against the fast-reply race: claimChatTask is a compare-and-set on
+    // `status = 'queued'`, so if the runner already settled this turn while the
+    // wake POST was still open, the claim matches nothing and returns false
+    // rather than resurrecting a finished task back to `running`.
+    //
+    // Not claimed when the wake failed: that task genuinely has not been picked
+    // up, and leaving it `queued` is what lets the inbox fallback find it.
+    const claimed = delivered
+      ? await claimChatTask(task.id, client, {
+          orgId: tenant.org_id,
+          workspaceId: tenant.workspace_id,
+        }).catch(() => false)
+      : false;
     logArcChatStatus("waking_mark", {
       agentTaskId: task.id,
       conversationId: input.conversationId,
-      detail: `delivered=${delivered} wake_ms=${Date.now() - wakeStartedAt}`,
+      detail: `delivered=${delivered} claimed=${claimed} wake_ms=${Date.now() - wakeStartedAt}`,
     });
   } catch (error) {
     // Best-effort wake; the task is queued and the inbox route can still deliver it.

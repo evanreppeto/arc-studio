@@ -11,6 +11,7 @@ import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import "./campaign.css";
 import { getCampaignWorkspaceList, humanizeChannel, type CampaignWorkspaceListItem } from "@/lib/campaigns/read-model";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+import { reportDegraded } from "@/lib/observability/report-degraded";
 import { personasForIndustry } from "@/lib/personas/industry-templates";
 import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { canonicalIndustryKey } from "@/lib/product-language";
@@ -161,9 +162,17 @@ export default async function CampaignsPage() {
       status: "unavailable" as const,
       message: error instanceof Error ? error.message : "Campaign workspace is unavailable.",
     })),
-    // Correctly silent (BSR-546): picker options. An empty dropdown is
-    // visible to the operator; the campaign list still renders.
-    getOrgPersonaOptions(ctx.orgId).catch(() => []),
+    // Was "correctly silent (BSR-546): an empty dropdown is visible to the
+    // operator". That held while an empty list only cost you a dropdown. It no
+    // longer does: empty now BLOCKS campaign creation, because createCampaign
+    // validates against this workspace's persona keys and there are none to
+    // pass. A failed read and a workspace with no personas then look identical
+    // while meaning "reload" and "go add one". Still degrades — the campaign
+    // list renders regardless — but no longer silently.
+    getOrgPersonaOptions(ctx.orgId).catch((error) => {
+      reportDegraded(error, { scope: "campaigns.getOrgPersonaOptions", surface: "secondary", detail: { orgId: ctx.orgId } });
+      return [];
+    }),
   ]);
   const demoPersonaOptions = personasForIndustry(canonicalIndustryKey(process.env.ARC_DEMO_INDUSTRY))
     .map((persona) => ({ key: persona.slug, label: persona.name }));

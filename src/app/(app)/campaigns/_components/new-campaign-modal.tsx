@@ -2,17 +2,10 @@
 
 import { useState } from "react";
 
-import { DEFAULT_PERSONAS } from "@/lib/personas/default-personas";
+import Link from "next/link";
 
 import { Modal } from "../../_components/modal";
 import { type NewCampaignInput } from "../actions";
-
-function personaLabel(key: string): string {
-  return key
-    .replace(/^persona_/, "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 export type PersonaOption = { key: string; label: string };
 
@@ -23,16 +16,25 @@ export function NewCampaignModal({
   onSubmit,
 }: {
   open: boolean;
-  /** The org's own personas. Falls back to neutral starter personas. */
+  /**
+   * The org's own personas — the ONLY ones `createCampaign` will accept, since
+   * it validates against `getOrgPersonaKeys` for this workspace.
+   *
+   * Empty means empty. This used to fall back to `DEFAULT_PERSONAS`, which
+   * undid the careful distinction the page had already drawn: the page passes
+   * `[]` for a live workspace whose persona read came back empty, and the
+   * fallback filled that with keys from another taxonomy. Every one of them
+   * failed `isAllowedPersona`, so the operator picked a persona and got back
+   * "Choose a persona for this campaign." — a list where every choice was
+   * wrong, under a message saying they had not chosen.
+   */
   personaOptions?: PersonaOption[];
   onClose: () => void;
   /** Returns the outcome so the modal can surface an error and stay open on failure. */
   onSubmit: (value: NewCampaignInput) => Promise<{ ok: boolean; error?: string }>;
 }) {
-  const personaChoices =
-    personaOptions?.length
-      ? personaOptions
-      : DEFAULT_PERSONAS.map((persona) => ({ key: persona.slug, label: persona.name || personaLabel(persona.slug) }));
+  const personaChoices = personaOptions ?? [];
+  const noPersonas = personaChoices.length === 0;
   const [name, setName] = useState("");
   const [persona, setPersona] = useState("");
   const [theme, setTheme] = useState("");
@@ -40,7 +42,7 @@ export function NewCampaignModal({
   const [error, setError] = useState<string | null>(null);
 
   // The board remounts this via `key` on each open, so fields start fresh.
-  const canSubmit = name.trim().length > 0 && persona.length > 0 && theme.trim().length > 0 && !pending;
+  const canSubmit = !noPersonas && name.trim().length > 0 && persona.length > 0 && theme.trim().length > 0 && !pending;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -87,9 +89,9 @@ export function NewCampaignModal({
         <div className="mrow">
           <label className="mfield">
             <span className="mlabel">Audience persona</span>
-            <select value={persona} onChange={(e) => setPersona(e.target.value)} required>
+            <select value={persona} onChange={(e) => setPersona(e.target.value)} required disabled={noPersonas}>
               <option value="" disabled>
-                Choose a persona…
+                {noPersonas ? "No personas in this workspace" : "Choose a persona…"}
               </option>
               {personaChoices.map((opt) => (
                 <option key={opt.key} value={opt.key}>
@@ -109,6 +111,17 @@ export function NewCampaignModal({
             />
           </label>
         </div>
+
+        {/* A campaign needs a persona this workspace actually has, so with none
+            there is nothing to pick and Create stays disabled. Naming the next
+            step beats a dropdown that silently refuses every choice. */}
+        {noPersonas && (
+          <div className="mError">
+            This workspace has no personas yet, and a campaign needs one to aim at.{" "}
+            <Link href="/personas">Add a persona</Link>, then come back — if you do have some, the list
+            couldn&apos;t be read just now, so reload before adding more.
+          </div>
+        )}
 
         {error && <div className="mError">{error}</div>}
       </form>

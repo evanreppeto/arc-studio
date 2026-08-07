@@ -54,6 +54,13 @@ deploy rather than going quiet, and prints the message it would have sent. A
 notification pipeline that silently stops notifying is worse than one that is
 obviously broken.
 
+**So a red `Deploy notifications` on `main` means "the channel was never set
+up", not "the deploy failed."** Confirm which by opening the run: the failing
+step prints the exact message it could not send, above an `::error::` naming
+this secret. As of 2026-08-07 the secret has never existed, so every production
+deploy since the workflow shipped has failed this way — by design, but it does
+mean the red X is not yet evidence of anything else.
+
 ## Testing it
 
 **The delivery path** — proves webhook, channel and formatting without waiting
