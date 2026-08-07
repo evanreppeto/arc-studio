@@ -100,7 +100,22 @@ async function countExceeds(
 
 export async function getActivationState(orgId: string, workspaceId: string | null): Promise<ActivationState> {
   if (!isSupabaseAdminConfigured()) {
-    return { signals: EMPTY_SIGNALS, checklist: buildActivationChecklist(EMPTY_SIGNALS) };
+    // No backend, so none of the six signals were READ — and every one of them
+    // defaults to false. Rendering that produced a checklist claiming the
+    // workspace has no records, no brand, no media, no opportunities and no
+    // campaigns, printed directly above a Home screen showing all five: the
+    // offline preview fills those sections from demo fixtures, and only this
+    // read has no fixture path. "Bring in your records — until there are some,
+    // every screen stays empty" sat over a screen that was not empty.
+    //
+    // Six unread signals are not six zeroes. The checklist exists to guide a
+    // real new workspace through its first hour; with nothing to read there is
+    // nothing to guide, so it does not render rather than asserting a state
+    // nobody checked.
+    return {
+      signals: EMPTY_SIGNALS,
+      checklist: { ...buildActivationChecklist(EMPTY_SIGNALS), showChecklist: false },
+    };
   }
 
   const db = getSupabaseAdminClient() as unknown as SupabaseClient;
