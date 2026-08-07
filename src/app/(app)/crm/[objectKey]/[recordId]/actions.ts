@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { entityTypeFromCrmObjectKey, isAllowedPersona, parseNoteInput, parseTaskInput, type CustomFieldObjectKey } from "@/domain";
 import { saveCustomFieldValues } from "@/lib/custom-fields/values";
+import { resolveOrgObjectKey } from "@/lib/custom-objects/definitions";
 import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { updateCrmRecordFields } from "@/lib/crm/create";
@@ -166,13 +167,18 @@ export async function saveRecordCustomFields(input: {
   values: Record<string, unknown>;
 }): Promise<WriteResult> {
   await requireOperator();
-  if (!VALID_KEYS.has(input.objectKey)) return { ok: false, error: "Unknown record type." };
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
 
   const { orgId } = await currentScope();
+  // Resolved per-org, not against the six: a tenant-defined record type IS its
+  // custom fields, so refusing here made the only editable thing on it
+  // uneditable.
+  const objectKey = await resolveOrgObjectKey(orgId, input.objectKey);
+  if (!objectKey) return { ok: false, error: "Unknown record type." };
+
   const result = await saveCustomFieldValues(
     orgId,
-    input.objectKey as CustomFieldObjectKey,
+    objectKey,
     input.recordId,
     input.values,
   );

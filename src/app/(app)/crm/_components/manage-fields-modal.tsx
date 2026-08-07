@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
+import type { CustomFieldDefinition } from "@/domain";
 
 import { Modal } from "../../_components/modal";
 import { FieldForm } from "../../settings/_components/custom-fields-panel";
@@ -32,7 +32,8 @@ export function ManageFieldsModal({
 }: {
   open: boolean;
   onClose: () => void;
-  objectKey: CustomFieldObjectKey;
+  /** Per-org: one of the six, or a key the tenant defined for itself. */
+  objectKey: string;
   /** The tenant's own word for this object — "Matters", not "Properties". */
   objectLabel: string;
   /** Active definitions for this object, as the server rendered them. */

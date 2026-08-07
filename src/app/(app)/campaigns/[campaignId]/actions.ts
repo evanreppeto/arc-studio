@@ -8,7 +8,7 @@ import { getOperatorActor, requireOperator } from "@/lib/auth/operator";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { attachMediaToCampaignAsset } from "@/lib/campaigns/attach-media";
 import { buildExternalSendPackage, recordExternalSend, type ExternalSendPackage } from "@/lib/campaigns/external-send";
-import { decideAsset, reopenAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
+import { ApprovalBlockedError, decideAsset, reopenAsset, type ApprovalDecision } from "@/lib/campaigns/decisions";
 import { editDraftAsset } from "@/lib/campaigns/draft-editing";
 import { applyFindingFix } from "@/lib/campaigns/inline-fix";
 import { MEDIA_RESOLVE_MESSAGE, resolveMediaAssetId } from "@/lib/campaigns/media-identity";
@@ -43,7 +43,14 @@ export type CampaignActionResult =
        */
       agentTaskId?: string | null;
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string }
+  /**
+   * Approval refused because the asset has open blocking findings and the
+   * reviewer has not said how they were addressed. Distinct from a plain error
+   * so the UI can open the acknowledgement field and name the blockers, rather
+   * than showing a red string the operator can do nothing with.
+   */
+  | { ok: false; error: string; reason: "acknowledgement_required"; blockers: string[] };
 
 export type LaunchCampaignActionResult =
   | { ok: true; persisted: boolean; launchedAssets?: number }
@@ -65,7 +72,13 @@ const ASSET_DECISIONS: ReadonlySet<AssetDecision> = new Set<AssetDecision>([
   "archived",
 ]);
 
-export async function decideCampaignAsset(campaignId: string, assetId: string, decision: string): Promise<CampaignActionResult> {
+export async function decideCampaignAsset(
+  campaignId: string,
+  assetId: string,
+  decision: string,
+  /** How the reviewer addressed the asset's blocking findings, when it has any. */
+  acknowledgement?: string | null,
+): Promise<CampaignActionResult> {
   await requireOperator();
   if (!DECISIONS.has(decision)) return { ok: false, error: "Unknown decision." };
 
@@ -74,10 +87,22 @@ export async function decideCampaignAsset(campaignId: string, assetId: string, d
   try {
     const operator = await getOperatorActor();
     const tenant = await getCurrentAgentTaskTenantFields();
-    const result = await decideAsset({ assetId, campaignId, decision: decision as ApprovalDecision, operator, tenant });
+    const result = await decideAsset({
+      assetId,
+      campaignId,
+      decision: decision as ApprovalDecision,
+      operator,
+      tenant,
+      acknowledgement,
+    });
     revalidatePath(`/campaigns/${campaignId}`);
     return { ok: true, persisted: true, status: result.status };
   } catch (error) {
+    // Carried through as its own shape: the UI opens the acknowledgement field
+    // on this, where a generic error would just be a red line to read.
+    if (error instanceof ApprovalBlockedError) {
+      return { ok: false, error: error.message, reason: "acknowledgement_required", blockers: error.blockers };
+    }
     return { ok: false, error: error instanceof Error ? error.message : "Could not record the decision." };
   }
 }
