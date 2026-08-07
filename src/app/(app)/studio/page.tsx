@@ -68,12 +68,14 @@ export default async function StudioPage({
   const ctx = await getCurrentWorkspaceContext().catch(() => null);
   const brandName = ctx?.orgName?.trim() || "Your workspace";
 
-  // Real media_assets → the "Approved media" source, so Studio composes over the
+  // Real media_assets → the "From your library" source, so Studio composes over the
   // workspace's actual backgrounds. Undefined/empty offline → the built-in samples.
   let libraryItems: Item[] | undefined;
   if (ctx?.orgId && isSupabaseAdminConfigured()) {
     // PRIMARY: same claim as /library — empty asserts the workspace owns no
-    // approved media, which is the input Studio exists to work from.
+    // media at all, which is the input Studio exists to work from. Note this is
+    // every image/video with a url: NOT an approval gate, which is why the panel
+    // is not titled as one.
     const data = await getMediaLibraryData(getSupabaseAdminClient(), ctx.orgId).catch((error) => {
       reportDegraded(error, { scope: "studio.getMediaLibraryData", surface: "primary" });
       return null;
