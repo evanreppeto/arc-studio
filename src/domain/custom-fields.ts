@@ -368,6 +368,9 @@ export function canChangeFieldType(hasValues: boolean): { ok: true } | { ok: fal
   if (!hasValues) return { ok: true };
   return {
     ok: false,
-    error: "This field already has saved values. Archive it and add a new field instead of changing its type.",
+    // Deliberately does not say "archive it": the CSV import reaches this when
+    // reviving an ARCHIVED field whose type no longer matches, and telling that
+    // reader to archive it names a step they have already taken.
+    error: "This field already has saved values, so its type can't be changed. Add a new field instead.",
   };
 }

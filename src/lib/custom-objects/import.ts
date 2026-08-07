@@ -37,7 +37,25 @@ export type CustomImportPlan = {
 };
 
 export type CustomImportResult =
-  | { ok: true; created: number; skipped: number; fieldsCreated: string[]; fieldsReused: string[] }
+  | {
+      ok: true;
+      created: number;
+      skipped: number;
+      /** Newly created fields, by the HEADING the operator wrote — not the key. */
+      fieldsCreated: string[];
+      /** Fields that already existed and were attached to, same naming. */
+      fieldsReused: string[];
+      /**
+       * Columns that could not become fields, named by their HEADER — the word
+       * the operator typed in their spreadsheet, not the machine key.
+       *
+       * Reported rather than dropped: these are already excluded from the write,
+       * and while they went unreported a run that provisioned NOTHING was
+       * indistinguishable from a clean import of a record type that happens to
+       * have no extra columns. That is how #1082 shipped importing names only.
+       */
+      fieldsFailed: Array<{ label: string; error: string }>;
+    }
   | { ok: false; error: string };
 
 export type PlanResult = { ok: true; plan: CustomImportPlan } | { ok: false; error: string };
@@ -123,9 +141,12 @@ export async function importCustomObjectCsv(
 
   const provisioned = await provisionCustomFields(orgId, plan.fields, undefined, object.key);
   // A field that could not be created is dropped from the write rather than
-  // failing the import: the records are still worth having, and the operator is
-  // told which fields did not make it.
+  // failing the import: the records are still worth having. It is reported back
+  // as `fieldsFailed` — this comment used to claim the operator was told, while
+  // nothing returned it.
   const usable = plan.fields.filter((f) => !provisioned.failed.some((x) => x.key === f.key));
+  /** Machine key -> the heading it came from, for anything the operator reads. */
+  const headerFor = (key: string) => plan.fields.find((f) => f.key === key)?.header ?? key;
 
   let created = 0;
   let skipped = 0;
@@ -156,7 +177,12 @@ export async function importCustomObjectCsv(
     ok: true,
     created,
     skipped,
-    fieldsCreated: provisioned.created,
-    fieldsReused: provisioned.reused,
+    // All three lists are printed straight to the operator, so all three carry
+    // the heading they wrote in their file. `provisionCustomFields` reports the
+    // machine key — the word this reader does not speak, and the one that leaked
+    // into the UI as "New fields: plate_number, mileage".
+    fieldsCreated: provisioned.created.map(headerFor),
+    fieldsReused: provisioned.reused.map(headerFor),
+    fieldsFailed: provisioned.failed.map((f) => ({ label: headerFor(f.key), error: f.error })),
   };
 }

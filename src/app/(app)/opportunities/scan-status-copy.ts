@@ -57,11 +57,19 @@ export function reasonOnly(detail: string | null): string | null {
   return stripped || null;
 }
 
-export function scanStatusLine(status: ScanStatus, now: number = Date.now()): ScanStatusLine {
+/**
+ * Null when there is nothing honest to say — see the `unknown` outcome. The
+ * inbox's `scanStatus` prop is already nullable, so this renders no line at all
+ * rather than a sentence about a scan nobody looked up.
+ */
+export function scanStatusLine(status: ScanStatus, now: number = Date.now()): ScanStatusLine | null {
   const when = relativeTime(status.finishedAt ?? status.startedAt, now);
   const ago = when ? ` ${when}` : "";
 
   switch (status.outcome) {
+    case "unknown":
+      return null;
+
     case "never":
       return { text: "Arc hasn't scanned this workspace yet.", detail: null, tone: "muted" };
 
