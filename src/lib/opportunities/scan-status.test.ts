@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { classifyScanTask } from "./scan-status";
+import { classifyScanTask, getLastScanStatus } from "./scan-status";
+
+const configured = vi.fn(() => true);
+vi.mock("@/lib/supabase/server", () => ({
+  isSupabaseAdminConfigured: () => configured(),
+  getSupabaseAdminClient: () => {
+    throw new Error("not configured in this test");
+  },
+}));
 
 const NOW = Date.parse("2026-08-04T16:00:00Z");
 
@@ -121,5 +129,29 @@ describe("classifyScanTask", () => {
     expect(status.outcome).toBe("empty");
     expect(status.proposed).toBeNull();
     expect(status.detail).toBeNull();
+  });
+});
+
+
+/**
+ * The DECISION, not just the copy it produces.
+ *
+ * `scanStatusLine` returning null for `unknown` is only half the fix — the other
+ * half is `getLastScanStatus` choosing `unknown` over `never` when there was no
+ * backend to ask. Reverting that half left every copy test green, because a
+ * pure function tested with a hand-built status cannot see who built it.
+ */
+describe("getLastScanStatus separates 'not asked' from 'never happened'", () => {
+  it("reports unknown when there is no backend to read history from", async () => {
+    configured.mockReturnValue(false);
+    const status = await getLastScanStatus("org-1");
+    // `never` here is a claim about Arc, and the inbox renders it as one —
+    // above opportunities Arc is credited with finding.
+    expect(status.outcome).toBe("unknown");
+  });
+
+  it("still reports never for a real workspace with no scan rows", () => {
+    // The genuine empty case keeps its own answer; only the unasked one changed.
+    expect(classifyScanTask(null, NOW).outcome).toBe("never");
   });
 });
