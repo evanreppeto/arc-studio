@@ -3,7 +3,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import { arcAssetStatusFromDb, arcFindingSeverity, campaignDriver, deriveCampaignRollup, describeExternalMediaProvenance, type ArcAssetStatus, type CampaignDriver, type CampaignRollup, type ViralityScore,
   parseConsideredAudiences,
   humanizeArcProse,
-  isCreativeOnlyCampaign,
+  resolveCampaignKind,
   isFixKind,
   type InlineFix,
   normalizeHandoffNote,
@@ -20,7 +20,7 @@ import { canonicalIndustryKey } from "@/lib/product-language";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "../supabase/server";
 
 export const CAMPAIGN_SELECT =
-  "id,name,persona,campaign_theme,restoration_focus,status,company_id,contact_id,lead_id,owner,objective,audience_summary,offer_summary,compliance_notes,considered_audiences,handoff_note,launch_locked,source_signal,source_system,reasoning_payload,audit_payload,created_at,updated_at";
+  "id,name,persona,kind,campaign_theme,restoration_focus,status,company_id,contact_id,lead_id,owner,objective,audience_summary,offer_summary,compliance_notes,considered_audiences,handoff_note,launch_locked,source_signal,source_system,reasoning_payload,audit_payload,created_at,updated_at";
 export const ASSET_SELECT =
   "id,campaign_id,asset_type,channel,title,status,tool_source,prompt_input,prompt_inputs,draft_body,edited_body,approved_body,dispatch_locked,compliance_notes,reasoning_payload,audit_payload,created_at,updated_at";
 const APPROVAL_SELECT =
@@ -503,6 +503,8 @@ export type CampaignRow = {
   id: string;
   name: string;
   persona: string;
+  /** Declared at creation by routes that know; NULL means derive it. */
+  kind: string | null;
   campaign_theme: string | null;
   restoration_focus: string | null;
   status: string;
@@ -1052,7 +1054,12 @@ export async function getCampaignWorkspaceList(client?: SupabaseClient, agentNam
         // already been humanized, and `humanizeChannel` collapses image_prompt
         // and social_ad both to "Paid" — classifying off either would make a
         // generation batch indistinguishable from an ad.
-        creativeOnly: isCreativeOnlyCampaign(campaignAssetRows.map((asset) => asset.asset_type ?? "")),
+        // Declared beats derived: contents move as Arc fills a campaign in, and
+        // a campaign that is briefly all-creative should not file itself under
+        // "Creative from Studio" and then move once the copy lands.
+        creativeOnly:
+          resolveCampaignKind(campaign.kind, campaignAssetRows.map((asset) => asset.asset_type ?? "")) ===
+          "creative_batch",
         previewText: preview?.text ?? null,
         previewLabel: preview?.label ?? null,
         contentPieces: buildListContentPieces(campaignAssets),
@@ -1246,7 +1253,9 @@ function buildDemoListItem(campaign: DemoCampaign): CampaignWorkspaceListItem {
     channels: campaign.channels.slice(0, 3),
     // Demo pieces carry humanized kinds ("Image Prompt"); the classifier
     // normalizes, so the demo and live branches agree on the same campaign.
-    creativeOnly: isCreativeOnlyCampaign(campaign.pieces.map((piece) => piece.kind)),
+    // Demo fixtures declare no kind, so this is the derivation path by
+    // definition — resolveCampaignKind with a null declaration.
+    creativeOnly: resolveCampaignKind(null, campaign.pieces.map((piece) => piece.kind)) === "creative_batch",
     previewText: firstPreview,
     previewLabel: contentPieces[0]?.channel ?? null,
     contentPieces,

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useDialogFocus } from "./use-dialog-focus";
+
 export type CommandItem = {
   label: string;
   href: string;
@@ -47,6 +49,14 @@ function PaletteInner({ items, onClose }: { items: CommandItem[]; onClose: () =>
   const [active, setActive] = useState(0);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  /* The Tab trap and focus restoration, plus Escape at the document level.
+     Escape used to live on the INPUT's onKeyDown alone, so it stopped working
+     the moment focus moved off the search field — and nothing kept Tab inside
+     the palette, which claims `aria-modal="true"`. `moveFocusIn` is off because
+     the effect below focuses the search input, which is the right target here. */
+  useDialogFocus({ open: true, containerRef: cardRef, onEscape: onClose, moveFocusIn: false });
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -72,6 +82,7 @@ function PaletteInner({ items, onClose }: { items: CommandItem[]; onClose: () =>
     <div className="cmdk-overlay" onMouseDown={onClose}>
       <div
         className="cmdk"
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-label="Command menu"
@@ -102,8 +113,6 @@ function PaletteInner({ items, onClose }: { items: CommandItem[]; onClose: () =>
                 e.preventDefault();
                 const item = results[active];
                 if (item) go(item.href);
-              } else if (e.key === "Escape") {
-                onClose();
               }
             }}
           />

@@ -51,3 +51,35 @@ export function isCreativeOnlyCampaign(assetTypes: readonly string[]): boolean {
   if (types.length === 0) return false;
   return types.every((type) => CREATIVE_ASSET_TYPES.has(type));
 }
+
+/**
+ * What a campaign IS, preferring what was declared over what can be inferred.
+ *
+ * `campaigns.kind` is set at creation by routes that know — a campaign made to
+ * hold submitted variants was a creative batch the moment it existed. NULL
+ * means nobody declared it, and the deliverables answer instead.
+ *
+ * Declared beats derived because contents move and intent does not. Prod has a
+ * campaign that held `email, image_prompt, social_ad` one day and gained a
+ * `video_prompt` the next; if Arc writes the creative before the copy, a
+ * purely derived answer files it under "Creative from Studio" and then moves it
+ * to the approval queue later. The operator sees the same work appear twice, in
+ * two places, for reasons that are invisible to them.
+ *
+ * Existing rows are all NULL and stay that way — the derivation already
+ * classifies them correctly, and a backfill would have been an UPDATE against
+ * live data to reach the answer the app already gives.
+ */
+export type CampaignKind = "campaign" | "creative_batch";
+
+export function isCampaignKind(value: unknown): value is CampaignKind {
+  return value === "campaign" || value === "creative_batch";
+}
+
+export function resolveCampaignKind(
+  declared: string | null | undefined,
+  assetTypes: readonly string[],
+): CampaignKind {
+  if (isCampaignKind(declared)) return declared;
+  return isCreativeOnlyCampaign(assetTypes) ? "creative_batch" : "campaign";
+}
