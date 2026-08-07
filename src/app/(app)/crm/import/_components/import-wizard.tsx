@@ -234,7 +234,7 @@ export function ImportWizard({ ready, initialKind }: { ready: boolean; initialKi
               </span>
             )}
           </div>
-          {error && <p className="imp-err">{error}</p>}
+          {error && <p className="imp-err" role="alert">{error}</p>}
           {done && <p className="imp-note">{done} <Link href="/crm">View your records</Link>.</p>}
         </div>
       </section>
