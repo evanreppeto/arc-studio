@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isCreativeOnlyCampaign } from "../campaign-kind";
+import { isCreativeOnlyCampaign, resolveCampaignKind } from "../campaign-kind";
 
 describe("isCreativeOnlyCampaign", () => {
   /** The two rows that were sitting in the live "Needs you" queue. */
@@ -55,5 +55,39 @@ describe("isCreativeOnlyCampaign", () => {
     expect(isCreativeOnlyCampaign(["Video Prompt"])).toBe(true);
     expect(isCreativeOnlyCampaign(["image-prompt"])).toBe(true);
     expect(isCreativeOnlyCampaign(["Email", "Image Prompt"])).toBe(false);
+  });
+});
+
+describe("resolveCampaignKind", () => {
+  /** Declared wins, because contents move and intent does not. */
+  it("prefers what was declared at creation", () => {
+    expect(resolveCampaignKind("creative_batch", ["email", "sms"])).toBe("creative_batch");
+    expect(resolveCampaignKind("campaign", ["image_prompt", "image_prompt"])).toBe("campaign");
+  });
+
+  /**
+   * The case the column exists for. Arc often writes creative before copy, so a
+   * real campaign is briefly all-creative. Derived, it files under "Creative
+   * from Studio" and moves to the approval queue when the email lands — the
+   * same work appearing twice, in two places.
+   */
+  it("holds a declared campaign steady while it is still creative-only", () => {
+    expect(resolveCampaignKind("campaign", ["image_prompt"])).toBe("campaign");
+    expect(resolveCampaignKind("campaign", ["image_prompt", "video_prompt"])).toBe("campaign");
+  });
+
+  /** NULL means nobody declared it — every existing row. Derive, as before. */
+  it("falls back to the deliverables when undeclared", () => {
+    expect(resolveCampaignKind(null, ["image_prompt", "image_prompt"])).toBe("creative_batch");
+    expect(resolveCampaignKind(null, ["email", "image_prompt"])).toBe("campaign");
+    expect(resolveCampaignKind(undefined, ["image_prompt"])).toBe("creative_batch");
+    expect(resolveCampaignKind(null, [])).toBe("campaign");
+  });
+
+  /** A junk value is not a declaration. The CHECK stops it at the DB; this
+   *  stops a hand-written row or a future value from silently winning. */
+  it("ignores a value it does not recognise", () => {
+    expect(resolveCampaignKind("batch", ["image_prompt"])).toBe("creative_batch");
+    expect(resolveCampaignKind("", ["email"])).toBe("campaign");
   });
 });
