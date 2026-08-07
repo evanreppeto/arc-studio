@@ -62,9 +62,9 @@ export const getWorkspaceSummary = cache(async function getWorkspaceSummary(
     listApprovalCards({ orgId, agentName, limit: 5 }).catch(() => [] as ApprovalCard[]),
     // A real count, uncapped — see `approvalsNeedingYouCount`. Never allowed to
     // take the summary down: a failed count degrades to the page-length below.
-    countApprovalsWaitingOnOperator(orgId).catch(() => null),
+    countApprovalsWaitingOnOperator(orgId, workspaceId).catch(() => null),
     getCampaignWorkspaceList(undefined, agentName, orgId, workspaceId).catch(() => ({ status: "unavailable" as const })),
-    listOpenOpportunities(undefined, orgId).catch(() => [] as OpportunityRecord[]),
+    listOpenOpportunities(undefined, orgId, workspaceId).catch(() => [] as OpportunityRecord[]),
     getCrmNavCounts().catch(() => null),
     getRecentActivity({ limit: 6 }, undefined, orgId).catch(() => null),
   ]);
@@ -98,9 +98,24 @@ export const getWorkspaceSummary = cache(async function getWorkspaceSummary(
  * summary the screens render — so a badge on "Opportunities" always equals the
  * "N open" the Opportunities screen shows, and "Campaigns" equals the "waiting
  * on you" queue. Only nonzero counts are included (the rail shows no zero pills).
+ *
+ * `workspaceId` is not optional in spirit — pass the one the shell resolved.
+ *
+ * It used to be omitted entirely, and that broke the promise in the paragraph
+ * above two different ways. The rail counted the whole ORG while the Campaigns
+ * page it points at counted one WORKSPACE, so the two agree only while every
+ * org has exactly one workspace — which is true of both live orgs today and is
+ * precisely why nobody could see it. And because `getWorkspaceSummary` is a
+ * React `cache()`, calling it here with a different argument list than the Home
+ * screen uses missed the cache outright: the same six queries ran twice per
+ * render of every signed-in page.
  */
-export async function getNavBadges(orgId: string, agentName = "Arc"): Promise<Record<string, number>> {
-  const summary = await getWorkspaceSummary(orgId, agentName);
+export async function getNavBadges(
+  orgId: string,
+  agentName = "Arc",
+  workspaceId?: string | null,
+): Promise<Record<string, number>> {
+  const summary = await getWorkspaceSummary(orgId, agentName, workspaceId);
   const badges: Record<string, number> = {};
   if (summary.approvalsNeedingYouCount > 0) badges["/campaigns"] = summary.approvalsNeedingYouCount;
   if (summary.opportunities.length > 0) badges["/opportunities"] = summary.opportunities.length;
