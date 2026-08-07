@@ -62,6 +62,7 @@ import { instructionForWorkspaceSkill, parseWorkspaceArcSkills, type WorkspaceAr
 import { ARC_CUSTOM_SKILLS_SETTING, getWorkspaceArcSkills, previewGithubArcSkill } from "@/lib/arc-skills/github";
 import { getAllWorkspaceArcSkills } from "@/lib/arc-skills/workspace-skills";
 import { getInstalledArcSkillKeys, ARC_INSTALLED_SKILLS_SETTING } from "@/lib/arc-skills/installation";
+import { inferArcSkill } from "@/lib/arc-skills/routing";
 import { generateExemplarSkill } from "@/lib/exemplar-skills/generate";
 import {
   deleteGeneratedSkill,
@@ -272,6 +273,18 @@ export async function sendArcMessageAction(input: {
       : null;
     const skillId = workspaceSkill?.id ?? skillIdForArcCommand(command);
     const runnerMessage = workspaceSkill ? instructionForWorkspaceSkill(workspaceSkill, body) : body;
+    /**
+     * Shadow mode: record what skill auto-selection *would* have chosen on the
+     * turns it would serve — the ones with no explicit command, which is every
+     * turn on prod today.
+     *
+     * Deliberately applied to nothing. `skillId` and `runnerMessage` above are
+     * untouched, so this cannot change how a turn runs; it only accumulates
+     * real-traffic evidence for the thresholds in `routing.ts`, which were
+     * tuned against a historical corpus that is mostly operator testing. Wiring
+     * it for real is the next step, and needs this data first.
+     */
+    const inferredSkill = skillId ? null : inferArcSkill({ body, mode });
     const contextScopes = (input.contextScopes ?? []).filter((scope) => CONTEXT_SCOPES.has(scope));
     const selectedCampaignId = mentions.find((mention) => mention.type === "campaign")?.id ?? null;
 
@@ -309,6 +322,7 @@ export async function sendArcMessageAction(input: {
       route,
       command,
       skillId,
+      inferredSkill,
       contextScopes,
     });
     const [agentTaskId] = await Promise.all([
@@ -333,7 +347,12 @@ export async function sendArcMessageAction(input: {
     logArcChatStatus("queued", {
       agentTaskId,
       conversationId,
-      detail: `accepted_ms=${Date.now() - acceptedAt} mode=${mode} route=${route}`,
+      // `shadow_skill` rides the same line as mode/route so a single
+      // `gcloud logging read` shows what routing would have done per turn,
+      // without waiting on a DB query.
+      detail:
+        `accepted_ms=${Date.now() - acceptedAt} mode=${mode} route=${route}` +
+        ` shadow_skill=${inferredSkill ? `${inferredSkill.id}:${inferredSkill.confidence}:m${inferredSkill.margin}` : "none"}`,
     });
 
     revalidatePath("/arc");
