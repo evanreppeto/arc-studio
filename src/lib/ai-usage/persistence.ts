@@ -3,6 +3,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import {
   PRICING_VERSION,
   centsFromMicrocents,
+  cacheTokensFromUsageDetail,
   estimateClaudeCostMicrocents,
   estimateEmbeddingCostMicrocents,
   estimateGeminiTextCostMicrocents,
@@ -59,7 +60,15 @@ export type RecordUsageResult =
 function costMicrocentsForInput(input: RecordUsageInput): number {
   switch (input.service) {
     case "arc_claude":
-      return estimateClaudeCostMicrocents(input.model, input.inputTokens, input.outputTokens);
+      // The cached counts ride in on `metadata.usage_detail`, which the runner
+      // has recorded since 2026-07-31. Reading them here is the whole fix: they
+      // were captured, tested, and priced at zero for a week.
+      return estimateClaudeCostMicrocents(
+        input.model,
+        input.inputTokens,
+        input.outputTokens,
+        cacheTokensFromUsageDetail((input.metadata as { usage_detail?: unknown } | undefined)?.usage_detail),
+      );
     // Embeddings are billed per input token, not per generation, so they do not
     // go through the media path — `units` on an embedding row is characters.
     case "gemini_embedding":

@@ -39,7 +39,8 @@ export type CampaignRow = {
   next: string;
   nextTone: "" | "go" | "warn";
   /** Assets on this campaign with no decision recorded yet. */
-  pendingCount: number;
+  /** Deliverables waiting on the OPERATOR — excludes ones sent back to Arc. */
+  awaitingCount: number;
   audience: string;
   dot: string;
   channels: string;
@@ -101,7 +102,7 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
     brief: v.campaignTheme || "New campaign",
     tone: "draft",
     statusLabel: WORK_STATE_LABEL.draft,
-    pendingCount: 0,
+    awaitingCount: 0,
     next,
     nextTone,
     audience,
@@ -117,7 +118,7 @@ function buildOptimisticCampaign(id: string, v: NewCampaignInput): CampaignRow {
     creativeOnly: false,
     href: `/campaigns/${id}`,
     // A package created seconds ago carries no creative yet, same reasoning as
-    // pendingCount above.
+    // awaitingCount above.
     thumbnailUrl: null,
     mediaCount: 0,
   };
@@ -375,7 +376,7 @@ export function CampaignsBoard({
             return (
               <article
                 key={r.id}
-                className={`cmp-card${r.pendingCount > 0 ? " needsyou" : ""}${isOpen ? " open" : ""}${local ? " fresh" : ""}${r.pieces.length > 0 ? " openable" : ""}`}
+                className={`cmp-card${r.awaitingCount > 0 ? " needsyou" : ""}${isOpen ? " open" : ""}${local ? " fresh" : ""}${r.pieces.length > 0 ? " openable" : ""}`}
                 // Mouse convenience: anywhere that isn't already a control
                 // toggles the card. A 900px-wide target beats a 90px text link,
                 // and the real control below stays the keyboard/AT path.
@@ -410,7 +411,7 @@ export function CampaignsBoard({
                     </span>
                     {/* A real button, not accent-coloured text. The one thing to
                         do on this card should look like a thing you press. */}
-                    {r.pendingCount > 0 ? (
+                    {r.awaitingCount > 0 ? (
                       <button
                         type="button"
                         className="gbtn gold cmp-act"

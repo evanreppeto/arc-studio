@@ -102,6 +102,9 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
       // skill here carries a write.
       "list_record_types",
       "search_custom_records",
+      // The built-in columns are not everything a workspace tracks, and on a
+      // tenant-defined type the custom fields ARE the record. Read-only.
+      "read_custom_fields",
       "query_brain",
       "list_opportunities",
       "read_persona_intelligence",
