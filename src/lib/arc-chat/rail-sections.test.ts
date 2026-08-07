@@ -5,6 +5,7 @@ import {
   RAIL_FOLDER_LIMIT,
   RAIL_LOOSE_LIMIT,
   groupRailConversations,
+  resolveFinishedRuns,
   selectRailConversations,
 } from "./rail-sections";
 
@@ -138,5 +139,65 @@ describe("selectRailConversations", () => {
 
   it("returns nothing for an empty workspace", () => {
     expect(selectRailConversations([])).toEqual([]);
+  });
+});
+
+describe("resolveFinishedRuns", () => {
+  const set = (...ids: string[]) => new Set(ids);
+
+  it("announces a run that stopped between renders", () => {
+    const result = resolveFinishedRuns(set("a"), set(), set());
+    expect(result.ended).toEqual(["a"]);
+    expect([...result.showingDone]).toEqual(["a"]);
+  });
+
+  /**
+   * The mount case, and the reason this is a function rather than three lines in
+   * an effect. On a fresh mount every idle chat has "stopped running" in the
+   * trivial sense — without this guard the whole rail flashes Done on load, and
+   * the dev preview can never show otherwise because Fast Refresh remounts.
+   */
+  it("says nothing on the first pass, when there is no previous render", () => {
+    const result = resolveFinishedRuns(null, set(), set());
+    expect(result.ended).toEqual([]);
+    expect(result.showingDone.size).toBe(0);
+  });
+
+  it("leaves a still-running chat alone", () => {
+    const result = resolveFinishedRuns(set("a"), set("a"), set());
+    expect(result.ended).toEqual([]);
+    expect(result.showingDone.size).toBe(0);
+  });
+
+  it("keeps a Done that has not expired yet", () => {
+    const result = resolveFinishedRuns(set(), set(), set("a"));
+    expect([...result.showingDone]).toEqual(["a"]);
+  });
+
+  it("drops Done the moment that chat starts running again", () => {
+    const result = resolveFinishedRuns(set(), set("a"), set("a"));
+    expect([...result.showingDone]).toEqual([]);
+    expect(result.ended).toEqual([]);
+  });
+
+  it("handles several runs ending at once", () => {
+    const result = resolveFinishedRuns(set("a", "b", "c"), set("b"), set());
+    expect(result.ended.sort()).toEqual(["a", "c"]);
+    expect([...result.showingDone].sort()).toEqual(["a", "c"]);
+  });
+
+  it("does not mutate the sets it is given", () => {
+    const previous = set("a");
+    const now = set();
+    const showing = set("z");
+    resolveFinishedRuns(previous, now, showing);
+    expect([...previous]).toEqual(["a"]);
+    expect([...showing]).toEqual(["z"]);
+  });
+
+  it("a run that ends while another starts reports only the one that ended", () => {
+    const result = resolveFinishedRuns(set("a"), set("b"), set());
+    expect(result.ended).toEqual(["a"]);
+    expect([...result.showingDone]).toEqual(["a"]);
   });
 });

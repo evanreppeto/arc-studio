@@ -324,13 +324,15 @@
   & .rail-archived-title { min-width: 0; flex: 1; overflow: hidden; color: var(--text-2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
   & .rail-archived-item button { flex: none; border: 0; border-radius: var(--r-sm); background: none; color: var(--muted); font: 600 10px/1 var(--sans); padding: 3px 5px; cursor: pointer; transition: color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
   & .rail-archived-item button:hover { color: var(--accent); background: var(--accent-soft); }
-  & .rail-recent { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: var(--r-md); color: var(--text-2); text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
+  /* Leading slot is 8px, not 6: it holds either the 5px dot or the 7px pin, and
+     both centre in it so titles stay on one vertical line whatever the row is. */
+  & .rail-recent { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 5px; border-radius: var(--r-md); color: var(--text-2); text-decoration: none; transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease); }
   & .rail-recent:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
   /* The chat you're reading, marked the same way the rail marks the page you're
      on — otherwise /arc is the one destination that never says where you are. */
   & .rail-recent.on { color: var(--text); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); }
   & .rail-recent.on .rail-recent-title { font-weight: 600; }
-  & .rail-recent-dot { width: 5px; height: 5px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 72%, var(--muted)); opacity: 0.72; }
+  & .rail-recent-dot { width: 5px; height: 5px; justify-self: center; border-radius: 50%; background: color-mix(in srgb, var(--accent) 72%, var(--muted)); opacity: 0.72; }
   & .rail-recent.on .rail-recent-dot { background: var(--accent); opacity: 1; }
   & .rail-recent-title { min-width: 0; overflow: hidden; font-size: 11.5px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
   & .rail-recent time { color: var(--muted); font: 500 9.5px/1 var(--mono); }
@@ -347,8 +349,19 @@
      without the button living inside the anchor. */
   & .rail-recent-wrap { position: relative; display: block; }
   /* A pinned row says so on the row. Sorting alone is not a signal: "why is this
-     one at the top" has no answer you can see. */
-  & .rail-recent-pin { display: inline-block; width: 4px; height: 4px; margin-right: 5px; border-radius: 1px; background: var(--accent); vertical-align: 1.5px; }
+     one at the top" has no answer you can see.
+
+     It sits IN the leading slot, replacing the dot, and it is a shape rather
+     than a mark. As a 4px gold rounded square beside the 5px gold dot it was
+     indistinguishable from it at arm's length — two lights, one meaning — and
+     the row read as having a status it did not have. A silhouette cannot be
+     confused with a dot at any size. */
+  & .rail-recent-pin { width: 7px; height: 9px; justify-self: center; fill: var(--accent); stroke: none; opacity: 0.85; }
+  /* `:focus-visible` alongside `:hover` — a keyboard tab through the rail has to
+     surface exactly what a pointer does (guarded by hover-reveals-focus-reveals). */
+  & .rail-recent:hover .rail-recent-pin,
+  & .rail-recent:focus-visible .rail-recent-pin,
+  & .rail-recent.on .rail-recent-pin { opacity: 1; }
   /* Rename in place — the row becomes the field, so the title never moves. */
   & .rail-recent-rename { display: block; width: 100%; min-height: 30px; padding: 5px 8px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--inset); color: var(--text); font: 500 11.5px/1.3 var(--sans); outline: 0; }
   & .rail-recent-more { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: var(--r-sm); background: var(--panel); color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
@@ -3038,16 +3051,44 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .rail-recent-card .rail-recent-card-meta { font: 500 9.5px/1.4 var(--mono); color: var(--muted); }
 
 .arc-app .rail-recent-working { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font: 600 9.5px/1 var(--mono); letter-spacing: 0.04em; }
-.arc-app .rail-working-spinner { width: 11px; height: 11px; flex: none; animation: railWorking 0.9s linear infinite; }
-.arc-app .rail-working-track { fill: none; stroke: var(--accent); stroke-opacity: 0.22; stroke-width: 2; }
-.arc-app .rail-working-arc { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
+.arc-app .rail-working-spinner { width: 12px; height: 12px; flex: none; transform-origin: 50% 50%; animation: railWorking 1.4s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite; }
+.arc-app .rail-working-track { fill: none; stroke: var(--accent); stroke-opacity: 0.2; stroke-width: 1.8; }
+/* The arc breathes as it turns — `stroke-dasharray` on a circumference of ~37.7
+   (r=6) sweeps the visible length between a short tick and most of the ring.
+   A fixed quarter-arc at a constant 0.9s linear read as a machine ticking over;
+   this reads as something working. DESIGN.md's restraint applies to how LOUD
+   motion is, not how mechanical, and one 12px ring is quiet either way. */
+.arc-app .rail-working-arc { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-dasharray: 9 28.7; animation: railWorkingArc 1.4s ease-in-out infinite; }
 @keyframes railWorking { to { transform: rotate(360deg); } }
-.arc-app .rail-working-spinner { transform-origin: 50% 50%; }
+@keyframes railWorkingArc {
+  0% { stroke-dasharray: 6 31.7; stroke-dashoffset: 0; }
+  50% { stroke-dasharray: 24 13.7; stroke-dashoffset: -8; }
+  100% { stroke-dasharray: 6 31.7; stroke-dashoffset: -37.7; }
+}
+
+/* The run ENDED. Previously this moment had no representation at all: the
+   spinner stopped existing and a timestamp appeared in its place, which is a
+   change you only catch if you were already looking at that row. A check plus
+   the word costs the same width the timestamp did. */
+.arc-app .rail-recent-done { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font: 600 9.5px/1 var(--mono); letter-spacing: 0.04em; animation: railDone var(--dur-slower) var(--ease); }
+.arc-app .rail-recent-done svg { width: 11px; height: 11px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+/* Draws itself once, then holds. A check that simply appeared was easy to read
+   as "this row always said that"; a stroke that arrives says something changed. */
+.arc-app .rail-recent-done svg path { stroke-dasharray: 16; stroke-dashoffset: 16; animation: railDoneCheck var(--dur-slower) var(--ease) forwards; }
+@keyframes railDone { from { opacity: 0; transform: translateX(3px); } to { opacity: 1; transform: none; } }
+@keyframes railDoneCheck { to { stroke-dashoffset: 0; } }
 /* The word is redundant beside a turning spinner, so it only appears when the
    spinner cannot turn. Without this, reduced-motion users get a static ring and
    no way to know what it means. */
 .arc-app .rail-working-word { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .arc-app .rail-working-spinner { animation: none; }
+  .arc-app .rail-working-spinner, .arc-app .rail-working-arc { animation: none; }
+  /* A stopped ring is a shape, not a state — the word is what carries "working"
+     when nothing may move. Restore a readable arc too: mid-sweep dasharray
+     frozen at 9/28.7 looks like a rendering fault rather than a spinner. */
+  .arc-app .rail-working-arc { stroke-dasharray: 12 25.7; }
   .arc-app .rail-working-word { display: inline; }
+  /* The check still arrives, it just does not draw itself in. */
+  .arc-app .rail-recent-done, .arc-app .rail-recent-done svg path { animation: none; }
+  .arc-app .rail-recent-done svg path { stroke-dashoffset: 0; }
 }
