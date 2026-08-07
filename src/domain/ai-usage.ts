@@ -226,19 +226,103 @@ export function centsFromMicrocents(microcents: number): number {
   return Math.round(microcents / MICROCENTS_PER_CENT);
 }
 
-/** Estimated cost (microcents) of a Claude turn. Unknown model -> 0. */
+/**
+ * Prompt-caching multipliers, relative to a model's BASE INPUT price.
+ *
+ * Confirmed 2026-08-07 against Anthropic's prompt-caching docs, not recalled:
+ *   5-minute cache write  ×1.25
+ *   1-hour   cache write  ×2
+ *   cache read (hit)      ×0.1
+ *
+ * These are published API mechanics rather than a negotiated rate, which is why
+ * they are written here instead of being supplied by the operator like the base
+ * per-model prices. They are named constants so the next person can see what was
+ * assumed and check it, rather than finding 0.1 inlined in an expression.
+ *
+ * ⚠️ The two write multipliers differ by 60%, so the per-TTL split is load-
+ * bearing — collapsing it to the aggregate `cache_creation_input_tokens` would
+ * under- or over-bill depending on which TTL the caller used. Prod turns observed
+ * so far are entirely 1-hour, the more expensive one.
+ */
+export const CACHE_MULTIPLIERS = { write5m: 1.25, write1h: 2, read: 0.1 } as const;
+
+/**
+ * The cached-token counts for a turn, as the Anthropic usage block reports them.
+ *
+ * `creation5m` / `creation1h` come from `cache_creation.ephemeral_*_input_tokens`.
+ * `creationTotal` is the aggregate `cache_creation_input_tokens`, kept as a
+ * FALLBACK for turns recorded before the split was captured — priced at the
+ * 5-minute rate, the cheaper of the two, so a turn whose TTL we cannot know is
+ * under-stated rather than over-billed. A customer is never charged for a
+ * precision we do not have.
+ */
+export type ClaudeCacheTokens = {
+  read?: number | null;
+  creation5m?: number | null;
+  creation1h?: number | null;
+  creationTotal?: number | null;
+};
+
+/**
+ * Estimated cost (microcents) of a Claude turn. Unknown model -> 0.
+ *
+ * ⚠️ `inputTokens` is NOT the input side of a cached turn. With prompt caching
+ * the API reports only the UNCACHED remainder there — a real prod turn recorded
+ * `input_tokens: 18` against 349,930 cache reads and 56,782 cache writes. Pricing
+ * `inputTokens` alone billed that turn at 89¢ when it cost ~$3.12, and the
+ * product's most-used path is cache-heavy by construction (the whole workspace
+ * context is re-sent every turn). Pass `cache` or the meter undercounts ~3.5x.
+ */
 export function estimateClaudeCostMicrocents(
   model: string,
   inputTokens: number | null | undefined,
   outputTokens: number | null | undefined,
+  cache?: ClaudeCacheTokens | null,
 ): number {
   const rate = resolveModelRate(model);
   if (!rate) return 0;
   const inTok = inputTokens ?? 0;
   const outTok = outputTokens ?? 0;
+
+  // Prefer the per-TTL split; fall back to the aggregate at the cheaper rate.
+  const split5m = cache?.creation5m ?? null;
+  const split1h = cache?.creation1h ?? null;
+  const haveSplit = split5m !== null || split1h !== null;
+  const write5m = haveSplit ? (split5m ?? 0) : (cache?.creationTotal ?? 0);
+  const write1h = haveSplit ? (split1h ?? 0) : 0;
+  const read = cache?.read ?? 0;
+
+  const cachedInputCents =
+    (read * CACHE_MULTIPLIERS.read + write5m * CACHE_MULTIPLIERS.write5m + write1h * CACHE_MULTIPLIERS.write1h) *
+    rate.inputCentsPerMTok;
+
   const micro =
-    ((inTok * rate.inputCentsPerMTok + outTok * rate.outputCentsPerMTok) * MICROCENTS_PER_CENT) / 1_000_000;
+    ((inTok * rate.inputCentsPerMTok + cachedInputCents + outTok * rate.outputCentsPerMTok) * MICROCENTS_PER_CENT) /
+    1_000_000;
   return Math.round(micro);
+}
+
+/**
+ * Pull the cached-token counts out of a runner `usage_detail` blob.
+ *
+ * The runner has recorded these since 2026-07-31 and NOTHING PRICED THEM for a
+ * week — the fields sat on 95 prod rows, tested and green, while every one of
+ * them billed the output side alone. Parsing lives here, beside the pricing that
+ * needs it, so the two cannot drift apart again.
+ */
+export function cacheTokensFromUsageDetail(detail: unknown): ClaudeCacheTokens | null {
+  if (!detail || typeof detail !== "object") return null;
+  const d = detail as Record<string, unknown>;
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const creation = (d.cache_creation && typeof d.cache_creation === "object" ? d.cache_creation : {}) as Record<string, unknown>;
+  const tokens: ClaudeCacheTokens = {
+    read: num(d.cache_read_input_tokens),
+    creation5m: num(creation.ephemeral_5m_input_tokens),
+    creation1h: num(creation.ephemeral_1h_input_tokens),
+    creationTotal: num(d.cache_creation_input_tokens),
+  };
+  const any = Object.values(tokens).some((v) => v !== null);
+  return any ? tokens : null;
 }
 
 /** Estimated cost (microcents) of an embedding call. Unpriced model -> 0. */
