@@ -230,6 +230,7 @@ function ColumnsMenu({
         type="button"
         className={`iconf${hiddenHere > 0 ? " active" : ""}`}
         title={hiddenHere > 0 ? `Columns: ${optional.length - hiddenHere} of ${optional.length} shown` : "Columns"}
+        aria-label={hiddenHere > 0 ? `Columns: ${optional.length - hiddenHere} of ${optional.length} shown` : "Columns"}
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -297,6 +298,7 @@ function DensityMenu({ value, onChange }: { value: Density; onChange: (v: Densit
         type="button"
         className={`iconf${value !== "comfortable" ? " active" : ""}`}
         title={`Row height: ${DENSITY_LABELS[value]}`}
+        aria-label={`Row height: ${DENSITY_LABELS[value]}`}
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -343,7 +345,7 @@ function SortMenu({ value, onChange }: { value: SortKey; onChange: (v: SortKey) 
   }, [open]);
   return (
     <span className="fbtn-wrap" ref={ref}>
-      <button type="button" className={`iconf${value !== "recent" ? " active" : ""}`} title={`Sort: ${SORT_LABELS[value]}`} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+      <button type="button" className={`iconf${value !== "recent" ? " active" : ""}`} title={`Sort: ${SORT_LABELS[value]}`} aria-label={`Sort: ${SORT_LABELS[value]}`} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
         <svg viewBox="0 0 24 24"><path d="M7 4v16M7 20l-3-3M7 4l3 3M17 20V4M17 4l3 3M17 20l-3-3" /></svg>
       </button>
       {open && (

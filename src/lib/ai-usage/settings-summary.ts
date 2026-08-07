@@ -11,12 +11,18 @@ import { getCurrentOrgId } from "@/lib/auth/org";
 import { resolveOrgPlan } from "@/lib/billing/entitlements";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
 
+import { DEMO_PLAN_TIER } from "@/lib/demo/demo-mode";
+
 import { loadWorkspaceUsage, type RecentUsageRow } from "./read-model";
 
 // Illustrative cap for the offline demo card only; the live path uses the org's
-// real plan cap resolved from org_plans (see @/lib/billing/entitlements). Kept in
-// step with the demo billing view (Starter / $100) so both panels agree offline.
-const DEMO_CAP_CENTS = 10_000;
+// real plan cap resolved from org_plans (see @/lib/billing/entitlements).
+//
+// DERIVED, not hardcoded. This was `10_000` ($100) with the label "Starter"
+// while Starter's real cap is $25, so the demo meter said "49% of your $100
+// Starter plan cap" directly above a panel reading "$25/mo monthly cap". A
+// comment claimed the two were "kept in step"; nothing enforced it.
+const DEMO_CAP_CENTS = planCapCents(DEMO_PLAN_TIER);
 
 export type UsageDailyPoint = { date: string; costCents: number };
 export type UsageRecentRow = { occurredAt: string; actor: string; model: string; service: string; tokens: number; costCents: number };
@@ -108,10 +114,10 @@ function demoRecent(now: Date): UsageRecentRow[] {
   return [
     { occurredAt: at(9), actor: "Arc", model: "claude-opus-4-8", service: "text", tokens: 18_420, costCents: 34 },
     { occurredAt: at(41), actor: "Arc", model: "gemini-3-pro-image", service: "image", tokens: 0, costCents: 24 },
-    { occurredAt: at(96), actor: "priya@bigshouldersrestoration.com", model: "claude-opus-4-8", service: "text", tokens: 9_640, costCents: 18 },
+    { occurredAt: at(96), actor: "priya@meridianfield.example", model: "claude-opus-4-8", service: "text", tokens: 9_640, costCents: 18 },
     { occurredAt: at(60 * 3), actor: "Arc", model: "veo-3.1-generate-preview", service: "video", tokens: 0, costCents: 120 },
     { occurredAt: at(60 * 6), actor: "Arc", model: "claude-haiku-4-5", service: "text", tokens: 4_100, costCents: 3 },
-    { occurredAt: at(60 * 20), actor: "dana@bigshouldersrestoration.com", model: "gemini-3-pro-image", service: "image", tokens: 0, costCents: 24 },
+    { occurredAt: at(60 * 20), actor: "dana@meridianfield.example", model: "gemini-3-pro-image", service: "image", tokens: 0, costCents: 24 },
     { occurredAt: at(60 * 27), actor: "Arc", model: "claude-opus-4-8", service: "text", tokens: 22_800, costCents: 41 },
     { occurredAt: at(60 * 44), actor: "Arc", model: "veo-3.1-fast-generate-preview", service: "video", tokens: 0, costCents: 60 },
   ];
@@ -126,9 +132,18 @@ function demoByModel(): UsageModelRow[] {
 }
 
 function demoUsageView(now: Date): SettingsUsageView {
-  // Believable BSR month: ~1.84M tokens, 312 agent runs, $48.80 → 49% of the $100 Starter cap.
-  const card: UsageSummaryCard = { totalCostCents: 4880, totalTokens: 1_842_000, totalRuns: 312, pctOfCap: 49, isNearCap: false };
-  return toUsageView(card, true, true, demoDaily(now), demoRecent(now), demoByModel(), DEMO_CAP_CENTS, "Starter");
+  // Believable month: ~1.84M tokens, 312 agent runs, $48.80. The percentage is
+  // computed from the same cap the plan panel shows rather than asserted, so the
+  // two can't drift into contradicting each other again.
+  const totalCostCents = 4880;
+  const card: UsageSummaryCard = {
+    totalCostCents,
+    totalTokens: 1_842_000,
+    totalRuns: 312,
+    pctOfCap: Math.round((totalCostCents / DEMO_CAP_CENTS) * 100),
+    isNearCap: totalCostCents / DEMO_CAP_CENTS >= 0.8,
+  };
+  return toUsageView(card, true, true, demoDaily(now), demoRecent(now), demoByModel(), DEMO_CAP_CENTS, planForTier(DEMO_PLAN_TIER).label);
 }
 
 export async function getSettingsUsageView(): Promise<SettingsUsageView> {

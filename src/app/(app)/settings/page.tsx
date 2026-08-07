@@ -1,5 +1,5 @@
 import { resolveAgentConnection } from "@/lib/agent/connection";
-import { getViewerAvatarUrl } from "@/lib/auth/display-name";
+import { getViewerAvatarUrl, resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import {
   CUSTOM_FIELD_OBJECT_KEYS,
@@ -126,6 +126,17 @@ export default async function SettingsPage() {
   // Empty is honest, and the view says so in place of showing a blank line.
   const email = user?.email ?? "";
   const avatarUrl = await getViewerAvatarUrl(user);
+  // The name the shell and every invitation email already use — Account is now
+  // where you can correct it, so it has to read the same value.
+  const viewerName = ctx?.orgId ? await resolveViewerName(ctx.orgId, user).catch(() => "") : "";
+  // The "active sign-in session" the Account heading has always promised.
+  const session = user
+    ? {
+        lastSignInAt: user.last_sign_in_at ?? null,
+        createdAt: user.created_at ?? null,
+        provider: typeof user.app_metadata?.provider === "string" ? user.app_metadata.provider : null,
+      }
+    : null;
   // One workspace logo, canonical on the brand record — the same image the rail
   // draws and Arc stamps on creative. The legacy settings key is only a fallback
   // for workspaces that uploaded before the two stores were unified.
@@ -216,5 +227,5 @@ export default async function SettingsPage() {
   const pipelineObjectLabels = Object.fromEntries(
     PIPELINE_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<PipelineObjectKey, string>;
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} mediaConfig={mediaConfig} mediaEngines={mediaEngines} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} viewerName={viewerName} session={session} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} mediaConfig={mediaConfig} mediaEngines={mediaEngines} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
 }
