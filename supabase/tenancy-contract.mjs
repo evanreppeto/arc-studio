@@ -78,6 +78,13 @@ export const TENANCY_CONTRACT = {
   crm_notes: "org",
   crm_tasks: "org",
   crm_activities: "org",
+  // A tenant-defined object TYPE is schema for the org's CRM, exactly like a
+  // custom field definition next door.
+  custom_objects: "org",
+  // Its records are customer/business records — the same kind of thing as the
+  // six, which are all "org". Two workspaces disagreeing about whether a piece
+  // of equipment exists means one of them is wrong (BSR-637).
+  custom_object_records: "org",
   custom_field_definitions: "org",
   custom_field_values: "org",
   pipeline_stages: "org",

@@ -19,6 +19,7 @@ import {
   archiveCustomField,
   createCustomField,
   restoreCustomField,
+  updateCustomField,
 } from "../custom-fields-actions";
 
 /** Operator-facing names for the eight storage types. */
@@ -51,6 +52,8 @@ function isFieldObjectKey(value: string): value is CustomFieldObjectKey {
 
 export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: CustomFieldsPanelProps) {
   const [openObject, setOpenObject] = useState<CustomFieldObjectKey | null>(null);
+  /** The field whose edit form is open, by id. One at a time. */
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -120,19 +123,47 @@ export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: Cu
               {(active.length > 0 || archived.length > 0) && (
                 <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
                   {[...active, ...archived].map((d) => (
-                    <FieldRow
-                      key={d.id}
-                      definition={d}
-                      pending={pending}
-                      onArchive={() => run(() => archiveCustomField({ fieldId: d.id, objectKey }))}
-                      onRestore={() => run(() => restoreCustomField({ fieldId: d.id, objectKey }))}
-                    />
+                    <div key={d.id}>
+                      <FieldRow
+                        definition={d}
+                        pending={pending}
+                        editing={editingId === d.id}
+                        onEdit={() => setEditingId(editingId === d.id ? null : d.id)}
+                        onArchive={() => run(() => archiveCustomField({ fieldId: d.id, objectKey }))}
+                        onRestore={() => run(() => restoreCustomField({ fieldId: d.id, objectKey }))}
+                      />
+                      {editingId === d.id && (
+                        <FieldForm
+                          // Remount per field, so opening a second one does not
+                          // inherit the first one's half-typed values.
+                          key={`edit-${d.id}`}
+                          objectLabel={objectLabels[objectKey]}
+                          pending={pending}
+                          initial={d}
+                          onCancel={() => setEditingId(null)}
+                          onSubmit={(input) =>
+                            run(async () => {
+                              const result = await updateCustomField({
+                                fieldId: d.id,
+                                objectKey,
+                                label: input.label,
+                                required: input.required,
+                                options: input.options,
+                                helpText: input.helpText,
+                              });
+                              if (result.ok) setEditingId(null);
+                              return result;
+                            })
+                          }
+                        />
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
 
               {openObject === objectKey && (
-                <AddFieldForm
+                <FieldForm
                   objectLabel={objectLabels[objectKey]}
                   pending={pending}
                   onCancel={() => setOpenObject(null)}
@@ -156,11 +187,15 @@ export function CustomFieldsPanel({ definitions, objectLabels, focusObject }: Cu
 function FieldRow({
   definition,
   pending,
+  editing,
+  onEdit,
   onArchive,
   onRestore,
 }: {
   definition: CustomFieldDefinition;
   pending: boolean;
+  editing: boolean;
+  onEdit: () => void;
   onArchive: () => void;
   onRestore: () => void;
 }) {
@@ -192,27 +227,48 @@ function FieldRow({
           <div className="cxm-hint">{definition.options.map((o) => o.label).join(", ")}</div>
         )}
       </div>
-      {definition.active ? (
-        <button type="button" className="btn sm" disabled={pending} onClick={onArchive}>
-          Archive
-        </button>
-      ) : (
-        <button type="button" className="btn sm" disabled={pending} onClick={onRestore}>
-          Restore
-        </button>
-      )}
+      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        {definition.active && (
+          <button type="button" className="btn sm" disabled={pending} onClick={onEdit}>
+            {editing ? "Close" : "Edit"}
+          </button>
+        )}
+        {definition.active ? (
+          <button type="button" className="btn sm" disabled={pending} onClick={onArchive}>
+            Archive
+          </button>
+        ) : (
+          <button type="button" className="btn sm" disabled={pending} onClick={onRestore}>
+            Restore
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-function AddFieldForm({
+/**
+ * Add a field, or edit one that exists.
+ *
+ * One form for both, because they ask for the same things — and because the
+ * edit half is what was missing entirely: `updateCustomField` and
+ * `updateFieldDefinition` were both fully built, validated and org-scoped, and
+ * had no caller anywhere in the app. A workspace could add "Referal source",
+ * see the typo, and never fix it; the only recourse was to archive the field
+ * and make a new one, which is not a rename — every value already saved stays
+ * behind on the archived field.
+ */
+export function FieldForm({
   objectLabel,
   pending,
+  initial,
   onCancel,
   onSubmit,
 }: {
   objectLabel: string;
   pending: boolean;
+  /** Present when editing. Absent when adding. */
+  initial?: CustomFieldDefinition;
   onCancel: () => void;
   onSubmit: (input: {
     label: string;
@@ -222,11 +278,12 @@ function AddFieldForm({
     helpText: string;
   }) => void;
 }) {
-  const [label, setLabel] = useState("");
-  const [fieldType, setFieldType] = useState<CustomFieldType>("text");
-  const [required, setRequired] = useState(false);
-  const [optionsText, setOptionsText] = useState("");
-  const [helpText, setHelpText] = useState("");
+  const editing = !!initial;
+  const [label, setLabel] = useState(initial?.label ?? "");
+  const [fieldType, setFieldType] = useState<CustomFieldType>(initial?.fieldType ?? "text");
+  const [required, setRequired] = useState(initial?.required ?? false);
+  const [optionsText, setOptionsText] = useState((initial?.options ?? []).map((o) => o.label).join("\n"));
+  const [helpText, setHelpText] = useState(initial?.helpText ?? "");
 
   const needsOptions = CHOICE_FIELD_TYPES.has(fieldType);
   const options = optionsText
@@ -257,18 +314,27 @@ function AddFieldForm({
         />
       </Field>
 
-      <Field label="Type">
-        <select
-          className="sel"
-          value={fieldType}
-          onChange={(e) => setFieldType(e.target.value as CustomFieldType)}
-        >
-          {CUSTOM_FIELD_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {TYPE_LABELS[t]}
-            </option>
-          ))}
-        </select>
+      {/* Type is settled at creation. Changing it reinterprets every value
+          already stored, so the action deliberately never sends it and the lib
+          layer refuses it outright once the field has data — showing an
+          editable control that silently does nothing would be worse than
+          showing none. */}
+      <Field label="Type" hint={editing ? "Set when the field was created." : undefined}>
+        {editing ? (
+          <div className="cxm-hint" style={{ paddingTop: 4 }}>{TYPE_LABELS[fieldType]}</div>
+        ) : (
+          <select
+            className="sel"
+            value={fieldType}
+            onChange={(e) => setFieldType(e.target.value as CustomFieldType)}
+          >
+            {CUSTOM_FIELD_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {TYPE_LABELS[t]}
+              </option>
+            ))}
+          </select>
+        )}
       </Field>
 
       {needsOptions && (
@@ -304,7 +370,7 @@ function AddFieldForm({
             onSubmit({ label: label.trim(), fieldType, required, options, helpText: helpText.trim() })
           }
         >
-          {pending ? "Adding…" : "Add field"}
+          {pending ? (editing ? "Saving…" : "Adding…") : editing ? "Save changes" : "Add field"}
         </button>
       </div>
     </div>

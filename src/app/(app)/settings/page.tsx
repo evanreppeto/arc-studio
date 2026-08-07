@@ -11,6 +11,7 @@ import {
   type PipelineStage,
 } from "@/domain";
 import { listAllFieldDefinitions } from "@/lib/custom-fields/definitions";
+import { listCustomObjects } from "@/lib/custom-objects/definitions";
 import { countRecordsByStage, listAllStageSets } from "@/lib/pipeline-stages/definitions";
 import { getProductLanguage } from "@/lib/product-language";
 import { getSettingsTeamView } from "@/lib/auth/team-view";
@@ -177,6 +178,13 @@ export default async function SettingsPage() {
         return [];
       })
     : [];
+  // The workspace's own record types. Same reasoning as the fields above:
+  // reporting empty would tell a tenant the object types they defined are
+  // gone, and the CRM tabs are built from this list.
+  const customObjects = await listCustomObjects(ctx?.orgId ?? "", { includeArchived: true }).catch((error) => {
+    reportDegraded(error, { scope: "settings.listCustomObjects", surface: "primary" });
+    return [];
+  });
   // The tenant's own pipeline, plus how many records sit in each stage — the
   // occupancy is what lets the panel refuse to archive a stage full of records
   // without asking where they go.
@@ -227,5 +235,5 @@ export default async function SettingsPage() {
   const pipelineObjectLabels = Object.fromEntries(
     PIPELINE_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<PipelineObjectKey, string>;
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} viewerName={viewerName} session={session} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} mediaConfig={mediaConfig} mediaEngines={mediaEngines} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} viewerName={viewerName} session={session} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} mediaConfig={mediaConfig} mediaEngines={mediaEngines} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} customObjects={customObjects} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
 }

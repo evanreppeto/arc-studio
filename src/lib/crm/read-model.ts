@@ -80,6 +80,17 @@ export type CrmObjectRow = {
   missingFields: string[];
   /** Open follow-up tasks (crm_tasks) attached to this record. Decorated post-build; optional so the row builds without it. */
   openTasks?: number;
+  /**
+   * When this record was archived, or null while it is live.
+   *
+   * Archived is a COLUMN, not a status value (20260806120000). It used to be a
+   * status, which three of the six objects have no room for — properties has no
+   * status column at all, and jobs/outcomes statuses are the tenant's own
+   * pipeline stages, where writing "archived" invents a stage they never
+   * defined. Reading the column means every object can answer the question the
+   * same way, and a renamed stage cannot change the answer.
+   */
+  archivedAt: string | null;
 };
 
 export type CrmObjectData = {
@@ -988,6 +999,8 @@ type CompanyRow = {
   created_at: string | null;
   updated_at: string | null;
   origin?: string | null;
+  /** Soft delete (20260806120000). Non-null = archived; the row is out of every list and count. */
+  archived_at?: string | null;
 };
 
 type ContactRow = {
@@ -1005,6 +1018,8 @@ type ContactRow = {
   created_at: string | null;
   updated_at: string | null;
   origin?: string | null;
+  /** Soft delete (20260806120000). Non-null = archived; the row is out of every list and count. */
+  archived_at?: string | null;
 };
 
 type PropertyRow = {
@@ -1022,6 +1037,8 @@ type PropertyRow = {
   created_at: string | null;
   updated_at: string | null;
   origin?: string | null;
+  /** Soft delete (20260806120000). Non-null = archived; the row is out of every list and count. */
+  archived_at?: string | null;
 };
 
 type LeadRow = {
@@ -1041,6 +1058,8 @@ type LeadRow = {
   created_at: string | null;
   updated_at: string | null;
   origin?: string | null;
+  /** Soft delete (20260806120000). Non-null = archived; the row is out of every list and count. */
+  archived_at?: string | null;
 };
 
 type JobRow = {
@@ -1058,6 +1077,8 @@ type JobRow = {
   metadata: unknown;
   created_at: string | null;
   updated_at: string | null;
+  /** Soft delete (20260806120000). Non-null = archived; the row is out of every list and count. */
+  archived_at?: string | null;
 };
 
 type OutcomeRow = {
@@ -1075,6 +1096,8 @@ type OutcomeRow = {
   metadata: unknown;
   created_at: string | null;
   updated_at: string | null;
+  /** Soft delete (20260806120000). Non-null = archived; the row is out of every list and count. */
+  archived_at?: string | null;
 };
 
 function buildOverviewFromBundle(data: CrmBundleShape): Extract<CrmOverviewData, { status: "live" }> {
@@ -1406,48 +1429,60 @@ type CrmBundleFocus = { key: CrmObjectKey; ids: string[] };
 
 async function getCrmTableBundle(client?: SupabaseClient, orgId?: string | null, focus?: CrmBundleFocus) {
   const supabase = client ?? getSupabaseAdminClient();
-  /** Focused object: fetch by id. Everything else keeps its window. */
-  const scope = <T extends { in: (col: string, v: string[]) => T; limit: (n: number) => T }>(key: CrmObjectKey, q: T): T =>
-    focus && focus.key === key ? q.in("id", focus.ids) : q.limit(CRM_TABLE_BUNDLE_LIMIT);
+  /**
+   * Focused object: fetch by id. Everything else keeps its window.
+   *
+   * Archived records are excluded from the WINDOW but never from a focused
+   * fetch: the caller asking for specific ids has already decided which rows it
+   * wants, and the one caller that asks for archived ids is the restore list.
+   * Filtering there too would make archived records unreachable — deleted for
+   * real, from a soft delete that promises otherwise.
+   */
+  const scope = <T extends {
+    in: (col: string, v: string[]) => T;
+    is: (col: string, v: null) => T;
+    limit: (n: number) => T;
+  }>(key: CrmObjectKey, q: T): T =>
+    focus && focus.key === key ? q.in("id", focus.ids) : q.is("archived_at", null).limit(CRM_TABLE_BUNDLE_LIMIT);
 
   let companiesQ = supabase
     .from("companies")
-    .select("id,name,persona,status,website_url,phone,email,partner_tier,metadata,created_at,updated_at,origin")
+    .select("id,name,persona,status,website_url,phone,email,partner_tier,metadata,created_at,updated_at,origin,archived_at")
     .order("updated_at", { ascending: false });
   if (orgId) companiesQ = companiesQ.eq("org_id", orgId);
   companiesQ = scope("companies", companiesQ as never) as typeof companiesQ;
 
   let contactsQ = supabase
     .from("contacts")
-    .select("id,company_id,persona,status,first_name,last_name,full_name,email,phone,title,metadata,created_at,updated_at,origin")
+    .select("id,company_id,persona,status,first_name,last_name,full_name,email,phone,title,metadata,created_at,updated_at,origin,archived_at")
     .order("updated_at", { ascending: false });
   if (orgId) contactsQ = contactsQ.eq("org_id", orgId);
   contactsQ = scope("contacts", contactsQ as never) as typeof contactsQ;
 
   let propertiesQ = supabase
     .from("properties")
-    .select("id,company_id,contact_id,persona,street_line_1,street_line_2,city,state,postal_code,property_type,metadata,created_at,updated_at,origin")
+    .select("id,company_id,contact_id,persona,street_line_1,street_line_2,city,state,postal_code,property_type,metadata,created_at,updated_at,origin,archived_at")
     .order("updated_at", { ascending: false });
   if (orgId) propertiesQ = propertiesQ.eq("org_id", orgId);
   propertiesQ = scope("properties", propertiesQ as never) as typeof propertiesQ;
 
   let leadsQ = supabase
     .from("leads")
-    .select("id,company_id,contact_id,property_id,persona,status,routing_recommendation,source,loss_summary,loss_signals,lead_score,received_at,metadata,created_at,updated_at,origin")
+    .select("id,company_id,contact_id,property_id,persona,status,routing_recommendation,source,loss_summary,loss_signals,lead_score,received_at,metadata,created_at,updated_at,origin,archived_at")
     .order("updated_at", { ascending: false });
   if (orgId) leadsQ = leadsQ.eq("org_id", orgId);
   leadsQ = scope("leads", leadsQ as never) as typeof leadsQ;
 
   let jobsQ = supabase
     .from("jobs")
-    .select("id,lead_id,company_id,contact_id,property_id,persona,status,job_number,scheduled_at,completed_at,estimated_revenue_cents,metadata,created_at,updated_at")
+    .select("id,lead_id,company_id,contact_id,property_id,persona,status,job_number,scheduled_at,completed_at,estimated_revenue_cents,metadata,created_at,updated_at,archived_at")
     .order("updated_at", { ascending: false });
   if (orgId) jobsQ = jobsQ.eq("org_id", orgId);
   jobsQ = scope("jobs", jobsQ as never) as typeof jobsQ;
 
   let outcomesQ = supabase
     .from("outcomes")
-    .select("id,job_id,lead_id,company_id,contact_id,property_id,persona,status,gross_revenue_cents,gross_margin_cents,closed_at,metadata,created_at,updated_at")
+    .select("id,job_id,lead_id,company_id,contact_id,property_id,persona,status,gross_revenue_cents,gross_margin_cents,closed_at,metadata,created_at,updated_at,archived_at")
     .order("updated_at", { ascending: false });
   if (orgId) outcomesQ = outcomesQ.eq("org_id", orgId);
   outcomesQ = scope("outcomes", outcomesQ as never) as typeof outcomesQ;
@@ -1576,6 +1611,57 @@ export async function searchCrmObjectRows(
   }
 }
 
+/**
+ * The archived records for one object, most recently archived first.
+ *
+ * A soft delete that cannot be listed is a hard delete with extra steps. Every
+ * other read here excludes `archived_at is not null`, so without this the rows
+ * exist in the table and are reachable by nothing — the state the CRM was
+ * already in when "archived" was a status the list filtered out client-side.
+ *
+ * Same ids-then-focused-bundle shape as searchCrmObjectRows, so a restored row
+ * is decorated identically to one that was never archived.
+ */
+export async function listArchivedCrmObjectRows(
+  key: CrmObjectKey,
+  orgId: string,
+  client?: SupabaseClient,
+): Promise<CrmSearchResult> {
+  if (!client && !isSupabaseAdminConfigured()) {
+    return { status: "unavailable", message: "Archived records are unavailable." };
+  }
+  const supabase = client ?? getSupabaseAdminClient();
+
+  try {
+    const { data, error } = await supabase
+      .from(key)
+      .select("id")
+      .eq("org_id", orgId)
+      .not("archived_at", "is", null)
+      .order("archived_at", { ascending: false })
+      .limit(CRM_SEARCH_LIMIT + 1);
+    if (error) {
+      return unavailableRead("crm.listArchivedCrmObjectRows", orgId, error, {
+        surface: "primary",
+        fallbackMessage: "Archived records are unavailable.",
+      });
+    }
+
+    const ids = ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+    const capped = ids.length > CRM_SEARCH_LIMIT;
+    const page = capped ? ids.slice(0, CRM_SEARCH_LIMIT) : ids;
+    if (!page.length) return { status: "live", rows: [], capped: false };
+
+    const bundle = await getCrmTableBundle(supabase, orgId, { key, ids: page });
+    return { status: "live", rows: mapObjectRows(key, bundle), capped };
+  } catch (error) {
+    return unavailableRead("crm.listArchivedCrmObjectRows", orgId, error, {
+      surface: "primary",
+      fallbackMessage: "Archived records are unavailable.",
+    });
+  }
+}
+
 function assertResult(table: string, error: { message?: string } | null) {
   if (error) {
     throw new Error(`${table} lookup failed: ${error.message ?? "Unknown Supabase error"}`);
@@ -1583,7 +1669,10 @@ function assertResult(table: string, error: { message?: string } | null) {
 }
 
 async function countRows(client: SupabaseClient, table: CrmObjectKey, orgId?: string | null) {
-  let query = client.from(table).select("id", { count: "exact", head: true });
+  // Archived rows are out of the count for the same reason they are out of the
+  // list: the tab badge and the list have to agree, or the operator is told
+  // there are 12 companies and shown 11 with no way to tell which is lying.
+  let query = client.from(table).select("id", { count: "exact", head: true }).is("archived_at", null);
   if (orgId) query = query.eq("org_id", orgId);
   const result = await query;
   // `count ?? 0` here is what made getCrmNavCounts impossible to fail: a HEAD
@@ -1769,6 +1858,7 @@ function decorateObjectRow(
     nextStep: nextBestActionForRecord(key, record, metadata, data),
     relationships: relationshipsForRecord(key, record, data).slice(0, 5),
     missingFields: missingFieldsForRecord(key, record, evidence),
+    archivedAt: getString(record.archived_at) ?? null,
   };
 }
 

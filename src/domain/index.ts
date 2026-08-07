@@ -92,6 +92,7 @@ export * from "./media-target";
 export * from "./email-templates";
 export * from "./crm-matching";
 export * from "./custom-fields";
+export * from "./custom-objects";
 export * from "./custom-field-inference";
 export * from "./object-labels";
 export * from "./env-capabilities";
