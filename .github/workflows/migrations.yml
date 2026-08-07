@@ -99,7 +99,16 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # PINNED, not `latest`. Resolving `latest` costs a GitHub API call on
+          # every run, and that call rate-limited on 2026-08-07 — which failed
+          # `chain`, a REQUIRED check, for a reason unrelated to the diff. A
+          # flaky blocking check parks merges and trains people to re-run
+          # without reading, which is how a real failure gets waved through.
+          #
+          # 2.112.0 is the version that ran this chain green. Bump deliberately:
+          # this same CLI applies migrations to production in migrate-prod.yml,
+          # so an unattended upgrade there is a change to how prod gets written.
+          version: 2.112.0
 
       # No `pnpm install` — the script deliberately has no dependencies, so this
       # job stays fast and cannot be broken by an unrelated lockfile change.
