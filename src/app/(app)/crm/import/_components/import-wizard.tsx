@@ -38,8 +38,20 @@ const KINDS: Array<{ kind: ImportKind; label: string; hint: string }> = [
   { kind: "notes", label: "Notes", hint: "Attached to a contact or company by its id" },
 ];
 
-export function ImportWizard({ ready }: { ready: boolean }) {
-  const [kind, setKind] = useState<ImportKind>("contacts");
+/** CRM object key → the kind that imports it, for the `?as=` hint from the board. */
+const KIND_FOR_OBJECT: Record<string, ImportKind> = {
+  contacts: "contacts",
+  leads: "contacts",
+  companies: "companies",
+  jobs: "deals",
+};
+
+export function ImportWizard({ ready, initialKind }: { ready: boolean; initialKind?: string }) {
+  // Arriving from a specific tab's Import button preselects that kind, so the
+  // wizard opens on the thing you were looking at rather than always on Contacts.
+  const [kind, setKind] = useState<ImportKind>(
+    (initialKind && KIND_FOR_OBJECT[initialKind]) || "contacts",
+  );
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);

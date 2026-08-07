@@ -2231,8 +2231,13 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 /* Selection checkbox — verbatim from build-crm.html .ck */
 /* A real <button> now (it was a `<span role="checkbox">` at tabIndex -1), so the
    UA button defaults are reset to keep the 16px square exactly as it was. */
-.arc-app .arc-grid .ck { width: 16px; height: 16px; padding: 0; background: transparent; font: inherit; border-radius: var(--r-sm); border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; transition: var(--dur-fast); flex-shrink: 0; }
+.arc-app .arc-grid .ck { position: relative; width: 16px; height: 16px; padding: 0; background: transparent; font: inherit; border-radius: var(--r-sm); border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; transition: var(--dur-fast); flex-shrink: 0; }
 .arc-app .arc-grid .ck:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The box stays 16px, but its HIT AREA is padded out to the 24px minimum
+   target. The select cell is 40x20 around a 16x16 box, so ~84% of a column
+   that reads as "the checkbox column" fell outside the control — and the
+   row underneath opens the record, so a near-miss cost a page load. */
+.arc-app .arc-grid .ck::after { content: ""; position: absolute; inset: -5px; border-radius: var(--r-md); }
 .arc-app .arc-grid .ck:hover { border-color: var(--accent-border); }
 .arc-app .arc-grid .ck.on { background: var(--accent); border-color: var(--accent); }
 .arc-app .arc-grid .ck svg { width: 11px; height: 11px; stroke: #201808; fill: none; stroke-width: 3; opacity: 0; }

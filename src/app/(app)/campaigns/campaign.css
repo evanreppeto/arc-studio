@@ -586,16 +586,7 @@
   overflow: hidden;
   background: var(--canvas-deep);
   border: 1px solid var(--line-2);
-  /* 12px literal, NOT var(--r-lg), which is what --r-lg is meant to be.
-     Measured on the running app: the `--r-*` declarations do not survive into
-     the served globals bundle — the string "--r-full" does not appear in it at
-     all, declaration or usage, so the optimizer inlined those values inside
-     globals.css and dropped the custom properties. Every `var(--r-lg)` in
-     arc-app.css and the route sheets therefore resolves to nothing and computes
-     to 0: `.cstate` and `.deliver` are both square right now. Filed separately;
-     this literal keeps the panel correct either way, and should become the
-     token again once the tokens actually reach the browser. */
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   /* Depth, not glow — the panel sits above a blurred page and needs an edge. */
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
   animation: rqrise var(--dur-slow) var(--ease) both;
@@ -951,7 +942,7 @@
   gap: 7px;
   padding: 10px 12px;
   border: 1px solid var(--accent-border);
-  border-radius: var(--r-md, 8px);
+  border-radius: var(--r-md);
   background: var(--accent-soft);
 }
 .arc-campaign .lbmark-head { display: flex; align-items: baseline; gap: 10px; }
@@ -982,7 +973,7 @@
   color: var(--text);
   background: var(--inset);
   border: 1px solid var(--line-2);
-  border-radius: var(--r-md, 8px);
+  border-radius: var(--r-md);
   padding: 8px 10px;
 }
 .arc-campaign .lbmark textarea:focus { outline: none; border-color: var(--accent-border); }
