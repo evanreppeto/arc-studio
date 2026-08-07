@@ -160,7 +160,10 @@
 .arc-brand .src .sm { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
 .arc-brand .src .sm b { color: var(--ok-text); font-weight: 600; }
 .arc-brand .src .sgo { color: var(--muted); font-size: 12px; flex-shrink: 0; opacity: 0; transition: var(--dur-base); }
-.arc-brand .src:hover .sgo { opacity: 1; color: var(--accent-contrast); }
+/* Focus gets the same cue as hover: .src is a link and the arrow is its
+   "this goes somewhere" affordance, so hiding it from keyboard users left the
+   row looking inert exactly when it was selected. */
+.arc-brand .src:hover .sgo, .arc-brand .src:focus-visible .sgo { opacity: 1; color: var(--accent-contrast); }
 .arc-brand .stale { margin-left: 7px; font-size: 8.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn-text); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: var(--r-sm); padding: 1px 5px; vertical-align: 1px; }
 .arc-brand .resyncall { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 4px 9px; cursor: pointer; transition: var(--dur-base); }
 .arc-brand .resyncall:hover { border-color: var(--accent-border); color: var(--text); }
