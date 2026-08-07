@@ -2,13 +2,16 @@
 
 import { useRef, useState, useTransition } from "react";
 
-import { BRAND_LOGO_LABELS, BRAND_LOGO_ROLES, type BrandLogo, type BrandLogoRole } from "@/domain";
+import { BRANDING_IMAGE_ACCEPT, BRAND_LOGO_LABELS, BRAND_LOGO_ROLES, type BrandLogo, type BrandLogoRole } from "@/domain";
 
 import { removeBrandLogoVariantAction, saveBrandLogoVariants, type BrandLogoSetResult } from "../actions";
 import { AppImage } from "../../_components/app-image";
 
-// Mirrors uploadBrandingImage's accepted types — the action re-checks server-side.
-const LOGO_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
+// The shared constant, not a copy of it. This was its own literal listing the
+// same types, which is exactly the drift BRANDING_IMAGE_ACCEPT exists to
+// prevent — the server gate could tighten and the picker would keep offering
+// what the action now refuses.
+const LOGO_ACCEPT = BRANDING_IMAGE_ACCEPT;
 
 /**
  * The logo set. One tile per role, each independently uploadable and removable,
