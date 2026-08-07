@@ -2,6 +2,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { type CustomFieldType } from "@/domain";
 import { createFieldDefinition, listFieldDefinitions } from "@/lib/custom-fields/definitions";
+import type { CustomFieldObjectKey } from "@/domain";
 import { saveCustomFieldValues } from "@/lib/custom-fields/values";
 
 /**
@@ -43,11 +44,16 @@ export async function provisionCustomFields(
   orgId: string,
   fields: AcceptedCustomField[],
   client?: SupabaseClient,
+  // Which record type the fields hang off. Defaults to "leads" because the CSV
+  // wizard imports a lead bundle and every existing caller means that; a
+  // tenant-defined type passes its own key, and the whole layer below is
+  // already object-agnostic.
+  objectKey: string = "leads",
 ): Promise<ProvisionResult> {
   const result: ProvisionResult = { created: [], reused: [], failed: [] };
   if (fields.length === 0) return result;
 
-  const existing = await listFieldDefinitions(orgId, "leads", client ? { client } : {});
+  const existing = await listFieldDefinitions(orgId, objectKey as CustomFieldObjectKey, client ? { client } : {});
   const existingKeys = new Set(existing.map((d) => d.key));
 
   for (const field of fields) {
@@ -59,7 +65,7 @@ export async function provisionCustomFields(
     const outcome = await createFieldDefinition(
       orgId,
       {
-        objectKey: "leads",
+        objectKey: objectKey as CustomFieldObjectKey,
         key: field.key,
         label: field.label,
         fieldType: field.fieldType,
@@ -91,10 +97,11 @@ export async function provisionCustomFields(
  */
 export async function writeImportedCustomValues(
   orgId: string,
-  leadId: string,
+  recordId: string,
   fields: AcceptedCustomField[],
   rowValues: Record<string, string>,
   client?: SupabaseClient,
+  objectKey: string = "leads",
 ): Promise<void> {
   if (fields.length === 0) return;
 
@@ -106,7 +113,7 @@ export async function writeImportedCustomValues(
   if (Object.keys(raw).length === 0) return;
 
   try {
-    await saveCustomFieldValues(orgId, "leads", leadId, raw, client ? { client } : {});
+    await saveCustomFieldValues(orgId, objectKey as CustomFieldObjectKey, recordId, raw, client ? { client } : {});
   } catch {
     // Swallowed on purpose. The lead is already imported; failing here would
     // report a record that landed as failed.
