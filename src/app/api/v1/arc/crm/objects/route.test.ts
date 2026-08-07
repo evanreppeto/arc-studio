@@ -11,17 +11,25 @@ vi.mock("@/lib/custom-objects/records", () => ({
   listCustomRecords: vi.fn(),
   countCustomRecords: vi.fn(),
   createCustomRecord: vi.fn(),
+  updateCustomRecord: vi.fn(),
 }));
+vi.mock("@/lib/pipeline-stages/read-model", () => ({ getPipelineStages: vi.fn() }));
 vi.mock("@/lib/custom-fields/definitions", () => ({ listFieldDefinitions: vi.fn() }));
 vi.mock("@/lib/custom-fields/values", () => ({ getCustomFieldsForRecords: vi.fn() }));
 
 import { getCustomObjectByKey, listCustomObjects } from "@/lib/custom-objects/definitions";
-import { countCustomRecords, createCustomRecord, listCustomRecords } from "@/lib/custom-objects/records";
+import { countCustomRecords, createCustomRecord, listCustomRecords, updateCustomRecord } from "@/lib/custom-objects/records";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 import { listFieldDefinitions } from "@/lib/custom-fields/definitions";
 import { getCustomFieldsForRecords } from "@/lib/custom-fields/values";
 
 import { GET as listTypes } from "../object-types/route";
-import { GET, POST } from "./[key]/route";
+import { GET, PATCH, POST } from "./[key]/route";
+
+const STAGES = [
+  { key: "in_service", label: "In service", sortOrder: 0, isTerminal: false, isWon: false, isLost: false, isQualified: false, active: true },
+  { key: "retired", label: "Retired", sortOrder: 1, isTerminal: true, isWon: false, isLost: false, isQualified: false, active: true },
+];
 
 /**
  * Arc's window onto tenant-defined record types.
@@ -64,13 +72,16 @@ beforeEach(() => {
     { id: "f1", objectKey: "equipment", key: "serial", label: "Serial number", fieldType: "text", required: true, options: [], helpText: null, sortOrder: 0, active: true },
   ] as never);
   vi.mocked(listCustomRecords).mockResolvedValue([
-    { id: "r1", title: "Extractor #3", subtitle: "Van 2", updatedAt: "2026-08-07T00:00:00Z", createdAt: "", archivedAt: null, origin: "operator" },
-    { id: "r2", title: "Air scrubber", subtitle: null, updatedAt: "2026-08-06T00:00:00Z", createdAt: "", archivedAt: null, origin: "operator" },
+    { id: "r1", title: "Extractor #3", subtitle: "Van 2", status: "in_service", updatedAt: "2026-08-07T00:00:00Z", createdAt: "", archivedAt: null, origin: "operator" },
+    { id: "r2", title: "Air scrubber", subtitle: null, status: null, updatedAt: "2026-08-06T00:00:00Z", createdAt: "", archivedAt: null, origin: "operator" },
   ]);
   vi.mocked(getCustomFieldsForRecords).mockResolvedValue(
     new Map([["r1", [{ definition: { key: "serial" }, value: "X1", display: "X1" }]]]) as never,
   );
   vi.mocked(createCustomRecord).mockResolvedValue({ ok: true, persisted: true, id: "new-1" });
+  vi.mocked(updateCustomRecord).mockResolvedValue({ ok: true, persisted: true });
+  // Most types have NO pipeline; the ones that do opt in.
+  vi.mocked(getPipelineStages).mockResolvedValue([]);
 });
 afterEach(() => {
   vi.clearAllMocks();
@@ -165,6 +176,25 @@ describe("POST /api/v1/arc/crm/objects/[key]", () => {
     expect(body.record).toMatchObject({ id: "new-1", href: "/crm/equipment/new-1" });
   });
 
+  /**
+   * `origin` was hardcoded to "operator" one layer down, so a record Arc
+   * created claimed a person had typed it — and the board attributes the row's
+   * owner from this very column.
+   */
+  it("stamps the record as the agent's work, not the operator's", async () => {
+    await POST(
+      req("objects/equipment", { method: "POST", body: JSON.stringify({ title: "Dehumidifier" }) }),
+      { params: Promise.resolve({ key: "equipment" }) },
+    );
+
+    expect(createCustomRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      { origin: "agent" },
+    );
+  });
+
   it("refuses a record with no name, in the tenant's own word", async () => {
     const res = await POST(
       req("objects/equipment", { method: "POST", body: JSON.stringify({}) }),
@@ -190,5 +220,108 @@ describe("POST /api/v1/arc/crm/objects/[key]", () => {
 
     expect(res.status).toBe(202);
     expect((await res.json()).persisted).toBe(false);
+  });
+});
+
+describe("PATCH /api/v1/arc/crm/objects/[key] — moving a record's stage", () => {
+  function patch(body: unknown) {
+    return PATCH(req("objects/equipment", { method: "PATCH", body: JSON.stringify(body) }), {
+      params: Promise.resolve({ key: "equipment" }),
+    });
+  }
+
+  it("moves a record and echoes the stage's own label", async () => {
+    vi.mocked(getPipelineStages).mockResolvedValue(STAGES as never);
+    const res = await patch({ record_id: "r1", status: "retired" });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ record_id: "r1", status: "retired", status_label: "Retired" });
+    expect(updateCustomRecord).toHaveBeenCalledWith("org-1", EQUIPMENT, "r1", { status: "retired" });
+  });
+
+  /**
+   * An unknown key would store and then render as its raw value on the
+   * operator's board — indistinguishable from data corruption. The refusal
+   * lists the real keys so the caller can correct itself in one step.
+   */
+  it("refuses a stage this type does not have, and says which exist", async () => {
+    vi.mocked(getPipelineStages).mockResolvedValue(STAGES as never);
+    const res = await patch({ record_id: "r1", status: "sold" });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.message).toContain("in_service");
+    expect(updateCustomRecord).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Stages are opt-in. A type without them has no lifecycle at all, so this is
+   * a different refusal from "wrong stage" — and says who can create one.
+   */
+  it("refuses to move a record of a type that has no pipeline", async () => {
+    const res = await patch({ record_id: "r1", status: "anything" });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.status).toBe("no_pipeline");
+    expect(updateCustomRecord).not.toHaveBeenCalled();
+  });
+
+  it("requires both the record and the stage", async () => {
+    vi.mocked(getPipelineStages).mockResolvedValue(STAGES as never);
+    expect((await patch({ status: "retired" })).status).toBe(400);
+    expect((await patch({ record_id: "r1" })).status).toBe(400);
+    expect(updateCustomRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe("stages on the read paths", () => {
+  it("returns each record's stage key AND the tenant's label for it", async () => {
+    vi.mocked(getPipelineStages).mockResolvedValue(STAGES as never);
+    vi.mocked(listCustomRecords).mockResolvedValue([
+      { id: "r1", title: "Extractor #3", subtitle: null, status: "in_service", updatedAt: "", createdAt: "", archivedAt: null, origin: "operator" },
+    ] as never);
+
+    const res = await GET(req("objects/equipment"), { params: Promise.resolve({ key: "equipment" }) });
+    const body = await res.json();
+
+    expect(body.records[0]).toMatchObject({ status: "in_service", status_label: "In service" });
+  });
+
+  /** A stage archived out from under a record keeps the raw key rather than
+   *  vanishing — visibly odd beats silently stageless. */
+  it("keeps an unresolvable stage key visible", async () => {
+    vi.mocked(getPipelineStages).mockResolvedValue(STAGES as never);
+    vi.mocked(listCustomRecords).mockResolvedValue([
+      { id: "r1", title: "Old", subtitle: null, status: "gone_stage", updatedAt: "", createdAt: "", archivedAt: null, origin: "operator" },
+    ] as never);
+
+    const res = await GET(req("objects/equipment"), { params: Promise.resolve({ key: "equipment" }) });
+    const body = await res.json();
+
+    expect(body.records[0]).toMatchObject({ status: "gone_stage", status_label: "gone_stage" });
+  });
+
+  /**
+   * A type with no lifecycle omits `stages` rather than sending []: an empty
+   * array reads as "stages exist and there are none", which is a different and
+   * wrong thing for the model to reason from.
+   */
+  it("omits stages entirely for a type with no pipeline", async () => {
+    const res = await listTypes(req("object-types"));
+    const body = await res.json();
+    expect(body.object_types[0].stages).toBeUndefined();
+  });
+
+  it("includes them, terminal flag and all, when the type has one", async () => {
+    vi.mocked(getPipelineStages).mockResolvedValue(STAGES as never);
+    const res = await listTypes(req("object-types"));
+    const body = await res.json();
+
+    expect(body.object_types[0].stages).toEqual([
+      { key: "in_service", label: "In service", terminal: false },
+      { key: "retired", label: "Retired", terminal: true },
+    ]);
   });
 });

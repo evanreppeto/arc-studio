@@ -15,6 +15,16 @@ const DOC_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
+/**
+ * What a file IS — deliberately broader than what we accept.
+ *
+ * The SVG branch stays even though SVG can no longer be uploaded: this answers
+ * a question about a file, not about a policy, and the gate lives in
+ * `upload-policy.ts`. If an SVG ever arrives by some other route — a backfill,
+ * an import, a legacy row — calling it a `logo` is right and calling it a
+ * `document` is a silent wrong answer. Prod holds none today (0 in storage,
+ * 0 in media_assets), so this is insurance, not upkeep.
+ */
 export function classifyKind(contentType: string, fileName: string): MediaKind {
   if (contentType === "image/svg+xml" || fileName.toLowerCase().endsWith(".svg")) return "logo";
   if (contentType === "image/x-icon" || fileName.toLowerCase().endsWith(".ico")) return "logo";
@@ -27,8 +37,19 @@ export function classifyKind(contentType: string, fileName: string): MediaKind {
 export type UploadCheck = { contentType: string; byteSize: number };
 export type ValidationResult = { ok: true } | { ok: false; reason: string };
 
+/**
+ * ⚠️ NO CALLERS. The live gate is `acceptUpload` in
+ * `src/lib/media-library/upload-policy.ts` — that is what the Library action,
+ * the Brand action, `/api/v1/media` and the remote-URL fetcher all go through.
+ * This function is reachable only from its own test.
+ *
+ * Kept in step with the real gate rather than left behind: a dead duplicate
+ * that stays superficially current is how `decideApprovalItem` preserved a live
+ * bug for months (see CLAUDE.md). It should probably be deleted outright, but
+ * that is a separate change from a security fix.
+ */
 export function validateUpload({ contentType, byteSize }: UploadCheck): ValidationResult {
-  const allowed = [...IMAGE_TYPES, ...VIDEO_TYPES, ...DOC_TYPES, "image/svg+xml"];
+  const allowed = [...IMAGE_TYPES, ...VIDEO_TYPES, ...DOC_TYPES];
   if (!allowed.includes(contentType)) return { ok: false, reason: `Unsupported file type: ${contentType}` };
   if (byteSize > MAX_UPLOAD_BYTES) return { ok: false, reason: "File exceeds the 50 MB limit." };
   return { ok: true };

@@ -1,0 +1,1144 @@
+{
+  "captured_at": "2026-08-07",
+  "source": "Higgsfield MCP models_explore(action:list, limit:100)",
+  "count": 85,
+  "models": [
+    {
+      "id": "3d_rigging",
+      "type": "3d",
+      "name": "3D Rigging",
+      "provider": "Meshy",
+      "tags": [
+        "3d",
+        "animation",
+        "glb",
+        "mesh",
+        "model-to-rig",
+        "rigging",
+        "skeleton"
+      ]
+    },
+    {
+      "id": "hunyuan3d_v3_1_text_to_3d",
+      "type": "3d",
+      "name": "Hunyuan 3D v3.1 Text to 3D",
+      "provider": "Tencent",
+      "tags": [
+        "3d",
+        "glb",
+        "mesh",
+        "pbr",
+        "text-to-3d"
+      ]
+    },
+    {
+      "id": "hunyuan3d_v3_image_to_3d",
+      "type": "3d",
+      "name": "Hunyuan3D v3 Image to 3D",
+      "provider": "Tencent",
+      "tags": [
+        "3d",
+        "glb",
+        "image-to-3d",
+        "mesh",
+        "multiview",
+        "pbr"
+      ]
+    },
+    {
+      "id": "image_to_3d",
+      "type": "3d",
+      "name": "Image to 3D",
+      "provider": "Meshy",
+      "tags": [
+        "3d",
+        "animation",
+        "glb",
+        "image-to-3d",
+        "mesh",
+        "pbr",
+        "rigging",
+        "textured"
+      ]
+    },
+    {
+      "id": "meshy_image_to_3d",
+      "type": "3d",
+      "name": "Image to 3D",
+      "provider": "Meshy",
+      "tags": [
+        "3d",
+        "animation",
+        "glb",
+        "image-to-3d",
+        "mesh",
+        "pbr",
+        "rigging",
+        "textured"
+      ]
+    },
+    {
+      "id": "meshy_multi_image_to_3d",
+      "type": "3d",
+      "name": "Multi-Image to 3D",
+      "provider": "Meshy",
+      "tags": [
+        "3d",
+        "animation",
+        "glb",
+        "mesh",
+        "multi-image-to-3d",
+        "multi-view",
+        "pbr",
+        "rigging",
+        "textured"
+      ]
+    },
+    {
+      "id": "meshy_rigging",
+      "type": "3d",
+      "name": "3D Rigging",
+      "provider": "Meshy",
+      "tags": [
+        "3d",
+        "animation",
+        "glb",
+        "mesh",
+        "model-to-rig",
+        "rigging",
+        "skeleton"
+      ]
+    },
+    {
+      "id": "meshy_v5_remesh",
+      "type": "3d",
+      "name": "Meshy 5 Remesh",
+      "provider": "Meshy",
+      "tags": [
+        "3d",
+        "glb",
+        "mesh",
+        "remesh",
+        "retopology"
+      ]
+    },
+    {
+      "id": "meshy_v6_text_to_3d",
+      "type": "3d",
+      "name": "Meshy 6 Text to 3D",
+      "provider": "Meshy",
+      "tags": [
+        "3d",
+        "animation",
+        "glb",
+        "mesh",
+        "pbr",
+        "rigging",
+        "text-to-3d"
+      ]
+    },
+    {
+      "id": "multi_image_to_3d",
+      "type": "3d",
+      "name": "Multi-Image to 3D",
+      "provider": "Meshy",
+      "tags": [
+        "3d",
+        "animation",
+        "glb",
+        "mesh",
+        "multi-image-to-3d",
+        "multi-view",
+        "pbr",
+        "rigging",
+        "textured"
+      ]
+    },
+    {
+      "id": "sam_3_3d",
+      "type": "3d",
+      "name": "SAM 3 3D Objects",
+      "provider": "Meta",
+      "tags": [
+        "3d",
+        "glb",
+        "image-to-3d",
+        "mesh",
+        "object",
+        "sam",
+        "single-image"
+      ]
+    },
+    {
+      "id": "sam_3_3d_body",
+      "type": "3d",
+      "name": "3D Body",
+      "provider": "Meta",
+      "tags": [
+        "3d",
+        "body",
+        "glb",
+        "human",
+        "image-to-3d",
+        "mesh",
+        "sam"
+      ]
+    },
+    {
+      "id": "tripo_3d",
+      "type": "3d",
+      "name": "Text to 3D",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "tripo_h3_1_image_to_3d",
+      "type": "3d",
+      "name": "Tripo H3.1 Image to 3D",
+      "provider": "Tripo",
+      "tags": [
+        "3d",
+        "glb",
+        "image-to-3d",
+        "mesh",
+        "pbr",
+        "textured"
+      ]
+    },
+    {
+      "id": "tripo_h3_1_multiview_to_3d",
+      "type": "3d",
+      "name": "Tripo H3.1 Multiview to 3D",
+      "provider": "Tripo",
+      "tags": [
+        "3d",
+        "glb",
+        "image-to-3d",
+        "mesh",
+        "multiview",
+        "pbr",
+        "textured"
+      ]
+    },
+    {
+      "id": "inworld_text_to_speech",
+      "type": "audio",
+      "name": "Inworld Text to Speech",
+      "provider": "FAL",
+      "tags": [
+        "audio",
+        "fal",
+        "inworld",
+        "speech",
+        "text-to-speech",
+        "tts",
+        "unlim"
+      ]
+    },
+    {
+      "id": "mirelo_text_to_audio",
+      "type": "audio",
+      "name": "Mirelo Text to Audio",
+      "provider": "FAL",
+      "tags": [
+        "audio",
+        "fal",
+        "mirelo",
+        "sfx",
+        "sound-effects",
+        "text-to-audio",
+        "unlim"
+      ]
+    },
+    {
+      "id": "qwen_audio_tts",
+      "type": "audio",
+      "name": "Qwen Audio 3.0 TTS Flash",
+      "provider": "Alibaba Cloud",
+      "tags": [
+        "alibaba",
+        "audio",
+        "qwen",
+        "reference-element",
+        "speech",
+        "text-to-speech",
+        "tts",
+        "voice",
+        "voice-cloning"
+      ]
+    },
+    {
+      "id": "seed_audio",
+      "type": "audio",
+      "name": "Seed Audio 1.0",
+      "provider": "ByteDance",
+      "tags": [
+        "audio",
+        "bytedance",
+        "seed-audio",
+        "text-to-speech",
+        "tts",
+        "unlim"
+      ]
+    },
+    {
+      "id": "sonilo_music",
+      "type": "audio",
+      "name": "Sonilo Music",
+      "provider": "FAL",
+      "tags": [
+        "audio",
+        "fal",
+        "music",
+        "sonilo",
+        "text-to-music"
+      ]
+    },
+    {
+      "id": "text2speech_v2",
+      "type": "audio",
+      "name": "Text to Speech V2",
+      "provider": "Higgsfield",
+      "tags": [
+        "audio",
+        "cozy_voice",
+        "elevenlabs",
+        "minimax",
+        "preset",
+        "reference-element",
+        "seed_speech",
+        "speech",
+        "text-to-speech",
+        "tts",
+        "unlim",
+        "vibe_voice",
+        "voice"
+      ]
+    },
+    {
+      "id": "autosprite",
+      "type": "image",
+      "name": "AutoSprite Animation",
+      "provider": "Higgsfield",
+      "tags": [
+        "animation",
+        "atlas",
+        "character",
+        "game",
+        "image-to-animation",
+        "pixel",
+        "sprite",
+        "spritesheet"
+      ]
+    },
+    {
+      "id": "bytedance_image_upscale",
+      "type": "image",
+      "name": "Bytedance Image Upscale",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "cinematic_studio_2_5",
+      "type": "image",
+      "name": "Cinema Studio Image 2.5",
+      "provider": "Higgsfield",
+      "tags": [
+        "4k",
+        "cinematic",
+        "dramatic",
+        "film",
+        "high-resolution"
+      ]
+    },
+    {
+      "id": "flux_2",
+      "type": "image",
+      "name": "FLUX.2",
+      "provider": "Black Forest Labs",
+      "tags": [
+        "creative",
+        "precise",
+        "pro",
+        "prompt-adherence",
+        "quality",
+        "unlim",
+        "versatile"
+      ]
+    },
+    {
+      "id": "flux_kontext",
+      "type": "image",
+      "name": "Flux Kontext",
+      "provider": "Black Forest Labs",
+      "tags": [
+        "context-aware",
+        "editing",
+        "remix",
+        "style-transfer",
+        "typography"
+      ]
+    },
+    {
+      "id": "gpt_image_2",
+      "type": "image",
+      "name": "GPT Image 2",
+      "provider": "OpenAI",
+      "tags": [
+        "4k",
+        "editing",
+        "high-resolution",
+        "photorealistic",
+        "text-rendering",
+        "typography",
+        "unlim"
+      ]
+    },
+    {
+      "id": "grok_image",
+      "type": "image",
+      "name": "Grok Image",
+      "provider": "xAI",
+      "tags": [
+        "bold",
+        "creative",
+        "editing",
+        "expressive",
+        "high-contrast"
+      ]
+    },
+    {
+      "id": "image_auto",
+      "type": "image",
+      "name": "Auto",
+      "provider": "Higgsfield",
+      "tags": [
+        "auto",
+        "editing",
+        "generation",
+        "routing",
+        "smart"
+      ]
+    },
+    {
+      "id": "image_background_remover",
+      "type": "image",
+      "name": "Image Background Remover",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "kling_omni_image",
+      "type": "image",
+      "name": "Kling O1 Image",
+      "provider": "Kling",
+      "tags": [
+        "photorealistic",
+        "realistic",
+        "unlim",
+        "versatile",
+        "wide-aspect-ratio"
+      ]
+    },
+    {
+      "id": "marketing_studio_image",
+      "type": "image",
+      "name": "Marketing Studio Image",
+      "provider": "Higgsfield",
+      "tags": [
+        "ads",
+        "creative",
+        "marketing",
+        "product",
+        "social-media"
+      ]
+    },
+    {
+      "id": "ms_image",
+      "type": "image",
+      "name": "DTC Ads",
+      "provider": "Higgsfield",
+      "tags": [
+        "ad-format",
+        "ads",
+        "avatar",
+        "brand-kit",
+        "dtc",
+        "marketing",
+        "product"
+      ]
+    },
+    {
+      "id": "nano_banana",
+      "type": "image",
+      "name": "Nano Banana",
+      "provider": "Google",
+      "tags": [
+        "affordable",
+        "budget",
+        "image-to-image",
+        "realistic",
+        "text-to-image",
+        "unlim"
+      ]
+    },
+    {
+      "id": "nano_banana_2",
+      "type": "image",
+      "name": "Nano Banana 2",
+      "provider": "Google",
+      "tags": [
+        "4k",
+        "fast",
+        "high-quality",
+        "image-to-image",
+        "photorealistic",
+        "text-to-image",
+        "unlim",
+        "versatile"
+      ]
+    },
+    {
+      "id": "nano_banana_2_lite",
+      "type": "image",
+      "name": "Nano Banana 2 Lite",
+      "provider": "Google",
+      "tags": [
+        "fast",
+        "high-quality",
+        "image-to-image",
+        "photorealistic",
+        "text-to-image",
+        "versatile"
+      ]
+    },
+    {
+      "id": "nano_banana_2_shots",
+      "type": "image",
+      "name": "Nano Banana Pro",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "nano_banana_pro",
+      "type": "image",
+      "name": "Nano Banana Pro",
+      "provider": "Google",
+      "tags": [
+        "4k",
+        "diagrams",
+        "image-to-image",
+        "photorealistic",
+        "quality",
+        "text-rendering",
+        "text-to-image",
+        "unlim",
+        "versatile"
+      ]
+    },
+    {
+      "id": "openai_hazel",
+      "type": "image",
+      "name": "OpenAI Hazel",
+      "provider": "OpenAI",
+      "tags": [
+        "diagram",
+        "editing",
+        "infographic",
+        "logos",
+        "text-rendering",
+        "typography"
+      ]
+    },
+    {
+      "id": "outpaint",
+      "type": "image",
+      "name": "Outpaint",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "recraft_v4_1",
+      "type": "image",
+      "name": "Recraft V4.1",
+      "provider": "Recraft",
+      "tags": [
+        "brand",
+        "icons",
+        "illustration",
+        "logos",
+        "mockups",
+        "palette",
+        "photorealistic",
+        "product",
+        "text-to-image",
+        "typography",
+        "utility",
+        "vector"
+      ]
+    },
+    {
+      "id": "seedream_v4_5",
+      "type": "image",
+      "name": "Seedream 4.5",
+      "provider": "Bytedance",
+      "tags": [
+        "4k",
+        "control",
+        "editing",
+        "high-resolution",
+        "precise",
+        "transformations",
+        "unlim"
+      ]
+    },
+    {
+      "id": "seedream_v5_lite",
+      "type": "image",
+      "name": "Seedream 5.0 Lite",
+      "provider": "Bytedance",
+      "tags": [
+        "editing",
+        "instruction",
+        "reasoning",
+        "smart",
+        "unlim",
+        "versatile"
+      ]
+    },
+    {
+      "id": "seedream_v5_pro",
+      "type": "image",
+      "name": "Seedream 5.0 Pro",
+      "provider": "Bytedance",
+      "tags": [
+        "2k",
+        "editing",
+        "instruction",
+        "pro",
+        "reasoning",
+        "unlim"
+      ]
+    },
+    {
+      "id": "soul_2",
+      "type": "image",
+      "name": "Higgsfield Soul 2.0",
+      "provider": "Higgsfield",
+      "tags": [
+        "character",
+        "character-generation",
+        "editorial",
+        "fashion",
+        "portrait",
+        "realistic",
+        "soul",
+        "ugc",
+        "unlim",
+        "v2"
+      ]
+    },
+    {
+      "id": "soul_cast",
+      "type": "image",
+      "name": "Soul Cast",
+      "provider": "Higgsfield",
+      "tags": [
+        "character",
+        "cinematic",
+        "consistent",
+        "identity",
+        "persona"
+      ]
+    },
+    {
+      "id": "soul_cinematic",
+      "type": "image",
+      "name": "Soul Cinema",
+      "provider": "Higgsfield",
+      "tags": [
+        "cinematic",
+        "concept-art",
+        "dramatic",
+        "film",
+        "lighting",
+        "soul"
+      ]
+    },
+    {
+      "id": "soul_location",
+      "type": "image",
+      "name": "Soul Location",
+      "provider": "Higgsfield",
+      "tags": [
+        "background",
+        "environment",
+        "landscape",
+        "location",
+        "scene"
+      ]
+    },
+    {
+      "id": "soul_v2",
+      "type": "image",
+      "name": "Higgsfield Soul 2.0",
+      "provider": "Higgsfield",
+      "tags": [
+        "character",
+        "character-generation",
+        "editorial",
+        "fashion",
+        "portrait",
+        "realistic",
+        "soul",
+        "ugc",
+        "unlim",
+        "v2"
+      ]
+    },
+    {
+      "id": "topaz_image",
+      "type": "image",
+      "name": "Topaz",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "topaz_image_generative",
+      "type": "image",
+      "name": "Topaz",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "z_image",
+      "type": "image",
+      "name": "Z Image",
+      "provider": "Tongyi-MAI",
+      "tags": [
+        "budget",
+        "fast",
+        "quick",
+        "stylized"
+      ]
+    },
+    {
+      "id": "bytedance_video_upscale",
+      "type": "video",
+      "name": "Bytedance Video Upscale",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "cinematic_studio_3_0",
+      "type": "video",
+      "name": "Cinema Studio Video 3.0",
+      "provider": "Higgsfield",
+      "tags": [
+        "advanced",
+        "best-quality",
+        "cinematic",
+        "film",
+        "premium",
+        "sota"
+      ]
+    },
+    {
+      "id": "cinematic_studio_video",
+      "type": "video",
+      "name": "Cinema Studio Video",
+      "provider": "Higgsfield",
+      "tags": [
+        "cinematic",
+        "compositions",
+        "dramatic",
+        "slow-motion",
+        "sound"
+      ]
+    },
+    {
+      "id": "cinematic_studio_video_v2",
+      "type": "video",
+      "name": "Cinema Studio Video",
+      "provider": "Higgsfield",
+      "tags": [
+        "camera",
+        "cinematic",
+        "color",
+        "genre",
+        "refined"
+      ]
+    },
+    {
+      "id": "clipify",
+      "type": "video",
+      "name": "Personal Clipper",
+      "provider": "Higgsfield",
+      "tags": [
+        "clips",
+        "personal-clipper",
+        "reels",
+        "shorts",
+        "subtitles",
+        "youtube"
+      ]
+    },
+    {
+      "id": "flux_3_video",
+      "type": "video",
+      "name": "FLUX 3 Video",
+      "provider": "Black Forest Labs",
+      "tags": [
+        "1080p",
+        "audio",
+        "end-frame",
+        "image-to-video",
+        "start-frame",
+        "storyboard",
+        "text-to-video",
+        "video-continuation"
+      ]
+    },
+    {
+      "id": "gemini_omni",
+      "type": "video",
+      "name": "Gemini Omni Flash",
+      "provider": "Google",
+      "tags": [
+        "audio",
+        "high-resolution",
+        "image-to-video",
+        "reference",
+        "text-to-video",
+        "unlim",
+        "video-to-video"
+      ]
+    },
+    {
+      "id": "grok_video",
+      "type": "video",
+      "name": "Grok Video",
+      "provider": "xAI",
+      "tags": [
+        "audio",
+        "image-to-video",
+        "text-to-video",
+        "versatile"
+      ]
+    },
+    {
+      "id": "grok_video_v15",
+      "type": "video",
+      "name": "Grok Video 1.5",
+      "provider": "xAI",
+      "tags": [
+        "audio",
+        "audio-reference",
+        "camera-motion",
+        "cinematic",
+        "image-to-video",
+        "physics",
+        "preview",
+        "reference",
+        "start-frame",
+        "text-to-video"
+      ]
+    },
+    {
+      "id": "happy_horse_video",
+      "type": "video",
+      "name": "Happy Horse Video",
+      "provider": "Happy Horse",
+      "tags": [
+        "happy-horse",
+        "image-to-video",
+        "start-frame",
+        "text-to-video"
+      ]
+    },
+    {
+      "id": "higgsfield_preset",
+      "type": "video",
+      "name": "Higgsfield Preset",
+      "provider": "Higgsfield",
+      "tags": [
+        "image-to-video",
+        "preset",
+        "template",
+        "viral"
+      ]
+    },
+    {
+      "id": "kling2_6",
+      "type": "video",
+      "name": "Kling 2.6 Video",
+      "provider": "Kling",
+      "tags": [
+        "advanced",
+        "audio",
+        "cinematic",
+        "motion",
+        "physics"
+      ]
+    },
+    {
+      "id": "kling3_0",
+      "type": "video",
+      "name": "Kling v3.0",
+      "provider": "Kling",
+      "tags": [
+        "advanced",
+        "audio",
+        "cinematic",
+        "motion-transfer",
+        "multi-shot",
+        "unlim"
+      ]
+    },
+    {
+      "id": "kling3_0_turbo",
+      "type": "video",
+      "name": "Kling 3.0 Turbo",
+      "provider": "Kling",
+      "tags": [
+        "budget",
+        "fast",
+        "image-to-video",
+        "kling",
+        "start-frame",
+        "text-to-video",
+        "turbo"
+      ]
+    },
+    {
+      "id": "llm_text",
+      "type": "video",
+      "name": "LLM Generation",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "marketing_studio_video",
+      "type": "video",
+      "name": "Marketing Studio",
+      "provider": "Higgsfield",
+      "tags": [
+        "ads",
+        "marketing",
+        "product",
+        "reels",
+        "social-media",
+        "tiktok",
+        "ugc"
+      ]
+    },
+    {
+      "id": "minimax_h3",
+      "type": "video",
+      "name": "MiniMax H3",
+      "provider": "MiniMax",
+      "tags": [
+        "2k",
+        "audio-reference",
+        "end-frame",
+        "image-to-video",
+        "reference",
+        "start-frame",
+        "text-to-video",
+        "video-reference"
+      ]
+    },
+    {
+      "id": "minimax_hailuo",
+      "type": "video",
+      "name": "Minimax Hailuo",
+      "provider": "Hailuo",
+      "tags": [
+        "1080p",
+        "emotion",
+        "facial",
+        "natural",
+        "physics",
+        "realistic"
+      ]
+    },
+    {
+      "id": "sam_3_video",
+      "type": "video",
+      "name": "Remove Background",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "seedance1_5",
+      "type": "video",
+      "name": "Seedance 1.5 Pro",
+      "provider": "Bytedance",
+      "tags": [
+        "motion",
+        "quality",
+        "reliable",
+        "versatile"
+      ]
+    },
+    {
+      "id": "seedance_2_0",
+      "type": "video",
+      "name": "Seedance 2.0",
+      "provider": "Bytedance",
+      "tags": [
+        "4k",
+        "audio",
+        "audio-reference",
+        "consistent",
+        "e-commerce",
+        "end-frame",
+        "high-resolution",
+        "identity",
+        "multi-sku",
+        "product",
+        "reference",
+        "start-frame",
+        "unlim",
+        "video-reference"
+      ]
+    },
+    {
+      "id": "seedance_2_0_mini",
+      "type": "video",
+      "name": "Seedance 2.0 Mini",
+      "provider": "Bytedance",
+      "tags": [
+        "audio",
+        "audio-reference",
+        "budget",
+        "consistent",
+        "end-frame",
+        "fast",
+        "identity",
+        "reference",
+        "start-frame",
+        "unlim",
+        "video-reference"
+      ]
+    },
+    {
+      "id": "seedance_2_5",
+      "type": "video",
+      "name": "Seedance 2.5",
+      "provider": "Bytedance",
+      "tags": [
+        "480p",
+        "720p",
+        "audio-reference",
+        "identity",
+        "reference",
+        "text-to-video",
+        "video-edit",
+        "video-extension",
+        "video-reference"
+      ]
+    },
+    {
+      "id": "sync_so",
+      "type": "video",
+      "name": "Sync Lipsync 3",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "topaz_video",
+      "type": "video",
+      "name": "Topaz",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "veo3",
+      "type": "video",
+      "name": "Google Veo 3",
+      "provider": "Google",
+      "tags": [
+        "audio",
+        "cinematic",
+        "creative",
+        "image-to-video",
+        "reliable"
+      ]
+    },
+    {
+      "id": "veo3_1",
+      "type": "video",
+      "name": "Google Veo 3.1",
+      "provider": "Google",
+      "tags": [
+        "audio",
+        "cinematic",
+        "quality",
+        "top-tier",
+        "ultra-realistic"
+      ]
+    },
+    {
+      "id": "veo3_1_lite",
+      "type": "video",
+      "name": "Google Veo 3.1 Lite",
+      "provider": "Google",
+      "tags": [
+        "affordable",
+        "batch",
+        "budget",
+        "fast",
+        "lite"
+      ]
+    },
+    {
+      "id": "video_background_remover",
+      "type": "video",
+      "name": "Video Background Remover",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "video_deflicker",
+      "type": "video",
+      "name": "Video Deflicker",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "video_upscale",
+      "type": "video",
+      "name": "Video Upscale",
+      "provider": "",
+      "tags": []
+    },
+    {
+      "id": "wan2_6",
+      "type": "video",
+      "name": "Wan 2.6 Video",
+      "provider": "Wan",
+      "tags": [
+        "artistic",
+        "creative",
+        "experimental",
+        "open-weight",
+        "stylized"
+      ]
+    },
+    {
+      "id": "wan2_7",
+      "type": "video",
+      "name": "Wan 2.7",
+      "provider": "Wan",
+      "tags": [
+        "audio",
+        "character",
+        "consistent",
+        "sound",
+        "sync",
+        "unlim"
+      ]
+    }
+  ]
+}

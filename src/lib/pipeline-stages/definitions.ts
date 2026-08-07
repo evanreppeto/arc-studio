@@ -6,6 +6,7 @@ import {
   findStage,
   type PipelineObjectKey,
   type PipelineStage,
+  isPipelineObjectKey,
 } from "@/domain";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
@@ -28,6 +29,25 @@ const RECORD_TABLE: Record<PipelineObjectKey, string> = {
   jobs: "jobs",
   outcomes: "outcomes",
 };
+
+type RecordSource = { table: string; objectId?: string };
+
+async function recordSource(
+  orgId: string,
+  objectKey: PipelineObjectKey | string,
+  client: SupabaseClient,
+): Promise<RecordSource | null> {
+  if (isPipelineObjectKey(objectKey)) return { table: RECORD_TABLE[objectKey] };
+
+  const { data } = await client
+    .from("custom_objects")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("key", objectKey)
+    .maybeSingle();
+  const id = (data as { id?: string } | null)?.id;
+  return id ? { table: "custom_object_records", objectId: id } : null;
+}
 
 export type StageWriteResult = { ok: true; stages: PipelineStage[] } | { ok: false; error: string };
 
@@ -62,7 +82,9 @@ function rowToStage(row: Record<string, unknown>): PipelineStage {
  */
 export async function listStageSet(
   orgId: string,
-  objectKey: PipelineObjectKey,
+  // Widened: a tenant-defined record type's key is valid here too, and which
+  // keys exist is per-workspace.
+  objectKey: PipelineObjectKey | string,
   opts: { client?: SupabaseClient } = {},
 ): Promise<PipelineStage[]> {
   const client = opts.client ?? getSupabaseAdminClient();
@@ -74,7 +96,14 @@ export async function listStageSet(
     .order("sort_order", { ascending: true });
 
   if (error) throw new Error(`Failed to load pipeline stages: ${error.message}`);
-  if (!data || data.length === 0) return [...DEFAULT_PIPELINE_STAGES[objectKey]];
+  // Same asymmetry as the read-model: the six seed from defaults when the org
+  // has no rows yet, a tenant-defined type gets an EMPTY set. Empty is what the
+  // settings screen shows as "no pipeline yet, add one" and what the board
+  // reads as "leave the status column off" — handing back a lead's stages here
+  // would put "Qualified" on a forklift.
+  if (!data || data.length === 0) {
+    return isPipelineObjectKey(objectKey) ? [...DEFAULT_PIPELINE_STAGES[objectKey]] : [];
+  }
 
   return data.map((row) => rowToStage(row as Record<string, unknown>));
 }
@@ -82,15 +111,28 @@ export async function listStageSet(
 /** Every object's stage set, for the settings screen. */
 export async function listAllStageSets(
   orgId: string,
-  opts: { client?: SupabaseClient } = {},
-): Promise<Record<PipelineObjectKey, PipelineStage[]>> {
+  opts: { client?: SupabaseClient; extraObjectKeys?: readonly string[] } = {},
+): Promise<Record<string, PipelineStage[]>> {
   const client = opts.client ?? getSupabaseAdminClient();
   const [leads, jobs, outcomes] = await Promise.all([
     listStageSet(orgId, "leads", { client }),
     listStageSet(orgId, "jobs", { client }),
     listStageSet(orgId, "outcomes", { client }),
   ]);
-  return { leads, jobs, outcomes };
+  const sets: Record<string, PipelineStage[]> = { leads, jobs, outcomes };
+
+  // Tenant-defined types, when the caller names them. They are not discovered
+  // here because this layer knows nothing about custom_objects, and a stage set
+  // is only meaningful next to the object it belongs to.
+  //
+  // A type with no stages still appears, as an empty set: that is what lets the
+  // settings screen offer "add a pipeline to this" rather than hiding every
+  // type that does not have one yet — which would make the feature reachable
+  // only by workspaces that already had it.
+  for (const key of opts.extraObjectKeys ?? []) {
+    sets[key] = await listStageSet(orgId, key, { client });
+  }
+  return sets;
 }
 
 /**
@@ -103,7 +145,7 @@ export async function listAllStageSets(
  */
 export async function saveStageSet(
   orgId: string,
-  objectKey: PipelineObjectKey,
+  objectKey: PipelineObjectKey | string,
   stages: readonly PipelineStage[],
   opts: { client?: SupabaseClient } = {},
 ): Promise<StageWriteResult> {
@@ -140,16 +182,22 @@ export async function saveStageSet(
  */
 export async function countRecordsInStage(
   orgId: string,
-  objectKey: PipelineObjectKey,
+  objectKey: PipelineObjectKey | string,
   stageKey: string,
   opts: { client?: SupabaseClient } = {},
 ): Promise<number> {
   const client = opts.client ?? getSupabaseAdminClient();
-  const { count, error } = await client
-    .from(RECORD_TABLE[objectKey])
+  const source = await recordSource(orgId, objectKey, client);
+  if (!source) return 0;
+
+  let q = client
+    .from(source.table)
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId)
     .eq("status", stageKey);
+  if (source.objectId) q = q.eq("object_id", source.objectId);
+  if (source.table === "custom_object_records") q = q.is("archived_at", null);
+  const { count, error } = await q;
 
   // Fail loud, not low. Reporting zero occupants would let the caller archive a
   // stage full of records without ever showing the warning.
@@ -159,17 +207,33 @@ export async function countRecordsInStage(
   return requireCount(`records in "${stageKey}"`, { count, error });
 }
 
+/**
+ * Which table holds this pipeline's records, and how to narrow to them.
+ *
+ * The three built-ins each own a table. A tenant-defined type shares
+ * custom_object_records with every other type, so it narrows by `object_id` —
+ * without that narrowing, counting "Equipment" in a stage would count every
+ * custom record in the workspace, and the archive guard that reads these counts
+ * would refuse or allow on the wrong number.
+ */
 /** Occupancy for every stage in one set, so the panel can label each row. */
 export async function countRecordsByStage(
   orgId: string,
-  objectKey: PipelineObjectKey,
+  objectKey: PipelineObjectKey | string,
   opts: { client?: SupabaseClient } = {},
 ): Promise<Record<string, number>> {
   const client = opts.client ?? getSupabaseAdminClient();
-  const { data, error } = await client
-    .from(RECORD_TABLE[objectKey])
-    .select("status")
-    .eq("org_id", orgId);
+  const source = await recordSource(orgId, objectKey, client);
+  // A key naming no known object has no records — zero, not an exception, so a
+  // stale deep link cannot take the settings screen down.
+  if (!source) return {};
+
+  let query = client.from(source.table).select("status").eq("org_id", orgId);
+  if (source.objectId) query = query.eq("object_id", source.objectId);
+  // Archived records are gone from the operator's lists, so counting them as
+  // stage occupants would block an archive over rows nobody can see.
+  if (source.table === "custom_object_records") query = query.is("archived_at", null);
+  const { data, error } = await query;
 
   if (error) throw new Error(`Could not count records by stage: ${error.message}`);
 
@@ -191,7 +255,7 @@ export async function countRecordsByStage(
  */
 export async function moveRecordsToStage(
   orgId: string,
-  objectKey: PipelineObjectKey,
+  objectKey: PipelineObjectKey | string,
   fromKey: string,
   toKey: string,
   opts: { client?: SupabaseClient } = {},
@@ -209,12 +273,20 @@ export async function moveRecordsToStage(
     return { ok: false, error: "That stage is not available to move records into." };
   }
 
-  const { data, error } = await client
-    .from(RECORD_TABLE[objectKey])
+  const source = await recordSource(orgId, objectKey, client);
+  if (!source) return { ok: false, error: "Unknown pipeline." };
+
+  // `object_id` is not optional here in the way it looks. Every tenant-defined
+  // type shares custom_object_records, so an unnarrowed update would move EVERY
+  // custom record in the workspace that happens to share this status — a
+  // permit's "retired" swept along with a forklift's.
+  let q = client
+    .from(source.table)
     .update({ status: toKey, updated_at: new Date().toISOString() })
     .eq("org_id", orgId)
-    .eq("status", fromKey)
-    .select("id");
+    .eq("status", fromKey);
+  if (source.objectId) q = q.eq("object_id", source.objectId);
+  const { data, error } = await q.select("id");
 
   if (error) return { ok: false, error: `Could not move the records: ${error.message}` };
   return { ok: true, moved: (data ?? []).length };

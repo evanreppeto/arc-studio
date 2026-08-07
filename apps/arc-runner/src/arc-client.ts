@@ -110,6 +110,20 @@ export function createArcClient(config: Config, identity?: WakeTenantIdentity) {
     return json as T;
   }
 
+  /** PATCH — a partial update, where PUT would imply replacing the whole record. */
+  async function apiPatch<T = unknown>(path: string, body: Record<string, unknown>): Promise<T> {
+    const res = await fetch(`${config.appApiBaseUrl}${path}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string } & Record<string, unknown>;
+    if (!res.ok || json?.ok === false) {
+      throw new Error(`PATCH ${path} -> ${res.status} ${json?.message ?? ""}`.trim());
+    }
+    return json as T;
+  }
+
   async function postChatReply(input: ChatReplyInput): Promise<void> {
     await apiPost("/api/v1/arc/messages", {
       agentTaskId: input.agentTaskId,
@@ -246,7 +260,7 @@ export function createArcClient(config: Config, identity?: WakeTenantIdentity) {
     return { claimed: false, reason: "refused", detail };
   }
 
-  return { apiGet, apiPost, apiPut, claimTask, postChatReply, postStep, postChatChunk, postChatThinking, postUsage };
+  return { apiGet, apiPost, apiPut, apiPatch, claimTask, postChatReply, postStep, postChatChunk, postChatThinking, postUsage };
 }
 
 export type ArcClient = ReturnType<typeof createArcClient>;

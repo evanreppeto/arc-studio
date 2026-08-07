@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import type { BrandProfileView } from "@/lib/brand-kit/profile-view";
 import type { BrandKnowledgeSyncSummary } from "@/lib/brand-knowledge/sync-summary";
 
-import { DEFAULT_BODY_FONT, DEFAULT_HEADING_FONT, resolveBrandFont, type BrandLogo } from "@/domain";
+import { BRANDING_IMAGE_ACCEPT, DEFAULT_BODY_FONT, DEFAULT_HEADING_FONT, resolveBrandFont, type BrandLogo } from "@/domain";
 
 import { analyzeBrandWebsite, removeBrandLogo, resyncBrandSources, saveBrandLogo, updateBrandIdentity, updateBrandPalette, updateBrandTypography, uploadBrandDocuments, type BrandLogoResult, type BrandUploadResult, type BrandWebsiteAnalysis } from "../actions";
 import { EditIdentityModal } from "./edit-identity-modal";
@@ -28,8 +28,8 @@ const DOC = <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3
 // them.
 const DOC_ACCEPT = ".docx,.pdf,.md,.markdown,.csv,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-// Mirrors uploadBrandingImage's EXT map — the action re-checks type and size.
-const LOGO_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
+// The shared constant, not a copy — see the note in logo-set.tsx.
+const LOGO_ACCEPT = BRANDING_IMAGE_ACCEPT;
 
 /** Relative luminance test so swatch text stays legible on any palette color. */
 function isLight(hex: string): boolean {

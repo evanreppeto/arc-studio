@@ -987,6 +987,12 @@
 .arc-app .arc-grid .subtab.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
 .arc-app .arc-grid .subtab .cnt { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 0 6px; line-height: 16px; }
 .arc-app .arc-grid .subtab.on .cnt { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
+/* Adds a record type. Sits in the tab row but is not a `.subtab` — it selects
+   nothing, so it must never take the selected underline, and it stays quieter
+   than the tabs it sits beside: this is the rarest action in the row. */
+.arc-app .arc-grid .subtab-add { display: inline-flex; align-items: center; justify-content: center; width: 30px; padding: 10px 0; margin-left: 2px; color: var(--muted); background: none; border: none; cursor: pointer; transition: color var(--dur-base); }
+.arc-app .arc-grid .subtab-add:hover { color: var(--accent); }
+.arc-app .arc-grid .subtab-add svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
 /* z-index/position: the page-entry `arcRise` animation below runs with
    fill-mode `both`, so .gtoolbar and .tablewrap keep a transform forever — each

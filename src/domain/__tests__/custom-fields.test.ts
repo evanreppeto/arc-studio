@@ -227,7 +227,22 @@ describe("canChangeFieldType", () => {
 
   it("refuses once the field has saved values", () => {
     // Recasting stored values silently is worse than making the operator
-    // archive and re-add, which retains the originals.
+    // add a new field, which retains the originals.
     expect(canChangeFieldType(true).ok).toBe(false);
+  });
+
+  /**
+   * Two callers reach this now. The CSV import hits it when a column's inferred
+   * type differs from an ARCHIVED field of the same key — so telling the reader
+   * to "archive it" describes a step they have already taken, on a screen they
+   * did not come from. The message has to hold for both.
+   */
+  it("does not tell the operator to archive a field that may already be archived", () => {
+    const result = canChangeFieldType(true);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.toLowerCase()).not.toContain("archive");
+    // Still says what to do instead.
+    expect(result.error.toLowerCase()).toContain("new field");
   });
 });

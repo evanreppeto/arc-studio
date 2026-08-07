@@ -54,7 +54,7 @@ const READ = [
   "get_app_map",
   "get_workspace_settings",
 ];
-const WRITE = ["record_brain_note", "link_brain_nodes", "propose_audience", "log_interaction", "create_lead", "update_record", "create_custom_record", "save_custom_fields", "create_folder", "file_asset", "recommend_on_approval"];
+const WRITE = ["record_brain_note", "link_brain_nodes", "propose_audience", "log_interaction", "create_lead", "update_record", "create_custom_record", "set_custom_record_stage", "save_custom_fields", "create_folder", "file_asset", "recommend_on_approval"];
 const DRAFT = ["create_campaign_draft", "revise_campaign_asset", "submit_draft", "record_campaign_summary", "generate_image", "generate_video", "compose_creative", "edit_image", "submit_ad_variants", "analyze_website", "analyze_brand_design", "propose_brand_profile", "attach_media"];
 
 describe("toolsForMode", () => {

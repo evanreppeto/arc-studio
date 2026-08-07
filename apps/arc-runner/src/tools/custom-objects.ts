@@ -20,7 +20,8 @@ export function customObjectReadTools(client: ArcClient, step: StepFn) {
   const listRecordTypes = tool(
     "list_record_types",
     "List the record types this workspace defined for itself, beyond the six built-in CRM objects (companies, contacts, properties, leads, jobs, outcomes). " +
-      "Returns each type's key, its name, how many records it holds, and the fields it tracks — the fields ARE the shape of these records, so this is what tells you whether a type is worth reading. " +
+      "Returns each type's key, its name, how many records it holds, the fields it tracks, and its STAGES when it has a lifecycle — the fields ARE the shape of these records, so this is what tells you whether a type is worth reading. " +
+      "A type with no `stages` has no lifecycle at all; do not invent one or describe its records as being 'in' anything. " +
       "Call this before answering any question about what the workspace tracks: the six built-ins are not the whole CRM, and the keys here are per-workspace so they cannot be guessed.",
     {},
     async () =>
@@ -37,6 +38,10 @@ export function customObjectReadTools(client: ArcClient, step: StepFn) {
     {
       key: z.string().describe("Record type key from list_record_types, e.g. \"equipment\"."),
       q: z.string().optional().describe("Match against the record's name and the line under it."),
+      status: z
+        .string()
+        .optional()
+        .describe("Stage KEY to filter by, from this type's `stages` in list_record_types. Only meaningful for a type that has a lifecycle."),
       limit: z.number().optional().describe("Page size. Default 25, max 100. Use 0 to get `total` with no rows."),
       archived: z
         .boolean()
@@ -47,6 +52,7 @@ export function customObjectReadTools(client: ArcClient, step: StepFn) {
       runTool(step, `Searching ${args.key}`, () =>
         client.apiGet(`/api/v1/arc/crm/objects/${encodeURIComponent(args.key)}`, {
           q: args.q,
+          status: args.status,
           limit: args.limit,
           archived: args.archived ? "true" : undefined,
         }),
@@ -71,16 +77,40 @@ export function customObjectWriteTools(client: ArcClient, step: StepFn) {
     {
       key: z.string().describe("Record type key from list_record_types."),
       title: z.string().describe("What this record is called — the name shown in the operator's list."),
-      subtitle: z.string().optional().describe("Optional line under the name, e.g. a status or location."),
+      subtitle: z.string().optional().describe("Optional line under the name, e.g. a location."),
+      status: z
+        .string()
+        .optional()
+        .describe("Starting stage KEY, when this type has a lifecycle. Get the keys from list_record_types; an unknown one is ignored rather than stored."),
     },
     async (args) =>
       runTool(step, `Adding to ${args.key}`, () =>
         client.apiPost(`/api/v1/arc/crm/objects/${encodeURIComponent(args.key)}`, {
           title: args.title,
           subtitle: args.subtitle,
+          status: args.status,
         }),
       ),
   );
 
-  return [createRecord];
+  const setStage = tool(
+    "set_custom_record_stage",
+    "Move one record of a tenant-defined type to a different stage in its lifecycle — e.g. a piece of equipment from in-service to needs-repair. Internal only; a stage change never reaches a customer. " +
+      "Get both the type key and the stage keys from list_record_types: a type with no `stages` has no lifecycle and this will refuse rather than invent one. " +
+      "Say WHY in your reply — a record that moved with no reasoning is indistinguishable from a mistake to the operator reviewing it.",
+    {
+      key: z.string().describe("Record type key from list_record_types."),
+      record_id: z.string().describe("The record to move, from search_custom_records."),
+      status: z.string().describe("Stage KEY to move it to, from that type's `stages`."),
+    },
+    async (args) =>
+      runTool(step, `Moving a ${args.key} record`, () =>
+        client.apiPatch(`/api/v1/arc/crm/objects/${encodeURIComponent(args.key)}`, {
+          record_id: args.record_id,
+          status: args.status,
+        }),
+      ),
+  );
+
+  return [createRecord, setStage];
 }

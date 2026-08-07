@@ -13,6 +13,12 @@ export type CustomRecord = {
   id: string;
   title: string;
   subtitle: string | null;
+  /**
+   * Stage KEY, or null when this type has no pipeline (the common case).
+   * A key rather than a label so renaming a stage does not orphan the records
+   * sitting in it.
+   */
+  status: string | null;
   updatedAt: string;
   createdAt: string;
   archivedAt: string | null;
@@ -28,6 +34,7 @@ function rowToRecord(row: Record<string, unknown>): CustomRecord {
     id: String(row.id),
     title: String(row.title ?? ""),
     subtitle: row.subtitle == null ? null : String(row.subtitle),
+    status: row.status == null ? null : String(row.status),
     updatedAt: String(row.updated_at ?? row.created_at ?? ""),
     createdAt: String(row.created_at ?? ""),
     archivedAt: row.archived_at == null ? null : String(row.archived_at),
@@ -45,12 +52,13 @@ export const CUSTOM_RECORD_LIMIT = 1000;
 export async function listCustomRecords(
   orgId: string,
   object: CustomObject,
-  opts: { archived?: boolean; client?: SupabaseClient } = {},
+  opts: { archived?: boolean; status?: string; client?: SupabaseClient } = {},
 ): Promise<CustomRecord[]> {
   if (serveDemo(opts.client)) {
     if (opts.archived) return [];
     return demoCustomRecords(object.key).map((r) => ({
       ...r,
+      status: null,
       updatedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       archivedAt: null,
@@ -62,13 +70,14 @@ export async function listCustomRecords(
   const client = opts.client ?? getSupabaseAdminClient();
   let query = client
     .from(TABLE)
-    .select("id,title,subtitle,updated_at,created_at,archived_at,origin")
+    .select("id,title,subtitle,status,updated_at,created_at,archived_at,origin")
     .eq("org_id", orgId)
     .eq("object_id", object.id);
 
   // Archived means the same thing here as on the six: out of every list and
   // count, restorable, reachable only by asking for it.
   query = opts.archived ? query.not("archived_at", "is", null) : query.is("archived_at", null);
+  if (opts.status) query = query.eq("status", opts.status);
 
   const { data, error } = await query
     .order(opts.archived ? "archived_at" : "updated_at", { ascending: false })
@@ -104,14 +113,14 @@ export async function getCustomRecord(
   if (serveDemo(opts.client)) {
     const hit = demoCustomRecords(object.key).find((r) => r.id === recordId);
     return hit
-      ? { ...hit, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(), archivedAt: null, origin: "operator" }
+      ? { ...hit, status: null, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(), archivedAt: null, origin: "operator" }
       : null;
   }
   if (!orgId) return null;
   const client = opts.client ?? getSupabaseAdminClient();
   const { data, error } = await client
     .from(TABLE)
-    .select("id,title,subtitle,updated_at,created_at,archived_at,origin")
+    .select("id,title,subtitle,status,updated_at,created_at,archived_at,origin")
     .eq("org_id", orgId)
     .eq("object_id", object.id)
     .eq("id", recordId)
@@ -123,8 +132,16 @@ export async function getCustomRecord(
 export async function createCustomRecord(
   orgId: string,
   object: CustomObject,
-  input: { title?: string; subtitle?: string | null },
-  opts: { client?: SupabaseClient } = {},
+  input: { title?: string; subtitle?: string | null; status?: string | null },
+  /**
+   * `origin` is the row's provenance and defaults to the human. It was
+   * hardcoded to "operator", so every record Arc created through
+   * `create_custom_record` claimed a person had typed it — and the board reads
+   * this exact column to attribute the owner (`customRecordToRow`), so Arc's
+   * work was displayed as the operator's. Provenance that only ever says
+   * "human" is not provenance.
+   */
+  opts: { client?: SupabaseClient; origin?: "operator" | "agent" } = {},
 ): Promise<RecordWriteResult> {
   const parsed = parseCustomRecord(input, object.labelSingular);
   if (!parsed.ok) return parsed;
@@ -141,7 +158,7 @@ export async function createCustomRecord(
       object_id: object.id,
       title: parsed.value.title,
       subtitle: parsed.value.subtitle,
-      origin: "operator",
+      origin: opts.origin ?? "operator",
     })
     .select("id")
     .single();
@@ -153,7 +170,7 @@ export async function updateCustomRecord(
   orgId: string,
   object: CustomObject,
   recordId: string,
-  input: { title?: string; subtitle?: string | null },
+  input: { title?: string; subtitle?: string | null; status?: string | null },
   opts: { client?: SupabaseClient } = {},
 ): Promise<RecordWriteResult> {
   if (!orgId) return { ok: false, error: "Could not resolve your workspace." };
@@ -166,6 +183,7 @@ export async function updateCustomRecord(
     patch.title = parsed.value.title;
   }
   if (input.subtitle !== undefined) patch.subtitle = input.subtitle?.trim() || null;
+  if (input.status !== undefined) patch.status = input.status || null;
 
   const client = opts.client ?? getSupabaseAdminClient();
   const { error } = await client

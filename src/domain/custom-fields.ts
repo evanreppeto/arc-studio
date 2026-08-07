@@ -85,6 +85,17 @@ export function deriveCustomFieldKey(label: unknown): string {
   return withLetter.slice(0, 63).replace(/_+$/g, "");
 }
 
+/**
+ * Which object keys a field may be defined on.
+ *
+ * The six built-ins are tables and always valid. A tenant-defined type is a row
+ * in `custom_objects`, so validity is PER-ORG and cannot be answered from a
+ * constant — the same rule personas follow (`isAllowedPersona(p, keys)`).
+ * Callers that know the org resolve the key first and pass it here; callers
+ * that don't get the six, which is what every pre-existing caller expects.
+ */
+export const BUILT_IN_OBJECT_KEYS: readonly string[] = CUSTOM_FIELD_OBJECT_KEYS;
+
 export type FieldDefinitionInput = {
   objectKey: unknown;
   key?: unknown;
@@ -97,7 +108,13 @@ export type FieldDefinitionInput = {
 };
 
 export type ParsedFieldDefinition = {
-  objectKey: CustomFieldObjectKey;
+  /**
+   * Not narrowed to `CustomFieldObjectKey`: a tenant-defined type's key is a
+   * per-org string. Narrowing it here is what forced the `as CustomFieldObjectKey`
+   * casts scattered across the CRM and Arc routes — a lie the type system was
+   * being asked to swallow at six call sites.
+   */
+  objectKey: string;
   key: string;
   label: string;
   fieldType: CustomFieldType;
@@ -137,10 +154,25 @@ function parseOptions(raw: unknown): CustomFieldOption[] {
  * Validate an operator-authored field definition. Rejects rather than repairs:
  * a definition is a schema a tenant will build records on, so a silently
  * "fixed" one is worse than an error at the point of authoring.
+ *
+ * `allowedObjectKeys` defaults to the six built-ins. Pass the org's resolved
+ * keys to allow a field on a type the tenant defined for itself — see
+ * BUILT_IN_OBJECT_KEYS above for why this can't be a constant.
  */
-export function parseFieldDefinition(input: FieldDefinitionInput): FieldDefinitionResult {
-  if (!isCustomFieldObjectKey(input.objectKey)) {
+export function parseFieldDefinition(
+  input: FieldDefinitionInput,
+  allowedObjectKeys: readonly string[] = BUILT_IN_OBJECT_KEYS,
+): FieldDefinitionResult {
+  if (typeof input.objectKey !== "string" || !input.objectKey.trim()) {
     return { ok: false, error: "Pick which record type this field belongs to." };
+  }
+  if (!allowedObjectKeys.includes(input.objectKey)) {
+    // Names the recovery rather than just refusing: this is nearly always a
+    // caller addressing a record type that was archived or never existed.
+    return {
+      ok: false,
+      error: `"${input.objectKey}" is not a record type in this workspace.`,
+    };
   }
   if (!isCustomFieldType(input.fieldType)) {
     return { ok: false, error: "Pick a field type." };
@@ -336,6 +368,9 @@ export function canChangeFieldType(hasValues: boolean): { ok: true } | { ok: fal
   if (!hasValues) return { ok: true };
   return {
     ok: false,
-    error: "This field already has saved values. Archive it and add a new field instead of changing its type.",
+    // Deliberately does not say "archive it": the CSV import reaches this when
+    // reviving an ARCHIVED field whose type no longer matches, and telling that
+    // reader to archive it names a step they have already taken.
+    error: "This field already has saved values, so its type can't be changed. Add a new field instead.",
   };
 }

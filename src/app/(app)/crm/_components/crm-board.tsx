@@ -26,8 +26,9 @@ import { AddCustomRecordModal } from "./add-custom-record-modal";
 import { pageRangeLabel, pageWindow } from "./pagination";
 import { createStoredPreference } from "./stored-preference";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
-import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
+import type { CustomFieldDefinition, CustomObject } from "@/domain";
 import { ManageFieldsModal } from "./manage-fields-modal";
+import { RecordTypesModal } from "./record-types-modal";
 import { ImportCustomModal } from "./import-custom-modal";
 
 type FilterOption = { value: string; label: string; count: number };
@@ -603,6 +604,12 @@ export type CrmObjectVM = {
   key: string;
   /** A tenant-defined type (a row in custom_objects), not one of the six tables. */
   isCustom?: boolean;
+  /**
+   * This type has stages of its own. Opt-in: the six always do, a tenant-defined
+   * type only once its org defines some, and until then the board leaves the
+   * status column and filter off entirely rather than showing empty ones.
+   */
+  hasPipeline?: boolean;
   label: string;
   noun: string;
   nameHeader: string;
@@ -698,6 +705,7 @@ export function CrmBoard({
   campaigns = [],
   customColumnsByKey = {},
   customFieldDefsByKey = {},
+  customObjects = [],
   stageOptions = {},
   openAdd = false,
 }: {
@@ -732,6 +740,11 @@ export function CrmBoard({
   customColumnsByKey?: Record<string, { key: string; label: string }[]>;
   /** Full definitions per object, for the Add-record form. */
   customFieldDefsByKey?: Record<string, CustomFieldDefinition[]>;
+  /**
+   * The tenant's own record types INCLUDING archived ones — the archived rows
+   * have no tab, so the modal is the only place they can be restored from.
+   */
+  customObjects?: CustomObject[];
 }) {
   const router = useRouter();
   const [activeKey, setActiveKey] = useState(defaultKey);
@@ -768,6 +781,7 @@ export function CrmBoard({
   const [localByKey, setLocalByKey] = useState<Record<string, CrmRowVM[]>>({});
   const [addOpen, setAddOpen] = useState(openAdd);
   const [fieldsOpen, setFieldsOpen] = useState(false);
+  const [typesOpen, setTypesOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -799,7 +813,16 @@ export function CrmBoard({
   const totalRows = localRows.length + (rowsByKey[active.key] ?? []).length;
   // Splice the tenant's custom columns in just before the trailing actions cell.
   const allCols = (() => {
-    const base = COLS[active.key] ?? (active.isCustom ? CUSTOM_OBJECT_COLS : COLS.contacts);
+    const base =
+      COLS[active.key] ??
+      (active.isCustom
+        ? active.hasPipeline
+          // Spliced before "Updated" so the stage reads beside the name, where
+          // the six put it. Only present when there are stages to show — a
+          // Status column over a type with no lifecycle is a column of dashes.
+          ? ([{ k: "sel" }, { k: "primary", t: "Name" }, { k: "status", t: "Status" }, { k: "last", t: "Updated" }, { k: "act" }] as Col[])
+          : CUSTOM_OBJECT_COLS
+        : COLS.contacts);
     const custom = customColumnsByKey[active.key] ?? [];
     if (custom.length === 0) return base;
     const actIdx = base.findIndex((c) => c.k === "act");
@@ -1177,7 +1200,7 @@ export function CrmBoard({
     setLocalByKey((prev) => ({ ...prev, [objectKey]: [buildOptimisticRow(objectKey, tempId, value, stageOptions[objectKey] ?? []), ...(prev[objectKey] ?? [])] }));
 
     const res = active.isCustom
-      ? await createCustomObjectRecord({ objectKey, title: value.name, subtitle: value.detail })
+      ? await createCustomObjectRecord({ objectKey, title: value.name, subtitle: value.detail, status: value.status })
       : await createCrmRecord({ objectKey, ...value });
 
     if (!res.ok) {
@@ -1308,6 +1331,18 @@ export function CrmBoard({
             {o.label} <span className="cnt">{countFor(o).toLocaleString()}</span>
           </button>
         ))}
+        {/* The control that creates a tab sits at the end of the tabs. Not a
+            `subtab` — it doesn't select anything, and styling it as one would
+            put a permanently-unselected tab in the row. */}
+        <button
+          type="button"
+          className="subtab-add"
+          onClick={() => setTypesOpen(true)}
+          title="Add or remove your own record types"
+          aria-label="Add or remove your own record types"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M12 5v14M5 12h14" /></svg>
+        </button>
       </div>
 
       <div className="gtoolbar">
@@ -1320,9 +1355,21 @@ export function CrmBoard({
             aria-label={`Filter ${active.noun}`}
           />
         </span>
-        {/* Persona, Status and Owner describe the six. A tenant-defined type
-            has none of them — its shape is its custom fields — so the filters
-            are absent rather than present and always empty. */}
+        {/* Persona and Owner describe the six. A tenant-defined type has
+            neither — its shape is its custom fields — so those filters are
+            absent rather than present and always empty. Status is different: a
+            custom type has stages once its org defines some, and then filtering
+            by them is the point. */}
+        {active.isCustom && active.hasPipeline && (
+          <FilterMenu
+            icon={<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9 12l2 2 4-4" /></svg>}
+            label="Status"
+            options={options.status}
+            value={statusF}
+            onChange={setStatusF}
+            footer={{ href: `/settings?s=records&t=Stages&o=${encodeURIComponent(active.key)}`, label: "Edit stages" }}
+          />
+        )}
         {!active.isCustom && (
         <>
         <FilterMenu
@@ -1587,11 +1634,13 @@ export function CrmBoard({
       <div className="gfoot">
         <span className="arcnote">
           <i />
-          {/* Arc reads the six. It cannot see a tenant-defined type yet, so
-              claiming it maintains these — and scores them — would be a
-              promise the product does not keep. */}
+          {/* Arc CAN read and add to a tenant-defined type, and set its field
+              values (list_record_types / search_custom_records /
+              create_custom_record / read_custom_fields / save_custom_fields).
+              What it does not do is maintain them unprompted or score them the
+              way it does the six — so the line claims reading, not upkeep. */}
           {active.isCustom
-            ? `${active.label} are yours to maintain — Arc doesn't read them yet`
+            ? `${active.label} are yours to maintain — Arc can read them and add to them when you ask`
             : `Arc keeps ${active.noun} up to date, and keeps their lead scores current`}
         </span>
         <div className="pager">
@@ -1655,9 +1704,15 @@ export function CrmBoard({
       <ManageFieldsModal
         open={fieldsOpen}
         onClose={() => setFieldsOpen(false)}
-        objectKey={active.key as CustomFieldObjectKey}
+        objectKey={active.key}
         objectLabel={active.label}
         definitions={customFieldDefsByKey[active.key] ?? []}
+      />
+
+      <RecordTypesModal
+        open={typesOpen}
+        onClose={() => setTypesOpen(false)}
+        objects={customObjects}
       />
 
       {/* AddRecordModal is keyed to the six — it looks up a per-object config
@@ -1668,8 +1723,9 @@ export function CrmBoard({
           key={`${active.key}:${addOpen ? "open" : "closed"}`}
           open={addOpen}
           singular={active.addLabel.replace(/^Add\s+/i, "")}
+          stageOptions={stageOptions[active.key]}
           onClose={closeAdd}
-          onSubmit={(v) => handleCreate({ name: v.name, detail: v.detail } as AddRecordValue)}
+          onSubmit={(v) => handleCreate({ name: v.name, detail: v.detail, status: v.status } as AddRecordValue)}
         />
       ) : (
       <AddRecordModal

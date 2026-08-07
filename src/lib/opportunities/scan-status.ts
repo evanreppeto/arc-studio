@@ -29,7 +29,17 @@ export type ScanOutcome =
   /** Finished and deliberately proposed nothing. */
   | "empty"
   /** Ended in error. */
-  | "failed";
+  | "failed"
+  /**
+   * We could not ask — no backend to read scan history from.
+   *
+   * Distinct from `never`, and the distinction is the whole point: `never` is a
+   * claim about Arc ("it has not scanned this workspace"), and in the offline
+   * preview that claim rendered directly above five opportunities each labelled
+   * "Found by Arc", with confidence scores and Arc's own reasoning underneath.
+   * One screen, contradicting itself. An unasked question has no answer to show.
+   */
+  | "unknown";
 
 export type ScanStatus = {
   outcome: ScanOutcome;
@@ -118,12 +128,15 @@ export function classifyScanTask(row: ScanTaskRow | null, now: number = Date.now
 /**
  * Most recent background opportunity scan for the current tenant.
  *
- * Correctly silent: a workspace with no scan history, or no Supabase, gets
- * `never` rather than an error — the inbox is still usable without this.
+ * Correctly silent: a workspace with no scan history gets `never`, and no
+ * backend at all gets `unknown` — the inbox is still usable without either, and
+ * only the first of them is a statement about Arc.
  */
 export async function getLastScanStatus(orgId?: string): Promise<ScanStatus> {
   const none = classifyScanTask(null);
-  if (!isSupabaseAdminConfigured()) return none;
+  // Not `never` — see the note on the outcome. Nothing was read, so nothing is
+  // claimed.
+  if (!isSupabaseAdminConfigured()) return { ...none, outcome: "unknown" };
 
   try {
     const { client, orgId: handleOrgId } = await resolveTenantReadHandle();

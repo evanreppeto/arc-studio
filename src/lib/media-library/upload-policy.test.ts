@@ -9,6 +9,20 @@ describe("acceptUpload", () => {
     expect(acceptUpload("guide.pdf", "application/pdf")).toEqual({ ok: true, contentType: "application/pdf" });
   });
 
+  /**
+   * SVG is script-capable and these uploads get a permanent PUBLIC url on the
+   * project's own origin, served with no `Content-Disposition` and no
+   * `X-Content-Type-Options: nosniff` — so opening one renders it as a document
+   * and runs what is inside. Both spellings are checked: the extension route
+   * exists precisely for files the browser fails to type, and it would be the
+   * way back in if only the MIME check were tightened.
+   */
+  it("refuses an SVG, by MIME type and by extension", () => {
+    expect(acceptUpload("logo.svg", "image/svg+xml").ok).toBe(false);
+    expect(acceptUpload("logo.svg", "").ok).toBe(false);
+    expect(acceptUpload("logo.svg", "application/octet-stream").ok).toBe(false);
+  });
+
   it("accepts a .docx by its MIME type", () => {
     const docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     expect(acceptUpload("brand.docx", docx)).toEqual({ ok: true, contentType: docx });

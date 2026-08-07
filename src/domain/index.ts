@@ -90,6 +90,7 @@ export * from "./arc-sharing";
 export * from "./higgsfield-models";
 export * from "./media-config";
 export * from "./media-target";
+export * from "./media-intent";
 export * from "./email-templates";
 export * from "./crm-matching";
 export * from "./custom-fields";

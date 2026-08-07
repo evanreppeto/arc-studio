@@ -6,8 +6,20 @@ import { type ArcSkillId } from "@/lib/arc-skills/catalog";
 import { getSupabaseAdminClient } from "../supabase/server";
 import { failArcMessage, findPendingMessageByTask } from "./persistence";
 
-/** How long a task may sit in `running` before a poll re-surfaces it for retry. */
-const STALE_RUNNING_MS = 3 * 60_000;
+/**
+ * How long a task may sit in `running` before a poll re-surfaces it for retry.
+ * Kept equal to `ARC_RUN_STALE_MS` in `@/domain/arc-stalled-run` — one definition
+ * of "this run is dead". Change both together; see that constant for the prod
+ * measurement behind the 10min value.
+ *
+ * The stakes are higher on this side than on the read model's. Re-surfacing a
+ * task RE-DISPATCHES the turn, so a cutoff shorter than a real run means the
+ * operator's message is answered twice. That was unreachable while chat tasks
+ * never entered `running` at all (they went queued -> completed, so this query
+ * matched nothing); as of 2026-08-07 they do, which makes the value load-bearing
+ * the moment anything polls GET /api/v1/arc/messages — today nothing does.
+ */
+export const STALE_RUNNING_MS = 10 * 60_000;
 /** Give up after this many reclaim attempts and fail the task + bubble. */
 const MAX_CHAT_RETRIES = 3;
 

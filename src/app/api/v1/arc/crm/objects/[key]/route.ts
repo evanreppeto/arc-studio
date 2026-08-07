@@ -1,9 +1,10 @@
 import { arcGuard, fail, ok, readJson, INVALID_JSON } from "@/app/api/v1/arc/_lib/http";
 import { pageMeta, readLimit } from "@/app/api/v1/arc/_lib/paging";
 import { getCustomObjectByKey } from "@/lib/custom-objects/definitions";
-import { createCustomRecord, listCustomRecords } from "@/lib/custom-objects/records";
+import { createCustomRecord, listCustomRecords, updateCustomRecord } from "@/lib/custom-objects/records";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 import { getCustomFieldsForRecords } from "@/lib/custom-fields/values";
-import type { CustomFieldObjectKey, CustomObject } from "@/domain";
+import { findStage, orderedStages, type CustomFieldObjectKey, type CustomObject } from "@/domain";
 import type { NextResponse } from "next/server";
 
 /**
@@ -63,9 +64,13 @@ export async function GET(request: Request, context: { params: Promise<{ key: st
   const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
   const limit = readLimit(url);
   const archived = url.searchParams.get("archived") === "true";
+  const status = url.searchParams.get("status")?.trim() || undefined;
 
   try {
-    const all = await listCustomRecords(scope.orgId, scope.object, { archived });
+    const [all, stages] = await Promise.all([
+      listCustomRecords(scope.orgId, scope.object, { archived, status }),
+      getPipelineStages(scope.orgId, scope.object.key).catch(() => []),
+    ]);
 
     // Matching on the title and subtitle, then on field values below. The store
     // holds values in a separate table, so a value-aware filter cannot be a
@@ -91,10 +96,17 @@ export async function GET(request: Request, context: { params: Promise<{ key: st
       const entries = valuesByRecord.get(r.id) ?? [];
       const fields: Record<string, string> = {};
       for (const e of entries) if (e.display) fields[e.definition.key] = e.display;
+      // The stage's LABEL as well as its key: the key is what a write takes,
+      // the label is the tenant's own word and the only one worth repeating
+      // back to a person. An unknown key (its stage archived) keeps the raw
+      // value rather than vanishing.
+      const stage = findStage(stages, r.status);
       return {
         id: r.id,
         title: r.title,
         subtitle: r.subtitle,
+        status: r.status,
+        status_label: stage?.label ?? r.status ?? null,
         fields,
         updated_at: r.updatedAt,
         archived: r.archivedAt !== null,
@@ -120,7 +132,7 @@ export async function POST(request: Request, context: { params: Promise<{ key: s
   const body = await readJson(request);
   if (body === INVALID_JSON) return fail("invalid_json", "Body must be valid JSON.", 400);
 
-  const payload = (body ?? {}) as { title?: unknown; subtitle?: unknown };
+  const payload = (body ?? {}) as { title?: unknown; subtitle?: unknown; status?: unknown };
   const title = typeof payload.title === "string" ? payload.title.trim() : "";
   if (!title) {
     return fail("invalid_payload", `"title" is required — it is what this ${scope.object.labelSingular.toLowerCase()} is called.`, 400);
@@ -130,8 +142,26 @@ export async function POST(request: Request, context: { params: Promise<{ key: s
   }
   const subtitle = typeof payload.subtitle === "string" ? payload.subtitle.trim() : null;
 
+  // An optional starting stage, validated the same way PATCH validates a move:
+  // an unknown key stored here would render as its raw value on the operator's
+  // board. Silently dropped rather than refused — the record is still worth
+  // creating, and the caller is told which stage it landed in.
+  let status: string | null = null;
+  if (typeof payload.status === "string" && payload.status.trim()) {
+    const stages = await getPipelineStages(scope.orgId, scope.object.key).catch(() => []);
+    const wanted = payload.status.trim();
+    status = stages.some((st) => st.key === wanted) ? wanted : null;
+  }
+
   try {
-    const result = await createCustomRecord(scope.orgId, scope.object, { title, subtitle });
+    // Stamped as the agent's. This is Arc writing, and the board attributes the
+    // owner from this column — without it Arc's records read as the operator's.
+    const result = await createCustomRecord(
+      scope.orgId,
+      scope.object,
+      { title, subtitle, status },
+      { origin: "agent" },
+    );
     if (!result.ok) return fail("failed", result.error, 502);
     // `persisted: false` is the honest offline signal, same as the other write
     // routes: the caller is told nothing was saved rather than being handed a
@@ -139,11 +169,69 @@ export async function POST(request: Request, context: { params: Promise<{ key: s
     return ok(
       {
         persisted: result.persisted,
-        record: result.id ? { id: result.id, title, subtitle, href: `/crm/${scope.object.key}/${result.id}` } : null,
+        record: result.id ? { id: result.id, title, subtitle, status, href: `/crm/${scope.object.key}/${result.id}` } : null,
       },
       result.persisted ? 201 : 202,
     );
   } catch (error) {
     return fail("failed", error instanceof Error ? error.message : "Failed to create that record.", 502);
+  }
+}
+
+/**
+ * Move one record to a stage.
+ *
+ *   PATCH /api/v1/arc/crm/objects/equipment  { "record_id": "...", "status": "retired" }
+ *
+ * Internal only — a stage change never reaches a customer. Separate from POST
+ * because creating and advancing are different intents, and a PATCH that could
+ * silently create would make "move this to retired" able to invent a record.
+ */
+export async function PATCH(request: Request, context: { params: Promise<{ key: string }> }) {
+  const { key } = await context.params;
+  const scope = await resolve(request, key);
+  if ("error" in scope) return scope.error;
+
+  const body = await readJson(request);
+  if (body === INVALID_JSON) return fail("invalid_json", "Body must be valid JSON.", 400);
+
+  const payload = (body ?? {}) as { record_id?: unknown; status?: unknown };
+  const recordId = typeof payload.record_id === "string" ? payload.record_id.trim() : "";
+  if (!recordId) return fail("invalid_payload", "`record_id` is required.", 400);
+  if (typeof payload.status !== "string") {
+    return fail("invalid_payload", "`status` is required — the stage key to move this record to.", 400);
+  }
+  const status = payload.status.trim();
+
+  const stages = orderedStages(await getPipelineStages(scope.orgId, scope.object.key).catch(() => []));
+  if (stages.length === 0) {
+    return fail(
+      "no_pipeline",
+      `"${scope.object.labelPlural}" has no stages, so there is nowhere to move this. An operator defines them in Settings.`,
+      409,
+    );
+  }
+  // Validated against the org's OWN stages: an unknown key would store and then
+  // render as its raw value, which looks like data corruption to the operator.
+  if (!stages.some((st) => st.key === status)) {
+    return fail(
+      "invalid_status",
+      `"${status}" is not a stage on ${scope.object.labelPlural}. Available: ${stages.map((st) => st.key).join(", ")}.`,
+      400,
+    );
+  }
+
+  try {
+    const result = await updateCustomRecord(scope.orgId, scope.object, recordId, { status });
+    if (!result.ok) return fail("failed", result.error, 502);
+    const stage = stages.find((st) => st.key === status);
+    return ok({
+      persisted: result.persisted,
+      record_id: recordId,
+      status,
+      status_label: stage?.label ?? status,
+    });
+  } catch (error) {
+    return fail("failed", error instanceof Error ? error.message : "Failed to move that record.", 502);
   }
 }

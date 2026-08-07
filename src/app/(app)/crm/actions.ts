@@ -17,6 +17,7 @@ import { getCustomObjectByKey } from "@/lib/custom-objects/definitions";
 import { createCustomRecord, listCustomRecords, setCustomRecordsArchived } from "@/lib/custom-objects/records";
 import { customRecordToRow } from "./_data/custom-row-vm";
 import { importCustomObjectCsv, planCustomImport } from "@/lib/custom-objects/import";
+import { getPipelineStages } from "@/lib/pipeline-stages/read-model";
 
 import { toRow } from "./_data/row-vm";
 import { type CrmRowVM } from "./_components/crm-board";
@@ -346,6 +347,7 @@ export async function createCustomObjectRecord(input: {
   objectKey: string;
   title: string;
   subtitle?: string;
+  status?: string;
 }): Promise<CreateResult> {
   await requireOperator();
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
@@ -353,9 +355,15 @@ export async function createCustomObjectRecord(input: {
   const scope = await resolveObject(input.objectKey);
   if ("error" in scope) return { ok: false, error: scope.error };
 
+  // Validate the stage against the org's OWN stages rather than trusting the
+  // client: an unknown key would store and then render as its raw value.
+  const stages = input.status ? await getPipelineStages(scope.orgId, input.objectKey).catch(() => []) : [];
+  const status = input.status && stages.some((s) => s.key === input.status) ? input.status : null;
+
   const res = await createCustomRecord(scope.orgId, scope.object, {
     title: input.title,
     subtitle: input.subtitle,
+    status,
   });
   if (!res.ok) return { ok: false, error: res.error };
   revalidatePath("/crm");
@@ -426,7 +434,15 @@ export async function planCustomObjectImport(input: {
 }
 
 export type CustomImportRunResult =
-  | { ok: true; created: number; skipped: number; fieldsCreated: string[]; fieldsReused: string[] }
+  | {
+      ok: true;
+      created: number;
+      skipped: number;
+      fieldsCreated: string[];
+      fieldsReused: string[];
+      /** Columns that could not become fields, by spreadsheet heading. */
+      fieldsFailed: Array<{ label: string; error: string }>;
+    }
   | { ok: false; error: string };
 
 /**

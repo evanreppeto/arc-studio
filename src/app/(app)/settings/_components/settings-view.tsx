@@ -686,7 +686,7 @@ const DENSITY_LABEL: Record<AppSettings["appearanceDensity"], string> = { comfor
 const MOTION_LABEL: Record<AppSettings["appearanceMotion"], string> = { standard: "Standard", reduced: "Reduced" };
 const PROFILE_LABEL: Record<AppSettings["workspaceProfile"], string> = { individual: "Individual", company: "Company", agency: "Agency" };
 
-export function SettingsView({ brandName, workspaceName = "", email, viewerName = "", session = null, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, mediaConfig = DEFAULT_MEDIA_CONFIG, mediaEngines = { gemini: false, higgsfield: false }, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, suppression = null, customFields = [], customObjects = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; viewerName?: string; session?: AccountSession | null; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; mediaConfig?: MediaConfig; mediaEngines?: EngineAvailability; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; suppression?: SuppressionView | null; customFields?: CustomFieldDefinition[]; customObjects?: CustomObject[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<PipelineObjectKey, PipelineStage[]> | null; pipelineOccupancy?: Record<PipelineObjectKey, Record<string, number>> | null; pipelineObjectLabels: Record<PipelineObjectKey, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
+export function SettingsView({ brandName, workspaceName = "", email, viewerName = "", session = null, avatarUrl = null, workspaceLogoUrl = null, team, usage, connectorSpend = null, billing = null, settings, mediaConfig = DEFAULT_MEDIA_CONFIG, mediaEngines = { gemini: false, higgsfield: false }, connectors, workspaces, emailConnection = null, liveSendEnabled = true, agentConnection = null, personaOptions = [], hubspotOAuthConfigured = false, googleOAuthConfigured = false, waitlist = null, health = null, suppression = null, customFields = [], customObjects = [], crmObjectLabels, pipelineStages = null, pipelineOccupancy = null, pipelineObjectLabels, industryObjectLanguage, industrySectionLabel, savedObjectLabels = {} }: { brandName: string; workspaceName?: string; email: string; viewerName?: string; session?: AccountSession | null; avatarUrl?: string | null; workspaceLogoUrl?: string | null; team: SettingsTeamView; usage: SettingsUsageView | null; connectorSpend?: ConnectorSpendView | null; billing?: SettingsBillingView | null; settings: AppSettings; mediaConfig?: MediaConfig; mediaEngines?: EngineAvailability; connectors: SettingsConnectorsView; workspaces: SettingsWorkspacesView; emailConnection?: ConnectionView | null; liveSendEnabled?: boolean; agentConnection?: EffectiveAgentConnection | null; personaOptions?: readonly PersonaOption[]; hubspotOAuthConfigured?: boolean; googleOAuthConfigured?: boolean; waitlist?: WaitlistView | null; health?: HealthConsoleView | null; suppression?: SuppressionView | null; customFields?: CustomFieldDefinition[]; customObjects?: CustomObject[]; crmObjectLabels: Record<CustomFieldObjectKey, string>; pipelineStages?: Record<string, PipelineStage[]> | null; pipelineOccupancy?: Record<string, Record<string, number>> | null; pipelineObjectLabels: Record<string, string>; industryObjectLanguage: Record<ProductLanguageObjectKey, CrmObjectLanguage>; industrySectionLabel: string; savedObjectLabels?: Partial<Record<ProductLanguageObjectKey, ObjectLabelOverride>> }) {
   const [cur, setCur] = useState("overview");
   // Health and the waitlist are platform-level, not workspace-level: the server
   // sends null unless the viewer is a platform admin, so the group — and every
@@ -965,6 +965,7 @@ export function SettingsView({ brandName, workspaceName = "", email, viewerName 
         {subBar}
         {pipelineStages && pipelineOccupancy ? (
           <PipelineStagesPanel
+            customObjectKeys={customObjects.filter((o) => o.active).map((o) => o.key)}
             stagesByObject={pipelineStages}
             occupancyByObject={pipelineOccupancy}
             objectLabels={pipelineObjectLabels}
@@ -996,6 +997,12 @@ export function SettingsView({ brandName, workspaceName = "", email, viewerName 
           definitions={customFields}
           objectLabels={crmObjectLabels}
           focusObject={focusObject}
+          // Active types only: an archived one has no tab and no way to add a
+          // field, so listing it here would offer an editor for something the
+          // Types tab next door says is gone.
+          customObjectLabels={Object.fromEntries(
+            customObjects.filter((o) => o.active).map((o) => [o.key, o.labelPlural]),
+          )}
         />
       </>
     ),
