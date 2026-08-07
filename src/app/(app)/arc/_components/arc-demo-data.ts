@@ -9,6 +9,7 @@ import type { ArcActionCard, ArcDraftFinding, ArcMention, ArcRecall } from "@/do
 import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 import type { ArcAttachment, ArcMessage, ArcStep, ArcToolCall } from "@/lib/arc-chat/persistence";
 import type { ArcRecentConversationVM, ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
+import { selectRailConversations } from "@/lib/arc-chat/rail-sections";
 
 import type { ArcWaiting } from "./arc-view.types";
 
@@ -51,10 +52,16 @@ const DEMO_CAMPAIGN_NAMES: Record<string, string> = {
   "property-partners": "Multi-seat expansion",
 };
 
-export const DEMO_RECENT_CONVERSATIONS: ArcRecentConversationVM[] = DEMO_THREADS
-  .flatMap((group) => group.items)
-  .slice(0, 5)
-  .map(({ id, title, when, running, active, campaignId }) => ({
+/**
+ * Budgeted by the same function the live read model uses, rather than a hand-cut
+ * `.slice(0, 5)`. The old slice took the five newest threads, which in this
+ * fixture are all campaign-bearing — so the preview rendered folders and never
+ * once rendered the unattached chats below them, and the offline screen this
+ * design gets reviewed on could not show the section it spends most of its
+ * height on.
+ */
+export const DEMO_RECENT_CONVERSATIONS: ArcRecentConversationVM[] = selectRailConversations(
+  DEMO_THREADS.flatMap((group) => group.items).map(({ id, title, when, running, active, campaignId }) => ({
     id,
     title,
     when,
@@ -62,7 +69,8 @@ export const DEMO_RECENT_CONVERSATIONS: ArcRecentConversationVM[] = DEMO_THREADS
     defaultActive: active,
     campaignId: campaignId ?? null,
     campaignName: campaignId ? DEMO_CAMPAIGN_NAMES[campaignId] ?? null : null,
-  }));
+  })),
+);
 
 export const DEMO_STEPS: ArcStep[] = [
   { label: "Read the pricing-intent brief", status: "done", at: "9:38 AM", kind: "think" },
