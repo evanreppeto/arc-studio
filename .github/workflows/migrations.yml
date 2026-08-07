@@ -9,32 +9,31 @@ name: Migrations
 # staging app, a self-hosted eval DB, disaster recovery, and any per-tenant
 # database story.
 #
-# NOTE: this workflow is path-filtered, so it does NOT run on most PRs. Do not
-# add `chain` to the required status checks on `main` — a required check that
-# never reports leaves every unrelated PR parked forever waiting for it.
+# `chain` is a REQUIRED status check on `main`, which is why this workflow no
+# longer carries `paths:` filters.
+#
+# It used to, and the note here said not to make it required — correctly, at the
+# time: a path-filtered workflow does not report at all on an unrelated PR, and a
+# required check that never reports parks the PR forever.
+#
+# That protection cost us. #1052 shipped two tenant-scoped tables with RLS
+# disabled; this job caught it, twice, said so in plain words, and auto-merge
+# went ahead anyway because nothing was required to listen. The check was right
+# and unheard.
+#
+# So the filter moved INSIDE the job. The workflow now triggers on every PR and
+# always reports; the expensive half (booting Postgres, applying the whole chain,
+# proving cross-tenant denial) only runs when something it can actually judge has
+# changed. An unrelated PR gets a green `chain` in seconds.
+#
+# The detection is deliberately FAIL-SAFE: anything it cannot determine — a
+# missing base ref, a shallow clone, a diff that errors — runs the full check.
+# Skipping is only ever chosen from positive evidence that nothing relevant moved.
 
 on:
   pull_request:
-    paths:
-      - "supabase/migrations/**"
-      - "supabase/config.toml"
-      - "scripts/verify-migration-chain.mjs"
-      - "scripts/check-rls-cross-tenant.mjs"
-      - "scripts/check-tenancy-contract.mjs"
-      - "supabase/tenancy-contract.mjs"
-      - "supabase/tests/**"
-      - ".github/workflows/migrations.yml"
   push:
     branches: [main]
-    paths:
-      - "supabase/migrations/**"
-      - "supabase/config.toml"
-      - "scripts/verify-migration-chain.mjs"
-      - "scripts/check-rls-cross-tenant.mjs"
-      - "scripts/check-tenancy-contract.mjs"
-      - "supabase/tenancy-contract.mjs"
-      - "supabase/tests/**"
-      - ".github/workflows/migrations.yml"
   workflow_dispatch:
 
 jobs:
@@ -43,8 +42,50 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Needed to diff against the base; the default shallow clone cannot.
+          fetch-depth: 0
+
+      # The path filter that used to live in `on:`. Here it decides whether to do
+      # the work instead of whether to report at all.
+      - name: Does anything here need proving?
+        id: scope
+        run: |
+          set -uo pipefail
+          PATHS='^(supabase/migrations/|supabase/config\.toml$|supabase/tenancy-contract\.mjs$|supabase/tests/|scripts/verify-migration-chain\.mjs$|scripts/check-rls-cross-tenant\.mjs$|scripts/check-tenancy-contract\.mjs$|\.github/workflows/migrations\.yml$)'
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual run — proving the chain."
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          BASE="${{ github.event.pull_request.base.sha }}"
+          [ -z "$BASE" ] && BASE="${{ github.event.before }}"
+
+          # No usable base, or a diff that fails: prove the chain. Never infer
+          # "nothing changed" from "I could not tell" — that is how a migration
+          # ships unchecked.
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "No usable base ref — proving the chain to be safe."
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BASE"...HEAD) || {
+            echo "diff failed — proving the chain to be safe."
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          }
+
+          if echo "$CHANGED" | grep -qE "$PATHS"; then
+            echo "Migration-relevant changes:"
+            echo "$CHANGED" | grep -E "$PATHS"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing migration-relevant changed — reporting green without booting Postgres."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Node
+        if: steps.scope.outputs.run == 'true'
         uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -55,6 +96,7 @@ jobs:
           package-manager-cache: false
 
       - name: Install Supabase CLI
+        if: steps.scope.outputs.run == 'true'
         uses: supabase/setup-cli@v1
         with:
           version: latest
@@ -62,12 +104,14 @@ jobs:
       # No `pnpm install` — the script deliberately has no dependencies, so this
       # job stays fast and cannot be broken by an unrelated lockfile change.
       - name: Apply the whole chain to an empty database
+        if: steps.scope.outputs.run == 'true'
         run: node scripts/verify-migration-chain.mjs
 
       # Runs against the database verify-migration-chain.mjs just reset, so the
       # policies under test are the ones the chain actually produces and this
       # costs one psql invocation rather than a second stack.
       - name: Prove cross-tenant denial on real Postgres
+        if: steps.scope.outputs.run == 'true'
         run: node scripts/check-rls-cross-tenant.mjs
 
       # The workspace axis. The RLS suite above can only see tables that already
@@ -75,8 +119,10 @@ jobs:
       # being noticed. This holds every table to supabase/tenancy-contract.mjs, so
       # an unclassified one fails the build instead of inheriting "unscoped".
       - name: Hold the schema to the tenancy contract
+        if: steps.scope.outputs.run == 'true'
         run: node scripts/check-tenancy-contract.mjs
 
       - name: Stop the stack
-        if: always()
+        # `always()` so a failure still tears down, but only if we started one.
+        if: always() && steps.scope.outputs.run == 'true'
         run: supabase stop --no-backup || true
