@@ -73,9 +73,29 @@ export type JourneysReadModel =
        */
       channelCreditByModel: ChannelCreditByModel;
       defaultModel: AttributionModel;
+      /**
+       * Sources whose read hit MAX_ROWS, in operator words. Non-empty means every
+       * number above is computed over a PARTIAL set — see the constant's note.
+       */
+      partialSources?: readonly string[];
     }
   | { status: "unavailable"; message: string };
 
+/**
+ * Per-source row ceiling. Unlike MAX_JOURNEYS below — which only trims the
+ * rendered list and is restated in the UI — this one truncates the input the
+ * funnel, the KPIs and every attribution lens are computed FROM. A workspace
+ * over the ceiling gets journeys missing touches: wrong current stage, wrong
+ * first touch, and revenue credited to the wrong channel, all stated with the
+ * same confidence as a complete read.
+ *
+ * So the two things this file already does for a failed read, it now does for a
+ * partial one: keep it deterministic (every query is ordered newest-first, so
+ * truncation drops the oldest rather than an arbitrary thousand) and say so
+ * (`partialSources`). Raising the ceiling is not the fix — some workspace is
+ * always over it. `engagement_events` is the one to watch: it grows per send,
+ * not per customer.
+ */
 const MAX_ROWS = 1000;
 const MAX_JOURNEYS = 60;
 // The real `outcome_status` enum is: pending | won | lost | paid | written_off.
@@ -163,22 +183,40 @@ export async function getJourneysReadModel(client?: SupabaseClient, orgId?: stri
     const byOrg = <B>(builder: B): B =>
       resolvedOrgId ? (builder as unknown as { eq(c: string, v: string): B }).eq("org_id", resolvedOrgId) : builder;
 
+    // Every query is ordered before it is capped. Without an ORDER BY, a LIMIT
+    // returns an arbitrary thousand rows, so the same workspace could show a
+    // different funnel on each reload. Each column below is NOT NULL, so no
+    // nulls-ordering is needed.
     const [contacts, engagement, leads, jobs, outcomes, identities, touchpoints] = await Promise.all([
-      byOrg(supabase.from("contacts").select("id,full_name,email,persona,created_at")).limit(MAX_ROWS),
+      byOrg(supabase.from("contacts").select("id,full_name,email,persona,created_at"))
+        .order("created_at", { ascending: false })
+        .limit(MAX_ROWS),
       byOrg(
         supabase.from("engagement_events").select("id,contact_id,campaign_id,campaign_asset_id,event_type,channel,direction,occurred_at,summary"),
-      ).limit(MAX_ROWS),
+      )
+        .order("occurred_at", { ascending: false })
+        .limit(MAX_ROWS),
       byOrg(
         supabase.from("leads").select("id,contact_id,attributed_campaign_id,attributed_asset_id,attribution_channel,source,received_at,created_at"),
-      ).limit(MAX_ROWS),
-      byOrg(supabase.from("jobs").select("id,contact_id,status,scheduled_at,created_at")).limit(MAX_ROWS),
-      byOrg(supabase.from("outcomes").select("id,contact_id,status,gross_revenue_cents,closed_at,created_at")).limit(MAX_ROWS),
-      byOrg(supabase.from("journey_identities").select("id,contact_id,resolution,anonymous_id")).limit(MAX_ROWS),
+      )
+        .order("received_at", { ascending: false })
+        .limit(MAX_ROWS),
+      byOrg(supabase.from("jobs").select("id,contact_id,status,scheduled_at,created_at"))
+        .order("created_at", { ascending: false })
+        .limit(MAX_ROWS),
+      byOrg(supabase.from("outcomes").select("id,contact_id,status,gross_revenue_cents,closed_at,created_at"))
+        .order("created_at", { ascending: false })
+        .limit(MAX_ROWS),
+      byOrg(supabase.from("journey_identities").select("id,contact_id,resolution,anonymous_id"))
+        .order("last_seen_at", { ascending: false })
+        .limit(MAX_ROWS),
       byOrg(
         supabase
           .from("journey_touchpoints")
           .select("id,identity_id,contact_id,occurred_at,kind,direction,channel,campaign_id,campaign_asset_id,summary,is_conversion,value_cents"),
-      ).limit(MAX_ROWS),
+      )
+        .order("occurred_at", { ascending: false })
+        .limit(MAX_ROWS),
     ]);
 
     // EVERY one of these is load-bearing for what this page claims (BSR-575).
@@ -228,6 +266,22 @@ export async function getJourneysReadModel(client?: SupabaseClient, orgId?: stri
     const outcomeRows = (outcomes.data ?? []) as OutcomeRow[];
     const identityRows = (identities.data ?? []) as IdentityRow[];
     const touchpointRows = (touchpoints.data ?? []) as TouchpointRow[];
+
+    // A source that came back exactly full was almost certainly cut short. Named
+    // the way the operator thinks about it, not the way the table is spelled.
+    const partialSources = (
+      [
+        ["customers", contactRows],
+        ["email and message activity", engagementRows],
+        ["leads", leadRows],
+        ["jobs", jobRows],
+        ["outcomes", outcomeRows],
+        ["site visitors", identityRows],
+        ["site activity", touchpointRows],
+      ] as const
+    )
+      .filter(([, rows]) => rows.length >= MAX_ROWS)
+      .map(([label]) => label);
 
     // Nothing to show → demo fallback (only when the flag is on), else empty-live.
     if (contactRows.length === 0 && engagementRows.length === 0 && leadRows.length === 0 && touchpointRows.length === 0) {
@@ -341,7 +395,7 @@ export async function getJourneysReadModel(client?: SupabaseClient, orgId?: stri
       journeys.push({ ...assembleJourney(identity, touches), persona: null });
     }
 
-    return buildLiveModel(journeys, nowMs, false);
+    return buildLiveModel(journeys, nowMs, false, partialSources);
   } catch (error) {
     // Degrade, but not silently — this read IS the screen, so an empty
     // state here is indistinguishable from an outage (BSR-544).
@@ -351,7 +405,12 @@ export async function getJourneysReadModel(client?: SupabaseClient, orgId?: stri
 }
 
 /** Shared shaping of assembled journeys → funnel + KPIs + channel credit + sorted list. */
-function buildLiveModel(journeys: JourneyWithMeta[], nowMs: number, isDemo: boolean): JourneysReadModel {
+function buildLiveModel(
+  journeys: JourneyWithMeta[],
+  nowMs: number,
+  isDemo: boolean,
+  partialSources: readonly string[] = [],
+): JourneysReadModel {
   const funnel = summarizeFunnel(journeys);
 
   const converted = journeys.filter((j) => j.converted);
@@ -381,7 +440,16 @@ function buildLiveModel(journeys: JourneyWithMeta[], nowMs: number, isDemo: bool
     .sort((a, b) => (Date.parse(b.lastTouchAt ?? "") || 0) - (Date.parse(a.lastTouchAt ?? "") || 0))
     .slice(0, MAX_JOURNEYS);
 
-  return { status: "live", isDemo: isDemo || undefined, funnel, kpis, journeys: sorted, channelCreditByModel, defaultModel: DEFAULT_ATTRIBUTION_MODEL };
+  return {
+    status: "live",
+    isDemo: isDemo || undefined,
+    funnel,
+    kpis,
+    journeys: sorted,
+    channelCreditByModel,
+    defaultModel: DEFAULT_ATTRIBUTION_MODEL,
+    partialSources: partialSources.length > 0 ? partialSources : undefined,
+  };
 }
 
 /** Roll one lens's per-journey credit up by channel, richest first. Pure. */
