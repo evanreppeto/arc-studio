@@ -13,7 +13,7 @@
 //
 // Pure. No I/O, no roster mutation, deterministic ordering.
 
-import { type MediaCategory } from "./media-config";
+import { MEDIA_AUTO, type MediaCategory } from "./media-config";
 import { GENERATION_MODELS, type EngineAvailability, type GenerationModel } from "./media-target";
 
 /**
@@ -43,7 +43,11 @@ export type MediaPriority = (typeof MEDIA_PRIORITIES)[number];
 const LOOK_TAGS: Record<MediaLook, readonly string[]> = {
   photoreal: ["photorealistic", "ultra-realistic", "realistic", "natural"],
   cinematic: ["cinematic", "dramatic", "film", "camera-motion", "lighting"],
-  illustrated: ["illustration", "stylized", "artistic", "concept-art", "vector", "sprite"],
+  // NOT "sprite": upstream's only sprite model is a game spritesheet animator.
+  // It is a different MEDIUM, not a style, and it won this look on a tiebreak
+  // until the ordering below was fixed — an owner-operator asking for an
+  // illustrated ad would have been billed for a character animation sheet.
+  illustrated: ["illustration", "stylized", "artistic", "concept-art", "vector"],
   product: ["product", "e-commerce", "dtc", "mockups", "multi-sku", "ads", "marketing"],
   social: ["social-media", "ugc", "reels", "shorts", "tiktok", "viral", "youtube"],
 };
@@ -141,11 +145,19 @@ export function rankIntentCandidates(query: IntentQuery): IntentCandidate[] {
     return { model, score, matched };
   });
 
-  // Deterministic: score, then recommended, then id. A picker whose order
-  // varies between identical calls cannot be tested or reasoned about.
+  // Deterministic: score, then breadth of match, then recommended, then id. A
+  // picker whose order varies between identical calls cannot be tested.
+  //
+  // Breadth sits above `id` because without it an ALPHABETICAL tiebreak decides
+  // real choices. Observed: "Illustrated" resolved to a sprite animator (1 tag)
+  // over a vector-illustration model (2 tags) purely because `autosprite` sorts
+  // before `recraft_v4_1`. The score cap is still right — four synonyms for one
+  // idea is not four times as suitable — but among models the cap has TIED,
+  // matching more of the look's vocabulary is the better answer.
   return scored.sort(
     (a, b) =>
       b.score - a.score ||
+      b.matched.length - a.matched.length ||
       Number(Boolean(b.model.recommended)) - Number(Boolean(a.model.recommended)) ||
       a.model.id.localeCompare(b.model.id),
   );
@@ -159,4 +171,44 @@ export function rankIntentCandidates(query: IntentQuery): IntentCandidate[] {
  */
 export function resolveIntent(query: IntentQuery): IntentCandidate | null {
   return rankIntentCandidates(query)[0] ?? null;
+}
+
+/**
+ * What a model control is holding: a named model, or a description of the job.
+ *
+ * `exact` covers MEDIA_AUTO too — "let the workspace default decide" is a
+ * specific instruction, not an absent one.
+ */
+export type ModelChoice =
+  | { kind: "exact"; key: string }
+  | { kind: "intent"; look: MediaLook | null; priority: MediaPriority };
+
+/**
+ * The model key a choice puts on the wire, for ONE action.
+ *
+ * ⚠️ `fromExistingMedia` is a property of the ACTION, not of the control, and
+ * conflating them is a real bug rather than a tidiness point. In Studio a single
+ * image control feeds two actions: generating a scene from words (no source) and
+ * editing the selected photo (always a source). Resolving once for both would
+ * either offer an edit a model that cannot accept a reference — which renders
+ * something unrelated and bills for it — or needlessly bar a text-to-image model
+ * from a text-to-image job. So callers resolve per action, passing their own
+ * requirement, and share only the operator's taste.
+ *
+ * Falls back to MEDIA_AUTO when an intent matches nothing, because a control
+ * that silently produced no model would fail at submit instead of here.
+ */
+export function choiceToModelKey(
+  choice: ModelChoice,
+  context: { category: MediaCategory; engines: EngineAvailability; fromExistingMedia?: boolean },
+): string {
+  if (choice.kind === "exact") return choice.key;
+  const top = resolveIntent({
+    category: context.category,
+    look: choice.look,
+    priority: choice.priority,
+    ...(context.fromExistingMedia ? { fromExistingMedia: true } : {}),
+    engines: context.engines,
+  });
+  return top?.model.key ?? MEDIA_AUTO;
 }

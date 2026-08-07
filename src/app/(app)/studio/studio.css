@@ -649,3 +649,18 @@
      its scroller needs a floor too or the sections collapse behind the footer. */
   .arc-studio .iscroll { min-height: 42vh; }
 }
+
+/* Model control — asked as a job ("Look") with the exact-model list behind a
+   toggle. `.fchip`/`.modeseg` are reused deliberately: this control sits in the
+   same footer as the format chips and inventing a second chip idiom would make
+   two things that behave alike look unrelated. */
+.arc-studio .mswap { margin-left: auto; font-size: 10.5px; font-family: inherit; font-weight: 600; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; transition: var(--dur-base); }
+.arc-studio .mswap:hover:not(:disabled) { color: var(--accent); }
+.arc-studio .mswap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+.arc-studio .mswap:disabled { opacity: 0.5; cursor: default; }
+.arc-studio .looks { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.arc-studio .looks .fchip { padding: 4px 9px; }
+/* The resolution line. Not decoration — a derived pick that never says what it
+   picked is an inscrutable choice replaced by an invisible one. */
+.arc-studio .mwhy { margin: 6px 0 0; font-size: 10.5px; line-height: 1.45; color: var(--muted); }
+.arc-studio .mwhy b { color: var(--text-2); font-weight: 600; }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { GENERATION_MODELS, type EngineAvailability } from "../media-target";
-import { MEDIA_LOOKS, MEDIA_PRIORITIES, rankIntentCandidates, resolveIntent } from "../media-intent";
+import { MEDIA_LOOKS, MEDIA_PRIORITIES, choiceToModelKey, rankIntentCandidates, resolveIntent } from "../media-intent";
 
 /**
  * Asking for a JOB instead of a model name.
@@ -137,5 +137,75 @@ describe("both engines are reachable through intent", () => {
       ),
     );
     expect(engines.has("higgsfield")).toBe(true);
+  });
+});
+
+describe("choiceToModelKey — capability belongs to the action", () => {
+  const intent = { kind: "intent" as const, look: "cinematic" as const, priority: "balanced" as const };
+
+  it("passes an exact pick straight through, including Auto", () => {
+    expect(choiceToModelKey({ kind: "exact", key: "higgsfield:veo3_1" }, { category: "video", engines: BOTH })).toBe("higgsfield:veo3_1");
+    expect(choiceToModelKey({ kind: "exact", key: "auto" }, { category: "video", engines: BOTH })).toBe("auto");
+  });
+
+  it("lets one taste resolve differently per action — the filter is not inert", () => {
+    // The bug this shape exists to prevent. One Studio control feeds both
+    // "generate a scene from words" and "edit this photo"; resolving once for
+    // both would hand the edit a model that cannot take a reference — which
+    // renders something unrelated and bills for it.
+    //
+    // Asserted across looks, not on one: a look whose top model happens to
+    // accept a start frame anyway is SUPPOSED to resolve the same both ways.
+    // What must not happen is the requirement never mattering at all.
+    const steered = MEDIA_LOOKS.filter((look) => {
+      const taste = { kind: "intent" as const, look, priority: "balanced" as const };
+      return (
+        choiceToModelKey(taste, { category: "video", engines: BOTH }) !==
+        choiceToModelKey(taste, { category: "video", engines: BOTH, fromExistingMedia: true })
+      );
+    });
+    expect(steered.length, "no look changes model when a start frame is required — filter is doing nothing").toBeGreaterThan(0);
+  });
+
+  it("only ever returns a model that can take a reference when one is required", () => {
+    const key = choiceToModelKey(intent, { category: "video", engines: BOTH, fromExistingMedia: true });
+    const model = GENERATION_MODELS.find((m) => m.key === key)!;
+    const ok = ["start-frame", "image-to-video", "image-to-image", "editing", "instruction", "reference"];
+    expect(model.tags?.some((t) => ok.includes(t))).toBe(true);
+  });
+
+  it("falls back to Auto rather than returning nothing", () => {
+    // A control that resolved to no model would fail at submit instead of here.
+    expect(choiceToModelKey(intent, { category: "audio", engines: GEMINI_ONLY })).toBe("auto");
+  });
+});
+
+describe("the ordering does not let an arbitrary tiebreak decide", () => {
+  it("resolves Illustrated to an illustration model, not a game sprite tool", () => {
+    // Caught in the browser, not by a test: "Illustrated" resolved to
+    // `autosprite` (a spritesheet animator, 1 matching tag) over `recraft_v4_1`
+    // (vector illustration, 2 matching tags) because the score cap tied them and
+    // `id.localeCompare` broke the tie alphabetically. An owner-operator asking
+    // for an illustrated ad would have been billed for a character sheet.
+    const top = resolveIntent({ category: "image", look: "illustrated", engines: BOTH })!;
+    expect(top.model.id).not.toBe("autosprite");
+    expect(top.model.tags ?? []).toContain("illustration");
+  });
+
+  it("prefers the model that matches MORE of the look's vocabulary", () => {
+    // The general rule behind that fix. The cap on score is still right; breadth
+    // only decides among models the cap has already tied.
+    const ranked = rankIntentCandidates({ category: "image", look: "illustrated", engines: BOTH });
+    const top = ranked[0]!;
+    const tiedWithTop = ranked.filter((c) => c.score === top.score);
+    for (const c of tiedWithTop) expect(top.matched.length).toBeGreaterThanOrEqual(c.matched.length);
+  });
+
+  it("keeps a spritesheet animator out of the illustrated look entirely", () => {
+    // It is a different MEDIUM, not a style — the same category error as
+    // offering an upscaler as a generator.
+    const ranked = rankIntentCandidates({ category: "image", look: "illustrated", engines: BOTH });
+    const sprite = ranked.find((c) => c.model.id === "autosprite");
+    expect(sprite?.matched ?? []).not.toContain("sprite");
   });
 });
