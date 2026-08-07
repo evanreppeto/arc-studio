@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useId, useRef } from "react";
 
 import { OverlayPortal } from "./overlay-portal";
+import { useDialogFocus } from "./use-dialog-focus";
 
 type ModalProps = {
   open: boolean;
@@ -38,32 +39,12 @@ export function Modal({ open, onClose, title, description, footer, width, childr
   const titleId = useId();
   const descId = useId();
 
-  useEffect(() => {
-    if (!open) return;
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        onClose();
-      }
-    }
-    document.addEventListener("keydown", onKeyDown);
-
-    // Lock background scroll while the modal owns the screen.
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    // Move focus into the card so keyboard + screen readers land inside the dialog.
-    const focusTarget = cardRef.current?.querySelector<HTMLElement>(
-      "input, textarea, select, button, [tabindex]:not([tabindex='-1'])",
-    );
-    focusTarget?.focus();
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open, onClose]);
+  // Escape, the Tab trap, focus-in, focus-restore and the scroll lock — all in
+  // use-dialog-focus.ts, shared with the dialogs that don't render through this
+  // component. Before it, this modal moved focus IN and locked scroll but did
+  // neither of the other two: Tab walked out to the nav rail behind an
+  // `aria-modal="true"` dialog, and closing dropped focus to <body>.
+  useDialogFocus({ open, containerRef: cardRef, onEscape: onClose, lockScroll: true });
 
   if (!open) return null;
 

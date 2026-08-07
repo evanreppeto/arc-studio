@@ -28,7 +28,7 @@
  * close button.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowLeft,
@@ -65,6 +65,7 @@ import type { ArcAssetBody } from "@/lib/campaigns/read-model";
 
 import { undoArcDraftDecisionAction } from "../actions";
 import { OverlayPortal } from "../../_components/overlay-portal";
+import { useDialogFocus } from "../../_components/use-dialog-focus";
 import { assetStatusMeta, ChannelIcon, isDecidedAssetStatus, useDraftDecision } from "./arc-messages";
 import type { PaneBox } from "./arc-view.types";
 import { AppImage } from "../../_components/app-image";
@@ -570,6 +571,12 @@ export function DeliverableReview({
   onClose: () => void;
 }) {
   const reduceMotion = useReducedMotion();
+  /* Trap + restore. Escape stays with the component (it has its own back/close
+     layering), and `moveFocusIn` is off because the back button carries
+     `autoFocus`. Without the trap, Tab left this `aria-modal` review and reached
+     the chat and nav rail behind it. */
+  const cardRef = useRef<HTMLElement>(null);
+  useDialogFocus({ open: true, containerRef: cardRef, moveFocusIn: false });
   // A set opens on its index; a single deliverable has no index worth showing.
   const [active, setActive] = useState<number | null>(cards.length > 1 ? null : 0);
   const showingIndex = active === null;
@@ -652,6 +659,7 @@ export function DeliverableReview({
       >
       <section
         className="arc-dlv-card"
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-label="Review what Arc drafted"
