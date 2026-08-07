@@ -6,11 +6,19 @@ import { type ChangeEvent, type CSSProperties, memo, useCallback, useEffect, use
 import {
   DEFAULT_MEDIA_CONFIG,
   MEDIA_AUTO,
+  MEDIA_LOOKS,
+  choiceToModelKey,
+  findGenerationModel,
   generationModelsFor,
+  resolveIntent,
   type CreativeLayoutOverride,
   type EngineAvailability,
   type MediaCategory,
   type MediaConfig,
+  MEDIA_PRIORITIES,
+  type MediaLook,
+  type MediaPriority,
+  type ModelChoice,
 } from "@/domain";
 
 import { resolveArcComposerMode } from "@/lib/arc-chat/composer-mode";
@@ -350,6 +358,155 @@ const NEUTRAL_PROMPT_EXAMPLES = {
   image: "A bright, welcoming workspace photographed at eye level in natural light",
   video: "A bright workspace in natural light, slow steady camera move across the room",
 };
+
+/** Plain words for each look. The slugs are ours; these are what an operator reads. */
+const LOOK_LABEL: Record<MediaLook, string> = {
+  photoreal: "Photoreal",
+  cinematic: "Cinematic",
+  illustrated: "Illustrated",
+  product: "Product",
+  social: "Social",
+};
+
+/** "Best" and "Faster", NOT "cheapest" — the catalog publishes no price, so
+ *  these rank on the vendor's own speed/quality tags. Promising cost here would
+ *  be inventing a guarantee the data cannot support. */
+const PRIORITY_LABEL: Record<MediaPriority, string> = { balanced: "Balanced", fast: "Faster", best: "Best" };
+
+/** Vendor tags are slugs (`start-frame`, `social-media`); rendered as-is they read
+ *  as stored values rather than language. See @/domain identifier-leak. */
+function humanTag(tag: string): string {
+  return tag.replace(/-/g, " ");
+}
+
+/**
+ * Which model renders this — asked as a JOB, with the model name as the escape hatch.
+ *
+ * The old control was a 43-entry dropdown of names like `soul_cinematic` and
+ * `seedream_v4_5`: Higgsfield's vocabulary, unanswerable by an owner-operator
+ * without having tried both. Looks are answerable. The resolved model stays on
+ * screen, because replacing an inscrutable choice with an invisible one is worse
+ * than leaving it alone.
+ */
+function ModelControl({
+  category,
+  choice,
+  options,
+  engines,
+  fromExistingMedia,
+  disabled,
+  onChange,
+}: {
+  category: MediaCategory;
+  choice: ModelChoice;
+  options: ReturnType<typeof generationModelsFor>;
+  engines: EngineAvailability;
+  /** Whether the action this control previews starts from a picture. */
+  fromExistingMedia: boolean;
+  disabled: boolean;
+  onChange: (next: ModelChoice) => void;
+}) {
+  const byLook = choice.kind === "intent";
+  const resolvedKey = choiceToModelKey(choice, { category, engines, fromExistingMedia });
+  const resolved = findGenerationModel(resolvedKey);
+  const why = byLook
+    ? resolveIntent({ category, look: choice.look, priority: choice.priority, ...(fromExistingMedia ? { fromExistingMedia: true } : {}), engines })
+    : null;
+
+  // The image control also feeds Edit, which always has a source and so can
+  // resolve elsewhere. Saying so beats letting the operator discover it from a
+  // render they already paid for.
+  const editKey = byLook && category === "image" ? choiceToModelKey(choice, { category, engines, fromExistingMedia: true }) : null;
+  const editModel = editKey && editKey !== resolvedKey ? findGenerationModel(editKey) : null;
+
+  return (
+    <div className="field">
+      <div className="fieldl">
+        <span>{byLook ? "Look" : "Model"}</span>
+        <button
+          type="button"
+          className="mswap"
+          disabled={disabled}
+          // Switching to names carries the CURRENT resolution across, so the
+          // toggle never silently changes what would render.
+          onClick={() => onChange(byLook ? { kind: "exact", key: resolvedKey } : { kind: "intent", look: null, priority: "balanced" })}
+        >
+          {byLook ? "Name a model" : "Choose by look"}
+        </button>
+      </div>
+
+      {byLook ? (
+        <>
+          <div className="looks">
+            {MEDIA_LOOKS.map((look) => {
+              const on = choice.kind === "intent" && choice.look === look;
+              return (
+                <button
+                  key={look}
+                  type="button"
+                  className={`fchip${on ? " on" : ""}`}
+                  aria-pressed={on}
+                  disabled={disabled}
+                  // Clicking the active look clears it — "no preference" has to
+                  // be reachable, or the first click is irreversible.
+                  onClick={() => choice.kind === "intent" && onChange({ ...choice, look: on ? null : look })}
+                >
+                  {LOOK_LABEL[look]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="modeseg" role="group" aria-label="Priority">
+            {MEDIA_PRIORITIES.map((p) => {
+              const on = choice.kind === "intent" && choice.priority === p;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  className={on ? "on" : ""}
+                  aria-pressed={on}
+                  disabled={disabled}
+                  onClick={() => choice.kind === "intent" && onChange({ ...choice, priority: p })}
+                >
+                  {PRIORITY_LABEL[p]}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <select
+          className="input"
+          aria-label={`Model for this ${category}`}
+          value={choice.kind === "exact" ? choice.key : MEDIA_AUTO}
+          disabled={disabled}
+          onChange={(e) => onChange({ kind: "exact", key: e.target.value })}
+        >
+          <option value={MEDIA_AUTO}>Auto — Arc picks per task</option>
+          {options.map((m) => (
+            <option key={m.key} value={m.key}>{`${m.label} · ${m.provider}`}</option>
+          ))}
+        </select>
+      )}
+
+      {byLook ? (
+        <p className="mwhy">
+          {resolved ? (
+            <>
+              Renders with <b>{resolved.label}</b> · {resolved.provider}
+              {why?.matched.length ? <> — {why.matched.slice(0, 3).map(humanTag).join(", ")}</> : null}
+              {fromExistingMedia ? <>, starting from your selected photo</> : null}.
+              {editModel ? <> Edits use <b>{editModel.label}</b>.</> : null}
+            </>
+          ) : (
+            // resolveIntent found nothing, so choiceToModelKey fell back to Auto.
+            <>Nothing offered matches that yet — Arc will pick per task.</>
+          )}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null, mediaConfig = DEFAULT_MEDIA_CONFIG, mediaEngines = NO_MEDIA_ENGINES, promptExamples = NEUTRAL_PROMPT_EXAMPLES, initialAssetId = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null; /** The workspace default the server would resolve anyway — the picker opens on it. */ mediaConfig?: MediaConfig; /** Which engines this workspace can reach; the picker offers only these. */ mediaEngines?: EngineAvailability; /** Example scenes for this workspace's industry — placeholders teach by example, so they must not teach another vertical's. */ promptExamples?: { image: string; video: string }; /** ?asset=<media_assets uuid> — Library deep-links here so "Edit in Studio" opens on the asset the operator clicked rather than on whatever happens to be first. */ initialAssetId?: string | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
@@ -732,15 +889,35 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
    * anyway rather than implying Auto when a default is pinned, and the server
    * re-resolves whatever is sent — this control chooses, it does not decide.
    */
-  const [modelPick, setModelPick] = useState<Record<MediaCategory, string>>(() =>
-    // "Let Arc choose" is the workspace's stance, so the picker opens on Auto
-    // there. A pick made HERE still beats it — a deliberate per-render choice
+  const [modelChoice, setModelChoice] = useState<Record<MediaCategory, ModelChoice>>(() => {
+    // "Let Arc choose" is the workspace's stance, so the control opens on Auto
+    // there. A choice made HERE still beats it — a deliberate per-render choice
     // outranks a standing preference (see resolveGenerationTarget).
-    mediaConfig.autoPick ? { image: MEDIA_AUTO, video: MEDIA_AUTO, audio: MEDIA_AUTO } : { ...mediaConfig.defaults },
-  );
+    //
+    // It opens on `exact`, not on a look: the workspace default is a NAMED
+    // model, and rendering it as a look would silently re-derive a different
+    // model from it. Switching to looks has to be the operator's move.
+    const at = (key: string): ModelChoice => ({ kind: "exact", key });
+    const d = mediaConfig.autoPick ? { image: MEDIA_AUTO, video: MEDIA_AUTO, audio: MEDIA_AUTO } : mediaConfig.defaults;
+    return { image: at(d.image), video: at(d.video), audio: at(d.audio) };
+  });
   const modelCategory: MediaCategory = mode === "video" ? "video" : "image";
   const modelOptions = generationModelsFor(modelCategory, mediaEngines);
-  const activeModel = modelPick[modelCategory];
+  const activeChoice = modelChoice[modelCategory];
+
+  /**
+   * The model key for ONE action.
+   *
+   * `fromExistingMedia` is the action's property, never the control's — the
+   * image control feeds BOTH "generate a scene from words" (no source) and
+   * "edit this photo" (always a source), and one shared answer would hand the
+   * edit a model that cannot take a reference. See choiceToModelKey.
+   */
+  const modelKeyFor = useCallback(
+    (category: MediaCategory, fromExistingMedia: boolean) =>
+      choiceToModelKey(modelChoice[category], { category, engines: mediaEngines, fromExistingMedia }),
+    [modelChoice, mediaEngines],
+  );
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoNote, setVideoNote] = useState<string | null>(null);
   const [editNote, setEditNote] = useState<string | null>(null);
@@ -821,7 +998,10 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         format: FORMATS[fmt].r,
         title,
         campaignId,
-        model: modelPick.image,
+        // No source — this action INVENTS the picture, so a reference-capable
+        // model is not required and demanding one would narrow the field for
+        // nothing.
+        model: modelKeyFor("image", false),
       });
       if (!res.ok) {
         setGenErr(res.error);
@@ -908,7 +1088,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         format: FORMATS[fmt].r,
         title: instruction.slice(0, 60),
         campaignId,
-        model: modelPick.image,
+        // ALWAYS a source. A model that cannot take a reference would render
+        // something unrelated to the selected photo and still bill for it.
+        model: modelKeyFor("image", true),
       });
       if (!res.ok) {
         setGenErr(res.error);
@@ -1039,7 +1221,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
       // Animate the photo on the canvas when there is one. Without it Veo
       // invents a scene from the words and the picture the operator picked is
       // silently ignored — which is what "Animate" has always done.
-      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId, sourceImageUrl: bg?.url, model: modelPick.video });
+      const started = await startStudioVideo({ prompt, format: FORMATS[fmt].r, campaignId, sourceImageUrl: bg?.url, model: modelKeyFor("video", Boolean(bg?.url)) });
       if (!started.ok) {
         setGenErr(started.error);
         return;
@@ -1750,21 +1932,18 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                     offered, so the list can't fail on use. Auto keeps whatever
                     the workspace default resolves to. */}
                 {modelOptions.length > 0 ? (
-                  <div className="field">
-                    <div className="fieldl"><span>Model</span></div>
-                    <select
-                      className="input"
-                      aria-label={`Model for this ${modelCategory}`}
-                      value={activeModel}
-                      disabled={gen || videoBusy}
-                      onChange={(e) => setModelPick((prev) => ({ ...prev, [modelCategory]: e.target.value }))}
-                    >
-                      <option value={MEDIA_AUTO}>Auto — Arc picks per task</option>
-                      {modelOptions.map((m) => (
-                        <option key={m.key} value={m.key}>{`${m.label} · ${m.provider}`}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <ModelControl
+                    category={modelCategory}
+                    choice={activeChoice}
+                    options={modelOptions}
+                    engines={mediaEngines}
+                    /* Video animates the selected photo when there is one; the
+                       image control serves two actions, so it previews the one
+                       the primary button runs and names the other if it differs. */
+                    fromExistingMedia={modelCategory === "video" ? Boolean(bg?.url) : false}
+                    disabled={gen || videoBusy}
+                    onChange={(next) => setModelChoice((prev) => ({ ...prev, [modelCategory]: next }))}
+                  />
                 ) : null}
                 {mode === "video" ? (
                   <>
