@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { headerLabel, IMPORTABLE_OBJECTS } from "./crm-board";
+import { headerLabel, IMPORTABLE_OBJECTS, rowsToCsv } from "./crm-board";
+import type { Col, CrmRowVM } from "./crm-board";
 
 const BOARD = readFileSync(new URL("./crm-board.tsx", import.meta.url), "utf8");
 const WIZARD = readFileSync(new URL("../import/_components/import-wizard.tsx", import.meta.url), "utf8");
@@ -52,6 +53,15 @@ describe("export writes what the table shows", () => {
 
   it("carries custom-field columns into the file", () => {
     expect(BOARD).toContain('if (col.k.startsWith("cf:")) return r.customFields?.[col.k.slice(3)] ?? "";');
+  });
+
+  it("carries the subtitle rendered under each name", () => {
+    // The name cell shows a subtitle beneath the name. On the live workspace
+    // that subtitle is the PHONE for all 243 contacts, every one of which has an
+    // empty Company — so exporting the name alone handed back a contact list
+    // with nothing to contact anyone by.
+    expect(BOARD).toContain('header.splice(nameIdx + 1, 0, "Details")');
+    expect(BOARD).toContain("row.splice(nameIdx + 1, 0, rows[i].detail)");
   });
 
   it("exports every column, not only the visible ones", () => {
@@ -138,5 +148,68 @@ describe("the record page shows identifiers a person can read", () => {
   it("keeps the values the removed header strip uniquely carried", () => {
     expect(READ_MODEL).toContain('["Relationship stage", relationshipStageOf(contact)]');
     expect(READ_MODEL).toContain('["Received", lead.received_at ? formatDateOnly(lead.received_at) : null]');
+  });
+});
+
+/**
+ * The CSV itself, not the source that writes it.
+ *
+ * The row below is shaped like a real one from the live workspace: a name, the
+ * phone rendered as its subtitle, an empty company (all 243 contacts there have
+ * one), and a tenant-defined field. Every one of those was a way the old fixed
+ * eight-column export lost data.
+ */
+describe("the exported CSV", () => {
+  const COLS: Col[] = [
+    { k: "sel" },
+    { k: "primary", t: "Contact" },
+    { k: "company", t: "Company" },
+    { k: "persona", t: "Persona" },
+    { k: "cf:referral", t: "Referral source" },
+    { k: "act" },
+  ];
+  const row = {
+    id: "c1",
+    name: "Arturo Arredondo",
+    detail: "(202) 823-7387",
+    company: "",
+    persona: "Property manager",
+    owner: "Robby",
+    customFields: { referral: "Repeat client" },
+    statusLabel: "Active",
+    updatedTime: "Aug 3",
+    updatedRel: "4d ago",
+    score: null,
+    value: "",
+    tier: "",
+    routing: "",
+    tasks: "",
+  } as unknown as CrmRowVM;
+
+  const csv = rowsToCsv([row], COLS, (c) => (c.k === "company" ? "Organization" : c.t ?? ""));
+  const [header, first] = csv.split("\n");
+
+  it("keeps the phone that the name cell renders", () => {
+    expect(header).toBe("Contact,Details,Organization,Persona,Referral source,Owner");
+    expect(first).toBe("Arturo Arredondo,(202) 823-7387,,Property manager,Repeat client,Robby");
+  });
+
+  it("includes the tenant's own field", () => {
+    expect(header).toContain("Referral source");
+    expect(first).toContain("Repeat client");
+  });
+
+  it("uses the workspace's noun for the company column", () => {
+    expect(header).toContain("Organization");
+    expect(header).not.toContain(",Company,");
+  });
+
+  it("drops the chrome columns", () => {
+    expect(header).not.toMatch(/\bsel\b|\bact\b/);
+  });
+
+  it("quotes a value containing a comma", () => {
+    const withComma = { ...row, name: "Arredondo, Arturo" } as unknown as CrmRowVM;
+    expect(rowsToCsv([withComma], COLS, (c) => c.t ?? "").split("\n")[1]).toContain('"Arredondo, Arturo"');
   });
 });

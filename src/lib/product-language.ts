@@ -216,3 +216,61 @@ export function getProductLanguage(industry?: string | null, overrides?: ObjectL
 
   return { industry: key, crmLabel: section || base.crmLabel, crmObjects };
 }
+
+/**
+ * Example scenes for the "describe an image / describe the shot" prompts.
+ *
+ * These are placeholders, so they teach by example — which means a hardcoded one
+ * teaches the WRONG example to eight industries out of nine. Studio shipped with
+ * "a clean service van in a suburban driveway" in both boxes: fine for a
+ * restoration or home-services tenant, an odd non-sequitur for a law firm, a
+ * clinic, or a shop. Same rule as every other label here — the industry template
+ * decides, `general` is the neutral fallback.
+ *
+ * Deliberately free of text, logos, and signage: the server strips those from
+ * generated images unconditionally, so an example asking for them would teach a
+ * prompt that quietly does not work.
+ */
+const MEDIA_PROMPT_EXAMPLES: Record<ProductIndustryKey, { image: string; video: string }> = {
+  general: {
+    image: "A bright, welcoming workspace photographed at eye level in natural light",
+    video: "A bright workspace in natural light, slow steady camera move across the room",
+  },
+  restoration: {
+    image: "A clean service van in a suburban driveway on a bright morning",
+    video: "A clean service van pulls into a suburban driveway on a bright morning, slow steady camera",
+  },
+  home_services: {
+    image: "A tidy work van parked outside a suburban home on a bright morning",
+    video: "A work van pulls up outside a suburban home, morning light, slow steady camera",
+  },
+  professional_services: {
+    image: "A calm meeting room with morning light falling across the table",
+    video: "Morning light moving across an empty meeting-room table, slow push in",
+  },
+  agency: {
+    image: "A bright studio desk with a laptop and colour swatches, shot from above",
+    video: "Colour swatches laid out one by one on a bright studio desk, overhead, slow and unhurried",
+  },
+  healthcare: {
+    image: "A calm, bright reception area with plants and comfortable seating",
+    video: "A calm reception area in soft daylight, slow gentle pan, no people",
+  },
+  real_estate: {
+    image: "A sunlit living room, styled and empty, windows open to the garden",
+    video: "Sunlight moving across an empty styled living room, slow steady dolly",
+  },
+  saas: {
+    image: "A clean desk with an open laptop in a bright office, screen not readable",
+    video: "A bright office desk in morning light, slow push toward an open laptop",
+  },
+  ecommerce: {
+    image: "A single product centred on a seamless backdrop, soft studio lighting",
+    video: "A single product on a seamless backdrop, slow turntable rotation, studio light",
+  },
+};
+
+/** The example scenes for a workspace's industry (falls back to `general`). */
+export function getMediaPromptExamples(industry?: string | null): { image: string; video: string } {
+  return MEDIA_PROMPT_EXAMPLES[canonicalIndustryKey(industry)];
+}
