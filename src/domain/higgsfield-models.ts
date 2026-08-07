@@ -3,6 +3,21 @@
  * category. Backs the categorized model selector (operator override) and Arc's
  * per-category auto-pick (`recommended` — exactly one per offered category). No I/O.
  *
+ * ⚠️ HAND-MAINTAINED, and it HAS drifted. Checked 2026-08-07 against the live
+ * catalog (85 models): three ids here did not exist upstream — `recraft-v4-1`
+ * (upstream uses underscores), `seedance_1_5` (upstream `seedance1_5`) and
+ * `gpt_image` (no such model). Each was a pick that fails AFTER the customer is
+ * charged. A typo in a hardcoded list is unfalsifiable from inside: the list is
+ * self-consistent and every test reading it passes.
+ *
+ * So it is now checked against a snapshot of the real catalog —
+ * `__fixtures__/higgsfield-catalog.json`, asserted by
+ * `__tests__/higgsfield-roster-drift.test.ts`. Editing this file without the
+ * snapshot agreeing fails CI, and an upstream model that is neither offered nor
+ * explicitly excluded fails too, so a new one is a decision rather than a
+ * silence. To refresh: re-run `models_explore(action:"list", limit:100)` and
+ * rewrite the fixture.
+ *
  * Validated 2026-06-24 against the live Higgsfield MCP `list_models` (59 models).
  * Image / video / audio ids below are confirmed from that dump. 3D and the extra
  * TTS voices (Cozy / ElevenLabs / Minimax / Seed Speech / Vibe) are NOT yet offered
@@ -39,14 +54,13 @@ export const HIGGSFIELD_MODELS: HiggsfieldModel[] = [
   { id: "autosprite", label: "AutoSprite Animation", provider: "Higgsfield", category: "image" },
   { id: "flux_2", label: "Flux 2.0", provider: "Black Forest Labs", category: "image" },
   { id: "flux_kontext", label: "Flux Kontext Max", provider: "Black Forest Labs", category: "image" },
-  { id: "gpt_image", label: "GPT Image 1.5", provider: "OpenAI", category: "image" },
   { id: "gpt_image_2", label: "GPT Image 2", provider: "OpenAI", category: "image" },
   { id: "grok_image", label: "Grok Imagine", provider: "xAI", category: "image" },
   { id: "nano_banana", label: "Nano Banana", provider: "Google", category: "image" },
   { id: "nano_banana_2", label: "Nano Banana 2", provider: "Google", category: "image" },
   { id: "nano_banana_pro", label: "Nano Banana Pro", provider: "Google", category: "image" },
   { id: "kling_omni_image", label: "Kling O1 Image", provider: "Kling", category: "image" },
-  { id: "recraft-v4-1", label: "Recraft 4.1", provider: "Recraft", category: "image" },
+  { id: "recraft_v4_1", label: "Recraft 4.1", provider: "Recraft", category: "image" },
   { id: "seedream_v4_5", label: "Seedream 4.5", provider: "Bytedance", category: "image" },
   { id: "seedream_v5_lite", label: "Seedream 5.0 Lite", provider: "Bytedance", category: "image" },
   { id: "z_image", label: "Z Image", provider: "Tongyi-MAI", category: "image" },
@@ -65,7 +79,7 @@ export const HIGGSFIELD_MODELS: HiggsfieldModel[] = [
   { id: "kling2_6", label: "Kling 2.6", provider: "Kling", category: "video" },
   { id: "kling3_0", label: "Kling 3.0", provider: "Kling", category: "video" },
   { id: "kling3_0_turbo", label: "Kling 3.0 Turbo", provider: "Kling", category: "video" },
-  { id: "seedance_1_5", label: "Seedance 1.5 Pro", provider: "Bytedance", category: "video" },
+  { id: "seedance1_5", label: "Seedance 1.5 Pro", provider: "Bytedance", category: "video" },
   { id: "seedance_2_0", label: "Seedance 2.0", provider: "Bytedance", category: "video" },
   { id: "seedance_2_0_mini", label: "Seedance 2.0 Mini", provider: "Bytedance", category: "video" },
   { id: "minimax_hailuo", label: "Minimax Hailuo", provider: "Hailuo", category: "video" },
