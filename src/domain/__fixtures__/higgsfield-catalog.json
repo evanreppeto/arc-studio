@@ -1,0 +1,517 @@
+{
+  "captured_at": "2026-08-07",
+  "source": "Higgsfield MCP models_explore(action:list, limit:100)",
+  "count": 85,
+  "models": [
+    {
+      "id": "3d_rigging",
+      "type": "3d",
+      "name": "3D Rigging",
+      "provider": "Meshy"
+    },
+    {
+      "id": "hunyuan3d_v3_1_text_to_3d",
+      "type": "3d",
+      "name": "Hunyuan 3D v3.1 Text to 3D",
+      "provider": "Tencent"
+    },
+    {
+      "id": "hunyuan3d_v3_image_to_3d",
+      "type": "3d",
+      "name": "Hunyuan3D v3 Image to 3D",
+      "provider": "Tencent"
+    },
+    {
+      "id": "image_to_3d",
+      "type": "3d",
+      "name": "Image to 3D",
+      "provider": "Meshy"
+    },
+    {
+      "id": "meshy_image_to_3d",
+      "type": "3d",
+      "name": "Image to 3D",
+      "provider": "Meshy"
+    },
+    {
+      "id": "meshy_multi_image_to_3d",
+      "type": "3d",
+      "name": "Multi-Image to 3D",
+      "provider": "Meshy"
+    },
+    {
+      "id": "meshy_rigging",
+      "type": "3d",
+      "name": "3D Rigging",
+      "provider": "Meshy"
+    },
+    {
+      "id": "meshy_v5_remesh",
+      "type": "3d",
+      "name": "Meshy 5 Remesh",
+      "provider": "Meshy"
+    },
+    {
+      "id": "meshy_v6_text_to_3d",
+      "type": "3d",
+      "name": "Meshy 6 Text to 3D",
+      "provider": "Meshy"
+    },
+    {
+      "id": "multi_image_to_3d",
+      "type": "3d",
+      "name": "Multi-Image to 3D",
+      "provider": "Meshy"
+    },
+    {
+      "id": "sam_3_3d",
+      "type": "3d",
+      "name": "SAM 3 3D Objects",
+      "provider": "Meta"
+    },
+    {
+      "id": "sam_3_3d_body",
+      "type": "3d",
+      "name": "3D Body",
+      "provider": "Meta"
+    },
+    {
+      "id": "tripo_3d",
+      "type": "3d",
+      "name": "Text to 3D",
+      "provider": ""
+    },
+    {
+      "id": "tripo_h3_1_image_to_3d",
+      "type": "3d",
+      "name": "Tripo H3.1 Image to 3D",
+      "provider": "Tripo"
+    },
+    {
+      "id": "tripo_h3_1_multiview_to_3d",
+      "type": "3d",
+      "name": "Tripo H3.1 Multiview to 3D",
+      "provider": "Tripo"
+    },
+    {
+      "id": "inworld_text_to_speech",
+      "type": "audio",
+      "name": "Inworld Text to Speech",
+      "provider": "FAL"
+    },
+    {
+      "id": "mirelo_text_to_audio",
+      "type": "audio",
+      "name": "Mirelo Text to Audio",
+      "provider": "FAL"
+    },
+    {
+      "id": "qwen_audio_tts",
+      "type": "audio",
+      "name": "Qwen Audio 3.0 TTS Flash",
+      "provider": "Alibaba Cloud"
+    },
+    {
+      "id": "seed_audio",
+      "type": "audio",
+      "name": "Seed Audio 1.0",
+      "provider": "ByteDance"
+    },
+    {
+      "id": "sonilo_music",
+      "type": "audio",
+      "name": "Sonilo Music",
+      "provider": "FAL"
+    },
+    {
+      "id": "text2speech_v2",
+      "type": "audio",
+      "name": "Text to Speech V2",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "autosprite",
+      "type": "image",
+      "name": "AutoSprite Animation",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "bytedance_image_upscale",
+      "type": "image",
+      "name": "Bytedance Image Upscale",
+      "provider": ""
+    },
+    {
+      "id": "cinematic_studio_2_5",
+      "type": "image",
+      "name": "Cinema Studio Image 2.5",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "flux_2",
+      "type": "image",
+      "name": "FLUX.2",
+      "provider": "Black Forest Labs"
+    },
+    {
+      "id": "flux_kontext",
+      "type": "image",
+      "name": "Flux Kontext",
+      "provider": "Black Forest Labs"
+    },
+    {
+      "id": "gpt_image_2",
+      "type": "image",
+      "name": "GPT Image 2",
+      "provider": "OpenAI"
+    },
+    {
+      "id": "grok_image",
+      "type": "image",
+      "name": "Grok Image",
+      "provider": "xAI"
+    },
+    {
+      "id": "image_auto",
+      "type": "image",
+      "name": "Auto",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "image_background_remover",
+      "type": "image",
+      "name": "Image Background Remover",
+      "provider": ""
+    },
+    {
+      "id": "kling_omni_image",
+      "type": "image",
+      "name": "Kling O1 Image",
+      "provider": "Kling"
+    },
+    {
+      "id": "marketing_studio_image",
+      "type": "image",
+      "name": "Marketing Studio Image",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "ms_image",
+      "type": "image",
+      "name": "DTC Ads",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "nano_banana",
+      "type": "image",
+      "name": "Nano Banana",
+      "provider": "Google"
+    },
+    {
+      "id": "nano_banana_2",
+      "type": "image",
+      "name": "Nano Banana 2",
+      "provider": "Google"
+    },
+    {
+      "id": "nano_banana_2_lite",
+      "type": "image",
+      "name": "Nano Banana 2 Lite",
+      "provider": "Google"
+    },
+    {
+      "id": "nano_banana_2_shots",
+      "type": "image",
+      "name": "Nano Banana Pro",
+      "provider": ""
+    },
+    {
+      "id": "nano_banana_pro",
+      "type": "image",
+      "name": "Nano Banana Pro",
+      "provider": "Google"
+    },
+    {
+      "id": "openai_hazel",
+      "type": "image",
+      "name": "OpenAI Hazel",
+      "provider": "OpenAI"
+    },
+    {
+      "id": "outpaint",
+      "type": "image",
+      "name": "Outpaint",
+      "provider": ""
+    },
+    {
+      "id": "recraft_v4_1",
+      "type": "image",
+      "name": "Recraft V4.1",
+      "provider": "Recraft"
+    },
+    {
+      "id": "seedream_v4_5",
+      "type": "image",
+      "name": "Seedream 4.5",
+      "provider": "Bytedance"
+    },
+    {
+      "id": "seedream_v5_lite",
+      "type": "image",
+      "name": "Seedream 5.0 Lite",
+      "provider": "Bytedance"
+    },
+    {
+      "id": "seedream_v5_pro",
+      "type": "image",
+      "name": "Seedream 5.0 Pro",
+      "provider": "Bytedance"
+    },
+    {
+      "id": "soul_2",
+      "type": "image",
+      "name": "Higgsfield Soul 2.0",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "soul_cast",
+      "type": "image",
+      "name": "Soul Cast",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "soul_cinematic",
+      "type": "image",
+      "name": "Soul Cinema",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "soul_location",
+      "type": "image",
+      "name": "Soul Location",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "soul_v2",
+      "type": "image",
+      "name": "Higgsfield Soul 2.0",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "topaz_image",
+      "type": "image",
+      "name": "Topaz",
+      "provider": ""
+    },
+    {
+      "id": "topaz_image_generative",
+      "type": "image",
+      "name": "Topaz",
+      "provider": ""
+    },
+    {
+      "id": "z_image",
+      "type": "image",
+      "name": "Z Image",
+      "provider": "Tongyi-MAI"
+    },
+    {
+      "id": "bytedance_video_upscale",
+      "type": "video",
+      "name": "Bytedance Video Upscale",
+      "provider": ""
+    },
+    {
+      "id": "cinematic_studio_3_0",
+      "type": "video",
+      "name": "Cinema Studio Video 3.0",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "cinematic_studio_video",
+      "type": "video",
+      "name": "Cinema Studio Video",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "cinematic_studio_video_v2",
+      "type": "video",
+      "name": "Cinema Studio Video",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "clipify",
+      "type": "video",
+      "name": "Personal Clipper",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "flux_3_video",
+      "type": "video",
+      "name": "FLUX 3 Video",
+      "provider": "Black Forest Labs"
+    },
+    {
+      "id": "gemini_omni",
+      "type": "video",
+      "name": "Gemini Omni Flash",
+      "provider": "Google"
+    },
+    {
+      "id": "grok_video",
+      "type": "video",
+      "name": "Grok Video",
+      "provider": "xAI"
+    },
+    {
+      "id": "grok_video_v15",
+      "type": "video",
+      "name": "Grok Video 1.5",
+      "provider": "xAI"
+    },
+    {
+      "id": "happy_horse_video",
+      "type": "video",
+      "name": "Happy Horse Video",
+      "provider": "Happy Horse"
+    },
+    {
+      "id": "higgsfield_preset",
+      "type": "video",
+      "name": "Higgsfield Preset",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "kling2_6",
+      "type": "video",
+      "name": "Kling 2.6 Video",
+      "provider": "Kling"
+    },
+    {
+      "id": "kling3_0",
+      "type": "video",
+      "name": "Kling v3.0",
+      "provider": "Kling"
+    },
+    {
+      "id": "kling3_0_turbo",
+      "type": "video",
+      "name": "Kling 3.0 Turbo",
+      "provider": "Kling"
+    },
+    {
+      "id": "llm_text",
+      "type": "video",
+      "name": "LLM Generation",
+      "provider": ""
+    },
+    {
+      "id": "marketing_studio_video",
+      "type": "video",
+      "name": "Marketing Studio",
+      "provider": "Higgsfield"
+    },
+    {
+      "id": "minimax_h3",
+      "type": "video",
+      "name": "MiniMax H3",
+      "provider": "MiniMax"
+    },
+    {
+      "id": "minimax_hailuo",
+      "type": "video",
+      "name": "Minimax Hailuo",
+      "provider": "Hailuo"
+    },
+    {
+      "id": "sam_3_video",
+      "type": "video",
+      "name": "Remove Background",
+      "provider": ""
+    },
+    {
+      "id": "seedance1_5",
+      "type": "video",
+      "name": "Seedance 1.5 Pro",
+      "provider": "Bytedance"
+    },
+    {
+      "id": "seedance_2_0",
+      "type": "video",
+      "name": "Seedance 2.0",
+      "provider": "Bytedance"
+    },
+    {
+      "id": "seedance_2_0_mini",
+      "type": "video",
+      "name": "Seedance 2.0 Mini",
+      "provider": "Bytedance"
+    },
+    {
+      "id": "seedance_2_5",
+      "type": "video",
+      "name": "Seedance 2.5",
+      "provider": "Bytedance"
+    },
+    {
+      "id": "sync_so",
+      "type": "video",
+      "name": "Sync Lipsync 3",
+      "provider": ""
+    },
+    {
+      "id": "topaz_video",
+      "type": "video",
+      "name": "Topaz",
+      "provider": ""
+    },
+    {
+      "id": "veo3",
+      "type": "video",
+      "name": "Google Veo 3",
+      "provider": "Google"
+    },
+    {
+      "id": "veo3_1",
+      "type": "video",
+      "name": "Google Veo 3.1",
+      "provider": "Google"
+    },
+    {
+      "id": "veo3_1_lite",
+      "type": "video",
+      "name": "Google Veo 3.1 Lite",
+      "provider": "Google"
+    },
+    {
+      "id": "video_background_remover",
+      "type": "video",
+      "name": "Video Background Remover",
+      "provider": ""
+    },
+    {
+      "id": "video_deflicker",
+      "type": "video",
+      "name": "Video Deflicker",
+      "provider": ""
+    },
+    {
+      "id": "video_upscale",
+      "type": "video",
+      "name": "Video Upscale",
+      "provider": ""
+    },
+    {
+      "id": "wan2_6",
+      "type": "video",
+      "name": "Wan 2.6 Video",
+      "provider": "Wan"
+    },
+    {
+      "id": "wan2_7",
+      "type": "video",
+      "name": "Wan 2.7",
+      "provider": "Wan"
+    }
+  ]
+}
