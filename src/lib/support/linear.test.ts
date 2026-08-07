@@ -42,6 +42,7 @@ const LABELS = {
     issueLabels: {
       nodes: [
         { id: "label-feedback", name: "user-feedback", team: null },
+        { id: "label-app", name: "Arc Studio", team: { id: "team-1" } },
         { id: "label-bug", name: "Bug", team: { id: "team-1" } },
         // Same name on someone else's team — must not win.
         { id: "label-bug-other-team", name: "Bug", team: { id: "team-9" } },
@@ -112,10 +113,22 @@ describe("fileSupportRequestInLinear", () => {
     expect(input.priority).toBe(1);
   });
 
-  it("tags the ticket with the feedback marker and the category label", async () => {
+  it("tags the ticket with the feedback marker, the app label and the category label", async () => {
     const fetchImpl = jsonFetch(LABELS, CREATED);
     await fileSupportRequestInLinear(ctx(), { env: ENV, fetchImpl: fetchImpl as unknown as typeof fetch });
-    expect(createInput(fetchImpl).labelIds).toEqual(["label-feedback", "label-bug"]);
+    expect(createInput(fetchImpl).labelIds).toEqual(["label-feedback", "label-app", "label-bug"]);
+  });
+
+  // The app label is what the per-app Slack feed filters on, and it must not
+  // depend on LINEAR_PROJECT_ID being set — an unset env var is the failure it
+  // exists to replace.
+  it("says which app the report came from even with no project configured", async () => {
+    const fetchImpl = jsonFetch(LABELS, CREATED);
+    await fileSupportRequestInLinear(ctx(), {
+      env: { LINEAR_API_KEY: "lin_api_test", LINEAR_TEAM_ID: "team-1" },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(createInput(fetchImpl).labelIds).toContain("label-app");
   });
 
   it("prefers our own team's label over a same-named one elsewhere", async () => {
@@ -202,6 +215,6 @@ describe("fileSupportRequestInLinear", () => {
     await fileSupportRequestInLinear(ctx(), { env: ENV, fetchImpl: empty as unknown as typeof fetch });
     const retry = jsonFetch(LABELS, CREATED);
     await fileSupportRequestInLinear(ctx(), { env: ENV, fetchImpl: retry as unknown as typeof fetch });
-    expect(createInput(retry).labelIds).toEqual(["label-feedback", "label-bug"]);
+    expect(createInput(retry).labelIds).toEqual(["label-feedback", "label-app", "label-bug"]);
   });
 });
