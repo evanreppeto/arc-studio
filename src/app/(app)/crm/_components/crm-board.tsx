@@ -1364,7 +1364,17 @@ export function CrmBoard({
               {cols.map((c) => (
                 <th key={c.k} className={cellClass(c.k)}>
                   {c.k === "sel" ? (
-                    <span
+                    /* A <button>, not a <span>. It already carried role,
+                       aria-checked and a name — so a screen reader announced
+                       "Select all, checkbox, unchecked" — while sitting at
+                       tabIndex -1, where nothing could focus or toggle it. The
+                       ARIA promised a control that was not operable, which is
+                       worse than an unlabelled div: the div at least does not
+                       claim to be actionable. Row selection was mouse-only.
+                       Invisible to keyboard-reachable.test.ts, which skips any
+                       element carrying a `role=`. */
+                    <button
+                      type="button"
                       className={`ck${allVisibleSelected ? " on" : ""}`}
                       role="checkbox"
                       aria-checked={allVisibleSelected}
@@ -1372,7 +1382,7 @@ export function CrmBoard({
                       onClick={toggleAll}
                     >
                       {CHECK}
-                    </span>
+                    </button>
                   ) : (
                     c.k === "primary" ? active.nameHeader : c.t ?? ""
                   )}
@@ -1434,7 +1444,8 @@ export function CrmBoard({
                   {cols.map((c) => (
                     <td key={c.k} className={cellClass(c.k)}>
                       {c.k === "sel" ? (
-                        <span
+                        <button
+                          type="button"
                           className={`ck${selected.has(r.id) ? " on" : ""}`}
                           role="checkbox"
                           aria-checked={selected.has(r.id)}
@@ -1442,7 +1453,7 @@ export function CrmBoard({
                           onClick={(e) => { e.stopPropagation(); toggleRow(r.id); }}
                         >
                           {CHECK}
-                        </span>
+                        </button>
                       ) : (
                         cellContent(c.k, r)
                       )}

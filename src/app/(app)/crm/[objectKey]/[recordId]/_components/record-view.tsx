@@ -564,15 +564,20 @@ export function RecordView({
                   ) : (
                     tasks.map((t) => (
                       <div className={`trow${t.status === "completed" ? " done" : ""}`} key={t.id}>
-                        <span
+                        {/* A <button>. It carried role="button" and an
+                            aria-label but no tabIndex, so it announced itself as
+                            a control while nothing could focus or press it —
+                            completing a follow-up task was mouse-only. */}
+                        <button
+                          type="button"
                           className={`tcheck${t.status === "completed" ? " done" : ""}`}
-                          role="button"
+                          aria-pressed={t.status === "completed"}
                           title={t.status === "completed" ? "Reopen task" : "Mark complete"}
                           aria-label={t.status === "completed" ? "Reopen task" : "Mark complete"}
                           onClick={() => (t.status === "completed" ? reopen(t) : complete(t))}
                         >
                           {svg(CHECK_IC)}
-                        </span>
+                        </button>
                         <div style={{ flex: 1 }}>
                           <div className="tx">{t.title}</div>
                           <div className="tm">

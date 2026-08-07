@@ -203,6 +203,45 @@ describe("controls are reachable from a keyboard", () => {
    * It was fixed for the other check and left here, which is how a fix scoped to
    * where a bug was noticed leaves the same bug standing one function away.
    */
+  /**
+   * An element that CLAIMS an interactive role must be focusable.
+   *
+   * `unreachableCount` above skips anything carrying a `role=`, on the
+   * assumption that a role means someone thought about it. A runtime hit-test of
+   * the live app (2026-08-07) found that assumption is exactly backwards. The
+   * CRM grid's row checkboxes were `<span role="checkbox" aria-checked
+   * aria-label="Select …">` at tabIndex -1: a screen reader announced "Select
+   * Daniel Harper, checkbox, unchecked" and nothing could focus or toggle it.
+   * Selecting rows — and Select all — was mouse-only, on eight controls per
+   * page. The record view's task checkbox was the same shape, so completing a
+   * follow-up task was mouse-only too.
+   *
+   * This is worse than the bare `<div onClick>` the ratchet counts. A div at
+   * least does not advertise itself; these promise a control to precisely the
+   * users who cannot operate them, and the promise is what hid them — from this
+   * file's own check, and from any audit that greps for missing ARIA.
+   *
+   * Clean at zero, so no baseline: every one found was fixed in the same pass.
+   */
+  it("makes every element that claims an interactive role focusable", () => {
+    const INTERACTIVE = ["button", "checkbox", "switch", "menuitem", "menuitemcheckbox", "tab", "radio", "option", "slider"];
+    const offenders: string[] = [];
+    for (const file of tsxFiles(APP_DIR)) {
+      // Comments stripped: they describe the shapes being banned, and an earlier
+      // run of this scan flagged its own prose explaining what it replaced.
+      const src = readFileSync(file, "utf8").replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const m of src.matchAll(/<(span|div|li|td|tr|article|section|a)\b/g)) {
+        const attrs = openingTagAttrs(src, m.index + m[0].length);
+        const role = attrs.match(/role="([a-z]+)"/)?.[1];
+        if (!role || !INTERACTIVE.includes(role)) continue;
+        if (/tabIndex=/.test(attrs)) continue;
+        if (m[1] === "a" && /href=/.test(attrs)) continue; // a real link is focusable
+        offenders.push(`${file.replace(APP_DIR, "")}:${src.slice(0, m.index).split("\n").length} <${m[1]} role="${role}">`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("labels every icon-only button", () => {
     const offenders: string[] = [];
     for (const file of tsxFiles(APP_DIR)) {
