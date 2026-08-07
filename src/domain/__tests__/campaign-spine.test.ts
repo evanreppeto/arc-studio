@@ -120,3 +120,35 @@ describe("deriveCampaignSpine", () => {
     expect(detailOf(steps, "review")).toBe("0 of 2 decided");
   });
 });
+
+describe("a thin brief says so", () => {
+  /**
+   * "Set" on a campaign carrying one line of theme is the claim that hid a
+   * dropped-field bug: every campaign Arc created from a chat had a theme and
+   * nothing else, because the route read an objective off the request and
+   * never forwarded it.
+   */
+  it("distinguishes a real brief from a theme", () => {
+    const full = deriveCampaignSpine(input({ hasBrief: true }));
+    expect(full.find((s) => s.key === "brief")!.detail).toBe("Set");
+
+    const thin = deriveCampaignSpine(input({ hasBrief: true, briefIsThin: true }));
+    expect(thin.find((s) => s.key === "brief")!.detail).toBe("Theme only");
+  });
+
+  /**
+   * Reported, not treated as missing. Marking it not-done would make Brief the
+   * current step on most campaigns and push Review out of focus — worse than a
+   * thin brief.
+   */
+  it("does not steal focus from Review", () => {
+    const steps = deriveCampaignSpine(input({ hasBrief: true, briefIsThin: true }));
+    expect(steps.find((s) => s.key === "brief")!.state).toBe("done");
+    expect(steps.find((s) => s.key === "review")!.state).toBe("current");
+  });
+
+  it("still says nothing is set when nothing is", () => {
+    const steps = deriveCampaignSpine(input({ hasBrief: false, briefIsThin: true }));
+    expect(steps.find((s) => s.key === "brief")!.detail).toBe("Not set yet");
+  });
+});

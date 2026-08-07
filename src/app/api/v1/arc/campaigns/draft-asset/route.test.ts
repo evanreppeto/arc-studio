@@ -202,6 +202,60 @@ describe("POST /api/v1/arc/campaigns/draft-asset", () => {
     expect(resolveMock).toHaveBeenCalledWith(expect.objectContaining({ campaignTheme: "Spring onboarding" }));
   });
 
+  /**
+   * The opportunity branch has always forwarded the brief. This one did not, so
+   * an objective Arc had already reasoned about was read off the request and
+   * dropped — measured on prod, every campaign created from a chat carried a
+   * theme and a null objective and audience, including the largest live one.
+   */
+  it("forwards Arc's brief when creating a campaign from chat", async () => {
+    configure();
+    const res = await POST(
+      req("Bearer secret", {
+        asset_type: "email",
+        title: "x",
+        name: "N",
+        persona: "persona_landlord",
+        campaign_theme: "Spring onboarding",
+        objective: "Re-engage lapsed multi-unit owners before storm season.",
+        audience_summary: "Landlords with no contact in 90 days.",
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(resolveMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objective: "Re-engage lapsed multi-unit owners before storm season.",
+        audienceSummary: "Landlords with no contact in 90 days.",
+      }),
+    );
+  });
+
+  /**
+   * A package builds over several calls, and every call after the first carries
+   * a campaign_id — so a brief arriving on call two reaches a campaign that
+   * already exists, which the create path cannot touch.
+   */
+  it("records the brief on a campaign it is only attaching to", async () => {
+    configure();
+    const res = await POST(
+      req("Bearer secret", {
+        campaign_id: "camp_existing",
+        asset_type: "email",
+        title: "Reminder",
+        objective: "Book winter inspections.",
+        audience_summary: "Owners due for a check.",
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(summaryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        campaignId: "camp_existing",
+        objective: "Book winter inspections.",
+        audienceSummary: "Owners due for a check.",
+      }),
+    );
+  });
+
   it("attaches to an existing campaign without creating a shell", async () => {
     configure();
     const res = await POST(req("Bearer secret", { campaign_id: "camp_existing", asset_type: "email", title: "Reminder" }));
