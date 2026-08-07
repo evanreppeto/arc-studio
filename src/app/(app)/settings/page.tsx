@@ -195,7 +195,7 @@ export default async function SettingsPage() {
   // occupied stage with no warning at all. Null renders as unavailable instead.
   const pipeline = ctx?.orgId && isSupabaseAdminConfigured()
     ? await Promise.all([
-        listAllStageSets(ctx.orgId),
+        listAllStageSets(ctx.orgId, { extraObjectKeys: customObjects.filter((o) => o.active).map((o) => o.key) }),
         Promise.all(
           PIPELINE_OBJECT_KEYS.map((k) =>
             countRecordsByStage(ctx.orgId, k).then((counts) => [k, counts] as const),
@@ -234,6 +234,9 @@ export default async function SettingsPage() {
   ) as Record<CustomFieldObjectKey, string>;
   const pipelineObjectLabels = Object.fromEntries(
     PIPELINE_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
-  ) as Record<PipelineObjectKey, string>;
+  ) as Record<string, string>;
+  // The tenant's own types need a heading too — without this the panel shows
+  // an empty title above each of their pipelines.
+  for (const o of customObjects.filter((c) => c.active)) pipelineObjectLabels[o.key] = o.labelPlural;
   return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} viewerName={viewerName} session={session} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} mediaConfig={mediaConfig} mediaEngines={mediaEngines} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} customObjects={customObjects} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
 }

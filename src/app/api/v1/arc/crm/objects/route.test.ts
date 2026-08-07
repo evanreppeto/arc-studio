@@ -64,8 +64,8 @@ beforeEach(() => {
     { id: "f1", objectKey: "equipment", key: "serial", label: "Serial number", fieldType: "text", required: true, options: [], helpText: null, sortOrder: 0, active: true },
   ] as never);
   vi.mocked(listCustomRecords).mockResolvedValue([
-    { id: "r1", title: "Extractor #3", subtitle: "Van 2", updatedAt: "2026-08-07T00:00:00Z", createdAt: "", archivedAt: null, origin: "operator" },
-    { id: "r2", title: "Air scrubber", subtitle: null, updatedAt: "2026-08-06T00:00:00Z", createdAt: "", archivedAt: null, origin: "operator" },
+    { id: "r1", title: "Extractor #3", subtitle: "Van 2", status: "in_service", updatedAt: "2026-08-07T00:00:00Z", createdAt: "", archivedAt: null, origin: "operator" },
+    { id: "r2", title: "Air scrubber", subtitle: null, status: null, updatedAt: "2026-08-06T00:00:00Z", createdAt: "", archivedAt: null, origin: "operator" },
   ]);
   vi.mocked(getCustomFieldsForRecords).mockResolvedValue(
     new Map([["r1", [{ definition: { key: "serial" }, value: "X1", display: "X1" }]]]) as never,
