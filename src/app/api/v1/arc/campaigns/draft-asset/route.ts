@@ -144,6 +144,12 @@ export async function POST(request: Request) {
           persona: str(body.persona),
           campaignTheme: str(body.campaign_theme),
           restorationFocus: str(body.restoration_focus),
+          // The opportunity branch above has always forwarded these. This one
+          // did not, so a brief Arc had already reasoned about was read off the
+          // request and dropped on the floor — which is why every chat-created
+          // campaign on prod has a theme and no objective or audience.
+          objective: str(body.objective),
+          audienceSummary: str(body.audience_summary),
           agentName: "Arc",
           tenant,
         }));
@@ -171,6 +177,14 @@ export async function POST(request: Request) {
     // must not turn a successful 201 into a 502.
     await recordCampaignPackageSummary({
       campaignId,
+      // Also passed on create above, where they go into the INSERT. Repeated
+      // here because a package builds over several calls, and every call after
+      // the first carries a campaign_id — so an objective that arrives on call
+      // two reaches a campaign that already exists, which the create path
+      // cannot touch. The writer takes the non-empty value and leaves the rest,
+      // so the duplicate on create is a no-op rather than a conflict.
+      objective: body.objective,
+      audienceSummary: body.audience_summary,
       handoffNote: body.handoff_note,
       // The wire contract is snake_case like every other field here; the stored
       // shape parseConsideredAudiences reads is camelCase. Mapped at the
