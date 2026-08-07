@@ -13,6 +13,7 @@ import {
 
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
+import { resolveOrgObjectKey } from "@/lib/custom-objects/definitions";
 
 import { allDemoFieldDefinitions, demoFieldDefinitions } from "./demo";
 
@@ -60,7 +61,8 @@ function rowToDefinition(row: Record<string, unknown>): CustomFieldDefinition {
  */
 export async function listFieldDefinitions(
   orgId: string,
-  objectKey: CustomFieldObjectKey,
+  // Per-org: a tenant-defined record type's key is not one of the six.
+  objectKey: string,
   opts: { includeArchived?: boolean; client?: SupabaseClient } = {},
 ): Promise<CustomFieldDefinition[]> {
   if (serveDemoFields(opts.client)) {
@@ -121,10 +123,25 @@ export async function createFieldDefinition(
   input: FieldDefinitionInput,
   opts: { client?: SupabaseClient } = {},
 ): Promise<DefinitionResult> {
-  const parsed = parseFieldDefinition(input);
+  const client = opts.client ?? getSupabaseAdminClient();
+
+  // Resolved HERE rather than in each caller: this is the single choke point
+  // for authoring a field, so a future caller can't forget and silently refuse
+  // every tenant-defined type the way the settings action used to.
+  const objectKey = await resolveOrgObjectKey(orgId, input.objectKey, { client });
+  if (!objectKey) {
+    return {
+      ok: false,
+      error:
+        typeof input.objectKey === "string" && input.objectKey
+          ? `"${input.objectKey}" is not a record type in this workspace.`
+          : "Pick which record type this field belongs to.",
+    };
+  }
+
+  const parsed = parseFieldDefinition({ ...input, objectKey }, [objectKey]);
   if (!parsed.ok) return parsed;
 
-  const client = opts.client ?? getSupabaseAdminClient();
   const d = parsed.definition;
 
   const { data: existing, error: lookupError } = await client
@@ -236,6 +253,9 @@ export async function updateFieldDefinition(
   // Re-validate the whole definition rather than the diff, so a change that is
   // individually fine but jointly invalid (switching to `select` while leaving
   // the old empty options) is still caught.
+  // The stored key is already proven valid — it is what the row was created
+  // with. Re-deriving org validity here would refuse edits to a field whose
+  // record type was archived, stranding it uneditable.
   const parsed = parseFieldDefinition({
     objectKey: existing.objectKey,
     key: existing.key,
@@ -245,7 +265,7 @@ export async function updateFieldDefinition(
     options: input.options ?? existing.options,
     helpText: input.helpText === undefined ? existing.helpText : input.helpText,
     sortOrder: input.sortOrder ?? existing.sortOrder,
-  });
+  }, [existing.objectKey]);
   if (!parsed.ok) return parsed;
 
   const d = parsed.definition;

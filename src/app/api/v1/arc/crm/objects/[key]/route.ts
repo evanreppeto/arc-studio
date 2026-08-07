@@ -131,7 +131,14 @@ export async function POST(request: Request, context: { params: Promise<{ key: s
   const subtitle = typeof payload.subtitle === "string" ? payload.subtitle.trim() : null;
 
   try {
-    const result = await createCustomRecord(scope.orgId, scope.object, { title, subtitle });
+    // Stamped as the agent's. This is Arc writing, and the board attributes the
+    // owner from this column — without it Arc's records read as the operator's.
+    const result = await createCustomRecord(
+      scope.orgId,
+      scope.object,
+      { title, subtitle },
+      { origin: "agent" },
+    );
     if (!result.ok) return fail("failed", result.error, 502);
     // `persisted: false` is the honest offline signal, same as the other write
     // routes: the caller is told nothing was saved rather than being handed a

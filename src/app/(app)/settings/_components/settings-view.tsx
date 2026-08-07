@@ -996,6 +996,12 @@ export function SettingsView({ brandName, workspaceName = "", email, viewerName 
           definitions={customFields}
           objectLabels={crmObjectLabels}
           focusObject={focusObject}
+          // Active types only: an archived one has no tab and no way to add a
+          // field, so listing it here would offer an editor for something the
+          // Types tab next door says is gone.
+          customObjectLabels={Object.fromEntries(
+            customObjects.filter((o) => o.active).map((o) => [o.key, o.labelPlural]),
+          )}
         />
       </>
     ),

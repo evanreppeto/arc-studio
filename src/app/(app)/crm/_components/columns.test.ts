@@ -147,7 +147,9 @@ describe("the control is wired, not decorative", () => {
     // object's schema from this object's table.
     const modal = SOURCE.match(/<ManageFieldsModal[\s\S]*?\/>/);
     expect(modal, "no <ManageFieldsModal> rendered").toBeTruthy();
-    expect(modal![0]).toMatch(/objectKey=\{active\.key as CustomFieldObjectKey\}/);
+    // Plain `active.key`, no cast: a tenant-defined type's key is a per-org
+    // string, and narrowing it to the six is what the `as` was papering over.
+    expect(modal![0]).toMatch(/objectKey=\{active\.key\}/);
     expect(modal![0]).toMatch(/definitions=\{customFieldDefsByKey\[active\.key\] \?\? \[\]\}/);
   });
 });
