@@ -1081,6 +1081,37 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   // renders from it.
   const pendingMark = useRef<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  /**
+   * "Shown here, not saved" — the backend-less preview, said out loud.
+   *
+   * Separate from `err` because it is not an error: `decideCampaignAsset`
+   * returns `{ ok: true, persisted: false }` by design, and its own comment
+   * calls that "the honest offline/demo signal so the UI can reflect the
+   * decision without saving". The decide path was the one caller that ignored
+   * it — `applyFix` twenty lines below already says so, and Settings reads
+   * `persisted` in a dozen places.
+   *
+   * The visible result was a screen that contradicted itself: the card flipped
+   * to Approved while the header held at "0 of 3 approved" and the readiness
+   * panel still said 3 assets needed approving. Both halves were right — the
+   * spine deliberately reads server state so a failed approve cannot unlock a
+   * real outbound control — but nothing on the screen reconciled them, so the
+   * app just looked broken.
+   */
+  const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * Both channels cleared together, at the start of every action.
+   *
+   * Paired rather than left as two calls, because there are fourteen places that
+   * begin an action and each would have to remember the second one. A missed
+   * site leaves "approved, but not saved" sitting above the result of whatever
+   * the operator did next — stale reassurance about a different deliverable,
+   * which is worse than no message.
+   */
+  const resetFeedback = useCallback(() => {
+    setErr(null);
+    setNotice(null);
+  }, []);
   const [shareOpen, setShareOpen] = useState(false);
   const [confirmLaunch, setConfirmLaunch] = useState(false);
   const [launchErr, setLaunchErr] = useState<string | null>(null);
@@ -1203,7 +1234,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
    */
   function applyFix(assetId: string, finding: CampaignAssetFinding, value: string) {
     if (pending) return;
-    setErr(null);
+    resetFeedback();
     startTransition(async () => {
       const res = await applyFindingFixAction({ campaignId: campaign.id, findingId: finding.id, value });
       if (!res.ok) {
@@ -1275,7 +1306,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     acknowledgement?: string,
   ) {
     if (pending) return;
-    setErr(null);
+    resetFeedback();
     const prev = asset.status;
     setAssetStatus(asset.id, decision);
     // Decided means done with, so it folds away and the next one is in reach.
@@ -1301,7 +1332,18 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       // your home? We respond in 60 minutes."), so appending the verb produced
       // "…60 minutes. approved." — and made the listener wait through the title
       // to learn what happened.
-      announce(`${decision === "approved" ? "Approved" : "Declined"}: ${asset.title}`);
+      const outcome = decision === "approved" ? "Approved" : "Declined";
+      if (!res.persisted) {
+        // Says why the counts beside it did not move. Without the second
+        // sentence this reads as a bug report rather than an explanation — the
+        // header disagreeing with the card is the thing the operator can see.
+        setNotice(
+          `${outcome} here, but not saved — this workspace has no database connected, so the counts and the launch step stay where they are.`,
+        );
+        announce(`${outcome}: ${asset.title}. Not saved — no workspace connected.`);
+        return;
+      }
+      announce(`${outcome}: ${asset.title}`);
     });
   }
 
@@ -1314,7 +1356,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
    */
   function approveAllClean() {
     if (pending || cleanAssets.length === 0) return;
-    setErr(null);
+    resetFeedback();
     setConfirmBulk(false);
     const targets = cleanAssets.map((a) => ({ id: a.id, status: a.status }));
     targets.forEach((t) => setAssetStatus(t.id, "approved"));
@@ -1322,7 +1364,17 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
       const results = await Promise.all(targets.map((t) => decideCampaignAsset(campaign.id, t.id, "approved")));
       const failed = targets.filter((_, i) => !results[i].ok);
       if (failed.length === 0) {
-        announce(`${countOf(targets.length, ASSET_NOUN)} approved.`);
+        const count = countOf(targets.length, ASSET_NOUN);
+        // Same signal as the single decision above: a bulk approve that saved
+        // nothing must not read like one that did.
+        if (results.some((r) => r.ok && !r.persisted)) {
+          setNotice(
+            `${count} approved here, but not saved — this workspace has no database connected, so the counts and the launch step stay where they are.`,
+          );
+          announce(`${count} approved. Not saved — no workspace connected.`);
+          return;
+        }
+        announce(`${count} approved.`);
         return;
       }
       // Put back only what actually failed — a partial success must not look
@@ -1346,7 +1398,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   function requestRevisionFor(asset: CampaignWorkspaceAsset, rawInstruction: string) {
     const instruction = rawInstruction.trim();
     if (!instruction || pending) return;
-    setErr(null);
+    resetFeedback();
     const prev = asset.status;
     setAssetStatus(asset.id, "revision_requested");
     setReviseFor(null);
@@ -1374,7 +1426,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   /** Re-wake a revision Arc never started. Reuses the existing task — never a second one. */
   function retryRevision(assetId: string, agentTaskId: string) {
     if (pending) return;
-    setErr(null);
+    resetFeedback();
     startTransition(async () => {
       const res = await retryCampaignRevision(campaign.id, agentTaskId);
       if (!res.ok) {
@@ -1396,7 +1448,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
   }
 
   function openEdit(asset: CampaignWorkspaceAsset) {
-    setErr(null);
+    resetFeedback();
     setReviseFor(null);
     setEditFor(asset.id);
     setEditTitle(asset.title);
@@ -1407,7 +1459,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     const body = editBody.trim();
     const title = editTitle.trim();
     if (pending || (!body && !title)) return;
-    setErr(null);
+    resetFeedback();
     const prev = { title: asset.title, preview: asset.preview };
     // Optimistically reflect the edit; the read path coalesces edited_body so a
     // refresh keeps it. Editing never changes the decision — it stays actionable.
@@ -1424,7 +1476,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
 
   function reopen(asset: CampaignWorkspaceAsset) {
     if (pending) return;
-    setErr(null);
+    resetFeedback();
     const prev = asset.status;
     // Optimistically flip back to review so the decision controls reappear; the
     // action re-locks dispatch server-side. Revert on failure.
@@ -1440,7 +1492,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
 
   function attachMedia(asset: CampaignWorkspaceAsset, item: AttachableMediaItem) {
     if (pending) return;
-    setErr(null);
+    resetFeedback();
     setPickerFor(null);
     // Optimistic tile (origin "attached" renders like real, non-AI media). The
     // read path reflects the real attachment on the next refresh.
@@ -1480,7 +1532,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
 
   function doLaunch() {
     if (pending) return;
-    setErr(null);
+    resetFeedback();
     setLaunchErr(null);
     startTransition(async () => {
       const res = await launchCampaignAction(campaign.id);
@@ -1573,7 +1625,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
         <CampaignSpine
           steps={spine}
           onSelect={(key) => {
-            setErr(null);
+            resetFeedback();
             if (key === "brief") {
               // The brief has always existed — "The brief" is the first section
               // of Overview — but nothing pointed at it, so it went unread by
@@ -1617,6 +1669,13 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
             <p className="cerr">{err}</p>
           )}
 
+          {/* `role="status"` and not `alert`: nothing has gone wrong, and an
+              assertive announcement would interrupt for news the operator
+              already caused. */}
+          {notice && (
+            <p className="cnotice" role="status">{notice}</p>
+          )}
+
           {/* One decision for the deliverables that were reviewed and raised
               nothing. Offered from two up — at one, the card's own button is
               already the shorter path. */}
@@ -1642,7 +1701,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
               <span>
                 <b>{countOf(queueAssets.length, ASSET_NOUN)}</b> need a decision.
               </span>
-              <button className="cbtn gold" onClick={() => { setErr(null); setQueueOpen(true); }} disabled={pending}>
+              <button className="cbtn gold" onClick={() => { resetFeedback(); setQueueOpen(true); }} disabled={pending}>
                 {svg('<path d="M4 6h16M4 12h16M4 18h9"/>')}
                 Review one at a time
               </button>
@@ -1679,7 +1738,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                   </span>
                   <button
                     className="cbtn ghost"
-                    onClick={() => { setErr(null); setConfirmBulk(true); }}
+                    onClick={() => { resetFeedback(); setConfirmBulk(true); }}
                     disabled={pending}
                   >
                     {svg('<path d="M5 12l4 4L19 6"/>')}
@@ -2148,7 +2207,7 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
                 ) : (
                   <button
                     className="cbtn gold"
-                    onClick={() => { setErr(null); setLaunchErr(null); setConfirmLaunch(true); }}
+                    onClick={() => { resetFeedback(); setLaunchErr(null); setConfirmLaunch(true); }}
                     disabled={!launchState.ready || pending}
                     title={launchState.ready ? undefined : "Approve every gating deliverable first"}
                   >
