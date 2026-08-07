@@ -55,6 +55,51 @@ describe("export writes what the table shows", () => {
     expect(BOARD).toContain('if (col.k.startsWith("cf:")) return r.customFields?.[col.k.slice(3)] ?? "";');
   });
 
+  /**
+   * EVERY custom field, not just the ones that fit as columns.
+   *
+   * The table shows at most MAX_CUSTOM_COLUMNS (2) because its columns are
+   * fixed-width — a display constraint a CSV does not have. Exporting `allCols`
+   * alone silently dropped the rest: on the six that loses a field, and on a
+   * tenant-defined type it loses the RECORD, since those carry a name and their
+   * custom fields and nothing else. A 12-field object exported as name + two,
+   * with nothing on screen to say so.
+   */
+  it("exports custom fields the table had no room to show", () => {
+    const rows: CrmRowVM[] = [
+      {
+        id: "r1", name: "Extractor #3", detail: "Van 2", initials: "E", isCompany: false,
+        statusLabel: "", statusTone: "", persona: "", dot: "", score: null, scoreColor: "",
+        owner: "You", updatedRel: "now", updatedTime: "", href: "/crm/equipment/r1",
+        company: "", value: "", tier: "", routing: "", tasks: "",
+        customFields: { serial: "X-1183", condition: "In service", hours: "412" },
+      },
+    ];
+    // What the board builds for export: the two columned fields plus the third
+    // the table had no room for.
+    const cols: Col[] = [
+      { k: "sel" }, { k: "primary", t: "Name" }, { k: "last", t: "Updated" },
+      { k: "cf:serial", t: "Serial" }, { k: "cf:condition", t: "Condition" }, { k: "act" },
+      { k: "cf:hours", t: "Hours" },
+    ];
+    const csv = rowsToCsv(rows, cols, (c) => c.t ?? "");
+    const [header, row] = csv.split("\n");
+
+    expect(header).toContain("Hours");
+    expect(row).toContain("412");
+    // And the two that did fit are still there — this widens the file, it does
+    // not replace what was in it.
+    expect(row).toContain("X-1183");
+    expect(row).toContain("In service");
+  });
+
+  it("builds that wider column set from the object's full field list", () => {
+    // The rows already carry every value; only the COLUMNS were capped, so the
+    // fix is at the column set and nowhere else.
+    expect(BOARD).toContain("const columned = new Set(allCols.map((c) => c.k));");
+    expect(BOARD).toContain("customFieldDefsByKey[active.key] ?? []");
+  });
+
   it("carries the subtitle rendered under each name", () => {
     // The name cell shows a subtitle beneath the name. On the live workspace
     // that subtitle is the PHONE for all 243 contacts, every one of which has an
@@ -67,7 +112,17 @@ describe("export writes what the table shows", () => {
   it("exports every column, not only the visible ones", () => {
     // Column visibility is a per-object display preference in localStorage.
     // Letting invisible state silently shape a file is the worse failure.
-    expect(BOARD).toMatch(/rowsToCsv\(filteredAll, allCols,/);
+    //
+    // Asserted as the invariant rather than the exact call, which used to be
+    // pinned as `rowsToCsv(filteredAll, allCols,` and broke the moment the
+    // column set was widened to carry the uncolumned custom fields too — a
+    // change that strengthened the very property this guards.
+    const call = BOARD.match(/rowsToCsv\(filteredAll, (\w+),/);
+    expect(call, "export must call rowsToCsv over a named column set").toBeTruthy();
+    const columnSet = call![1];
+    expect(columnSet, "export must not be built from the VISIBLE columns").not.toBe("cols");
+    // Whatever it is built from starts with every column, hidden ones included.
+    expect(BOARD).toMatch(new RegExp(`const ${columnSet} = \\[\\.\\.\\.allCols`));
   });
 
   it("covers every value-bearing column the tables define", () => {
