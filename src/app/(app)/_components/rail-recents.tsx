@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { isSearchableArcQuery } from "@/domain";
 import type { ArcMessageSearchHit } from "@/lib/arc-chat/message-search";
 import type { ArcRecentConversationVM } from "@/lib/arc-chat/read-model";
-import { RAIL_FOLDER_ROWS, groupRailConversations } from "@/lib/arc-chat/rail-sections";
+import { RAIL_FOLDER_ROWS, groupRailConversations, resolveFinishedRuns } from "@/lib/arc-chat/rail-sections";
 
 import {
   archiveArcConversationAction,
@@ -52,6 +52,11 @@ type Props = {
 
 type HoverCard = { conversation: ArcRecentConversationVM; top: number; left: number };
 
+/** How long a finished run says so before the row settles back to its
+ *  timestamp. Long enough to catch on returning to the tab; short enough that
+ *  the rail is not still claiming "Done" about something you have since read. */
+const DONE_VISIBLE_MS = 10_000;
+
 export function RailRecents({ conversations, openConversationId, onNavigate }: Props) {
   // ONE card, owned here rather than per row. Per-row state let two sit on
   // screen at once the moment a row missed its mouseleave — and the card is
@@ -95,6 +100,51 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
   const [folderOpen, setFolderOpen] = useState<Record<string, boolean>>({});
   const [folderShowAll, setFolderShowAll] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
+
+  /**
+   * Runs that have just ENDED.
+   *
+   * A finished run used to announce itself by the spinner disappearing and a
+   * timestamp taking its place — a change you only notice if you happened to be
+   * looking at that row. The rail is on every screen precisely so work started
+   * in one chat stays visible from another, and "it finished" is the one moment
+   * in that story worth catching.
+   *
+   * Derived from the transition rather than stored on the row: the server has no
+   * "just finished" field and does not need one. Keyed off a sorted id string,
+   * NOT the array — `conversations` is a fresh array every render, so depending
+   * on it would re-run this effect forever and restart the timer each time.
+   */
+  const [justFinished, setJustFinished] = useState<Set<string>>(new Set());
+  const runningBefore = useRef<Set<string> | null>(null);
+  const runningKey = conversations.filter((c) => c.running).map((c) => c.id).sort().join(",");
+
+  useEffect(() => {
+    const now = new Set(runningKey ? runningKey.split(",") : []);
+    const previous = runningBefore.current;
+    runningBefore.current = now;
+
+    let ended: string[] = [];
+    setJustFinished((prev) => {
+      const result = resolveFinishedRuns(previous, now, prev);
+      ended = result.ended;
+      // Same-set → same reference, so an unchanged pass does not re-render.
+      return result.showingDone.size === prev.size
+        && [...result.showingDone].every((id) => prev.has(id))
+        ? prev
+        : result.showingDone;
+    });
+    if (ended.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      setJustFinished((prev) => {
+        const next = new Set(prev);
+        ended.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, DONE_VISIBLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [runningKey]);
 
   /**
    * Message hits for the current query.
@@ -199,6 +249,7 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
                     key={conversation.id}
                     conversation={conversation}
                     open={conversation.id === openConversationId}
+                    finished={justFinished.has(conversation.id)}
                     onNavigate={onNavigate}
                     onRemoved={remove}
                     onHover={showCard}
@@ -224,6 +275,7 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
           key={conversation.id}
           conversation={conversation}
           open={conversation.id === openConversationId}
+          finished={justFinished.has(conversation.id)}
           onNavigate={onNavigate}
           onRemoved={remove}
           onHover={showCard}
@@ -376,6 +428,7 @@ function WorkingSpinner() {
 function RecentRow({
   conversation,
   open,
+  finished,
   onNavigate,
   onRemoved,
   onHover,
@@ -383,6 +436,9 @@ function RecentRow({
 }: {
   conversation: ArcRecentConversationVM;
   open: boolean;
+  /** This chat's run ended moments ago — say so before falling back to the
+   *  timestamp. Never true at the same time as `conversation.running`. */
+  finished: boolean;
   onNavigate: () => void;
   onRemoved: (id: string) => void;
   onHover: (conversation: ArcRecentConversationVM, rect: DOMRect) => void;
@@ -478,14 +534,30 @@ function RecentRow({
         onFocus={() => { const rect = ref.current?.getBoundingClientRect(); if (rect) onHover(conversation, rect); }}
         onBlur={onUnhover}
       >
-        <span className="rail-recent-dot" aria-hidden="true" />
-        <span className="rail-recent-title">
-          {conversation.pinned ? <i className="rail-recent-pin" aria-label="Pinned" title="Pinned" /> : null}
-          {conversation.title}
-        </span>
+        {/* ONE leading mark, never two. A pinned row used to carry the row dot
+            AND a 4px gold pin square immediately after it — same colour, same
+            size, 5px apart — so the eye read two status lights and neither said
+            anything. The slot answers one question (what kind of row is this),
+            so the pin takes the dot's place rather than joining it. */}
+        {conversation.pinned ? (
+          <svg className="rail-recent-pin" viewBox="0 0 12 16" role="img" aria-label="Pinned">
+            <title>Pinned</title>
+            <path d="M2 1h8v13l-4-3.2L2 14z" />
+          </svg>
+        ) : (
+          <span className="rail-recent-dot" aria-hidden="true" />
+        )}
+        <span className="rail-recent-title">{conversation.title}</span>
         {conversation.running ? (
           <span className="rail-recent-working" role="status" aria-label="Arc is working on this chat">
             <WorkingSpinner />
+          </span>
+        ) : finished ? (
+          /* `role="status"` so the change is announced, not just drawn — this is
+             the moment a screen-reader user would otherwise miss entirely. */
+          <span className="rail-recent-done" role="status" aria-label="Arc finished working on this chat">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-6.5" /></svg>
+            <span>Done</span>
           </span>
         ) : (
           <time>{conversation.when}</time>
