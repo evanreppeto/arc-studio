@@ -90,6 +90,11 @@ function kindLabel(kind: string): string {
 function dirGlyph(direction: JourneyTouch["direction"]): string {
   return direction === "outbound" ? "↑" : direction === "inbound" ? "↓" : "•";
 }
+/** "leads", "leads and jobs", "leads, jobs and outcomes". */
+function listSources(sources: readonly string[]): string {
+  if (sources.length <= 1) return sources[0] ?? "";
+  return `${sources.slice(0, -1).join(", ")} and ${sources[sources.length - 1]}`;
+}
 function stageLabel(key: JourneyStageKey): string {
   return JOURNEY_STAGES.find((s) => s.key === key)?.label ?? key;
 }
@@ -206,7 +211,14 @@ export function JourneysView({
 
   const filtered = useMemo(() => {
     const list = model.status === "live" ? model.journeys : [];
-    return stageFilter === "all" ? list : list.filter((j) => j.currentStage === stageFilter);
+    if (stageFilter === "all") return list;
+    // Match the funnel's own rule — `FunnelStage.count` is "journeys that reached
+    // AT LEAST this stage", derived from currentStage the same way. Filtering on
+    // `currentStage === stageFilter` instead made each bar a button promising a
+    // number it could not produce: on the demo workspace "Reached 6" opened onto
+    // an empty list, because no journey's *current* stage is still Reached.
+    const floor = stageOrder(stageFilter);
+    return list.filter((j) => stageOrder(j.currentStage) >= floor);
   }, [model, stageFilter]);
 
   if (model.status !== "live") {
@@ -244,6 +256,11 @@ export function JourneysView({
   // as "all of them" (and so the stage filter isn't mistaken for the whole book).
   const loadedCount = model.journeys.length;
   const capped = kpis.total > loadedCount;
+  // A partial read is not a small read. Every number on this screen — the funnel,
+  // the KPI tiles, and each attribution lens — is computed over whatever came
+  // back, so if a source was cut short the operator has to be told before they
+  // act on a revenue figure.
+  const partial = model.partialSources ?? [];
 
   return (
     <div className="journeys">
@@ -254,6 +271,14 @@ export function JourneysView({
           <span>
             <b>Couldn&rsquo;t load journey data.</b> What&rsquo;s missing below is a failed query, not an absence of activity.
             <div style={{ marginTop: 6, opacity: 0.75, fontFamily: "var(--mono, monospace)", fontSize: "0.85em" }}>{loadError}</div>
+          </span>
+        </div>
+      )}
+      {partial.length > 0 && (
+        <div className="crm-error" role="status" style={{ marginBottom: 16 }}>
+          <span>
+            <b>This is a partial view.</b> There is more {listSources(partial)} in this workspace than one screen can total up, so the
+            figures below cover the most recent activity only — treat them as a floor, not a count.
           </span>
         </div>
       )}
@@ -324,7 +349,7 @@ export function JourneysView({
         </div>
         {stageFilter !== "all" && (
           <div className="jr-filternote">
-            Showing <b>{stageLabel(stageFilter)}</b> journeys ·{" "}
+            Showing journeys that reached <b>{stageLabel(stageFilter)}</b> — including those now further along ·{" "}
             <button type="button" className="jr-clear" onClick={() => setStageFilter("all")}>
               clear
             </button>
@@ -345,7 +370,14 @@ export function JourneysView({
           )}
           <div className="jr-list">
             {filtered.length === 0 ? (
-              <div className="jr-sub">No journeys in this stage.</div>
+              // Two different emptinesses. With no stage picked there is no stage
+              // to be empty of, and blaming a filter nobody set reads as though
+              // clearing something would bring rows back.
+              <div className="jr-sub">
+                {stageFilter === "all"
+                  ? "No journeys yet — one appears as soon as a customer has a recorded touch."
+                  : "No journeys have reached this stage."}
+              </div>
             ) : (
               filtered.map((j) => <JourneyRow key={j.identity.id} journey={j} />)
             )}
