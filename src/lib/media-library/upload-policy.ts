@@ -4,8 +4,18 @@
 
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB — covers photos, short clips, and brand docs.
 
+// SVG is deliberately absent, for the same reason it left BRANDING_IMAGE_ACCEPT
+// (#1096): library uploads land in the PUBLIC campaign-media bucket and are
+// served from the project's own origin with the content type they arrived as,
+// no `Content-Disposition` and no `X-Content-Type-Options: nosniff`. An SVG is
+// script-capable, so opening its permanent public url renders it as a document
+// and runs whatever is inside. Nothing displays library assets inline — but the
+// url is the exposure, not the render.
+//
+// This gate is the one that matters: it is what `/api/v1/media` and the
+// remote-URL fetcher call, not just the Library picker.
 const ALLOWED_TYPES = new Set([
-  "image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml",
+  "image/png", "image/jpeg", "image/webp", "image/gif",
   "video/mp4", "video/quicktime", "video/webm", "application/pdf",
   // Text-like brand documents.
   "text/plain", "text/markdown", "text/x-markdown", "text/csv",
