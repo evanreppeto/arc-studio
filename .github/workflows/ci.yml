@@ -205,6 +205,18 @@ jobs:
     # The deployed authenticated flow is covered separately by the E2E Guardrails
     # workflow (e2e/guardrails.spec.ts), which skips here (no E2E_BASE_URL).
     runs-on: ubuntu-latest
+    # Measured: this job runs 1m01s-1m42s end to end, browser install included.
+    # Eight minutes is ~5x the slowest real run — enough headroom for a slow
+    # dependency fetch, tight enough to fail FAST and say why.
+    #
+    # It exists because of the alternative. On 2026-08-06 the runner failed to
+    # provision for this job and it sat queued, then was reaped at 15m02s with
+    # NO persisted logs and NO steps recorded — three times, identically. That
+    # reads as "the branch broke e2e", and it cost a control PR carrying one
+    # comment line to prove it was environmental: its e2e cancelled at the same
+    # 15m02s. A timeout turns that hour into an eight-minute message that names
+    # itself.
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v5
 
