@@ -3,6 +3,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdminClient } from "../supabase/server";
 import { type AgentTaskTenantFields } from "../agent-tasks/scope";
 import { workspaceScopeFields } from "@/lib/tenancy/write-scope";
+import { buildDecisionNote, checkAssetApproval } from "@/domain";
 
 export type ApprovalDecision = "approved" | "declined" | "archived";
 
@@ -116,7 +117,80 @@ export type DecideAssetInput = {
   operator: string;
   notes?: string;
   tenant?: AgentTaskTenantFields;
+  /**
+   * How the reviewer addressed the asset's blocking findings. Required to
+   * APPROVE an asset that has any; ignored for every other decision.
+   */
+  acknowledgement?: string | null;
 };
+
+/** Raised when approval is refused for want of an acknowledgement. */
+export class ApprovalBlockedError extends Error {
+  readonly reason = "acknowledgement_required" as const;
+  readonly blockers: string[];
+  constructor(message: string, blockers: string[]) {
+    super(message);
+    this.name = "ApprovalBlockedError";
+    this.blockers = blockers;
+  }
+}
+
+/**
+ * The blocking concerns on an asset, in the reviewer's words.
+ *
+ * Two sources, because the review surface counts both (see review-summary.ts):
+ * `guardrail_findings` rows at severity `blocker` that are still OPEN, and any
+ * phrase the Brand Kit bans, which the summary treats as a hard block in exactly
+ * the same sense.
+ *
+ * Read at DECISION time rather than trusted from the client. The count the card
+ * renders came from a page load that may be minutes old, and it arrives from a
+ * browser — neither is a basis for letting something through the outbound gate.
+ */
+async function loadBlockingConcerns(
+  assetId: string,
+  client: SupabaseClient,
+  tenant?: AgentTaskTenantFields,
+): Promise<string[]> {
+  const [findingsResult, assetResult] = await Promise.all([
+    applyOrgScope(
+      client
+        .from("guardrail_findings")
+        .select("severity,status,finding_message,matched_text")
+        .eq("campaign_asset_id", assetId),
+      tenant,
+    ),
+    applyOrgScope(client.from("campaign_assets").select("audit_payload").eq("id", assetId), tenant).maybeSingle<{
+      audit_payload: unknown;
+    }>(),
+  ]);
+  assertOk("guardrail_findings lookup", findingsResult.error);
+  assertOk("campaign_assets guardrail lookup", assetResult.error);
+
+  const rows = (findingsResult.data ?? []) as Array<{
+    severity: string | null;
+    status: string | null;
+    finding_message: string | null;
+    matched_text: string | null;
+  }>;
+  const blockers = rows
+    .filter((r) => (r.severity ?? "").toLowerCase() === "blocker" && (r.status ?? "").toLowerCase() === "open")
+    .map((r) => (r.finding_message ?? r.matched_text ?? "").trim())
+    .filter(Boolean);
+
+  const payload = assetResult.data?.audit_payload;
+  const guardrail = asRecord(payload)?.guardrail;
+  const phrases = asRecord(guardrail)?.blocked_phrases;
+  const blockedPhrases = Array.isArray(phrases)
+    ? phrases.map((p) => (typeof p === "string" ? p.trim() : "")).filter(Boolean)
+    : [];
+
+  return [...blockers, ...blockedPhrases.map((p) => `Banned phrase: ${p}`)];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
 
 /**
  * Decide a deliverable by asset id — the unit operators actually act on. Every
@@ -129,7 +203,46 @@ export async function decideAsset(
   input: DecideAssetInput,
   client: SupabaseClient = getSupabaseAdminClient(),
 ) {
-  const { assetId, campaignId, decision, operator, notes, tenant } = input;
+  const { assetId, campaignId, decision, operator, notes, tenant, acknowledgement } = input;
+
+  /**
+   * The gate the review surface had been asserting and nobody enforced.
+   *
+   * `review-summary.ts` calls these `blockers`, documents them as "Findings that
+   * must be fixed before this can go out", and renders "N things to fix before
+   * this can go out" in red. Nothing consulted them: not this function, not
+   * `launchCampaign`, not the send executor. A deliverable with open blockers
+   * approved in one click and went out — while a flagged IMAGE could not be
+   * approved without saying how the flag was addressed, because the media path
+   * runs `checkAssetApproval`. One review flow, two different rules.
+   *
+   * Now the same rule, from the same domain function, for both. Only approval is
+   * gated: declining or asking for a revision is how a reviewer ACTS on a
+   * blocker, and making them justify that first would push them toward approving
+   * as the easier path.
+   *
+   * Ahead of the branch below on purpose — an asset with no approval row takes
+   * the direct-write path, and that is exactly the one that must not be a way
+   * around the gate.
+   */
+  // Loaded once: the gate and the audit note both need the same list.
+  const blockers = decision === "approved" ? await loadBlockingConcerns(assetId, client, tenant) : [];
+  if (decision === "approved") {
+    const verdict = checkAssetApproval({
+      decision: "approved",
+      riskFlags: blockers,
+      acknowledgement,
+      concernNoun: { one: "a blocking finding", many: "blocking findings" },
+    });
+    if (!verdict.allowed) throw new ApprovalBlockedError(verdict.message, verdict.flags);
+  }
+
+  // The reviewer's words, with the blockers they were shown, so the audit trail
+  // answers "what did they know when they approved it?" and not just "approved".
+  const decidedNotes =
+    blockers.length > 0
+      ? buildDecisionNote({ decision: "approved", riskFlags: blockers, acknowledgement }, notes) ?? undefined
+      : notes;
 
   const { data: approval, error: approvalError } = await applyOrgScope(
     client
@@ -143,7 +256,7 @@ export async function decideAsset(
   assertOk("approval_items (asset) lookup", approvalError);
 
   if (approval) {
-    return decideApprovalItem({ approvalItemId: approval.id, decision, operator, notes, tenant }, client);
+    return decideApprovalItem({ approvalItemId: approval.id, decision, operator, notes: decidedNotes, tenant }, client);
   }
 
   // No gate yet — act on the asset directly so it's never a dead-end draft.

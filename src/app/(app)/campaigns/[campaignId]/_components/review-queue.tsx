@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { composeRevisionInstruction, truncateQuote } from "@/domain";
+import { composeRevisionInstruction, MIN_ACKNOWLEDGEMENT_CHARS, truncateQuote } from "@/domain";
 import { type CampaignAssetFinding, type CampaignWorkspaceAsset, type ReviewQueueEntry } from "@/lib/campaigns/read-model";
 
 import { OverlayPortal } from "../../../_components/overlay-portal";
@@ -46,7 +46,9 @@ export function ReviewQueue({
   queue: ReviewQueueEntry[];
   pending: boolean;
   error: string | null;
-  onDecide: (asset: CampaignWorkspaceAsset, decision: "approved" | "declined") => void;
+  /** `acknowledgement` carries how the reviewer addressed this draft's blockers.
+   *  The server refuses an approval without it when there are any. */
+  onDecide: (asset: CampaignWorkspaceAsset, decision: "approved" | "declined", acknowledgement?: string) => void;
   onRevise: (asset: CampaignWorkspaceAsset, instruction: string) => void;
   onApplyFix: (asset: CampaignWorkspaceAsset, finding: CampaignAssetFinding, value: string) => void;
   /** Editing is a different mode of work — it hands back to the list, which
@@ -64,6 +66,21 @@ export function ReviewQueue({
   const [expandedCopy, setExpandedCopy] = useState<Set<string>>(new Set());
   const [revising, setRevising] = useState(false);
   const [reviseText, setReviseText] = useState("");
+  /**
+   * The blocker acknowledgement, stored WITH the deliverable it was written
+   * about, and read back only for that one.
+   *
+   * Scoped rather than cleared, because clearing has to happen on every path
+   * that changes the deliverable under the cursor — and `move` is not the only
+   * one: approving or declining takes the piece out of the queue, so the next
+   * arrives at the same index on its own. A missed path would leave the words
+   * written about the piece just approved sitting in the box for the next one,
+   * and since the button enables on that text, the second approval would sail
+   * through without anyone reading its blockers. Keyed this way, that is not
+   * something a future edit can reintroduce.
+   */
+  const [ackEntry, setAckEntry] = useState<{ assetId: string | null; text: string }>({ assetId: null, text: "" });
+  const ackRef = useRef<HTMLTextAreaElement>(null);
   const reviseRef = useRef<HTMLTextAreaElement>(null);
   const pendingMark = useRef<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -96,6 +113,9 @@ export function ReviewQueue({
   const clamped = Math.min(index, Math.max(queue.length - 1, 0));
   const entry = queue[clamped];
   const asset = entry?.asset;
+  /** Empty for any deliverable other than the one it was written about. */
+  const ack = ackEntry.assetId === (asset?.id ?? null) ? ackEntry.text : "";
+  const setAck = useCallback((text: string) => setAckEntry({ assetId: asset?.id ?? null, text }), [asset?.id]);
 
   useEffect(() => {
     if (revising) reviseRef.current?.focus();
@@ -323,8 +343,18 @@ export function ReviewQueue({
         move(action);
         return;
       }
-      if (action === "approve") onDecide(asset, "approved");
-      else if (action === "decline") onDecide(asset, "declined");
+      if (action === "approve") {
+        // The shortcut obeys the same gate as the button. Without this, "A" on a
+        // blocked draft skips the field and collects a server refusal instead —
+        // a worse outcome than the button simply being unavailable. Focus the
+        // box rather than doing nothing, so the key still leads somewhere.
+        const blockers = summarizeReview(asset).blockers;
+        if (blockers > 0 && ack.trim().length < MIN_ACKNOWLEDGEMENT_CHARS) {
+          ackRef.current?.focus();
+          return;
+        }
+        onDecide(asset, "approved", ack);
+      } else if (action === "decline") onDecide(asset, "declined");
       else if (action === "revise") setRevising(true);
       else if (action === "edit") onEdit(asset);
     }
@@ -532,8 +562,36 @@ export function ReviewQueue({
                   four pieces of chrome in front of the one row that asks for a
                   decision, and taught the shortcut to people who were never
                   going to use it at the cost of everyone reading the label. */}
+              {/* The acknowledgement, when this draft has blockers.
+                  `summary.blockers` is the same number the headline above
+                  renders as "N things to fix before this can go out" — which
+                  until now was a claim nothing enforced. The server refuses the
+                  approval either way (decisions.ts); this is so the reviewer
+                  meets the gate before the click rather than after it. */}
+              {summary.blockers > 0 && (
+                <label className="rqack">
+                  <span>How were these addressed?</span>
+                  <textarea
+                    ref={ackRef}
+                    value={ack}
+                    onChange={(event) => setAck(event.target.value)}
+                    rows={2}
+                    placeholder="Required to approve a draft with blockers…"
+                    disabled={pending}
+                  />
+                </label>
+              )}
               <div className="rqacts">
-                <button className="cbtn gold" onClick={() => onDecide(asset, "approved")} disabled={pending} title="Approve (A)">
+                <button
+                  className="cbtn gold"
+                  onClick={() => onDecide(asset, "approved", ack)}
+                  disabled={pending || (summary.blockers > 0 && ack.trim().length < MIN_ACKNOWLEDGEMENT_CHARS)}
+                  title={
+                    summary.blockers > 0 && ack.trim().length < MIN_ACKNOWLEDGEMENT_CHARS
+                      ? "Say how the blockers were addressed first"
+                      : "Approve (A)"
+                  }
+                >
                   {svg('<path d="M5 12l4 4L19 6"/>')}
                   Approve
                 </button>
