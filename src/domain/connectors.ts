@@ -295,9 +295,11 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     kind: "signal_source",
     label: "Reviews & Reputation",
     description:
-      "Read-only Google Business Profile reviews. Connect via OAuth and set the business location; Arc reads recent " +
-      "reviews and proposes service-recovery opportunities (negatives) and referral/testimonial opportunities " +
-      "(positives). It never replies — proposals only; any response stays an approval-gated draft.",
+      "Read-only Google Business Profile. Connect via OAuth and set the business location; Arc reads recent reviews " +
+      "and proposes service-recovery opportunities (negatives) and referral/testimonial opportunities (positives), " +
+      "and audits the profile itself for the local-search gaps that suppress visibility — missing primary category, " +
+      "no service area, absent hours, a thin description. It never replies and never edits the profile — proposals " +
+      "only; any response or fix stays an approval-gated draft.",
     costTier: "byo_key",
     verticals: [
       "restoration",
@@ -311,8 +313,8 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
       "fitness",
     ],
     capability: {
-      summary: "Emits review_signal opportunities from recent reviews.",
-      opportunityKinds: ["review_signal"],
+      summary: "Emits review_signal opportunities from recent reviews, and local_seo_gap opportunities from the business profile.",
+      opportunityKinds: ["review_signal", "local_seo_gap"],
     },
     credentialSchema: {
       kind: "oauth",

@@ -1,8 +1,9 @@
 import { resolveAgentConnection } from "@/lib/agent/connection";
-import { getViewerAvatarUrl } from "@/lib/auth/display-name";
+import { getViewerAvatarUrl, resolveViewerName } from "@/lib/auth/display-name";
 import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import {
   CUSTOM_FIELD_OBJECT_KEYS,
+  DEFAULT_MEDIA_CONFIG,
   DEFAULT_PIPELINE_STAGES,
   PIPELINE_OBJECT_KEYS,
   type CustomFieldObjectKey,
@@ -10,6 +11,7 @@ import {
   type PipelineStage,
 } from "@/domain";
 import { listAllFieldDefinitions } from "@/lib/custom-fields/definitions";
+import { listCustomObjects } from "@/lib/custom-objects/definitions";
 import { countRecordsByStage, listAllStageSets } from "@/lib/pipeline-stages/definitions";
 import { getProductLanguage } from "@/lib/product-language";
 import { getSettingsTeamView } from "@/lib/auth/team-view";
@@ -26,8 +28,10 @@ import { getOrgPersonaOptions } from "@/lib/personas/read-model";
 import { resolveWorkspaceLogoUrl } from "@/lib/branding/logo";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { getAppSettings } from "@/lib/settings/store";
+import { getWorkspaceMediaConfig } from "@/lib/media-config/read-model";
+import { resolveWorkspaceEngines } from "@/lib/media-config/target";
 import { getSupabaseAuthenticatedUser } from "@/lib/supabase/auth-server";
-import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { getWaitlistView } from "@/lib/waitlist/read-model";
 import { getHealthConsoleView } from "@/lib/observability/health-console";
 import { getSuppressionView } from "@/lib/email-suppression/read-model";
@@ -123,6 +127,17 @@ export default async function SettingsPage() {
   // Empty is honest, and the view says so in place of showing a blank line.
   const email = user?.email ?? "";
   const avatarUrl = await getViewerAvatarUrl(user);
+  // The name the shell and every invitation email already use — Account is now
+  // where you can correct it, so it has to read the same value.
+  const viewerName = ctx?.orgId ? await resolveViewerName(ctx.orgId, user).catch(() => "") : "";
+  // The "active sign-in session" the Account heading has always promised.
+  const session = user
+    ? {
+        lastSignInAt: user.last_sign_in_at ?? null,
+        createdAt: user.created_at ?? null,
+        provider: typeof user.app_metadata?.provider === "string" ? user.app_metadata.provider : null,
+      }
+    : null;
   // One workspace logo, canonical on the brand record — the same image the rail
   // draws and Arc stamps on creative. The legacy settings key is only a fallback
   // for workspaces that uploaded before the two stores were unified.
@@ -132,6 +147,18 @@ export default async function SettingsPage() {
   // email card can tell the truth: an enabled Resend connection still sends
   // nothing while this is dark.
   const liveSendEnabled = isLiveSendEnabled();
+  // The workspace's media-model defaults, plus which engines it can actually
+  // reach. Offering a model on a disconnected engine is a menu of choices that
+  // fail on use, so the picker is built from availability, not from the roster.
+  //
+  // Correctly silent: both fall back to a usable shape (defaults / nothing
+  // reachable), and the panel says which engines are connected either way.
+  const [mediaConfig, mediaEngines] = ctx?.workspaceId && isSupabaseAdminConfigured()
+    ? await Promise.all([
+        getWorkspaceMediaConfig(getSupabaseAdminClient(), ctx.workspaceId).catch(() => DEFAULT_MEDIA_CONFIG),
+        resolveWorkspaceEngines(getSupabaseAdminClient(), ctx.workspaceId).catch(() => ({ gemini: false, higgsfield: false })),
+      ])
+    : [DEFAULT_MEDIA_CONFIG, { gemini: false, higgsfield: false }];
   // Whether the deployment has a HubSpot app configured — gates the OAuth "Connect
   // with HubSpot" button (falls back to the private-app-token form when absent).
   const hubspotOAuthConfigured = isHubspotOAuthConfigured();
@@ -151,6 +178,13 @@ export default async function SettingsPage() {
         return [];
       })
     : [];
+  // The workspace's own record types. Same reasoning as the fields above:
+  // reporting empty would tell a tenant the object types they defined are
+  // gone, and the CRM tabs are built from this list.
+  const customObjects = await listCustomObjects(ctx?.orgId ?? "", { includeArchived: true }).catch((error) => {
+    reportDegraded(error, { scope: "settings.listCustomObjects", surface: "primary" });
+    return [];
+  });
   // The tenant's own pipeline, plus how many records sit in each stage — the
   // occupancy is what lets the panel refuse to archive a stage full of records
   // without asking where they go.
@@ -201,5 +235,5 @@ export default async function SettingsPage() {
   const pipelineObjectLabels = Object.fromEntries(
     PIPELINE_OBJECT_KEYS.map((k) => [k, language.crmObjects[k].label]),
   ) as Record<PipelineObjectKey, string>;
-  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
+  return <SettingsView brandName={brandName} workspaceName={ctx?.workspaceName?.trim() || brandName} email={email} viewerName={viewerName} session={session} avatarUrl={avatarUrl} workspaceLogoUrl={workspaceLogoUrl} team={team} usage={usage} connectorSpend={connectorSpend} billing={billing} settings={settings} mediaConfig={mediaConfig} mediaEngines={mediaEngines} connectors={connectors} workspaces={workspaces} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} agentConnection={agentConnection} personaOptions={personaOptions} hubspotOAuthConfigured={hubspotOAuthConfigured} googleOAuthConfigured={googleOAuthConfigured} waitlist={waitlist} health={health} suppression={suppression} customFields={customFields} customObjects={customObjects} crmObjectLabels={crmObjectLabels} pipelineStages={pipeline?.[0] ?? null} pipelineOccupancy={pipeline?.[1] ?? null} pipelineObjectLabels={pipelineObjectLabels} industryObjectLanguage={industryLanguage.crmObjects} industrySectionLabel={industryLanguage.crmLabel} savedObjectLabels={settings.objectLabels.objects ?? {}} />;
 }

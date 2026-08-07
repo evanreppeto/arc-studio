@@ -1050,7 +1050,7 @@ export function LibraryView({
       <span className="at"><b>{unshipped} approved {unshipped === 1 ? "photo has" : "photos have"} never been used.</b> Want Arc to draft ad variants from your best unused photos?</span>
       <span className="ab">
         <a className="miniabtn" href={STUDIO}>Draft in Studio</a>
-        <span className="miniabtn ghost" onClick={() => setSuggDismissed(true)}>Dismiss</span>
+        <button type="button" className="miniabtn ghost" onClick={() => setSuggDismissed(true)}>Dismiss</button>
       </span>
     </div>
   ) : null;
@@ -1197,18 +1197,18 @@ export function LibraryView({
                 as a third category of filter that isn't there. */}
             <span className="chipgrp" role="group" aria-label="Readiness">
               {COLLECTIONS.map(([k, label]) => (
-                <span key={k} className={`chip${curColl === k ? " on" : ""}`} onClick={() => setCurColl(k)}>
+                <button type="button" key={k} className={`chip${curColl === k ? " on" : ""}`} aria-pressed={curColl === k} onClick={() => setCurColl(k)}>
                   {k === "arc" ? <>{label}<Define term="arc_ready" /></> : label}
                   {collectionCount[k] != null ? <span className="cn">{collectionCount[k]}</span> : null}
-                </span>
+                </button>
               ))}
             </span>
             <span className="cdiv" />
             <span className="chipgrp" role="group" aria-label="Type">
               {([["image", "Images"], ["video", "Videos"], ["logo", "Logos"], ["document", "Docs"]] as const).map(([k, label]) => (
-                <span key={k} className={`chip${curKind === k ? " on" : ""}`} onClick={() => setCurKind((c) => (c === k ? "all" : k))}>
+                <button type="button" key={k} className={`chip${curKind === k ? " on" : ""}`} aria-pressed={curKind === k} onClick={() => setCurKind((c) => (c === k ? "all" : k))}>
                   {label}<span className="cn">{totals.byk[k]}</span>
-                </span>
+                </button>
               ))}
             </span>
             </div>
@@ -1296,30 +1296,36 @@ export function LibraryView({
               element (BSR-707). It affects both pickers, so both drive it. */}
           <div className={`selbar${selmode ? " show" : ""}${campaignPickOpen || movePickOpen ? " menuopen" : ""}`} ref={selbarRef}>
             <span className="sc">{sel.size} selected</span>
-            <span className="sa" onClick={() => { applyArc(allAssets.filter((a) => sel.has(a.id)), true); setSel(new Set()); }}><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" /></svg>Make available to Arc</span>
+            <button type="button" className="sa" onClick={() => { applyArc(allAssets.filter((a) => sel.has(a.id)), true); setSel(new Set()); }}><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" /></svg>Make available to Arc</button>
             <span className="sa sa-pick" style={{ position: "relative" }}>
-              <span
+              <button
+                type="button"
+                className="sa-pick-trigger"
                 onClick={() => { if (campaigns.length > 0) setCampaignPickOpen((o) => !o); else setNotice("Create a campaign first, then you can add media to it."); }}
+                aria-expanded={campaignPickOpen}
+                aria-haspopup="menu"
                 {...(addingTo ? { "aria-busy": true } : {})}
               >
                 <svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>
                 {addingTo ? "Adding…" : "Add to campaign"}
-              </span>
+              </button>
               {campaignPickOpen && campaigns.length > 0 && (
                 <>
+                  {/* The options were `<span role="menuitem">` — the role said
+                      "menu item" while nothing could focus or activate one. */}
                   <span className="pickmenu" role="menu">
                     <span className="pickhd">Add {sel.size} to…</span>
                     {campaigns.map((c) => (
-                      <span key={c.id} className="pickopt" role="menuitem" onClick={() => addSelectionToCampaign(c.id, c.name)}>{c.name}</span>
+                      <button type="button" key={c.id} className="pickopt" role="menuitem" onClick={() => addSelectionToCampaign(c.id, c.name)}>{c.name}</button>
                     ))}
                   </span>
                 </>
               )}
             </span>
-            {/* Real <button>s, unlike the campaign picker beside it: this file is
-                already baselined at 23 keyboard-unreachable click-spans
-                (keyboard-reachable.test.ts) and a new control should not add
-                the 24th. */}
+            {/* This picker was built as real <button>s while the campaign picker
+                beside it was still click-spans, because the file was baselined
+                at 23 of those and a new control should not have added the 24th.
+                The campaign picker now matches it — this is the shape to copy. */}
             <span className="sa sa-pick" style={{ position: "relative" }}>
               <button
                 type="button"
@@ -1354,7 +1360,7 @@ export function LibraryView({
             <button type="button" className="sa" onClick={handleDownloadSelection} disabled={downloading}>
               <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>{downloading ? "Downloading…" : "Download"}
             </button>
-            <span className="clr" onClick={() => setSel(new Set())}>Clear</span>
+            <button type="button" className="clr" onClick={() => setSel(new Set())}>Clear</button>
           </div>
 
           <div className="gridscroll">
@@ -1412,8 +1418,16 @@ export function LibraryView({
                               selection on the way, while addLibraryAssetsToCampaign
                               sat wired to the bulk bar a few lines below. It now
                               selects this asset and opens that same picker. */}
+                          {/* Named after the asset, like the list view's row
+                              actions. `title` alone left all three announcing a
+                              bare verb, so a screen-reader user tabbing the grid
+                              heard "Open, Open, Open…" with nothing to say which
+                              card they were on. The icon-only guard could not see
+                              these: it looks for a literal <svg, and these render
+                              through <Ico>. */}
                           <button
                             title="Add to campaign"
+                            aria-label={`Add ${a.nm} to campaign`}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (campaigns.length === 0) { setNotice("Create a campaign first, then you can add media to it."); return; }
@@ -1425,9 +1439,10 @@ export function LibraryView({
                               Studio now takes ?asset=<id> and opens on it. */}
                           <button
                             title="Edit in Studio"
+                            aria-label={`Edit ${a.nm} in Studio`}
                             onClick={(e) => { e.stopPropagation(); router.push(a.rid ? `${STUDIO}?asset=${encodeURIComponent(a.rid)}` : STUDIO); }}
                           ><Ico d='<path d="M4 5h16v14H4z"/><path d="M4 14l5-4 4 3 3-2 4 3"/>' /></button>
-                          <button title="Open" onClick={(e) => { e.stopPropagation(); openDetail(a); }}><Ico d='<path d="M7 17L17 7M9 7h8v8"/>' /></button>
+                          <button title="Open" aria-label={`Open ${a.nm}`} onClick={(e) => { e.stopPropagation(); openDetail(a); }}><Ico d='<path d="M7 17L17 7M9 7h8v8"/>' /></button>
                         </div>
                       </div>
                     </div>
@@ -1529,7 +1544,7 @@ export function LibraryView({
             <>
               <div className="ihero">
                 <ThumbMedia a={detail} />
-                <span className="iclose" onClick={() => setDetail(null)}><Ico d='<path d="M6 6l12 12M18 6L6 18"/>' /></span>
+                <button type="button" className="iclose" aria-label="Close details" onClick={() => setDetail(null)}><Ico d='<path d="M6 6l12 12M18 6L6 18"/>' /></button>
                 <span className={`ipv pvc-${detail.pv}`} style={{ background: "rgba(16,16,19,.7)" }}>{PVL[detail.pv]} media</span>
               </div>
               <div className="ibody">
@@ -1572,7 +1587,11 @@ export function LibraryView({
                 </div>
                 <div className="arctoggle">
                   <div><div className="at">Available to Arc</div><div className="ad">Arc may reuse this in drafts</div></div>
-                  <span className={`toggle${isArc(detail) ? " on" : ""}`} onClick={() => toggleArc(detail)}><span className="sw" /></span>
+                  {/* A switch, so `role="switch"` rather than a pressed button:
+                      it was a click-span with no role, so the one control that
+                      decides whether Arc may reuse an asset was unreachable by
+                      keyboard and announced as nothing at all. */}
+                  <button type="button" role="switch" aria-checked={isArc(detail)} aria-label="Available to Arc" className={`toggle${isArc(detail) ? " on" : ""}`} onClick={() => toggleArc(detail)}><span className="sw" /></button>
                 </div>
                 {detail.risk && (
                   <div className="riskbox">

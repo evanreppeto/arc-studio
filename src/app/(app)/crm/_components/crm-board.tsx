@@ -7,12 +7,27 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { OFFICIAL_PERSONA_MAPPINGS, humanizePersonaLabel, isPipelineObjectKey, personaAccent, statusTone } from "@/domain";
 import { type CrmObjectKey } from "@/lib/crm/read-model";
 
-import { bulkAddContactsToCampaign, bulkAddTask, bulkAssignPersona, createCrmRecord, searchCrmRecords } from "../actions";
+import {
+  archiveCustomObjectRecords,
+  createCustomObjectRecord,
+  listArchivedCustomObjectRecords,
+  restoreCustomObjectRecords,
+  archiveCrmRecordsAction,
+  bulkAddContactsToCampaign,
+  bulkAddTask,
+  bulkAssignPersona,
+  createCrmRecord,
+  listArchivedCrmRecords,
+  restoreCrmRecordsAction,
+  searchCrmRecords,
+} from "../actions";
 import { AddRecordModal, type AddRecordValue, type LinkOption } from "./add-record-modal";
+import { AddCustomRecordModal } from "./add-custom-record-modal";
 import { pageRangeLabel, pageWindow } from "./pagination";
 import { createStoredPreference } from "./stored-preference";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
-import type { CustomFieldDefinition } from "@/domain";
+import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
+import { ManageFieldsModal } from "./manage-fields-modal";
 
 type FilterOption = { value: string; label: string; count: number };
 
@@ -191,15 +206,15 @@ function ColumnsMenu({
   hidden,
   onToggle,
   onShowAll,
-  fieldsHref,
+  onManageFields,
 }: {
   cols: Col[];
   hidden: readonly string[];
   onToggle: (key: string) => void;
   onShowAll: () => void;
-  /** Where this object's fields are DEFINED — the columns here are only which
-   *  of them show. Same footer idea as the Status menu's "Edit stages". */
-  fieldsHref?: string;
+  /** Opens the field editor. This menu decides which fields SHOW; that decides
+   *  which exist, and it used to be a different screen entirely. */
+  onManageFields?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -230,6 +245,7 @@ function ColumnsMenu({
         type="button"
         className={`iconf${hiddenHere > 0 ? " active" : ""}`}
         title={hiddenHere > 0 ? `Columns: ${optional.length - hiddenHere} of ${optional.length} shown` : "Columns"}
+        aria-label={hiddenHere > 0 ? `Columns: ${optional.length - hiddenHere} of ${optional.length} shown` : "Columns"}
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -260,12 +276,12 @@ function ColumnsMenu({
           )}
           {/* Reading the column list is when you notice the thing you track
               isn't one of them. This menu can only hide and show what already
-              exists; adding or removing a field happens on the fields editor,
-              and nothing else on this screen said where that is. */}
-          {fieldsHref && (
-            <Link className="fmenu-foot" href={fieldsHref}>
-              Add or remove fields
-            </Link>
+              exists — so the way to add one opens right here rather than
+              sending you to Settings and back. */}
+          {onManageFields && (
+            <button type="button" className="fmenu-foot" onClick={onManageFields}>
+              Add or edit fields…
+            </button>
           )}
         </div>
       )}
@@ -297,6 +313,7 @@ function DensityMenu({ value, onChange }: { value: Density; onChange: (v: Densit
         type="button"
         className={`iconf${value !== "comfortable" ? " active" : ""}`}
         title={`Row height: ${DENSITY_LABELS[value]}`}
+        aria-label={`Row height: ${DENSITY_LABELS[value]}`}
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -343,7 +360,7 @@ function SortMenu({ value, onChange }: { value: SortKey; onChange: (v: SortKey) 
   }, [open]);
   return (
     <span className="fbtn-wrap" ref={ref}>
-      <button type="button" className={`iconf${value !== "recent" ? " active" : ""}`} title={`Sort: ${SORT_LABELS[value]}`} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+      <button type="button" className={`iconf${value !== "recent" ? " active" : ""}`} title={`Sort: ${SORT_LABELS[value]}`} aria-label={`Sort: ${SORT_LABELS[value]}`} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
         <svg viewBox="0 0 24 24"><path d="M7 4v16M7 20l-3-3M7 4l3 3M17 20V4M17 4l3 3M17 20l-3-3" /></svg>
       </button>
       {open && (
@@ -410,6 +427,17 @@ const COLS: Record<string, Col[]> = {
   jobs: [{ k: "sel" }, { k: "primary", t: "Job" }, { k: "status", t: "Status" }, { k: "value", t: "Est. value" }, { k: "last", t: "Scheduled" }, { k: "act" }],
   outcomes: [{ k: "sel" }, { k: "primary", t: "Outcome" }, { k: "status", t: "Status" }, { k: "value", t: "Revenue" }, { k: "last", t: "Closed" }, { k: "act" }],
 };
+
+/**
+ * Columns for a tenant-defined object type.
+ *
+ * Deliberately spare: a custom object has a name and a timestamp, and
+ * everything else its owner cares about is a custom field, which the board
+ * already splices in beside these. Borrowing the contacts set instead — which
+ * is what happens by default, since COLS lookups fall back to it — would put
+ * Persona, Status and Company headings above six empty columns.
+ */
+const CUSTOM_OBJECT_COLS: Col[] = [{ k: "sel" }, { k: "primary", t: "Name" }, { k: "last", t: "Updated" }, { k: "act" }];
 
 function nx(v: string) {
   return v ? v : "—";
@@ -502,6 +530,8 @@ function cellContent(k: string, r: CrmRowVM) {
 
 export type CrmObjectVM = {
   key: string;
+  /** A tenant-defined type (a row in custom_objects), not one of the six tables. */
+  isCustom?: boolean;
   label: string;
   noun: string;
   nameHeader: string;
@@ -537,10 +567,20 @@ function titleCase(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Archiving is this CRM's delete (there is no hard delete): an archived record
- *  drops out of the default list and the counts, and is reachable only by asking
- *  for it explicitly via Status → Archived. Matches the `archived` status titleCased. */
-const ARCHIVED_LABEL = "Archived";
+/**
+ * Archiving is this CRM's delete — there is no hard delete, by design: a record
+ * is referenced by campaigns, tasks, notes and the revenue ledger.
+ *
+ * It used to be a STATUS, matched here by its display label. That was wrong
+ * twice over. Three of the six objects have no room for such a status
+ * (properties has no status column; jobs and outcomes carry the tenant's own
+ * pipeline stages), so half the CRM had no way to remove a record at all. And
+ * matching on the label "Archived" is precisely what stops working when a
+ * tenant renames a stage — the record silently rejoins every list.
+ *
+ * It is now `archived_at`, a column, filtered in the read-model. The board no
+ * longer has to recognise archived rows: it never receives them unless it asks.
+ */
 function buildOptimisticRow(
   objectKey: CrmObjectKey,
   id: string,
@@ -646,7 +686,21 @@ export function CrmBoard({
   // on top of the server rows until a real DB write revalidates the page.
   const [localByKey, setLocalByKey] = useState<Record<string, CrmRowVM[]>>({});
   const [addOpen, setAddOpen] = useState(false);
+  const [fieldsOpen, setFieldsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Records archived this session, per object, so the row leaves at once.
+   *
+   * Kept as ids rather than by removing the row: `rowsByKey` is the server's
+   * render and revalidation replaces it wholesale, so an optimistic delete has
+   * to be an overlay that the next server render simply makes redundant. Reverts
+   * on failure, which is the whole reason the write's real count is returned.
+   */
+  const [archivedLocally, setArchivedLocally] = useState<Record<string, Set<string>>>({});
+  /** Viewing the archive instead of the live list. Its own fetch — these rows are in no window. */
+  const [viewArchived, setViewArchived] = useState(false);
+  const [archivedRows, setArchivedRows] = useState<CrmRowVM[] | null>(null);
+  const [archivedLoading, setArchivedLoading] = useState(false);
   const [personaF, setPersonaF] = useState("");
   const [statusF, setStatusF] = useState("");
   const [ownerF, setOwnerF] = useState("");
@@ -663,7 +717,7 @@ export function CrmBoard({
   const totalRows = localRows.length + (rowsByKey[active.key] ?? []).length;
   // Splice the tenant's custom columns in just before the trailing actions cell.
   const allCols = (() => {
-    const base = COLS[active.key] ?? COLS.contacts;
+    const base = COLS[active.key] ?? (active.isCustom ? CUSTOM_OBJECT_COLS : COLS.contacts);
     const custom = customColumnsByKey[active.key] ?? [];
     if (custom.length === 0) return base;
     const actIdx = base.findIndex((c) => c.k === "act");
@@ -687,14 +741,12 @@ export function CrmBoard({
     delete merged[active.key];
     columnsPref.set(merged);
   };
-  // o.count is the server's row count for the object; archived rows are soft-deleted
-  // so they're netted out of the headline count and tab badges the same way they're
-  // hidden from the list. Subtracting (rather than recomputing) keeps the count intact
-  // if a route ever loads rows for only some objects.
+  // o.count is the server's row count, which already excludes archived records —
+  // the same `archived_at is null` predicate the list itself is fetched with, so
+  // the badge and the rows under it cannot disagree. Locally-added rows are added
+  // on; locally-archived ones are subtracted, both only until revalidation lands.
   const countFor = (o: CrmObjectVM) =>
-    o.count -
-    (rowsByKey[o.key] ?? []).filter((r) => r.statusLabel === ARCHIVED_LABEL).length +
-    (localByKey[o.key]?.length ?? 0);
+    o.count + (localByKey[o.key]?.length ?? 0) - (archivedLocally[o.key]?.size ?? 0);
 
   // True when the browser holds every record of the active object, so a local
   // filter can answer honestly. False once the 1,000-row window is exceeded.
@@ -809,6 +861,104 @@ export function CrmBoard({
       });
   };
 
+  /**
+   * Archive the selection — the delete this CRM never had.
+   *
+   * Optimistic: the rows leave immediately and the counts drop with them,
+   * because an operator who clicks Archive on 30 records should not watch a
+   * spinner to find out whether it worked. A failure puts every one of them
+   * back and says why.
+   */
+  const archiveSelected = () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setError(null);
+    setNotice(null);
+    const objectKey = active.key;
+    const prev = archivedLocally;
+    setArchivedLocally((cur) => {
+      const next = { ...cur };
+      next[objectKey] = new Set([...(cur[objectKey] ?? []), ...ids]);
+      return next;
+    });
+    setSelected(new Set());
+    (active.isCustom ? archiveCustomObjectRecords(objectKey, ids) : archiveCrmRecordsAction(objectKey, ids))
+      .then((res) => {
+        if (!res.ok) {
+          setArchivedLocally(prev);
+          setError(res.error);
+          return;
+        }
+        setNotice(
+          `Archived ${ids.length} ${ids.length === 1 ? active.noun.replace(/s$/, "") : active.noun}. They're out of your lists — restore them from Archived.`,
+        );
+      })
+      .catch(() => {
+        setArchivedLocally(prev);
+        setError("Could not archive those records.");
+      });
+  };
+
+  /** Put archived records back. Only reachable from the archive view. */
+  const restoreSelected = () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setError(null);
+    setNotice(null);
+    const objectKey = active.key;
+    setArchivedRows((cur) => (cur ? cur.filter((r) => !ids.includes(r.id)) : cur));
+    setSelected(new Set());
+    (active.isCustom ? restoreCustomObjectRecords(objectKey, ids) : restoreCrmRecordsAction(objectKey, ids))
+      .then((res) => {
+        if (!res.ok) {
+          setError(res.error);
+          void loadArchived(objectKey);
+          return;
+        }
+        // Drop them from the session's archived overlay too, or a restored row
+        // would stay hidden in the live list it just rejoined.
+        setArchivedLocally((cur) => {
+          const set = cur[objectKey];
+          if (!set) return cur;
+          const next = new Set(set);
+          for (const id of ids) next.delete(id);
+          return { ...cur, [objectKey]: next };
+        });
+        setNotice(`Restored ${ids.length} ${ids.length === 1 ? "record" : "records"}.`);
+        router.refresh();
+      })
+      .catch(() => {
+        setError("Could not restore those records.");
+        void loadArchived(objectKey);
+      });
+  };
+
+  const loadArchived = async (objectKey: string) => {
+    setArchivedLoading(true);
+    setArchivedRows(null);
+    try {
+      const res = active.isCustom
+        ? await listArchivedCustomObjectRecords(objectKey)
+        : await listArchivedCrmRecords(objectKey);
+      // A failed read is not an empty archive — saying "nothing archived" when
+      // the query broke is how an operator concludes their records are gone.
+      if (!res.ok) setError(res.error);
+      setArchivedRows(res.ok ? res.rows : []);
+    } catch {
+      setError("Could not load archived records.");
+      setArchivedRows([]);
+    } finally {
+      setArchivedLoading(false);
+    }
+  };
+
+  const toggleArchivedView = () => {
+    const next = !viewArchived;
+    setViewArchived(next);
+    setSelected(new Set());
+    if (next) void loadArchived(active.key);
+  };
+
   const addToCampaign = (campaign: { id: string; name: string }) => {
     const ids = [...selected];
     setCampaignMenuOpen(false);
@@ -855,10 +1005,14 @@ export function CrmBoard({
     // When the server answered, IT is the match set — the local rows are only a
     // window and re-filtering them would drop the very records it went to find.
     // The other facets still apply, and the text term is already satisfied.
-    const source = serverRows ?? allActiveRows;
+    // Viewing the archive replaces the set outright: those rows exist in no
+    // other view, and the live window must not bleed into it.
+    const source = viewArchived ? archivedRows ?? [] : serverRows ?? allActiveRows;
     let filtered = source.filter((r) => {
-      // Soft-deleted records stay out of the default list; Status → Archived opts in.
-      if (r.statusLabel === ARCHIVED_LABEL && statusF !== ARCHIVED_LABEL) return false;
+      // Archived rows are excluded server-side now, so nothing is filtered here
+      // by archive state — except the ones archived in THIS session, which the
+      // server render hasn't caught up with yet.
+      if (!viewArchived && archivedLocally[active.key]?.has(r.id)) return false;
       // Custom field values are searchable too — a tenant that tracks a matter
       // number expects to find the record by typing it.
       const customHay = r.customFields ? Object.values(r.customFields).join(" ") : "";
@@ -871,14 +1025,14 @@ export function CrmBoard({
     if (sortBy === "name") filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
     else if (sortBy === "score") filtered = [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     return filtered;
-  }, [allActiveRows, serverRows, q, personaF, statusF, ownerF, sortBy]);
+  }, [allActiveRows, serverRows, q, personaF, statusF, ownerF, sortBy, viewArchived, archivedRows, archivedLocally, active.key]);
   // Any change to WHICH rows are in play sends the pager back to page 1, so the
   // operator never lands on a stale page 4 of a set that now has two pages. Done
   // as a render-phase adjustment rather than an effect (same pattern as the
   // Brain fact pager) — it applies before paint, so there is no flash of the
   // wrong page. `q` is in the key because the debounced search swaps the whole
   // set from under us; `pageSize` because 25→100 makes the old index meaningless.
-  const pageKey = `${active.key}|${q.trim()}|${personaF}|${statusF}|${ownerF}|${sortBy}|${pageSize}`;
+  const pageKey = `${active.key}|${q.trim()}|${personaF}|${statusF}|${ownerF}|${sortBy}|${pageSize}|${viewArchived ? "archived" : "live"}`;
   const [seenPageKey, setSeenPageKey] = useState(pageKey);
   if (pageKey !== seenPageKey) {
     setSeenPageKey(pageKey);
@@ -924,7 +1078,9 @@ export function CrmBoard({
     setError(null);
     setLocalByKey((prev) => ({ ...prev, [objectKey]: [buildOptimisticRow(objectKey, tempId, value, stageOptions[objectKey] ?? []), ...(prev[objectKey] ?? [])] }));
 
-    const res = await createCrmRecord({ objectKey, ...value });
+    const res = active.isCustom
+      ? await createCustomObjectRecord({ objectKey, title: value.name, subtitle: value.detail })
+      : await createCrmRecord({ objectKey, ...value });
 
     if (!res.ok) {
       setLocalByKey((prev) => ({ ...prev, [objectKey]: (prev[objectKey] ?? []).filter((r) => r.id !== tempId) }));
@@ -954,6 +1110,12 @@ export function CrmBoard({
     setActiveKey(key);
     setQ("");
     setSelected(new Set());
+    // Each object has its own archive. Landing on another tab still showing the
+    // previous object's archived rows would be a straight lie about the count.
+    if (viewArchived) {
+      setViewArchived(false);
+      setArchivedRows(null);
+    }
     setPersonaF("");
     setStatusF("");
     setOwnerF("");
@@ -976,14 +1138,17 @@ export function CrmBoard({
         <div>
           <h1 className="ct">{active.label}</h1>
           <div className="csub">
-            {countFor(active).toLocaleString()} {active.noun} · kept up to date by Arc
+            {countFor(active).toLocaleString()} {active.noun}
+            {active.isCustom ? " · your own record type" : " · kept up to date by Arc"}
           </div>
         </div>
         <div className="sp">
+          {!active.isCustom && (
           <Link className="gbtn" href="/crm/import" title="Import contacts from a CSV">
             <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
             Import
           </Link>
+          )}
           <button type="button" className="gbtn" onClick={exportCsv} disabled={filteredAll.length === 0} title={`Download ${filteredAll.length} ${active.noun} as CSV`}>
             <svg viewBox="0 0 24 24"><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3M8 9l4 4 4-4M12 13V3" /></svg>
             Export
@@ -1037,6 +1202,11 @@ export function CrmBoard({
             aria-label={`Filter ${active.noun}`}
           />
         </span>
+        {/* Persona, Status and Owner describe the six. A tenant-defined type
+            has none of them — its shape is its custom fields — so the filters
+            are absent rather than present and always empty. */}
+        {!active.isCustom && (
+        <>
         <FilterMenu
           icon={<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M4 20c0-3 2-5 5-5s5 2 5 5" /></svg>}
           label="Persona"
@@ -1067,6 +1237,8 @@ export function CrmBoard({
           value={ownerF}
           onChange={setOwnerF}
         />
+        </>
+        )}
         {anyFilter && (
           <button type="button" className="fbtn dashed" onClick={clearFilters}>
             <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -1074,20 +1246,33 @@ export function CrmBoard({
           </button>
         )}
         <span className="gspacer" />
+        {/* The archive has to be reachable or it is a hard delete wearing a
+            softer word. Live rows and archived rows are two different fetches,
+            so this is a view switch, not a filter. */}
+        <button
+          type="button"
+          className={`fbtn${viewArchived ? " active" : ""}`}
+          onClick={toggleArchivedView}
+          aria-pressed={viewArchived}
+          title={viewArchived ? `Back to your ${active.noun}` : "Records you've archived"}
+        >
+          <svg viewBox="0 0 24 24"><path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1z" /><path d="M3 4h18v4H3z" /><path d="M10 12h4" /></svg>
+          {viewArchived ? `Back to ${active.noun}` : "Archived"}
+        </button>
         <SortMenu value={sortBy} onChange={setSortBy} />
         <ColumnsMenu
           cols={allCols}
           hidden={hiddenHere}
           onToggle={toggleColumn}
           onShowAll={showAllColumns}
-          fieldsHref={`/settings?s=records&t=Fields&o=${encodeURIComponent(active.key)}`}
+          onManageFields={() => setFieldsOpen(true)}
         />
         <DensityMenu value={density} onChange={densityPref.set} />
       </div>
 
       <div className={`selbar${selected.size ? " show" : ""}${personaMenuOpen || taskMenuOpen || campaignMenuOpen ? " menuopen" : ""}`}>
         <span className="sc">{selected.size} selected</span>
-        {active.key === "contacts" ? (
+        {active.isCustom ? null : active.key === "contacts" ? (
           <div className="sa-wrap">
             <button type="button" className="sa" onClick={() => setCampaignMenuOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={campaignMenuOpen}>
               <svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign
@@ -1110,6 +1295,7 @@ export function CrmBoard({
         ) : (
           <span className="sa is-inapplicable" title="Add contacts to a campaign from the People tab"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4z" /><path d="M4 15h10v4H4z" /></svg>Add to campaign</span>
         )}
+        {!active.isCustom && (
         <div className="sa-wrap">
           <button type="button" className="sa" onClick={() => setPersonaMenuOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={personaMenuOpen}>
             <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M4 20c0-3 2-5 5-5s5 2 5 5" /></svg>Assign persona
@@ -1125,6 +1311,8 @@ export function CrmBoard({
             </>
           )}
         </div>
+        )}
+        {!active.isCustom && (
         <div className="sa-wrap">
           <button type="button" className="sa" onClick={() => setTaskMenuOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={taskMenuOpen}>
             <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8M4 12v7a1 1 0 001 1h14" /></svg>Add task
@@ -1151,6 +1339,21 @@ export function CrmBoard({
             </>
           )}
         </div>
+        )}
+        {viewArchived ? (
+          <button type="button" className="sa" onClick={restoreSelected}>
+            <svg viewBox="0 0 24 24"><path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1z" /><path d="M3 4h18v4H3z" /><path d="M12 17v-5M9 15l3-3 3 3" /></svg>
+            Restore
+          </button>
+        ) : (
+          // Destructive-shaped but reversible, so it reads as an ordinary action
+          // with a red tint rather than a red button — DESIGN.md §4.2 reserves
+          // full red for things that cannot be undone, and this can.
+          <button type="button" className="sa sa-danger" onClick={archiveSelected}>
+            <svg viewBox="0 0 24 24"><path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1z" /><path d="M3 4h18v4H3z" /><path d="M10 12h4" /></svg>
+            Archive
+          </button>
+        )}
         <button type="button" className="clr" onClick={() => setSelected(new Set())}>Clear</button>
       </div>
 
@@ -1181,7 +1384,18 @@ export function CrmBoard({
             {visible.length === 0 ? (
               <tr className="emptyrow">
                 <td colSpan={cols.length}>
-                  {totalRows === 0 ? (
+                  {viewArchived ? (
+                    // "No contacts yet — Arc works from these" would be a flat
+                    // untruth here: there are 243, none of them archived.
+                    archivedLoading ? (
+                      "Loading archived records…"
+                    ) : (
+                      <>
+                        <strong>Nothing archived.</strong> Records you archive drop out of your lists and counts,
+                        and show up here so you can put them back.
+                      </>
+                    )
+                  ) : totalRows === 0 ? (
                     // A brand-new workspace has no records at all, and every
                     // other screen stays empty until it does — so say where they
                     // come from and offer the action, rather than only stating
@@ -1244,7 +1458,12 @@ export function CrmBoard({
       <div className="gfoot">
         <span className="arcnote">
           <i />
-          Arc keeps {active.noun} up to date, and keeps their lead scores current
+          {/* Arc reads the six. It cannot see a tenant-defined type yet, so
+              claiming it maintains these — and scores them — would be a
+              promise the product does not keep. */}
+          {active.isCustom
+            ? `${active.label} are yours to maintain — Arc doesn't read them yet`
+            : `Arc keeps ${active.noun} up to date, and keeps their lead scores current`}
         </span>
         <div className="pager">
           <span className="rpp">
@@ -1264,7 +1483,12 @@ export function CrmBoard({
                 whatever happens to be on screen. The total stays the object's
                 own COUNT unless a server search replaced the set, in which case
                 the match count IS the total. */}
-            {pageRangeLabel(pageStart, visible.length, serverRows ? filteredAll.length : countFor(active))}
+            {/* The total has to describe the set being shown. The object's COUNT
+                is the live records, so while the archive is on screen — a
+                different fetch entirely — the match count is the only honest
+                total; otherwise the footer reads "0 of 5" over the archive of a
+                list that has 5 live rows. */}
+            {pageRangeLabel(pageStart, visible.length, viewArchived || serverRows ? filteredAll.length : countFor(active))}
             {searching ? " · searching…" : ""}
             {serverCapped && serverRows ? ` · first ${serverRows.length}, narrow to see more` : ""}
           </span>
@@ -1289,6 +1513,26 @@ export function CrmBoard({
         </div>
       </div>
 
+      <ManageFieldsModal
+        open={fieldsOpen}
+        onClose={() => setFieldsOpen(false)}
+        objectKey={active.key as CustomFieldObjectKey}
+        objectLabel={active.label}
+        definitions={customFieldDefsByKey[active.key] ?? []}
+      />
+
+      {/* AddRecordModal is keyed to the six — it looks up a per-object config
+          for persona, status and parent pickers, which is undefined for a
+          tenant-defined type. Rendering it for one crashed the board. */}
+      {active.isCustom ? (
+        <AddCustomRecordModal
+          key={`${active.key}:${addOpen ? "open" : "closed"}`}
+          open={addOpen}
+          singular={active.addLabel.replace(/^Add\s+/i, "")}
+          onClose={() => setAddOpen(false)}
+          onSubmit={(v) => handleCreate({ name: v.name, detail: v.detail } as AddRecordValue)}
+        />
+      ) : (
       <AddRecordModal
         key={`${active.key}:${addOpen ? "open" : "closed"}`}
         open={addOpen}
@@ -1301,6 +1545,7 @@ export function CrmBoard({
         onClose={() => setAddOpen(false)}
         onSubmit={handleCreate}
       />
+      )}
     </div>
   );
 }

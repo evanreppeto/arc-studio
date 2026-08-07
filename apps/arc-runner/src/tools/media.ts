@@ -7,6 +7,11 @@ import { textResult, type StepFn } from "./helpers";
 
 const VIDEO_POLL_MS = 10_000;
 const VIDEO_MAX_POLLS = 36; // ~6 min
+// Images are usually inline, but on a job-based engine they are not: a real
+// Higgsfield image measured ~75s, past any single request's life. Same
+// start-then-poll shape as video, on a shorter leash.
+const IMAGE_POLL_MS = 5_000;
+const IMAGE_MAX_POLLS = 48; // ~4 min
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Map a compose output format to an aspect ratio the image generator supports
@@ -17,6 +22,58 @@ const BG_ASPECT_FOR_FORMAT: Record<string, string> = {
   "9:16": "9:16",
   "16:9": "16:9",
 };
+
+type ImageResponse = {
+  status?: string;
+  media?: ArcMedia;
+  objectPath?: string;
+  operationName?: string;
+  model?: string;
+  jobId?: string;
+  engine?: string;
+};
+
+/**
+ * Generate an image, whichever way the engine works.
+ *
+ * Gemini answers inline in a second or two. A job-based engine answers
+ * `status: "running"` with an operation name instead, because a real Higgsfield
+ * image measured ~75s — longer than the request that asked for it may live. The
+ * two are handled here, once, so neither tool below has to know which engine the
+ * operator picked.
+ *
+ * Throws with the operation name if the render outlives the poll budget: the
+ * customer's credits are already spent and the result lands on the engine's
+ * side, so the id is the difference between "find it" and "pay again".
+ */
+async function pollableMedia(client: ArcClient, path: string, body: Record<string, unknown>): Promise<{ media: ArcMedia; objectPath?: string }> {
+  const started = await client.apiPost<ImageResponse>(path, body);
+  if (started.status !== "running" || !started.operationName) {
+    if (!started.media) throw new Error("The image service returned no media.");
+    return { media: started.media, objectPath: started.objectPath };
+  }
+  for (let i = 0; i < IMAGE_MAX_POLLS; i++) {
+    await sleep(IMAGE_POLL_MS);
+    const poll = await client.apiPost<ImageResponse>(path, {
+      operation_name: started.operationName,
+      // The engine that STARTED it — not whatever the workspace default resolves
+      // to now, which may have changed mid-render.
+      engine: started.engine,
+      prompt: body.prompt,
+      // The edit route needs the instruction back for the risk flags it derives
+      // and the Library row it writes.
+      instruction: body.instruction,
+      model: started.model,
+      job_id: started.jobId,
+      aspect_ratio: body.aspect_ratio,
+      format: body.format,
+    });
+    if (poll.status !== "running" && poll.media) return { media: poll.media, objectPath: poll.objectPath };
+  }
+  throw new Error(
+    `The image is still rendering after ${Math.round((IMAGE_POLL_MS * IMAGE_MAX_POLLS) / 60_000)} minutes. It was submitted and paid for and will finish on the engine's side (job ${started.operationName}).`,
+  );
+}
 
 /**
  * Media generation (act/draft mode). `generate_image` creates an AI image and
@@ -29,7 +86,7 @@ export function mediaTools(
   client: ArcClient,
   step: StepFn,
   collectCard: (card: ArcActionCard) => void,
-  ctx: { level?: "fast" | "standard"; conversationId?: string | null; campaignId?: string | null } = {},
+  ctx: { level?: "fast" | "standard"; conversationId?: string | null; campaignId?: string | null; mediaModel?: string | null } = {},
 ) {
   const generateImage = tool(
     "generate_image",
@@ -57,11 +114,15 @@ export function mediaTools(
       const label = "Generating image";
       await step(label, "running");
       try {
-        const gen = await client.apiPost<{ media: ArcMedia; objectPath?: string }>("/api/v1/arc/media/generate-image", {
+        const gen = await pollableMedia(client, "/api/v1/arc/media/generate-image", {
           prompt: args.prompt,
           style: args.style,
           aspect_ratio: args.aspect_ratio,
           level: ctx.level,
+          // The operator's composer pick for this turn. Sent as an engine-qualified
+          // key and re-resolved server-side, so a Higgsfield pick lands as "no
+          // Gemini override" rather than an id Gemini has never heard of.
+          model_key: ctx.mediaModel ?? null,
         });
         // "Just an image" now has somewhere to land. Until the Library recorded
         // generated media (BSR-634), a campaign was the ONLY way an image was
@@ -151,7 +212,7 @@ export function mediaTools(
         const promptWithStyle = args.style ? `${args.prompt}\n\nStyle: ${args.style}.` : args.prompt;
         const start = await client.apiPost<{ operationName: string; model: string; jobId?: string }>(
           "/api/v1/arc/media/generate-video",
-          { prompt: promptWithStyle, aspect_ratio: args.aspect_ratio, duration_seconds: args.duration_seconds, level: ctx.level },
+          { prompt: promptWithStyle, aspect_ratio: args.aspect_ratio, duration_seconds: args.duration_seconds, level: ctx.level, model_key: ctx.mediaModel ?? null },
         );
         let media: ArcMedia | null = null;
         let objectPath: string | undefined;
@@ -238,11 +299,12 @@ export function mediaTools(
             await step(label, "done");
             return textResult("compose_creative needs either a background_url or a prompt to generate the background.");
           }
-          const bg = await client.apiPost<{ media: ArcMedia }>("/api/v1/arc/media/generate-image", {
+          const bg = await pollableMedia(client, "/api/v1/arc/media/generate-image", {
             prompt: args.prompt,
             style: args.style,
             aspect_ratio: args.format ? (BG_ASPECT_FOR_FORMAT[args.format] ?? "1:1") : undefined,
             level: ctx.level,
+            model_key: ctx.mediaModel ?? null,
           });
           backgroundUrl = bg.media.url;
         }
@@ -322,10 +384,12 @@ export function mediaTools(
       const label = `Editing the image: ${args.instruction}`;
       await step(label, "running");
       try {
-        const edited = await client.apiPost<{ media: ArcMedia; objectPath?: string }>(
-          "/api/v1/arc/media/edit",
-          { image_url: args.image_url, instruction: args.instruction, format: args.format },
-        );
+        const edited = await pollableMedia(client, "/api/v1/arc/media/edit", {
+          image_url: args.image_url,
+          instruction: args.instruction,
+          format: args.format,
+          model_key: ctx.mediaModel ?? null,
+        });
 
         const draft = await client.apiPost<{ campaignId: string; assetId: string }>(
           "/api/v1/arc/campaigns/draft-asset",

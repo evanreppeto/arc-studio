@@ -29,6 +29,10 @@ export type ToolContext = {
   level?: "fast" | "standard";
   conversationId?: string | null;
   campaignId?: string | null;
+  /** The operator's engine-qualified media-model pick for this turn, or null for
+   *  Auto. Sent verbatim to the media endpoints, which re-resolve it against the
+   *  roster — the runner never decides what it means. */
+  mediaModel?: string | null;
   skill?: ArcSkill | null;
 };
 

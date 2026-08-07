@@ -20,8 +20,9 @@ import { getCurrentWorkspaceContext } from "@/lib/auth/workspace";
 import { listBrandLogos } from "@/lib/brand-kit/logos";
 import { getBusinessProfile } from "@/lib/brand-kit/persistence";
 import { promoteAssetToCampaign, resolveOrCreateCampaign } from "@/lib/campaigns/create";
-import { getMediaProviderWithKey, isMediaGenEnabled } from "@/lib/media";
-import { MEDIA_CONNECTOR_KEY, resolveMediaGeneration } from "@/lib/media/enablement";
+import { isMediaGenEnabled } from "@/lib/media";
+import { resolveWorkspaceTarget } from "@/lib/media-config/target";
+import { resolveEngineProvider } from "@/lib/media/engine-provider";
 import { meterConnectorCall } from "@/lib/connectors/metering";
 import { renderCreative } from "@/lib/media/compose/renderer";
 import { assertPublicHttpUrl } from "@/lib/brand-kit/website";
@@ -31,7 +32,7 @@ import { deriveImageRiskFlags } from "@/lib/media/risk";
 import { storeGeneratedImage, storeGeneratedMedia } from "@/lib/media/storage";
 import { signVideoTicket, verifyVideoTicket } from "@/lib/media/video-ticket";
 import { getAppSettings } from "@/lib/settings/store";
-import { isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { reportDegraded } from "@/lib/observability/report-degraded";
 
 /**
@@ -100,6 +101,92 @@ function videoAspectFor(format: string): string {
 }
 
 
+
+/**
+ * Land a finished Studio asset: Library row → campaign draft → approval gate.
+ *
+ * Extracted so the synchronous path and the poll path below share ONE copy.
+ * They differ only in where the bytes came from — and a second copy of this
+ * sequence is precisely how Studio once wrote to the bucket and promoted a
+ * campaign asset without ever writing a `media_assets` row (BSR-634), leaving
+ * its creative with no database identity.
+ *
+ * Nothing here is engine-aware on purpose: by this point the picture exists and
+ * is paid for, whichever engine made it.
+ */
+async function landStudioAsset(input: {
+  orgId: string;
+  tenant: Awaited<ReturnType<typeof getCurrentAgentTaskTenantFields>>;
+  operator: string;
+  media: StudioMedia;
+  objectPath: string;
+  storedBytes: number;
+  storedContentType: string;
+  /** The text that produced this asset — the only text creative has to screen. */
+  screenableText: string;
+  assetType: string;
+  title: string;
+  campaignId: string;
+}): Promise<{ campaignId: string; assetId: string }> {
+  const { orgId, tenant, operator, media, objectPath } = input;
+  // Put it in the Library first (BSR-634). Studio wrote to the bucket and
+  // promoted a campaign asset without ever writing a `media_assets` row, so
+  // Studio creative had no database identity — invisible to /library, to
+  // Studio's own background picker, and to every surface that records
+  // something ABOUT a picture, including its review state and any decision on
+  // it. Best-effort by construction: the render is done and already metered.
+  const libraryAssetId = await recordGeneratedMedia({
+    orgId,
+    objectPath,
+    publicUrl: media.url,
+    contentType: input.storedContentType,
+    kind: "image",
+    byteSize: input.storedBytes,
+    // The same text the copy screen runs on — the scene prompt for a generated
+    // image, the rendered copy for a composite. One definition of "the text
+    // that produced this asset", so the Library's provenance and the approval
+    // gate cannot describe it differently.
+    prompt: input.screenableText,
+    model: media.model,
+    jobId: media.jobId,
+    format: media.format,
+    riskFlags: media.riskFlags,
+    source: media.source === "composite" ? "composite" : "ai_generated",
+    uploadedBy: operator,
+  });
+
+  // Land the approval-gated draft (pending_approval + dispatch_locked) on the
+  // chosen campaign, provenance-tagged. Never unlocks outbound.
+  const { campaignId } = await resolveOrCreateCampaign({ operator, campaignId: input.campaignId, tenant });
+  const { assetId } = await promoteAssetToCampaign({
+    operator,
+    campaignId,
+    assetType: input.assetType,
+    title: input.title.trim() || "Studio creative",
+    body: null,
+    // The prompt is the only text this asset has. Without it the copy screen
+    // has nothing to run on and the creative reaches the approval gate with
+    // no automated check of any kind.
+    promptInput: input.screenableText,
+    mediaUrl: media.url,
+    mediaPath: objectPath,
+    media: {
+      source: media.source,
+      model: media.model,
+      jobId: media.jobId,
+      format: media.format,
+      riskFlags: media.riskFlags,
+      // Carries the exact row id into the campaign entry, so the campaign
+      // surface joins this picture to its record by primary key instead of
+      // falling back to matching storage paths.
+      ...(libraryAssetId ? { libraryAssetId } : {}),
+    },
+    tenant,
+  });
+
+  return { campaignId, assetId };
+}
+
 export type GenerateStudioAssetInput = {
   /** "image" = raw AI scene from a prompt; "compose" = finished creative
    *  (background + Brand Kit + copy); "edit" = change a picture that already
@@ -128,10 +215,21 @@ export type GenerateStudioAssetInput = {
   layoutOverride?: CreativeLayoutOverride;
   /** The campaign this draft attaches to — required so it enters the approval gate. */
   campaignId: string;
+  /**
+   * The operator's model pick for THIS generation, engine-qualified
+   * (`gemini:gemini-3-pro-image`). Omit for Auto. Re-resolved server-side against
+   * the roster and this workspace's reachable engines, so a stale or invented id
+   * from the client falls back to Auto rather than reaching the provider.
+   */
+  model?: string;
 };
 
 export type GenerateStudioAssetResult =
-  | { ok: true; persisted: boolean; campaignId?: string; assetId?: string; media?: StudioMedia }
+  | { ok: true; status?: "done"; persisted: boolean; campaignId?: string; assetId?: string; media?: StudioMedia }
+  /** A job-based engine accepted the work; the client polls `pollStudioEdit`.
+   *  `persisted: true` because the render is real and already paid for — only
+   *  the asset row is still to come. */
+  | { ok: true; status: "running"; persisted: true; operationName: string; ticket: string; engine: string }
   | { ok: false; error: string; code?: "disabled" | "no_campaign" | "failed" };
 
 /**
@@ -163,11 +261,34 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       getCurrentAgentTaskTenantFields(),
       getOperatorActor(),
     ]);
-    // Per-workspace gate: the gemini-media connector (platform credits or the
-    // workspace's own key), with the legacy env flag as deployment-wide fallback.
-    const access = await resolveMediaGeneration(tenant.workspace_id);
-    if (!access.enabled) return { ok: false, code: "disabled", error: access.reason };
     const settings = await getAppSettings(ctx.orgId);
+    // One resolution for every image-producing engine below. Auto yields
+    // undefined and leaves Gemini's own chain (level → env → default) untouched;
+    // a pick is pinned as a real argument instead of a hoped-for preference.
+    const target = await resolveWorkspaceTarget({
+      client: getSupabaseAdminClient(),
+      workspaceId: tenant.workspace_id,
+      orgId: ctx.orgId,
+      category: "image",
+      requestOverride: input.model,
+    });
+    // Which engine executes it, and on whose credential. A Higgsfield pick now
+    // runs HERE, in-process, instead of being a model id Studio could display
+    // and never use.
+    //
+    // This also replaces the old gemini-media gate that stood above: gating on
+    // the Gemini connector would refuse a workspace that has Higgsfield
+    // connected and nothing else — a "media generation is off" message on a
+    // screen whose model picker was listing Higgsfield models. For a Gemini or
+    // Auto target the resolution ends up at the same connector check, with the
+    // same operator-actionable sentence.
+    const engine = await resolveEngineProvider({
+      client: getSupabaseAdminClient(),
+      workspaceId: tenant.workspace_id,
+      target,
+      level: parseArcRoute(settings.markDefaultRoute),
+    });
+    if (!engine.ok) return { ok: false, code: "disabled", error: engine.reason };
 
     let media: StudioMedia;
     let objectPath: string;
@@ -193,17 +314,38 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       // Same SSRF guard the compositor uses before fetching an operator-supplied
       // URL — this one arrives from a client too.
       assertPublicHttpUrl(sourceUrl);
+
+      // On a job-based engine an edit takes longer than this request may live
+      // (a real Higgsfield render measured ~75s), so submit and hand back an
+      // operation name. Checked BEFORE the download below: that engine imports
+      // the URL itself, so fetching the bytes here would be pure waste.
+      if (engine.provider.startImage) {
+        const started = await meterConnectorCall(
+          undefined,
+          { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: engine.connectorKey, estimatedUnits: 1, costTier: engine.costTier, context: { surface: "studio", engine: "edit", provider: engine.engine } },
+          () => engine.provider.startImage!({ prompt: instruction, source: { url: sourceUrl } }),
+        );
+        if (!started.ok) return { ok: false, code: "failed", error: started.refusal.message };
+        return {
+          ok: true,
+          status: "running",
+          persisted: true,
+          operationName: started.result.operationName,
+          ticket: signVideoTicket(started.result.operationName, tenant.workspace_id ?? "", engine.engine),
+          engine: engine.engine,
+        };
+      }
+
       const sourceRes = await fetch(sourceUrl);
       if (!sourceRes.ok) return { ok: false, code: "failed", error: `Couldn't read that image (${sourceRes.status}).` };
       const sourceBytes = Buffer.from(await sourceRes.arrayBuffer());
       const sourceType = sourceRes.headers.get("content-type") ?? "image/png";
 
-      const level = parseArcRoute(settings.markDefaultRoute);
-      const provider = getMediaProviderWithKey(access.credential, { level, imageModel: settings.imageModel, videoModel: settings.videoModel });
+      const provider = engine.provider;
       const metered = await meterConnectorCall(
         undefined,
-        { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: 1, costTier: access.costTier, context: { surface: "studio", engine: "edit" } },
-        () => provider.editImage({ bytes: sourceBytes, contentType: sourceType, instruction }),
+        { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: engine.connectorKey, estimatedUnits: 1, costTier: engine.costTier, context: { surface: "studio", engine: "edit", provider: engine.engine } },
+        () => provider.editImage({ bytes: sourceBytes, contentType: sourceType, instruction, sourceUrl }),
       );
       if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
       const gen = metered.result;
@@ -235,13 +377,31 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
     } else if (input.engine === "image") {
       const prompt = (input.prompt ?? "").trim();
       if (!prompt) return { ok: false, code: "failed", error: "Describe the image you want Arc to generate." };
-      const level = parseArcRoute(settings.markDefaultRoute);
-      const provider = getMediaProviderWithKey(access.credential, { level, imageModel: settings.imageModel, videoModel: settings.videoModel });
+      const aspect = imageAspectFor(input.format);
+      // Same reason as the edit branch: on a job-based engine this renders for
+      // longer than the request may live, so submit and hand back a job.
+      if (engine.provider.startImage) {
+        const started = await meterConnectorCall(
+          undefined,
+          { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: engine.connectorKey, estimatedUnits: 1, costTier: engine.costTier, context: { surface: "studio", engine: "image", provider: engine.engine } },
+          () => engine.provider.startImage!({ prompt: hardenImagePrompt(prompt, { style: input.style }), aspectRatio: aspect }),
+        );
+        if (!started.ok) return { ok: false, code: "failed", error: started.refusal.message };
+        return {
+          ok: true,
+          status: "running",
+          persisted: true,
+          operationName: started.result.operationName,
+          ticket: signVideoTicket(started.result.operationName, tenant.workspace_id ?? "", engine.engine),
+          engine: engine.engine,
+        };
+      }
+      const provider = engine.provider;
       const aspectRatio = imageAspectFor(input.format);
       // Platform-credit generations are spend-capped; a workspace's own key bypasses.
       const metered = await meterConnectorCall(
         undefined,
-        { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: MEDIA_CONNECTOR_KEY, estimatedUnits: 1, costTier: access.costTier, context: { surface: "studio", engine: "image" } },
+        { orgId: ctx.orgId, workspaceId: tenant.workspace_id, connectorKey: engine.connectorKey, estimatedUnits: 1, costTier: engine.costTier, context: { surface: "studio", engine: "image", provider: engine.engine } },
         () => provider.generateImage({ prompt: hardenImagePrompt(prompt, { style: input.style }), aspectRatio }),
       );
       if (!metered.ok) return { ok: false, code: "failed", error: metered.refusal.message };
@@ -304,61 +464,20 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
       screenableText = [copy.headline, copy.kicker, copy.subhead, copy.ctaLabel].filter(Boolean).join("\n");
     }
 
-    // Put it in the Library first (BSR-634). Studio wrote to the bucket and
-    // promoted a campaign asset without ever writing a `media_assets` row, so
-    // Studio creative had no database identity — invisible to /library, to
-    // Studio's own background picker, and to every surface that records
-    // something ABOUT a picture, including its review state and any decision on
-    // it. Best-effort by construction: the render is done and already metered.
-    const libraryAssetId = await recordGeneratedMedia({
+    const landed = await landStudioAsset({
       orgId: ctx.orgId,
-      objectPath,
-      publicUrl: media.url,
-      contentType: storedContentType,
-      kind: "image",
-      byteSize: storedBytes,
-      // The same text the copy screen runs on — the scene prompt for a generated
-      // image, the rendered copy for a composite. One definition of "the text
-      // that produced this asset", so the Library's provenance and the approval
-      // gate cannot describe it differently.
-      prompt: screenableText,
-      model: media.model,
-      jobId: media.jobId,
-      format: media.format,
-      riskFlags: media.riskFlags,
-      source: media.source === "composite" ? "composite" : "ai_generated",
-      uploadedBy: operator,
-    });
-
-    // Land the approval-gated draft (pending_approval + dispatch_locked) on the
-    // chosen campaign, provenance-tagged. Never unlocks outbound.
-    const { campaignId } = await resolveOrCreateCampaign({ operator, campaignId: input.campaignId, tenant });
-    const { assetId } = await promoteAssetToCampaign({
-      operator,
-      campaignId,
-      assetType,
-      title: input.title.trim() || "Studio creative",
-      body: null,
-      // The prompt is the only text this asset has. Without it the copy screen
-      // has nothing to run on and the creative reaches the approval gate with
-      // no automated check of any kind.
-      promptInput: screenableText,
-      mediaUrl: media.url,
-      mediaPath: objectPath,
-      media: {
-        source: media.source,
-        model: media.model,
-        jobId: media.jobId,
-        format: media.format,
-        riskFlags: media.riskFlags,
-        // Carries the exact row id into the campaign entry, so the campaign
-        // surface joins this picture to its record by primary key instead of
-        // falling back to matching storage paths.
-        ...(libraryAssetId ? { libraryAssetId } : {}),
-      },
       tenant,
+      operator,
+      media,
+      objectPath,
+      storedBytes,
+      storedContentType,
+      screenableText,
+      assetType,
+      title: input.title,
+      campaignId: input.campaignId,
     });
-
+    const { campaignId, assetId } = landed;
     revalidatePath("/studio");
     return { ok: true, persisted: true, campaignId, assetId, media };
   } catch (error) {
@@ -385,6 +504,105 @@ export async function generateStudioAsset(input: GenerateStudioAssetInput): Prom
   }
 }
 
+export type PollStudioImageInput = {
+  operationName: string;
+  ticket: string;
+  /** The engine that STARTED it, bound into the ticket. */
+  engine?: string;
+  /** Re-sent so the finished asset carries the text that produced it — the only
+   *  text it has for the copy screen and the Library row. For an edit that is
+   *  the instruction; for a raw generation, the scene prompt. */
+  instruction: string;
+  /** True when this job was an edit of an existing picture. It changes what the
+   *  asset is proof of — an edit inherits whatever the source showed and adds
+   *  the model's changes on top — so it changes the risk flags, not just a label. */
+  edited?: boolean;
+  format: string;
+  title: string;
+  campaignId: string;
+};
+
+export type PollStudioImageResult =
+  | { ok: true; status: "running" }
+  | { ok: true; status: "done"; campaignId: string; assetId: string; media: StudioMedia }
+  | { ok: false; error: string };
+
+/**
+ * Finish an image a job-based engine is still rendering — generated or edited.
+ *
+ * Mirrors `pollStudioVideo`, and lands through the same `landStudioAsset` the
+ * synchronous path uses — so a polled edit gets the same Library row, the same
+ * campaign draft and the same approval gate, rather than a second, looser route
+ * to the same place.
+ *
+ * Not metered: the submit was. Charging per "is it done yet" would bill the
+ * operator for asking.
+ */
+export async function pollStudioImage(input: PollStudioImageInput): Promise<PollStudioImageResult> {
+  await requireOperator();
+  if (!isSupabaseAdminConfigured()) return { ok: false, error: "Editing needs a connected backend." };
+
+  try {
+    const [ctx, tenant, operator] = await Promise.all([
+      getCurrentWorkspaceContext(),
+      getCurrentAgentTaskTenantFields(),
+      getOperatorActor(),
+    ]);
+    const engineKey = input.engine === "higgsfield" ? "higgsfield" : "gemini";
+    if (!verifyVideoTicket(input.ticket, input.operationName, tenant.workspace_id ?? "", engineKey)) {
+      return { ok: false, error: "This image job does not belong to this workspace." };
+    }
+    const settings = await getAppSettings(ctx.orgId);
+    const engine = await resolveEngineProvider({
+      client: getSupabaseAdminClient(),
+      workspaceId: tenant.workspace_id,
+      target: null,
+      engine: engineKey,
+      level: parseArcRoute(settings.markDefaultRoute),
+    });
+    if (!engine.ok) return { ok: false, error: engine.reason };
+    if (!engine.provider.pollImage) return { ok: false, error: "That engine does not run image jobs." };
+
+    const poll = await engine.provider.pollImage(input.operationName);
+    if (poll.status === "running") return { ok: true, status: "running" };
+
+    const ext = poll.contentType.includes("png") ? "png" : poll.contentType.includes("webp") ? "webp" : "jpg";
+    const objectPath = `arc-generated/${ctx.orgId}/${tenant.workspace_id}/${randomUUID()}.${ext}`;
+    const url = await storeGeneratedImage(objectPath, poll.bytes, poll.contentType);
+    await recordSpend(ctx.orgId, tenant.workspace_id, { model: poll.model, jobId: poll.jobId }, input.edited ? "studio_edit" : "studio_generate");
+
+    const media: StudioMedia = {
+      kind: "image",
+      url,
+      source: "ai_generated",
+      format: input.format,
+      // The model that ACTUALLY ran — engines substitute.
+      model: poll.model,
+      jobId: poll.jobId,
+      riskFlags: input.edited ? [EDITED_RISK, ...deriveImageRiskFlags(input.instruction)] : deriveImageRiskFlags(input.instruction),
+    };
+    const landed = await landStudioAsset({
+      orgId: ctx.orgId,
+      tenant,
+      operator,
+      media,
+      objectPath,
+      storedBytes: poll.bytes.byteLength,
+      storedContentType: poll.contentType,
+      screenableText: input.instruction,
+      assetType: "image_prompt",
+      title: input.title,
+      campaignId: input.campaignId,
+    });
+
+    revalidatePath("/studio");
+    return { ok: true, status: "done", campaignId: landed.campaignId, assetId: landed.assetId, media };
+  } catch (error) {
+    reportDegraded(error, { scope: "studio.pollStudioImage", surface: "primary", detail: { operationName: input.operationName, edited: Boolean(input.edited) } });
+    return { ok: false, error: error instanceof Error ? error.message : "Could not finish that image." };
+  }
+}
+
 export type StartStudioVideoInput = {
   prompt: string;
   style?: string;
@@ -393,10 +611,13 @@ export type StartStudioVideoInput = {
   /** A still to animate. Without it Veo invents a scene from the prompt, which
    *  is what "animate this image" used to do — silently ignoring the image. */
   sourceImageUrl?: string;
+  /** The operator's model pick for this clip, engine-qualified. Omit for Auto.
+   *  Re-resolved server-side — see GenerateStudioAssetInput.model. */
+  model?: string;
 };
 
 export type StartStudioVideoResult =
-  | { ok: true; operationName: string; ticket: string; model: string; aspectRatio: string }
+  | { ok: true; operationName: string; ticket: string; model: string; aspectRatio: string; engine: string }
   | { ok: false; error: string; code?: "disabled" | "no_campaign" | "failed" };
 
 /**
@@ -421,25 +642,30 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
 
   try {
     const [ctx, tenant] = await Promise.all([getCurrentWorkspaceContext(), getCurrentAgentTaskTenantFields()]);
-    const access = await resolveMediaGeneration(tenant.workspace_id);
-    if (!access.enabled) return { ok: false, code: "disabled", error: access.reason };
     const settings = await getAppSettings(ctx.orgId);
     const level = parseArcRoute(settings.markDefaultRoute);
-    const provider = getMediaProviderWithKey(access.credential, {
-      level,
-      imageModel: settings.imageModel,
-      videoModel: settings.videoModel,
+    const target = await resolveWorkspaceTarget({
+      client: getSupabaseAdminClient(),
+      workspaceId: tenant.workspace_id,
+      orgId: ctx.orgId,
+      category: "video",
+      requestOverride: input.model,
     });
+    const engine = await resolveEngineProvider({ client: getSupabaseAdminClient(), workspaceId: tenant.workspace_id, target, level });
+    if (!engine.ok) return { ok: false, code: "disabled", error: engine.reason };
+    const provider = engine.provider;
     const aspectRatio = videoAspectFor(input.format);
 
+
     // Fetched before metering: a bad URL should cost nothing.
-    let startFrame: { bytes: Buffer; contentType: string } | undefined;
+    let startFrame: { bytes: Buffer; contentType: string; url?: string } | undefined;
     const frameUrl = (input.sourceImageUrl ?? "").trim();
     if (frameUrl) {
       assertPublicHttpUrl(frameUrl);
       const frameRes = await fetch(frameUrl);
       if (!frameRes.ok) return { ok: false, code: "failed", error: `Couldn't read that image (${frameRes.status}).` };
-      startFrame = { bytes: Buffer.from(await frameRes.arrayBuffer()), contentType: frameRes.headers.get("content-type") ?? "image/png" };
+      // Both forms travel: Veo takes the bytes, Higgsfield imports the URL.
+      startFrame = { bytes: Buffer.from(await frameRes.arrayBuffer()), contentType: frameRes.headers.get("content-type") ?? "image/png", url: frameUrl };
     }
 
     // Duration is deliberately NOT exposed: only the model's own default is
@@ -450,10 +676,10 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
       {
         orgId: ctx.orgId,
         workspaceId: tenant.workspace_id,
-        connectorKey: MEDIA_CONNECTOR_KEY,
+        connectorKey: engine.connectorKey,
         estimatedUnits: MEDIA_UNITS.video,
-        costTier: access.costTier,
-        context: { surface: "studio", engine: "video" },
+        costTier: engine.costTier,
+        context: { surface: "studio", engine: "video", provider: engine.engine },
       },
       () => provider.startVideo({ prompt: hardenImagePrompt(prompt, { style: input.style }), aspectRatio, image: startFrame }),
     );
@@ -462,7 +688,8 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
     return {
       ok: true,
       operationName: start.operationName,
-      ticket: signVideoTicket(start.operationName, tenant.workspace_id ?? ""),
+      ticket: signVideoTicket(start.operationName, tenant.workspace_id ?? "", engine.engine),
+      engine: engine.engine,
       model: start.model,
       aspectRatio,
     };
@@ -472,6 +699,9 @@ export async function startStudioVideo(input: StartStudioVideoInput): Promise<St
 }
 
 export type PollStudioVideoInput = {
+  /** Which engine rendered it — round-tripped from the start result and bound
+   *  into the ticket, so a client cannot redirect the poll at the other one. */
+  engine?: string;
   operationName: string;
   ticket: string;
   model: string;
@@ -498,17 +728,25 @@ export async function pollStudioVideo(input: PollStudioVideoInput): Promise<Poll
       getCurrentAgentTaskTenantFields(),
       getOperatorActor(),
     ]);
-    if (!verifyVideoTicket(input.ticket, input.operationName, tenant.workspace_id ?? "")) {
+    const engineKey = input.engine === "higgsfield" ? "higgsfield" : "gemini";
+    if (!verifyVideoTicket(input.ticket, input.operationName, tenant.workspace_id ?? "", engineKey)) {
       return { ok: false, error: "This video job does not belong to this workspace." };
     }
-    const access = await resolveMediaGeneration(tenant.workspace_id);
-    if (!access.enabled) return { ok: false, error: access.reason };
     const settings = await getAppSettings(ctx.orgId);
-    const provider = getMediaProviderWithKey(access.credential, {
+    // Ask the engine that STARTED the job, not whatever the workspace default
+    // resolves to now — a default changed mid-render would otherwise send the
+    // poll to the wrong provider and report a live job as missing. The model is
+    // irrelevant here (polling selects nothing), so a bare engine target is
+    // enough to pick the right credential.
+    const engine = await resolveEngineProvider({
+      client: getSupabaseAdminClient(),
+      workspaceId: tenant.workspace_id,
+      target: null,
+      engine: engineKey,
       level: parseArcRoute(settings.markDefaultRoute),
-      imageModel: settings.imageModel,
-      videoModel: settings.videoModel,
     });
+    if (!engine.ok) return { ok: false, error: engine.reason };
+    const provider = engine.provider;
 
     const result = await provider.pollVideo(input.operationName);
     if (result.status === "running") return { ok: true, status: "running" };

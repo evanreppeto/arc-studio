@@ -1,7 +1,8 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { type ArcActionCard, type ArcMedia, type ArcMention, type ArcMode, type ArcQuestion, type ArcRecall, type ArcRoute, type ArcRunTaskState, type ArcStalledReason, type ArcStepKind, parseActions, parseMedia, parseMentions, parseQuestions, parseRecall } from "@/domain";
+import { type ArcActionCard, type ArcMedia, type ArcMention, type ArcMode, type ArcQuestion, type ArcRecall, type ArcRoute, type ArcRunTaskState, type ArcStalledReason, type ArcStepKind, findGenerationModel, parseActions, parseMedia, parseMentions, parseQuestions, parseRecall } from "@/domain";
 import { type ArcSkillId } from "@/lib/arc-skills/catalog";
+import { type InferredArcSkill } from "@/lib/arc-skills/routing";
 
 import { getSupabaseAdminClient } from "../supabase/server";
 import { type ArcChatTaskScope } from "./inbox";
@@ -83,6 +84,10 @@ export type ArcMessage = {
    *  reuse the original settings instead of a default. Absent on older rows. */
   mode?: ArcMode;
   route?: ArcRoute;
+  /** The media model the operator picked for this turn, engine-qualified
+   *  (`higgsfield:veo3_1`). Absent = Auto. Persisted so Regenerate reuses the
+   *  pick rather than silently generating on a different model. */
+  mediaModel?: string | null;
   /** Workspace sources the operator explicitly selected for this turn. */
   contextScopes?: string[];
   command?: string | null;
@@ -262,6 +267,7 @@ function toMessage(row: MessageRow): ArcMessage {
     attachments: parseAttachments((row.metadata as { attachments?: unknown } | null)?.attachments),
     mode: parseOptionalMode((row.metadata as { mode?: unknown } | null)?.mode),
     route: parseOptionalRoute((row.metadata as { route?: unknown } | null)?.route),
+    mediaModel: parseMediaModelKey((row.metadata as { media_model?: unknown } | null)?.media_model),
     contextScopes: parseContextScopes((row.metadata as { context_scopes?: unknown } | null)?.context_scopes),
     command: parseOptionalString((row.metadata as { command?: unknown } | null)?.command) ?? null,
     skillId: parseOptionalSkillId((row.metadata as { skill_id?: unknown } | null)?.skill_id) ?? null,
@@ -277,6 +283,11 @@ function parseOptionalMode(value: unknown): ArcMode | undefined {
 }
 function parseOptionalRoute(value: unknown): ArcRoute | undefined {
   return value === "fast" || value === "standard" ? value : undefined;
+}
+/** A stored media pick is trusted only when it still names a real model on a real
+ *  engine — a retired id resolves to Auto rather than riding along as junk. */
+function parseMediaModelKey(value: unknown): string | undefined {
+  return findGenerationModel(typeof value === "string" ? value : null)?.key;
 }
 function parseOptionalString(value: unknown): string | undefined {
   const str = typeof value === "string" ? value.trim() : "";
@@ -821,8 +832,19 @@ export async function insertOperatorMessage(
     attachments?: ArcAttachment[];
     mode?: ArcMode;
     route?: ArcRoute;
+    mediaModel?: string | null;
     command?: string | null;
     skillId?: ArcSkillId | null;
+    /**
+     * Shadow-mode only: what skill auto-selection *would* have picked for this
+     * turn. Recorded, never applied — `skillId` above is what actually ran.
+     *
+     * Kept as a separate key rather than folded into `skill_id` precisely so
+     * the two can never be confused by a later reader: a row with
+     * `inferred_skill` and no `skill_id` ran unskilled, exactly as it does
+     * today.
+     */
+    inferredSkill?: InferredArcSkill | null;
     contextScopes?: string[];
     author_user_id?: string | null;
   },
@@ -832,8 +854,10 @@ export async function insertOperatorMessage(
   if (input.attachments && input.attachments.length > 0) metadata.attachments = input.attachments;
   if (input.mode) metadata.mode = input.mode;
   if (input.route) metadata.route = input.route;
+  if (input.mediaModel) metadata.media_model = input.mediaModel;
   if (input.command) metadata.command = input.command;
   if (input.skillId) metadata.skill_id = input.skillId;
+  if (input.inferredSkill) metadata.inferred_skill = input.inferredSkill;
   if (input.contextScopes && input.contextScopes.length > 0) metadata.context_scopes = input.contextScopes;
   const tenant = await conversationTenant(client, input.conversationId);
   const { data, error } = await client

@@ -4,25 +4,42 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
+import { isSearchableArcQuery } from "@/domain";
+import type { ArcMessageSearchHit } from "@/lib/arc-chat/message-search";
 import type { ArcRecentConversationVM } from "@/lib/arc-chat/read-model";
 import { RAIL_FOLDER_ROWS, groupRailConversations } from "@/lib/arc-chat/rail-sections";
 
-import { archiveArcConversationAction, deleteArcConversationAction } from "../arc/actions";
+import {
+  archiveArcConversationAction,
+  deleteArcConversationAction,
+  listArchivedArcConversationsAction,
+  pinArcConversationAction,
+  renameArcConversationAction,
+  searchArcMessagesAction,
+  unarchiveArcConversationAction,
+  type ArchivedArcConversationVM,
+} from "../arc/actions";
 
 /**
- * Recent chats in the rail.
+ * The conversation sidebar.
  *
- * Campaign folders, the same treatment the /arc conversations drawer gives them
- * (#987): a campaign is what an operator looks a chat up by, so it is a standing
- * folder rather than a grouping that has to earn its place. Folders collapse,
- * carry a count, and show a dot when Arc is running inside one.
+ * Campaign folders, the same treatment the /arc conversations drawer used to
+ * give them (#987): a campaign is what an operator looks a chat up by, so it is
+ * a standing folder rather than a grouping that has to earn its place. Folders
+ * collapse, carry a count, and show a dot when Arc is running inside one. Which
+ * chats travel is decided on the server (rail-sections.ts); everything here is
+ * display state.
  *
- * This replaces a conditional grouping that had never once rendered on prod —
- * two chats had to share a campaign AND both land in the newest five, and the
- * campaign-bearing chats are older than that. The budget fix is in
- * rail-sections.ts; this file is only the shape.
+ * It is the *only* conversation list now — the drawer held a second, fuller
+ * copy of the same threads behind a modal, and that copy is gone. Which is why
+ * this grew a search field, an archive, and a scroll region: those were the
+ * three things only the drawer could do, and a sidebar you cannot search or
+ * un-archive from is a shortcut wearing a sidebar's clothes.
  *
- * Which chats travel is decided on the server. Everything here is display state.
+ * Search reaches further than the loaded rows. Titles filter what is here;
+ * anything long enough to be worth a round trip also queries message bodies on
+ * the server, so a chat past the rail's budget is still findable by something
+ * said inside it.
  */
 
 type Props = {
@@ -77,16 +94,78 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
   // without ever overriding a deliberate collapse.
   const [folderOpen, setFolderOpen] = useState<Record<string, boolean>>({});
   const [folderShowAll, setFolderShowAll] = useState<Record<string, boolean>>({});
-  const visible = conversations.filter((conversation) => !removed.has(conversation.id));
+  const [query, setQuery] = useState("");
 
-  if (visible.length === 0) {
-    return <p className="rail-recents-empty">Start a chat to keep active work close by.</p>;
+  /**
+   * Message hits for the current query.
+   *
+   * Keyed by the query they answer rather than cleared on every keystroke: an
+   * in-flight response for an older query is dropped by the sequence ref below,
+   * and a result that no longer matches what is typed simply stops being read.
+   * That removes the stale-render case where results from a longer query stay
+   * on screen after backspacing.
+   */
+  const [messageSearch, setMessageSearch] = useState<{ query: string; hits: ArcMessageSearchHit[] } | null>(null);
+  const searchSeq = useRef(0);
+  const trimmedQuery = query.trim();
+  const searchingBodies = isSearchableArcQuery(query);
+  const messageHits = searchingBodies && messageSearch?.query === trimmedQuery ? messageSearch.hits : null;
+  const messagesPending = searchingBodies && messageHits === null;
+
+  useEffect(() => {
+    const seq = ++searchSeq.current;
+    if (!isSearchableArcQuery(query)) return;
+    const timer = window.setTimeout(() => {
+      searchArcMessagesAction(query).then((result) => {
+        if (seq !== searchSeq.current) return; // superseded by a newer query
+        setMessageSearch({ query: query.trim(), hits: result.ok ? result.hits : [] });
+      });
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  const visible = conversations.filter((conversation) => !removed.has(conversation.id));
+  const needle = trimmedQuery.toLowerCase();
+  const matches = needle
+    ? visible.filter((conversation) =>
+        conversation.title.toLowerCase().includes(needle)
+        || (conversation.campaignName ?? "").toLowerCase().includes(needle))
+    : visible;
+
+  const remove = (id: string) => setRemoved((prev) => new Set(prev).add(id));
+  /* Grouped from the ALREADY-filtered rows, so a folder only exists here because
+     it holds a match — there is no collapse state for a search to survive, and
+     no folder can show a count with nothing under it. */
+  const { folders, loose } = groupRailConversations(matches);
+
+  /* The field stays even with nothing to filter: it reaches message bodies, and
+     hiding it would make the archive below the only way back to a conversation
+     whose title you cannot recall. */
+  const search = visible.length > 0 || query ? (
+    <label className="rail-recents-search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.6-3.6" /></svg>
+      <input
+        type="search"
+        aria-label="Search conversations"
+        placeholder="Search chats"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+    </label>
+  ) : null;
+
+  if (visible.length === 0 && !query) {
+    return (
+      <>
+        <p className="rail-recents-empty">Start a chat to keep active work close by.</p>
+        <ArchivedChats onRestored={() => setRemoved(new Set())} />
+      </>
+    );
   }
 
-  const { folders, loose } = groupRailConversations(visible);
-  const remove = (id: string) => setRemoved((prev) => new Set(prev).add(id));
-
   return (
+    <>
+    {search}
     <div className="rail-recents-list">
       {folders.map((folder, index) => {
         /* Open where the work is: the campaign holding the chat you have open,
@@ -151,6 +230,40 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
           onUnhover={hideCard}
         />
       ))}
+      {/* Chats whose titles matched nothing, but which said the thing you typed.
+          A separate section rather than merged in: "this chat is called X" and
+          "this chat says X" are different answers, and folding them together
+          loses the quote that explains why a result is here. */}
+      {searchingBodies ? (
+        <div className="rail-recent-messages">
+          <div className="rail-recent-messages-head">
+            <span>In messages</span>
+            {messagesPending ? <i className="rail-recent-messages-wait" aria-label="Searching" /> : messageHits?.length ? <small>{messageHits.length}</small> : null}
+          </div>
+          {(messageHits ?? []).map((hit) => (
+            <Link
+              href={`/arc?c=${encodeURIComponent(hit.conversationId)}`}
+              className="rail-message-hit"
+              key={hit.messageId}
+              prefetch={false}
+              onClick={onNavigate}
+            >
+              <span className="rail-message-hit-title">{hit.conversationTitle}</span>
+              <span className="rail-message-hit-snippet">
+                {hit.snippet.truncatedStart ? "…" : ""}{hit.snippet.before}
+                <mark>{hit.snippet.match}</mark>
+                {hit.snippet.after}{hit.snippet.truncatedEnd ? "…" : ""}
+              </span>
+            </Link>
+          ))}
+          {!messagesPending && messageHits?.length === 0 ? (
+            <p className="rail-recents-empty">No messages contain “{trimmedQuery}”.</p>
+          ) : null}
+        </div>
+      ) : null}
+      {folders.length === 0 && loose.length === 0 && !searchingBodies ? (
+        <p className="rail-recents-empty">No chat titled “{trimmedQuery}”.</p>
+      ) : null}
       {card ? (
         <div className="rail-recent-card" style={{ top: card.top, left: card.left }} role="tooltip">
           <b>{card.conversation.title}</b>
@@ -161,6 +274,73 @@ export function RailRecents({ conversations, openConversationId, onNavigate }: P
             {card.conversation.running ? "Arc is working on this now" : `Last active ${card.conversation.when}`}
           </span>
         </div>
+      ) : null}
+    </div>
+    <ArchivedChats onRestored={() => setRemoved(new Set())} />
+    </>
+  );
+}
+
+/**
+ * Archived conversations, and the way back out.
+ *
+ * The row menu has always offered "Hide from this list", and until now the only
+ * place that could undo it was the drawer's conversation tab. An archive you can
+ * put things into and not take them out of is a delete with a softer label, so
+ * it moves here with the list it belongs to.
+ *
+ * Loaded on first open, never on mount: this renders on every route in the app,
+ * and a list nobody opened is not worth a query on every page view.
+ */
+function ArchivedChats({ onRestored }: { onRestored: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<ArchivedArcConversationVM[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (!next || items !== null) return;
+    setError(null);
+    listArchivedArcConversationsAction().then((result) => {
+      if (result.ok) setItems(result.items);
+      else setError(result.error);
+    });
+  };
+
+  const restore = (id: string) => {
+    setItems((current) => current?.filter((item) => item.id !== id) ?? null);
+    unarchiveArcConversationAction(id).then((result) => {
+      // Whether it worked or not, the truth is on the server: refresh brings the
+      // row back into the list above, or back into this one if it refused.
+      if (!result.ok) setItems(null);
+      onRestored();
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className="rail-archived">
+      <button type="button" className="rail-archived-toggle" aria-expanded={open} onClick={toggle}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18v3H3zM5 10v9h14v-9M10 14h4" /></svg>
+        <span>Archived{items?.length ? ` · ${items.length}` : ""}</span>
+        <svg className="rail-archived-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      {open ? (
+        error ? <p className="rail-recents-empty" role="alert">{error}</p>
+        : items === null ? <p className="rail-recents-empty">Loading…</p>
+        : items.length === 0 ? <p className="rail-recents-empty">Nothing archived.</p>
+        : (
+          <div className="rail-archived-list">
+            {items.map((item) => (
+              <div className="rail-archived-item" key={item.id}>
+                <span className="rail-archived-title" title={item.title}>{item.title}</span>
+                <button type="button" onClick={() => restore(item.id)} title={`Restore ${item.title}`}>Restore</button>
+              </div>
+            ))}
+          </div>
+        )
       ) : null}
     </div>
   );
@@ -209,6 +389,11 @@ function RecentRow({
   onUnhover: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  /** Renaming in place. Rename and pin lived only in the Arc drawer's copy of
+   *  this list; removing that copy would have deleted the only way to do either,
+   *  so they come here with the list. */
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(conversation.title);
   const [pending, startTransition] = useTransition();
   const ref = useRef<HTMLSpanElement>(null);
   const router = useRouter();
@@ -239,6 +424,44 @@ function RecentRow({
     });
   };
 
+  const commitRename = () => {
+    const title = draftTitle.trim();
+    setRenaming(false);
+    if (!title || title === conversation.title) return;
+    startTransition(async () => {
+      await renameArcConversationAction({ conversationId: conversation.id, title });
+      router.refresh();
+    });
+  };
+
+  const togglePin = () => {
+    setMenuOpen(false);
+    startTransition(async () => {
+      await pinArcConversationAction({ conversationId: conversation.id, pinned: !conversation.pinned });
+      router.refresh();
+    });
+  };
+
+  if (renaming) {
+    return (
+      <span className="rail-recent-wrap">
+        <input
+          className="rail-recent-rename"
+          value={draftTitle}
+          autoFocus
+          aria-label={`Rename ${conversation.title}`}
+          onChange={(event) => setDraftTitle(event.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") { event.preventDefault(); commitRename(); }
+            // Escape belongs to the field, not to whatever is listening above it.
+            if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setDraftTitle(conversation.title); setRenaming(false); }
+          }}
+        />
+      </span>
+    );
+  }
+
   return (
     <span
       className="rail-recent-wrap"
@@ -256,7 +479,10 @@ function RecentRow({
         onBlur={onUnhover}
       >
         <span className="rail-recent-dot" aria-hidden="true" />
-        <span className="rail-recent-title">{conversation.title}</span>
+        <span className="rail-recent-title">
+          {conversation.pinned ? <i className="rail-recent-pin" aria-label="Pinned" title="Pinned" /> : null}
+          {conversation.title}
+        </span>
         {conversation.running ? (
           <span className="rail-recent-working" role="status" aria-label="Arc is working on this chat">
             <WorkingSpinner />
@@ -278,6 +504,12 @@ function RecentRow({
       </button>
       {menuOpen && (
         <div className="rail-recent-menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setDraftTitle(conversation.title); setRenaming(true); }}>
+            Rename
+          </button>
+          <button type="button" role="menuitem" onClick={togglePin}>
+            {conversation.pinned ? "Unpin" : "Pin to top"}
+          </button>
           <button type="button" role="menuitem" onClick={() => run(() => archiveArcConversationAction(conversation.id))}>
             Hide from this list
           </button>

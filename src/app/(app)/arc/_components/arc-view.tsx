@@ -12,7 +12,6 @@ import {
   useTransition,
 } from "react";
 import {
-  Archive,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
@@ -36,24 +35,21 @@ import {
   LayoutTemplate,
   Link2,
   LoaderCircle,
+  Megaphone,
   MailCheck,
   MapPinned,
-  Megaphone,
-  MessageSquareText,
   MessagesSquare,
-  MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
   Paperclip,
   PencilLine,
-  Pin,
   Plus,
   Radar,
   Repeat2,
-  RotateCcw,
   Search,
   Share2,
   ShieldCheck,
+  Image as ImageIcon,
   Sparkles,
   Info,
   Slash,
@@ -67,18 +63,23 @@ import { AnimatePresence, motion } from "motion/react";
 
 import {
   ARC_RUN_STALE_MS,
-  isSearchableArcQuery,
+  DEFAULT_MEDIA_CONFIG,
+  MEDIA_AUTO,
+  findGenerationModel,
+  generationModelsFor,
   type ArcActionCard,
   type ArcAssetStatus,
   type ArcDraftFinding,
   type ArcMention,
   type ArcMode,
   type ArcRoute,
+  type EngineAvailability,
+  type MediaCategory,
+  type MediaConfig,
   type SharePermission,
   type ShareVisibility,
 } from "@/domain";
 import { contextUsage } from "@/lib/arc-chat/context-usage";
-import type { ArcMessageSearchHit } from "@/lib/arc-chat/message-search";
 import { applyArcStreamFrame, type ArcStreamOverlay } from "@/lib/arc-chat/live-stream";
 import {
   ARC_SKILL_BUILDER,
@@ -96,7 +97,6 @@ import {
 } from "@/lib/arc-skills/requirements";
 import {
   readWorkPanelPreference,
-  workPanelOpenOnConversationChange,
   writeWorkPanelPreference,
 } from "@/lib/arc-chat/work-panel-preference";
 import type { ArcAssetBody } from "@/lib/campaigns/read-model";
@@ -109,13 +109,12 @@ import type {
 } from "@/lib/arc-chat/persistence";
 import type { MentionGroup } from "@/lib/arc-chat/mention-search";
 import type { ArcThreadGroupVM } from "@/lib/arc-chat/read-model";
-import { filterThreadGroups, type ArcThreadFilter } from "@/lib/arc-chat/thread-filter";
 import type { SavedKind } from "@/lib/arc-chat/saved";
 import {
   resolveArcComposerMode,
   type ArcComposerModePreference,
 } from "@/lib/arc-chat/composer-mode";
-import { resolveArcModelRoute, type ArcModelPreference } from "@/lib/arc-chat/model-routing";
+import { inferMediaCategory, resolveArcModelRoute, type ArcModelPreference } from "@/lib/arc-chat/model-routing";
 import { buildArcRunContract } from "@/lib/arc-chat/run-contract";
 import { buildArcRunProfile } from "@/lib/arc-chat/run-profile";
 import {
@@ -128,31 +127,23 @@ import {
 } from "@/lib/arc-chat/view-state";
 
 import {
-  archiveArcConversationAction,
   assignArcConversationCampaignAction,
   cancelArcRunAction,
-  deleteArcConversationAction,
   editAndResendArcMessageAction,
   getArcAssetBodiesAction,
   getArcAssetChecksAction,
   getArcAssetStatusesAction,
-  pinArcConversationAction,
   regenerateArcReplyAction,
-  renameArcConversationAction,
   installArcGithubSkillAction,
   generateExemplarSkillAction,
   removeGeneratedSkillAction,
-  listArchivedArcConversationsAction,
   listSavedArcItemsAction,
   previewArcGithubSkillAction,
   removeArcGithubSkillAction,
   removeSavedArcItemAction,
-  searchArcMessagesAction,
   sendArcMessageAction,
   setArcSkillInstalledAction,
-  unarchiveArcConversationAction,
   uploadArcAttachmentAction,
-  type ArchivedArcConversationVM,
   type SavedArcItemVM,
 } from "../actions";
 // Reused rather than reimplemented: the same `requireOperator()` gate and
@@ -173,10 +164,9 @@ import type {
   ComposerMenu,
   DemoTurn,
   PaneBox,
-  ThreadItem,
 } from "./arc-view.types";
-import { DEMO_ASSET_BODIES, DEMO_ASSET_CHECKS, DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING, DEMO_WORKSPACE_CARDS } from "./arc-demo-data";
-import { ArcWorkPanel, ChipThumb, QuestionPrompt } from "./arc-messages";
+import { DEMO_ASSET_BODIES, DEMO_ASSET_CHECKS, DEMO_CAMPAIGNS, DEMO_PACKAGE_CARDS, DEMO_THREADS, DEMO_WAITING, DEMO_WORKSPACE_CARDS } from "./arc-demo-data";
+import { ArcWorkPanel, ChipThumb, QuestionPrompt, WORK_PANEL_DOCK_MIN_PANE } from "./arc-messages";
 import { DeliverableReview } from "./arc-deliverable";
 import { ArcLauncher, DemoConversation, LiveConversation, type OptimisticArcTurn } from "./arc-conversation";
 import { useBottomPin } from "./use-bottom-pin";
@@ -195,6 +185,131 @@ const CAPABILITY_OPTIONS: Array<{ id: ArcComposerModePreference; label: string; 
 ];
 
 const ARC_CONTEXT_SCOPES = ["workspace", "brand", "crm", "campaigns"];
+
+/**
+ * Which campaign this conversation belongs to, under its title.
+ *
+ * The control lived in the Arc drawer's thread rows, and went away with them
+ * when the rail became the conversation sidebar. It belongs here rather than
+ * back in a list: a campaign is an attribute of the chat you are *in*, you
+ * decide it while working in that chat, and the rail has no campaign list to
+ * offer (the shell would have to fetch one on every route to show it).
+ *
+ * Optimistic, because the alternative is a chip that stays wrong until a server
+ * round-trip and a refresh land. A refusal puts the old value straight back and
+ * says why — silence here would read as "it saved", which is exactly the failure
+ * the operator cannot see.
+ */
+function ConversationCampaign({
+  campaignId,
+  campaigns,
+  disabled,
+  disabledHint,
+  notice,
+  onAssign,
+}: {
+  campaignId: string | null;
+  campaigns: ArcMention[];
+  disabled: boolean;
+  disabledHint?: string;
+  /** What happened to the last assignment, reported at the control that did it.
+   *  These used to land in `composerNotice` at the bottom of the screen beside
+   *  the send button — the same distance-from-the-cause problem the per-message
+   *  notices were built to fix. */
+  notice?: string | null;
+  onAssign: (campaignId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: PointerEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // Owned here, so it never reaches whatever else is listening for Escape.
+      event.stopPropagation();
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const current = campaigns.find((campaign) => campaign.id === campaignId);
+  // A conversation can carry a campaign the mention list doesn't offer (the
+  // campaign was archived, or the list is capped). Say it is in one rather than
+  // rendering "Add to campaign" over a link that exists.
+  const label = current?.label ?? (campaignId ? "In a campaign" : "Add to campaign");
+
+  const choose = (next: string | null) => {
+    setOpen(false);
+    if (next !== campaignId) onAssign(next);
+  };
+
+  return (
+    <div className="arc-conversation-campaign" ref={ref}>
+      <button
+        type="button"
+        data-empty={campaignId ? undefined : "true"}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={disabled}
+        title={disabled ? disabledHint : campaignId ? `Campaign: ${label}` : "Add this conversation to a campaign"}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Megaphone size={11} aria-hidden />
+        <span>{label}</span>
+        <ChevronDown size={11} aria-hidden />
+      </button>
+      {notice && !open ? <span className="arc-campaign-notice" role="status">{notice}</span> : null}
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            className="arc-campaign-menu"
+            role="menu"
+            aria-label="Assign this conversation to a campaign"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -3 }}
+            transition={{ duration: 0.14 }}
+          >
+            {campaigns.map((campaign) => (
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={campaign.id === campaignId}
+                key={campaign.id}
+                onClick={() => choose(campaign.id)}
+              >
+                <Megaphone size={12} aria-hidden />
+                <span>{campaign.label}</span>
+                {campaign.id === campaignId ? <Check size={12} aria-hidden /> : null}
+              </button>
+            ))}
+            {campaigns.length === 0 ? (
+              <p className="arc-campaign-menu-empty">No campaigns yet. Create one and it will show up here.</p>
+            ) : null}
+            {campaignId ? (
+              <>
+                <div className="arc-campaign-menu-sep" />
+                <button type="button" role="menuitem" className="is-clear" onClick={() => choose(null)}>
+                  <X size={12} aria-hidden />
+                  <span>Remove from campaign</span>
+                </button>
+              </>
+            ) : null}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 const COMMAND_SKILLS = [...ARC_SKILLS, ...ARC_SKILL_LIBRARY, ARC_SKILL_BUILDER];
 
@@ -229,167 +344,6 @@ function ArcModelIcon({ model, size }: { model: ArcModelPreference; size: number
   }
   if (model === "fast") return <Gauge size={size} />;
   return <Hammer size={size} />;
-}
-
-/** Chats shown inside an open campaign folder before it offers "Show N more".
- *  Deep enough to reach yesterday's work, shallow enough that one busy campaign
- *  can't push every other one off the panel. */
-const CAMPAIGN_FOLDER_ROWS = 5;
-
-function ThreadRow({ thread, active, live, campaignName, campaigns, onOpen, onRename, onPin, onAssignCampaign, onArchive, onDelete }: {
-  thread: ThreadItem;
-  active: boolean;
-  live: boolean;
-  /** Only for the menu's campaign detail — the list shows a chat's campaign by
-   *  the folder it sits in, so a row never repeats it. */
-  campaignName: string | null;
-  campaigns: ArcMention[];
-  onOpen: () => void;
-  onRename: (title: string) => void;
-  onPin: (pinned: boolean) => void;
-  onAssignCampaign: (campaignId: string | null) => void;
-  onArchive: () => void;
-  onDelete: () => void;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState(thread.title);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [campaignPicker, setCampaignPicker] = useState(false);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Element && !event.target.closest(`[data-thread="${thread.id}"]`)) {
-        setMenuOpen(false);
-        setConfirmDelete(false);
-        setCampaignPicker(false);
-      }
-    };
-    document.addEventListener("pointerdown", dismiss);
-    return () => document.removeEventListener("pointerdown", dismiss);
-  }, [menuOpen, thread.id]);
-
-  const commitRename = () => {
-    const next = name.trim();
-    setRenaming(false);
-    if (next && next !== thread.title) onRename(next);
-    else setName(thread.title);
-  };
-
-  const openThreadMenu = () => {
-    setConfirmDelete(false);
-    setCampaignPicker(false);
-    setMenuOpen(true);
-  };
-
-  const handleThreadContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target instanceof Element && event.target.closest(".arc-history-menu")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    openThreadMenu();
-  };
-
-  const handleThreadMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      // Consume it: the drawer closes on Escape too, and dismissing this menu
-      // must not also dismiss the surface it is sitting on.
-      event.stopPropagation();
-      // Innermost first — backing out of a delete confirmation should cancel
-      // the confirmation, not tear down the whole menu behind it.
-      if (confirmDelete) setConfirmDelete(false);
-      else if (campaignPicker) setCampaignPicker(false);
-      else setMenuOpen(false);
-      return;
-    }
-    if (event.key === "Enter" && document.activeElement instanceof HTMLButtonElement) {
-      event.preventDefault();
-      document.activeElement.click();
-      return;
-    }
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="menuitem"], button[role="menuitemradio"]')).filter((item) => !item.disabled);
-    if (items.length === 0) return;
-    event.preventDefault();
-    const index = items.indexOf(document.activeElement as HTMLButtonElement);
-    const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" ? (index + 1 + items.length) % items.length : (index - 1 + items.length) % items.length;
-    items[next]?.focus();
-  };
-
-  if (renaming) {
-    return (
-      <div className="arc-history-item is-renaming" data-thread={thread.id}>
-        <input
-          autoFocus
-          value={name}
-          aria-label="Rename conversation"
-          onChange={(event) => setName(event.target.value)}
-          onBlur={commitRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") { event.preventDefault(); commitRename(); }
-            // Abandoning a rename must not also close the drawer behind it.
-            if (event.key === "Escape") { event.stopPropagation(); setName(thread.title); setRenaming(false); }
-          }}
-        />
-      </div>
-    );
-  }
-
-  /* One line per conversation. A second line appears only when Arc has a
-     rolling summary to add. The old fallbacks ("Conversation", "Pinned") gave
-     every row a second line that repeated what the row already showed, which
-     is most of why a list of 22 chats read as noise. */
-  const label = (
-    <span>
-      <span className="arc-thread-line">
-        <b>{thread.title}</b>
-        {thread.running
-          ? <em className="arc-thread-working"><span className="arc-thread-dots" aria-hidden="true"><i /><i /><i /></span>Working</em>
-          : <em className="arc-thread-when">{thread.when}</em>}
-      </span>
-      {thread.preview ? <small className="arc-thread-preview"><span>{thread.preview}</span></small> : null}
-    </span>
-  );
-
-  return (
-    <div className={`arc-history-item${active ? " is-active" : ""}`} data-thread={thread.id} onContextMenu={handleThreadContextMenu}>
-      {live
-        ? <Link href={`/arc?c=${thread.id}`} className="arc-history-open" onClick={onOpen}>{label}</Link>
-        : <button type="button" className="arc-history-open" onClick={onOpen}>{label}</button>}
-      {thread.pinned ? <Pin size={12} className="arc-history-pin" aria-label="Pinned" /> : null}
-      <button type="button" className="arc-history-menu-btn" aria-label="Conversation options" aria-haspopup="menu" aria-expanded={menuOpen} onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (menuOpen) setMenuOpen(false); else openThreadMenu(); }}>
-        <MoreHorizontal size={15} />
-      </button>
-      {menuOpen ? (
-        <div className="arc-history-menu" role="menu" onKeyDown={handleThreadMenuKeyDown}>
-          {campaignPicker ? (
-            <div className="arc-history-campaign-picker">
-              <div><button type="button" onClick={() => setCampaignPicker(false)} aria-label="Back to conversation options"><ArrowLeft size={13} /></button><span><b>Campaign</b><small>{campaignName || "Not linked"}</small></span></div>
-              <button type="button" role="menuitemradio" aria-checked={!thread.campaignId} onClick={() => { setMenuOpen(false); setCampaignPicker(false); onAssignCampaign(null); }}><span>No campaign</span>{!thread.campaignId ? <Check size={13} /> : null}</button>
-              {campaigns.map((campaign) => <button type="button" role="menuitemradio" aria-checked={thread.campaignId === campaign.id} key={campaign.id} onClick={() => { setMenuOpen(false); setCampaignPicker(false); onAssignCampaign(campaign.id); }}><span>{campaign.label}</span>{thread.campaignId === campaign.id ? <Check size={13} /> : null}</button>)}
-            </div>
-          ) : confirmDelete ? (
-            <div className="arc-history-menu-confirm">
-              <span>Delete this conversation?</span>
-              <div>
-                <button type="button" onClick={() => setConfirmDelete(false)}>Cancel</button>
-                <button type="button" className="is-danger" onClick={() => { setMenuOpen(false); onDelete(); }}>Delete</button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onPin(!thread.pinned); }}><Pin size={14} />{thread.pinned ? "Unpin" : "Pin"}</button>
-              <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setName(thread.title); setRenaming(true); }}><PencilLine size={14} />Rename</button>
-              <button type="button" role="menuitem" className="has-detail" onClick={() => setCampaignPicker(true)}><Megaphone size={14} /><span><b>{campaignName ? "Change campaign" : "Assign campaign"}</b><small>{campaignName || "Keep this chat with its campaign"}</small></span><ChevronRight size={13} /></button>
-              <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onArchive(); }}><Archive size={14} />Archive</button>
-              <button type="button" role="menuitem" className="is-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={14} />Delete</button>
-            </>
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 type DrawerConnectorStatus = ConnectorView["status"] | ConnectionView["status"];
@@ -531,13 +485,6 @@ function usePaneBox(ref: React.RefObject<HTMLElement | null>, active: boolean): 
 
 function ThreadDrawer({
   live,
-  groups,
-  activeConversationId,
-  selectedDemoId,
-  needsReviewCount,
-  onSelectDemo,
-  onStartNew,
-  onOpenReview,
   onUseSkill,
   onUseSaved,
   installedSkills,
@@ -549,7 +496,6 @@ function ThreadDrawer({
   generatedSkills,
   onGeneratedSkillsChange,
   workspaceName,
-  campaignItems,
   connectorsConfigured,
   connectors,
   emailConnection,
@@ -559,13 +505,6 @@ function ThreadDrawer({
   paneBox,
 }: {
   live: boolean;
-  groups: ArcThreadGroupVM[];
-  activeConversationId: string | null;
-  selectedDemoId: string;
-  needsReviewCount: number;
-  onSelectDemo: (id: string) => void;
-  onStartNew: () => void;
-  onOpenReview: () => void;
   onUseSkill: (skill: ArcSkillDefinition) => void;
   /** Put a saved item's text into the composer for the current turn. */
   onUseSaved: (text: string) => void;
@@ -578,7 +517,6 @@ function ThreadDrawer({
   generatedSkills: GeneratedSkillRecord[];
   onGeneratedSkillsChange: (skills: GeneratedSkillRecord[]) => void;
   workspaceName: string;
-  campaignItems: ArcMention[];
   connectorsConfigured: boolean;
   connectors: ConnectorView[];
   emailConnection: ConnectionView | null;
@@ -598,7 +536,9 @@ function ThreadDrawer({
 }) {
   const router = useRouter();
   const drawerRef = useRef<HTMLElement | null>(null);
-  const [view, setView] = useState<"conversations" | "skills" | "connectors" | "saved">("conversations");
+  // No "conversations": the rail is the conversation sidebar now, and this
+  // drawer holding a second copy of the same list is what that replaced.
+  const [view, setView] = useState<"skills" | "connectors" | "saved">("skills");
   // Saved items are loaded lazily the first time the Saved tab opens.
   const [savedItems, setSavedItems] = useState<SavedArcItemVM[] | null>(null);
   const [savedLoading, setSavedLoading] = useState(false);
@@ -609,10 +549,6 @@ function ThreadDrawer({
    *  grows without bound and had no way through it but scrolling. */
   const [savedSearch, setSavedSearch] = useState("");
   const [savedKind, setSavedKind] = useState<SavedKindFilter>("all");
-  // Archived conversations: a lazy-loaded disclosure at the bottom of the list.
-  const [archivedOpen, setArchivedOpen] = useState(false);
-  const [archivedConvos, setArchivedConvos] = useState<ArchivedArcConversationVM[] | null>(null);
-  const [archivedError, setArchivedError] = useState<string | null>(null);
   const [skillsMode, setSkillsMode] = useState<"installed" | "library">("installed");
   const [skillSearch, setSkillSearch] = useState("");
   /** Search over the skills you already have — distinct from `skillSearch`,
@@ -641,13 +577,6 @@ function ThreadDrawer({
   const focusConnectorRef = useCallback((node: HTMLDivElement | null) => {
     node?.scrollIntoView({ block: "center", behavior: "auto" });
   }, []);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<ArcThreadFilter>("all");
-  /** Campaign folders the operator has explicitly opened or closed. Anything
-   *  absent falls back to the default below — open where the work is. */
-  const [campaignOpen, setCampaignOpen] = useState<Record<string, boolean>>({});
-  /** Folders showing every chat rather than the first few. */
-  const [campaignShowAll, setCampaignShowAll] = useState<Record<string, boolean>>({});
   const [githubOpen, setGithubOpen] = useState(false);
   const [githubUrl, setGithubUrl] = useState("");
   const [githubPreview, setGithubPreview] = useState<WorkspaceArcSkill | null>(null);
@@ -655,7 +584,6 @@ function ThreadDrawer({
   const [voiceStatus, setVoiceStatus] = useState<{ tone: "ok" | "info"; text: string } | null>(null);
   const [githubStatus, setGithubStatus] = useState<string | null>(null);
   const [githubBusy, setGithubBusy] = useState(false);
-  const [demoGroups, setDemoGroups] = useState<ArcThreadGroupVM[]>(DEMO_THREADS);
 
   const openSaved = () => {
     setView("saved");
@@ -692,98 +620,7 @@ function ThreadDrawer({
     });
   };
 
-  const toggleArchived = () => {
-    const next = !archivedOpen;
-    setArchivedOpen(next);
-    if (next && archivedConvos === null) {
-      setArchivedError(null);
-      listArchivedArcConversationsAction().then((res) => {
-        if (res.ok) setArchivedConvos(res.items);
-        else { setArchivedConvos([]); setArchivedError(res.error); }
-      });
-    }
-  };
-  const restoreConvo = (id: string) => {
-    const prev = archivedConvos;
-    setArchivedConvos((cur) => (cur ? cur.filter((c) => c.id !== id) : cur));
-    unarchiveArcConversationAction(id).then((res) => {
-      if (res.ok) { if (live) router.refresh(); }
-      else { setArchivedConvos(prev); setArchivedError(res.error); }
-    });
-  };
 
-  /**
-   * Message-body search, alongside the client-side title filter above.
-   *
-   * Debounced rather than per-keystroke: this is a server round-trip over every
-   * conversation the viewer can open, and typing "pricing" would otherwise fire
-   * seven of them. `seq` drops a slow response that lands after a newer query —
-   * without it, backspacing to a shorter query can leave the previous, longer
-   * query's results on screen.
-   */
-  // Results are stored WITH the query that produced them, so "are these hits
-  // current?" is derived at render rather than kept in sync by an effect that
-  // clears state. That removes the stale-render case (results from a longer
-  // query left on screen after backspacing) and the cascading-render warning
-  // that resetting state synchronously would earn.
-  const [messageSearch, setMessageSearch] = useState<{ query: string; hits: ArcMessageSearchHit[] } | null>(null);
-  const searchSeq = useRef(0);
-  const searchQuery = query.trim();
-  const messageSearchActive = live && isSearchableArcQuery(query);
-  const messageHits = messageSearchActive && messageSearch?.query === searchQuery ? messageSearch.hits : null;
-  const searchingMessages = messageSearchActive && messageHits === null;
-
-  useEffect(() => {
-    // Bumping the ref is not state: an in-flight response for an older query is
-    // dropped without this effect having to clear anything.
-    const seq = ++searchSeq.current;
-    if (!live || !isSearchableArcQuery(query)) return;
-    const timer = window.setTimeout(() => {
-      searchArcMessagesAction(query).then((result) => {
-        if (seq !== searchSeq.current) return; // a newer query has superseded this one
-        setMessageSearch({ query: query.trim(), hits: result.ok ? result.hits : [] });
-      });
-    }, 280);
-    return () => window.clearTimeout(timer);
-  }, [query, live]);
-
-  const sourceGroups = live ? groups : demoGroups;
-  const availableCampaigns: ArcMention[] = campaignItems.length > 0 ? campaignItems : [
-    { type: "campaign", id: "demo-camp", label: "Pricing-Intent Fast Track", href: "/campaigns" },
-    { type: "campaign", id: "past-customer", label: "Past Customer Re-engagement", href: "/campaigns" },
-    { type: "campaign", id: "property-partners", label: "Property Partner Growth", href: "/campaigns" },
-  ];
-  const campaignNames = new Map<string, string>([
-    ["demo-camp", "Pricing-Intent Fast Track"],
-    ["past-customer", "Past Customer Re-engagement"],
-    ["property-partners", "Property Partner Growth"],
-    ...availableCampaigns.map((campaign) => [campaign.id, campaign.label] as [string, string]),
-  ]);
-  /* The list is a two-section tree, not a grouping mode you have to switch to:
-     campaigns are folders (a chat's campaign is the thing operators actually
-     look it up by), and everything not attached to one falls through to
-     Recents, which keeps its date headings. Both sections are always visible,
-     so nothing is a click away behind a toggle. */
-  const visibleGroups = filterThreadGroups(sourceGroups, query, filter);
-  const campaignFolders = (() => {
-    const byCampaign = new Map<string, { id: string; name: string; items: ArcThreadGroupVM["items"] }>();
-    // `visibleGroups` is already newest-first, so insertion order puts the
-    // campaign with the most recent activity at the top — more useful than
-    // alphabetical, which buried whatever you were last working on.
-    for (const thread of visibleGroups.flatMap((group) => group.items)) {
-      if (!thread.campaignId) continue;
-      const folder = byCampaign.get(thread.campaignId);
-      if (folder) folder.items.push(thread);
-      else byCampaign.set(thread.campaignId, { id: thread.campaignId, name: campaignNames.get(thread.campaignId) ?? "Campaign", items: [thread] });
-    }
-    return [...byCampaign.values()];
-  })();
-  const recentGroups = visibleGroups
-    .map((group) => ({ ...group, items: group.items.filter((thread) => !thread.campaignId) }))
-    .filter((group) => group.items.length > 0);
-  const allThreads = sourceGroups.flatMap((group) => group.items);
-  const runningCount = allThreads.filter((thread) => thread.running).length;
-  const pinnedCount = allThreads.filter((thread) => thread.pinned).length;
   const connectorItems: DrawerConnectorItem[] = [
     ...(emailConnection ? [{
       key: "resend",
@@ -926,7 +763,6 @@ function ThreadDrawer({
     if (view === "skills" && skillsMode === "library" && githubOpen) { setGithubOpen(false); return true; }
     if (view === "skills" && skillsMode === "library") { setSkillsMode("installed"); return true; }
     if (view === "skills" && manageOpen) { setManageOpen(false); return true; }
-    if (view === "conversations" && archivedOpen) { setArchivedOpen(false); return true; }
     if (view === "connectors" && plannedOpen) { setPlannedOpen(false); return true; }
     return false;
   };
@@ -938,29 +774,21 @@ function ThreadDrawer({
    * <body>. A handler on the aside then never fires again, so Escape appears to
    * stop working after the first press. A document listener is focus-independent.
    *
-   * Registered in the CAPTURE phase and gated on the event target, which is the
-   * only arrangement that survives both React quirks here:
+   * Registered in the CAPTURE phase, which is what lets `dismissInnermost` run
+   * before React has flushed anything: by the time a bubble-phase document
+   * listener sees the key, an inner surface that closed itself is already gone.
    *
-   *   - `stopPropagation()` on a synthetic event does not reliably stop the
-   *     native event reaching a document-bound listener, so a thread menu could
-   *     not fend the drawer off that way;
-   *   - by the time a *bubble*-phase document listener runs, React has already
-   *     flushed the menu's own close and unmounted it, so asking the DOM
-   *     "is a menu open?" answers no and the drawer closes too.
-   *
-   * Capture runs before React sees the event at all, so the target still tells
-   * the truth: a keystroke aimed inside a nested surface belongs to that
-   * surface's own handler, and this one stays out of the way.
+   * A `targetOwnedByNestedSurface` guard used to sit here, letting a thread's
+   * row menu or inline rename field eat Escape before the drawer saw it. Both
+   * lived in this drawer's conversation list; that list is the rail's job now,
+   * and the guard's two selectors matched nothing rendered anywhere. The rail's
+   * own menu and rename field handle their own Escape, and neither is inside
+   * this modal, so there is nothing left here to defer to.
    */
-  const targetOwnedByNestedSurface = (target: EventTarget | null) => {
-    if (!(target instanceof Element)) return false;
-    return Boolean(target.closest(".arc-history-menu") || target.closest(".arc-history-item.is-renaming"));
-  };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const drawer = drawerRef.current;
       if (!drawer) return;
-      if (targetOwnedByNestedSurface(event.target)) return;
       if (event.key === "Escape") {
         event.preventDefault();
         if (!dismissInnermost()) onDismiss();
@@ -1073,42 +901,6 @@ function ThreadDrawer({
     setGithubBusy(false);
   };
 
-  // Demo mutations are local; live mutations hit the real actions then refresh.
-  const applyDemo = (id: string, transform: (item: ThreadItem) => ThreadItem | null) => {
-    setDemoGroups((prev) => prev
-      .map((group) => ({ ...group, items: group.items.flatMap((item) => {
-        if (item.id !== id) return [item];
-        const next = transform(item as ThreadItem);
-        return next ? [next as (typeof group.items)[number]] : [];
-      }) }))
-      .filter((group) => group.items.length > 0));
-  };
-
-  const doRename = (id: string, title: string) => {
-    if (!live) return applyDemo(id, (item) => ({ ...item, title }));
-    renameArcConversationAction({ conversationId: id, title }).then((result) => { if (result.ok) router.refresh(); });
-  };
-  const doPin = (id: string, pinned: boolean) => {
-    if (!live) return applyDemo(id, (item) => ({ ...item, pinned }));
-    pinArcConversationAction({ conversationId: id, pinned }).then((result) => { if (result.ok) router.refresh(); });
-  };
-  const doAssignCampaign = (id: string, campaignId: string | null) => {
-    if (!live) return applyDemo(id, (item) => ({ ...item, campaignId }));
-    assignArcConversationCampaignAction({ conversationId: id, campaignId }).then((result) => { if (result.ok) router.refresh(); });
-  };
-  const doArchive = (id: string) => {
-    if (!live) return applyDemo(id, () => null);
-    archiveArcConversationAction(id).then((result) => { if (result.ok) router.refresh(); });
-  };
-  const doDelete = (id: string) => {
-    if (!live) return applyDemo(id, () => null);
-    deleteArcConversationAction(id).then((result) => {
-      if (!result.ok) return;
-      if (id === activeConversationId) router.push("/arc?new=1");
-      else router.refresh();
-    });
-  };
-
   /* Saved: narrow by kind, then by text. Counts come off the unfiltered list so
      a chip never reads "0" only because the other chip is on. */
   const savedCounts = {
@@ -1124,24 +916,6 @@ function ThreadDrawer({
   });
   const savedNarrowed = savedKind !== "all" || savedSearch.trim().length > 0;
 
-  const searching = query.trim().length > 0;
-  const renderThread = (thread: ArcThreadGroupVM["items"][number]) => (
-    <ThreadRow
-      key={thread.id}
-      thread={thread}
-      active={live ? thread.id === activeConversationId : thread.id === selectedDemoId}
-      live={live}
-      campaignName={thread.campaignId ? campaignNames.get(thread.campaignId) ?? "Campaign" : null}
-      campaigns={availableCampaigns}
-      onOpen={live ? onClose : () => onSelectDemo(thread.id)}
-      onRename={(title) => doRename(thread.id, title)}
-      onPin={(pinned) => doPin(thread.id, pinned)}
-      onAssignCampaign={(campaignId) => doAssignCampaign(thread.id, campaignId)}
-      onArchive={() => doArchive(thread.id)}
-      onDelete={() => doDelete(thread.id)}
-    />
-  );
-
   return (
     <motion.aside ref={drawerRef} className="arc-history" style={paneBox ? { top: paneBox.top, left: paneBox.left, height: paneBox.height, width: Math.min(386, paneBox.width - 28) } : undefined} initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -24, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} role="dialog" aria-modal="true" aria-label="Arc workspace">
       {/* Everything in this drawer — the chats, the installed skills, the
@@ -1153,134 +927,10 @@ function ThreadDrawer({
         <button type="button" className="arc-icon-button" onClick={onDismiss} aria-label="Close Arc workspace" autoFocus><X size={17} /></button>
       </div>
       <nav className="arc-drawer-nav" aria-label="Arc workspace sections">
-        <button type="button" className={view === "conversations" ? "is-active" : ""} aria-current={view === "conversations" ? "page" : undefined} onClick={() => setView("conversations")}><MessageSquareText size={14} /><span>Conversations</span></button>
         <button type="button" className={view === "skills" ? "is-active" : ""} aria-current={view === "skills" ? "page" : undefined} onClick={() => { setView("skills"); setSkillsMode("installed"); }}><Blocks size={14} /><span>Skills</span></button>
         <button type="button" className={view === "connectors" ? "is-active" : ""} aria-current={view === "connectors" ? "page" : undefined} onClick={() => setView("connectors")}><Link2 size={14} /><span>Connectors</span></button>
         <button type="button" className={view === "saved" ? "is-active" : ""} aria-current={view === "saved" ? "page" : undefined} onClick={openSaved}><Bookmark size={14} /><span>Saved</span></button>
       </nav>
-
-      {view === "conversations" ? <section className="arc-drawer-view arc-drawer-conversations" aria-label="Conversations">
-        {/* No title block: the tab above already says "Conversations", and the
-            explanatory subtitle cost a third of the panel before the first row. */}
-        {live ? <Link href="/arc?new=1" className="arc-new-chat" prefetch={false} scroll={false} onClick={onStartNew}><Plus size={15} /> New conversation</Link> : <button type="button" className="arc-new-chat" onClick={() => onSelectDemo("new")}><Plus size={15} /> New conversation</button>}
-        <label className="arc-drawer-search"><Search size={14} /><input type="search" aria-label="Search conversations" placeholder="Search conversations" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-        <div className="arc-drawer-filters" role="group" aria-label="Filter conversations">
-          {([
-            ["all", "All", allThreads.length],
-            ["running", "Working", runningCount],
-            ["pinned", "Pinned", pinnedCount],
-          ] as const).map(([id, label, count]) => <button type="button" key={id} className={filter === id ? "is-active" : ""} aria-pressed={filter === id} onClick={() => setFilter(id)}><span>{label}</span>{count > 0 ? <small>{count}</small> : null}</button>)}
-        </div>
-        {needsReviewCount > 0 || runningCount > 0 ? <div className="arc-history-attention">
-          {/* "need you" is the shared vocabulary for this state (BSR-656) — the
-              denser icon sizes are this panel's, the wording is main's. */}
-          {needsReviewCount > 0 ? <button type="button" onClick={onOpenReview}><span><ClipboardCheck size={14} /><b>{needsReviewCount} need you</b></span><ArrowRight size={13} /></button> : null}
-          {runningCount > 0 ? <span><LoaderCircle size={12} className="is-spinning" />{runningCount} active {runningCount === 1 ? "run" : "runs"}</span> : null}
-        </div> : null}
-        <div className="arc-history-list" onKeyDown={handleRovingListKeyDown}>
-          {campaignFolders.length > 0 ? (
-            <div className="arc-history-section">
-              <h3 className="arc-history-section-head"><Megaphone size={11} /><span>Campaigns</span><small>{campaignFolders.length}</small></h3>
-              {campaignFolders.map((folder, index) => {
-                const holdsActive = folder.items.some((thread) => (live ? thread.id === activeConversationId : thread.id === selectedDemoId));
-                /* Open where the work is: the campaign you're in, anything Arc
-                   is running, the most recent one. A search overrides the
-                   operator's own collapse — a folder only appears here because
-                   it holds a match, so leaving it shut would show a hit count
-                   with nothing under it. Same reason the row cap lifts. */
-                const open = searching || (campaignOpen[folder.id] ?? (holdsActive || index === 0 || folder.items.some((thread) => thread.running)));
-                const capped = !searching && !campaignShowAll[folder.id] && folder.items.length > CAMPAIGN_FOLDER_ROWS;
-                const shown = capped ? folder.items.slice(0, CAMPAIGN_FOLDER_ROWS) : folder.items;
-                return (
-                  <div className="arc-campaign-folder" key={folder.id} data-open={open ? "true" : "false"}>
-                    <button type="button" className="arc-campaign-folder-head" aria-expanded={open} onClick={() => setCampaignOpen((current) => ({ ...current, [folder.id]: !open }))}>
-                      <ChevronRight size={12} className="arc-campaign-folder-caret" />
-                      <Megaphone size={12} />
-                      <span>{folder.name}</span>
-                      {folder.items.some((thread) => thread.running) ? <i className="arc-campaign-folder-dot" aria-label="Arc is working in this campaign" /> : null}
-                      <small>{folder.items.length}</small>
-                    </button>
-                    {open ? (
-                      <div className="arc-campaign-folder-body">
-                        {shown.map(renderThread)}
-                        {capped ? <button type="button" className="arc-history-more" onClick={() => setCampaignShowAll((current) => ({ ...current, [folder.id]: true }))}>Show {folder.items.length - shown.length} more</button> : null}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-          {recentGroups.length > 0 ? (
-            <div className="arc-history-section">
-              <h3 className="arc-history-section-head"><span>{campaignFolders.length > 0 ? "No campaign" : "Recent"}</span></h3>
-              {recentGroups.map((group) => (
-                <div className="arc-history-group" key={group.group}>
-                  <h4>{group.group}</h4>
-                  {group.items.map(renderThread)}
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {/* Message hits, below the threads whose titles matched. Separate
-              section rather than merged in: "this chat is called X" and "this
-              chat says X" are different answers, and collapsing them loses the
-              quote that explains why a result is here. */}
-          {messageSearchActive ? (
-            <div className="arc-history-section arc-history-messages">
-              <h3 className="arc-history-section-head">
-                <MessageSquareText size={11} /><span>In messages</span>
-                {searchingMessages ? <LoaderCircle size={11} className="is-spinning" /> : messageHits && messageHits.length > 0 ? <small>{messageHits.length}</small> : null}
-              </h3>
-              {(messageHits ?? []).map((hit) => (
-                <Link
-                  href={`/arc?c=${hit.conversationId}`}
-                  className="arc-message-hit"
-                  key={hit.messageId}
-                  onClick={onClose}
-                >
-                  <span className="arc-message-hit-head">
-                    <b>{hit.conversationTitle}</b>
-                    <small>{hit.role === "operator" ? "You" : "Arc"}</small>
-                  </span>
-                  <span className="arc-message-hit-snippet">
-                    {hit.snippet.truncatedStart ? "…" : ""}{hit.snippet.before}
-                    <mark>{hit.snippet.match}</mark>
-                    {hit.snippet.after}{hit.snippet.truncatedEnd ? "…" : ""}
-                  </span>
-                </Link>
-              ))}
-              {!searchingMessages && messageHits && messageHits.length === 0 ? (
-                <p className="arc-history-messages-empty">No messages contain “{query.trim()}”.</p>
-              ) : null}
-            </div>
-          ) : null}
-          {campaignFolders.length === 0 && recentGroups.length === 0 && !messageSearchActive ? <DrawerEmpty icon={<Search size={18} />} title="No conversations found" hint="Try a different title or date." /> : null}
-        </div>
-        <div className="arc-archived">
-          <button type="button" className={`arc-archived-toggle${archivedOpen ? " is-open" : ""}`} onClick={toggleArchived} aria-expanded={archivedOpen}>
-            <Archive size={13} />
-            <span>Archived{archivedConvos && archivedConvos.length > 0 ? ` · ${archivedConvos.length}` : ""}</span>
-            <ChevronDown size={14} className="arc-archived-chevron" />
-          </button>
-          {archivedOpen ? (
-            archivedError ? <p className="arc-archived-error" role="alert">{archivedError}</p>
-            : archivedConvos === null ? <div className="arc-archived-empty"><LoaderCircle size={14} className="is-spinning" /> Loading…</div>
-            : archivedConvos.length === 0 ? <div className="arc-archived-empty">No archived conversations.</div>
-            : <div className="arc-archived-list">
-                {archivedConvos.map((conversation) => (
-                  <div className="arc-archived-item" key={conversation.id}>
-                    <span className="arc-archived-title" title={conversation.title}>{conversation.title}</span>
-                    {conversation.when ? <span className="arc-archived-when">{conversation.when}</span> : null}
-                    <button type="button" className="arc-archived-restore" onClick={() => restoreConvo(conversation.id)} title="Restore to active conversations">
-                      <RotateCcw size={12} /> Restore
-                    </button>
-                  </div>
-                ))}
-              </div>
-          ) : null}
-        </div>
-      </section> : null}
 
       {view === "skills" && skillsMode === "installed" ? <section className="arc-drawer-view arc-drawer-skills" aria-label="Skills">
         <p className="arc-drawer-purpose">Reusable workflows you can call with <code>/</code> in any conversation.</p>
@@ -1666,6 +1316,15 @@ function ShareDialog({ conversationId, onClose }: { conversationId: string | nul
   );
 }
 
+/**
+ * Stable identity for "no engine reachable". An object literal in the parameter
+ * default allocates a fresh value every render, which is enough for the React
+ * Compiler to give up on the component ("existing memoization could not be
+ * preserved") — the whole file then falls back to uncompiled. A module constant
+ * costs nothing and keeps the optimisation.
+ */
+const NO_MEDIA_ENGINES: EngineAvailability = { gemini: false, higgsfield: false };
+
 export function ArcView({
   brandName,
   operatorName,
@@ -1686,6 +1345,8 @@ export function ArcView({
   workspaceSkills: initialWorkspaceSkills = [],
   generatedSkills: initialGeneratedSkills = [],
   workspaceName = "",
+  mediaConfig = DEFAULT_MEDIA_CONFIG,
+  mediaEngines = NO_MEDIA_ENGINES,
 }: {
   brandName: string;
   operatorName?: string;
@@ -1706,6 +1367,10 @@ export function ArcView({
   workspaceSkills?: WorkspaceArcSkill[];
   generatedSkills?: GeneratedSkillRecord[];
   workspaceName?: string;
+  /** The workspace's generation default — the media picker opens on it. */
+  mediaConfig?: MediaConfig;
+  /** Which engines this workspace can reach; the picker offers only these. */
+  mediaEngines?: EngineAvailability;
 }) {
   const router = useRouter();
   const greetName = operatorName?.trim() || brandName?.trim() || "there";
@@ -1716,6 +1381,17 @@ export function ArcView({
   const [modePreference, setModePreference] = useState<ArcComposerModePreference>("auto");
   const [modelPreference, setModelPreference] = useState<ArcModelPreference>("auto");
   const [route, setRoute] = useState<ArcRoute>("fast");
+  /**
+   * Which model generates media on THIS turn, per output category.
+   *
+   * Separate from the reasoning pill beside it on purpose: `claude-opus` and
+   * `veo3_1` are not substitutable options on one list — one is Arc's brain, the
+   * other a tool the brain calls. Opens on the workspace default (Auto when the
+   * workspace says "let Arc choose"), and a pick here beats that default.
+   */
+  const [mediaPick, setMediaPick] = useState<Record<MediaCategory, string>>(() =>
+    mediaConfig.autoPick ? { image: MEDIA_AUTO, video: MEDIA_AUTO, audio: MEDIA_AUTO } : { ...mediaConfig.defaults },
+  );
   const [composerMenu, setComposerMenu] = useState<ComposerMenu>(null);
   const [selectedMentions, setSelectedMentions] = useState<ArcMention[]>([]);
   const [attachments, setAttachments] = useState<ArcAttachment[]>([]);
@@ -1772,7 +1448,10 @@ export function ArcView({
       DEMO_THREADS.some((group) => group.items.some((thread) => thread.id === initialDemoConversationId)))
       ? initialDemoConversationId
       : "storm";
-  const [selectedDemoId, setSelectedDemoId] = useState(resolvedDemoConversationId);
+  // Not state any more: switching demo threads is a navigation, and page.tsx
+  // keys ArcView on `?c=`, so this is re-derived on the remount rather than
+  // set in place.
+  const selectedDemoId = resolvedDemoConversationId;
   const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
   const [demoTurns, setDemoTurns] = useState<DemoTurn[]>([]);
   const [demoPending, setDemoPending] = useState(false);
@@ -2099,6 +1778,45 @@ export function ArcView({
     selectedDemoId,
     selectedDemoTitle: selectedDemoThread?.title,
   });
+  /* The campaigns this workspace can offer. Already fetched for the composer's
+     @-mentions, so the header costs no extra read. The backend-less preview has
+     no mentionables at all, and an empty picker there would hide the control
+     rather than show it. */
+  const workspaceCampaigns = mentionGroups.find((group) => group.type === "campaign")?.items ?? [];
+  const campaignOptions = workspaceCampaigns.length > 0 ? workspaceCampaigns : live ? [] : DEMO_CAMPAIGNS;
+  /* Assigned optimistically. `null` here means "no local change yet", which is
+     distinct from a local change TO no campaign — hence the wrapper object.
+     Reset comes free: page.tsx keys ArcView on `?c=`, so switching conversations
+     remounts rather than carrying one chat's pending assignment onto another. */
+  const [campaignOverride, setCampaignOverride] = useState<{ id: string | null } | null>(null);
+  const [campaignNotice, setCampaignNotice] = useState<string | null>(null);
+  const conversationCampaignId = campaignOverride
+    ? campaignOverride.id
+    : (live ? activeThread?.campaignId : selectedDemoThread?.campaignId) ?? null;
+
+  const assignCampaign = (nextCampaignId: string | null) => {
+    const previous = conversationCampaignId;
+    setCampaignOverride({ id: nextCampaignId });
+    setCampaignNotice(null);
+    if (!live || !visibleConversationId) {
+      // The preview has no backend to write to. It still moves, so the control
+      // can be seen working, and says plainly that nothing was saved.
+      setCampaignNotice("Preview — not saved");
+      return;
+    }
+    startSend(async () => {
+      const result = await assignArcConversationCampaignAction({
+        conversationId: visibleConversationId,
+        campaignId: nextCampaignId,
+      });
+      if (!result.ok) {
+        setCampaignOverride({ id: previous });
+        setCampaignNotice(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  };
   const latestQuestion = live ? [...visibleMessages].reverse().find((message) => message.role === "arc")?.questions?.[0] ?? null : null;
   const visibleQuestion = latestQuestion && latestQuestion.id !== dismissedQuestionId ? latestQuestion : null;
   // No special case for the empty conversation: contextUsage([]) is already
@@ -2209,6 +1927,17 @@ export function ArcView({
   const chooseModel = (preference: ArcModelPreference) => {
     setModelPreference(preference);
     setRoute(resolveArcModelRoute({ preference, request: draft, command }));
+    closeComposerMenu(true);
+  };
+
+  // The pick is per-category, and a chat turn has no image/video switch — the
+  // request is the only signal at send time, exactly as the route already is.
+  const mediaModelCategory: MediaCategory = inferMediaCategory(draft);
+  const mediaModelOptions = generationModelsFor(mediaModelCategory, mediaEngines);
+  const activeMediaModel = findGenerationModel(mediaPick[mediaModelCategory]);
+
+  const chooseMediaModel = (category: MediaCategory, key: string) => {
+    setMediaPick((prev) => ({ ...prev, [category]: key }));
     closeComposerMenu(true);
   };
 
@@ -2359,6 +2088,7 @@ export function ArcView({
         attachments: pendingAttachments,
         mode: resolvedMode,
         route: resolvedRoute,
+        mediaModel: mediaPick[mediaModelCategory],
         command: pendingCommand,
         contextScopes,
       });
@@ -2376,43 +2106,11 @@ export function ArcView({
     });
   };
 
-  const selectDemoThread = (id: string) => {
-    setOptimisticTurn(null);
-    setSelectedDemoId(id);
-    setHistoryOpen(false);
-    setReviewCards(null);
-    // Not a hard close: an operator who opened the workspace and then switched
-    // threads asked for it open, and resetting it is the same override one step
-    // removed. Closed when they have expressed no preference.
-    setWorkPanelOpen(workPanelOpenOnConversationChange());
-    setContextInfoOpen(false);
-    setDemoTurns([]);
-    setDemoPending(false);
-    if (id === "new") {
-      scrollToStart();
-      window.requestAnimationFrame(() => composerInputRef.current?.focus());
-    }
-  };
-
-  const startNewConversation = () => {
-    setOptimisticTurn(null);
-    setStartingNewConversation(true);
-    setHistoryOpen(false);
-    setReviewCards(null);
-    setWorkPanelOpen(workPanelOpenOnConversationChange());
-    setShareOpen(false);
-    setComposerMenu(null);
-    setContextInfoOpen(false);
-    setComposerNotice(null);
-    setDraft("");
-    setSelectedMentions([]);
-    setAttachments([]);
-    setCommand(null);
-    repin();
-    scrollToStart();
-    window.requestAnimationFrame(() => composerInputRef.current?.focus());
-  };
-
+  // Switching threads and starting a new one are plain navigations now: the
+  // rail links to `/arc?c=<id>` and `/arc?new=1`, and page.tsx keys ArcView on
+  // that param, so the whole view remounts with the right conversation. These
+  // used to be in-place state resets because the drawer switched threads
+  // without leaving the page; it no longer holds a thread list.
   const openReview = (cards: ArcActionCard[]) => {
     setComposerMenu(null);
     setContextInfoOpen(false);
@@ -2614,6 +2312,19 @@ export function ArcView({
     return status !== "approved" && status !== "rejected" && status !== "revision";
   });
   const panelVisible = workPanelOpen || Boolean(reviewCards?.length);
+  /**
+   * Whether the workspace takes room from the conversation instead of covering
+   * it. Measured from the pane, not the window — the rail eats ~240px, so a
+   * viewport test would dock at widths where the chat has no room left.
+   *
+   * Decided here rather than by `@container arcpane` because the panel and its
+   * scrim are portaled out of `.arc-chat`, where that container query would
+   * silently never match. Only the work panel docks: the deliverable review is
+   * a full-pane read by design.
+   */
+  const workPanelDocked = workPanelOpen
+    && !reviewCards?.length
+    && (panelPaneBox?.width ?? 0) >= WORK_PANEL_DOCK_MIN_PANE;
 
   const recoverRun = (prompt: string) => {
     updateDraft(prompt);
@@ -2678,13 +2389,32 @@ export function ArcView({
   };
 
   return (
-    <div className="arc-chat" ref={chatRootRef} data-workspace-open={panelVisible ? "true" : "false"} data-new-conversation={live && !visibleConversationId && visibleMessages.length === 0 && !optimisticTurn ? "true" : "false"}>
+    <div className="arc-chat" ref={chatRootRef} data-workspace-open={panelVisible ? "true" : "false"} data-workspace-docked={workPanelDocked ? "true" : "false"} data-new-conversation={live && !visibleConversationId && visibleMessages.length === 0 && !optimisticTurn ? "true" : "false"}>
       {/* The chat surface has no visible title; this names the document so the
           route still has exactly one h1 like every other. */}
       <h1 className="sr-only">Arc</h1>
       <header className="arc-conversation-header">
-        <button type="button" ref={historyButtonRef} className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-expanded={historyOpen} aria-haspopup="dialog" aria-label="Open conversations"><MessagesSquare size={17} /><span>Conversations</span></button>
-        <div className="arc-conversation-title"><h2>{header.title}</h2><p>{header.subtitle}</p></div>
+        {/* Named for what it opens. It said "Conversations" back when the drawer
+            held a second copy of the chat list; that list is the rail's now, and
+            a control that promises conversations and delivers skills and
+            connectors is worse than one that says so. */}
+        <button type="button" ref={historyButtonRef} className="arc-history-button" onClick={() => setHistoryOpen(true)} aria-expanded={historyOpen} aria-haspopup="dialog" aria-label="Open skills, connectors, and saved items"><Blocks size={17} /><span>Skills</span></button>
+        <div className="arc-conversation-title">
+          <h2>{header.title}</h2>
+          {/* The campaign sits with the title because it describes the chat, not
+              beside Share and Workspace, which act on it. */}
+          <div className="arc-conversation-meta">
+            <ConversationCampaign
+              campaignId={conversationCampaignId}
+              campaigns={campaignOptions}
+              disabled={live && !visibleConversationId}
+              disabledHint="Send a message first — a campaign attaches to a saved conversation"
+              notice={campaignNotice}
+              onAssign={assignCampaign}
+            />
+            <p>{header.subtitle}</p>
+          </div>
+        </div>
         <div className="arc-conversation-actions">
           {needsReviewCards.length > 0 ? <button type="button" className="arc-header-attention" aria-label={`${needsReviewCards.length} items need you`} onClick={() => openReview(needsReviewCards)}><ClipboardCheck size={15} /><span>{needsReviewCards.length} need you</span></button> : null}
           <button type="button" onClick={() => setShareOpen(true)} disabled={!visibleConversationId} title={!visibleConversationId ? "Start a real conversation before sharing" : "Share conversation"}><Share2 size={15} /> Share</button>
@@ -2749,6 +2479,16 @@ export function ArcView({
                       <div className="arc-model-menu-label">Model</div>
                       <div className="arc-model-options">
                         {MODEL_OPTIONS.map((option) => <button type="button" className="arc-model-option" data-model={option.id} role="menuitemradio" aria-checked={modelPreference === option.id} key={option.id} onClick={() => chooseModel(option.id)}><i className="arc-model-symbol" aria-hidden="true"><ArcModelIcon model={option.id} size={16} /></i><span><b>{option.label}</b><small>{option.description}</small></span><i className="arc-model-check" aria-hidden="true">{modelPreference === option.id ? <Check size={14} /> : null}</i></button>)}
+                      </div>
+                    </>
+                  ) : null}
+
+                  {composerMenu === "media" ? (
+                    <>
+                      <div className="arc-model-menu-label">Media model<span>{mediaModelCategory === "video" ? "Video" : "Image"}</span></div>
+                      <div className="arc-model-options">
+                        <button type="button" className="arc-model-option" role="menuitemradio" aria-checked={!activeMediaModel} onClick={() => chooseMediaModel(mediaModelCategory, MEDIA_AUTO)}><i className="arc-model-symbol" aria-hidden="true"><Sparkles size={16} /></i><span><b>Auto</b><small>Arc picks the model that suits the task</small></span><i className="arc-model-check" aria-hidden="true">{!activeMediaModel ? <Check size={14} /> : null}</i></button>
+                        {mediaModelOptions.map((option) => <button type="button" className="arc-model-option" role="menuitemradio" aria-checked={activeMediaModel?.key === option.key} key={option.key} onClick={() => chooseMediaModel(mediaModelCategory, option.key)}><i className="arc-model-symbol" aria-hidden="true"><ImageIcon size={16} /></i><span><b>{option.label}</b><small>{option.provider}</small></span><i className="arc-model-check" aria-hidden="true">{activeMediaModel?.key === option.key ? <Check size={14} /> : null}</i></button>)}
                       </div>
                     </>
                   ) : null}
@@ -2834,6 +2574,14 @@ export function ArcView({
                 <button type="button" className="arc-composer-add" aria-label="Add attachment, mention, or command" aria-haspopup="menu" aria-controls={composerMenu === "tools" ? "arc-composer-menu" : undefined} aria-expanded={composerMenu === "tools"} onClick={(event) => toggleComposerMenu("tools", event.currentTarget)}><Plus size={18} /></button>
                 <button type="button" className="arc-composer-pill arc-mode-button" data-mode={mode === "ask" ? "ask" : "act"} aria-label={`Capability: ${capabilityLabel}. ${capabilityDetail}.`} aria-haspopup="menu" aria-controls={composerMenu === "mode" ? "arc-composer-menu" : undefined} aria-expanded={composerMenu === "mode"} disabled={Boolean(command)} title={command ? "This skill chooses the required capability" : "Choose whether Arc can change the workspace"} onClick={(event) => toggleComposerMenu("mode", event.currentTarget)}><ArcCapabilityIcon mode={mode} size={14} /><span>{capabilityLabel}</span><ChevronDown size={12} /></button>
                 <button type="button" className="arc-composer-pill arc-model-button" data-auto={modelPreference === "auto" ? "true" : "false"} title={modelPreference === "auto" ? `Arc Auto is routing this request to ${resolvedModelName}` : `Model: ${currentModel.label}`} aria-label={`Model: ${currentModel.label}${modelPreference === "auto" ? `. Currently routes to Arc ${resolvedModelName}.` : ""}`} aria-haspopup="menu" aria-controls={composerMenu === "model" ? "arc-composer-menu" : undefined} aria-expanded={composerMenu === "model"} onClick={(event) => toggleComposerMenu("model", event.currentTarget)}><ArcModelIcon model={modelPreference} size={14} /><span>{currentModel.label}{modelPreference === "auto" ? <small> · {resolvedModelName}</small> : null}</span><ChevronDown size={12} /></button>
+                {/* Media model — a SEPARATE control from the reasoning pill above.
+                    One list holding both would imply Arc's brain and the image
+                    engine it calls are interchangeable choices. Hidden entirely
+                    when no engine is reachable, rather than offering models that
+                    would fail on use. */}
+                {mediaModelOptions.length > 0 ? (
+                  <button type="button" className="arc-composer-pill arc-media-button" data-auto={activeMediaModel ? "false" : "true"} title={activeMediaModel ? `Media model: ${activeMediaModel.label} (${activeMediaModel.provider})` : "Media model: Auto — Arc picks per task"} aria-label={activeMediaModel ? `Media model: ${activeMediaModel.label}` : "Media model: Auto"} aria-haspopup="menu" aria-controls={composerMenu === "media" ? "arc-composer-menu" : undefined} aria-expanded={composerMenu === "media"} onClick={(event) => toggleComposerMenu("media", event.currentTarget)}><ImageIcon size={14} /><span>{activeMediaModel ? activeMediaModel.label : "Auto media"}</span><ChevronDown size={12} /></button>
+                ) : null}
                 {showContextMeter ? <div className="arc-context-control">
                   <button type="button" className="arc-context-meter" data-level={contextState.level} style={{ "--arc-ctx-pct": String(contextState.pct) } as React.CSSProperties} aria-label={`Context window: ${contextState.pct}% used. Full workspace memory is always on.`} aria-expanded={contextInfoOpen} aria-controls="arc-context-info" onClick={() => { setComposerMenu(null); setContextInfoOpen((current) => !current); }} onKeyDown={(event) => { if (event.key === "Escape") setContextInfoOpen(false); }}>
                     <span className="arc-context-ring" aria-hidden="true" />
@@ -2862,7 +2610,7 @@ export function ArcView({
         {reviewCards && reviewCards.length > 0
           ? <DeliverableReview key="asset-review" cards={reviewCards} statuses={assetStatuses} bodies={assetBodies} checks={assetChecks} paneBox={panelPaneBox} returnLabel={workPanelOpen ? "Workspace" : undefined} onStatus={recordAssetStatus} onClose={() => setReviewCards(null)} />
           : workPanelOpen
-            ? <ArcWorkPanel key="work-panel" message={latestArcMessage} messages={live ? renderedMessages : undefined} cards={workCards} statuses={assetStatuses} demoSeed={demoSeed} demoPending={demoPending} demoRequest={latestDemoRequest} demoOutcome={latestDemoArcTurn ? latestDemoArcTurn.outcome ?? "complete" : undefined} paneBox={panelPaneBox} onReview={openReview} onRecover={recoverRun} onClose={() => setWorkPanelVisibility(false)} />
+            ? <ArcWorkPanel key="work-panel" message={latestArcMessage} messages={live ? renderedMessages : undefined} cards={workCards} statuses={assetStatuses} demoSeed={demoSeed} demoPending={demoPending} demoRequest={latestDemoRequest} demoOutcome={latestDemoArcTurn ? latestDemoArcTurn.outcome ?? "complete" : undefined} paneBox={panelPaneBox} docked={workPanelDocked} onReview={openReview} onRecover={recoverRun} onClose={() => setWorkPanelVisibility(false)} />
             : null}
       </AnimatePresence>
       <AnimatePresence>
@@ -2872,7 +2620,7 @@ export function ArcView({
             match — and a portaled scrim left behind a pane-scoped drawer would
             paint over the drawer it belongs to, since .page-enter's transform
             makes the page a single stacking context. See overlay-portal.tsx. */}
-        {historyOpen ? <Fragment key="arc-workspace"><OverlayPortal><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismissHistory} aria-label="Close Arc workspace" /><ThreadDrawer live={live} groups={threadGroups} activeConversationId={visibleConversationId} selectedDemoId={selectedDemoId} needsReviewCount={needsReviewCards.length} onSelectDemo={selectDemoThread} onStartNew={startNewConversation} onOpenReview={() => { setHistoryOpen(false); openReview(needsReviewCards); }} onUseSkill={applyDrawerSkill} onUseSaved={useSavedItem} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} campaignItems={mentionGroups.find((group) => group.type === "campaign")?.items ?? []} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} onDismiss={dismissHistory} paneBox={drawerPaneBox} /></OverlayPortal></Fragment> : null}
+        {historyOpen ? <Fragment key="arc-workspace"><OverlayPortal><motion.button type="button" className="arc-drawer-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismissHistory} aria-label="Close Arc workspace" /><ThreadDrawer live={live} onUseSkill={applyDrawerSkill} onUseSaved={useSavedItem} installedSkills={installedSkills} installedSkillKeys={installedSkillKeys} installingSkillKey={installingSkillKey} onSetSkillInstalled={setLibrarySkillInstalled} workspaceSkills={workspaceSkills} onWorkspaceSkillsChange={setWorkspaceSkills} generatedSkills={generatedSkills} onGeneratedSkillsChange={setGeneratedSkills} workspaceName={workspaceName} connectorsConfigured={connectorsConfigured} connectors={connectors} emailConnection={emailConnection} liveSendEnabled={liveSendEnabled} onClose={() => setHistoryOpen(false)} onDismiss={dismissHistory} paneBox={drawerPaneBox} /></OverlayPortal></Fragment> : null}
         {shareOpen ? <ShareDialog key="share-dialog" conversationId={visibleConversationId} onClose={() => setShareOpen(false)} /> : null}
       </AnimatePresence>
     </div>

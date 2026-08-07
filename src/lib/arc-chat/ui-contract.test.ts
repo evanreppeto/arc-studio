@@ -9,6 +9,21 @@ const CSS_SOURCE = readFileSync(
   new URL("../../app/(app)/arc/arc.css", import.meta.url),
   "utf8",
 );
+/* The conversation sidebar. It lives in the shared app shell rather than in
+   /arc, because it is on every route — which is the point of moving the chat
+   list there and deleting the drawer's second copy of it. */
+const RAIL_SOURCE = readFileSync(
+  new URL("../../app/(app)/_components/rail-recents.tsx", import.meta.url),
+  "utf8",
+);
+const SHELL_SOURCE = readFileSync(
+  new URL("../../app/(app)/_components/app-shell.tsx", import.meta.url),
+  "utf8",
+);
+const DEMO_SOURCE = readFileSync(
+  new URL("../../app/(app)/arc/_components/arc-demo-data.ts", import.meta.url),
+  "utf8",
+);
 
 describe("Arc UI accessibility contract", () => {
   it("exposes the resolved workspace capability beside the composer", () => {
@@ -53,7 +68,10 @@ describe("Arc UI accessibility contract", () => {
   });
 
   it("never prefetches the blank-chat transition and explains live history failures", () => {
-    expect(VIEW_SOURCE).toContain('href="/arc?new=1" className="arc-new-chat" prefetch={false}');
+    // The "New" control moved to the rail with the list it starts a row in.
+    // Prefetching it would warm a route whose whole job is to be empty.
+    expect(SHELL_SOURCE).toContain('href="/arc?new=1"');
+    expect(SHELL_SOURCE).toContain("prefetch={false}");
     expect(VIEW_SOURCE).toContain("History is temporarily unavailable.");
     expect(VIEW_SOURCE).toContain("live && historyLoadError");
   });
@@ -91,28 +109,60 @@ describe("Arc UI accessibility contract", () => {
     expect(VIEW_SOURCE).toContain("historyButtonRef.current?.focus();");
   });
 
-  it("lets nested surfaces eat Escape before the drawer sees it", () => {
-    // React's synthetic stopPropagation does NOT reliably stop the native event
-    // reaching a document-bound listener, so the drawer checks the DOM for an
-    // open nested surface and bails. Without this the drawer closed underneath
-    // a thread menu that had just consumed the same keystroke.
-    expect(VIEW_SOURCE).toContain("if (targetOwnedByNestedSurface(event.target)) return;");
-    expect(VIEW_SOURCE).toContain('target.closest(".arc-history-menu") || target.closest(".arc-history-item.is-renaming")');
+  it("closes the drawer's innermost surface first, and only then the drawer", () => {
     // Capture phase specifically: a bubble-phase listener runs after React has
-    // already unmounted the menu, so the DOM can no longer be asked.
+    // already unmounted the surface, so the DOM can no longer be asked.
     expect(VIEW_SOURCE).toContain('document.addEventListener("keydown", onKeyDown, true);');
-    // Innermost first, in both the menu and the drawer body.
-    expect(VIEW_SOURCE).toContain("if (confirmDelete) setConfirmDelete(false);");
+    expect(VIEW_SOURCE).toContain("if (!dismissInnermost()) onDismiss();");
     expect(VIEW_SOURCE).toContain('if (view === "skills" && skillsMode === "library") { setSkillsMode("installed"); return true; }');
+    // The drawer's own thread menu and rename field are gone with its
+    // conversation list, and so is the guard that let them eat Escape first —
+    // its two selectors matched nothing rendered anywhere once the list moved.
+    expect(VIEW_SOURCE).not.toContain("if (targetOwnedByNestedSurface(event.target)) return;");
+    // The rail's replacements own their own Escape, outside this modal.
+    expect(RAIL_SOURCE).toContain('if (event.key === "Escape") setMenuOpen(false);');
+    expect(RAIL_SOURCE).toContain('if (event.key === "Escape") { event.preventDefault(); event.stopPropagation();');
   });
 
   it("never hides a search hit inside a collapsed campaign folder", () => {
-    // A folder only appears in a filtered list because it holds a match. If the
-    // operator's own collapse — or the row cap — survived the search, the
-    // folder would show a count with nothing under it, which reads as a bug in
-    // search rather than a closed folder.
-    expect(VIEW_SOURCE).toContain("const open = searching || (campaignOpen[folder.id] ??");
-    expect(VIEW_SOURCE).toContain("const capped = !searching &&");
+    // A folder only appears in a filtered list because it holds a match, so a
+    // collapsed one would show a count with nothing under it — which reads as a
+    // bug in search rather than a closed folder. The rail sidesteps the whole
+    // class of it: it groups the ALREADY-filtered rows, so a folder only exists
+    // because it holds a match — there is no collapse state for a search to
+    // survive and no folder can show a count with nothing under it.
+    expect(RAIL_SOURCE).toContain("const { folders, loose } = groupRailConversations(matches);");
+    // Search reaches past the loaded rows, so a chat beyond the rail's read
+    // budget is still findable by something said inside it.
+    expect(RAIL_SOURCE).toContain("searchArcMessagesAction(query)");
+  });
+
+
+  it("assigns a campaign through the shared action, and reports at the control", () => {
+    // One write path. The operator gate, access check and campaign-in-workspace
+    // check stay where they are; the header adds a control, not a second way in.
+    expect(VIEW_SOURCE).toContain("assignArcConversationCampaignAction({");
+    expect(VIEW_SOURCE).toContain("conversationId: visibleConversationId,");
+
+    // Optimistic, and put back on refusal — a chip that keeps a value the server
+    // rejected is the one failure this control cannot be allowed to have.
+    expect(VIEW_SOURCE).toContain("setCampaignOverride({ id: previous });");
+
+    // The outcome belongs at the chip. Routing it to `composerNotice` would put
+    // a header failure at the bottom of the screen beside the send button — the
+    // distance-from-the-cause problem the per-message notices already fixed.
+    expect(VIEW_SOURCE).toContain("setCampaignNotice(result.error);");
+    expect(VIEW_SOURCE).toContain('<span className="arc-campaign-notice"');
+  });
+
+  it("lets the backend-less preview demonstrate the campaign picker", () => {
+    // With no backend there are no mentionables, so the picker would render
+    // empty and the control could not be reviewed on the surface it is reviewed
+    // on. The fixture is the demo's own campaign list, and it is the same one
+    // the rail labels its folders from — there used to be two, already drifted.
+    expect(VIEW_SOURCE).toContain("live ? [] : DEMO_CAMPAIGNS");
+    expect(DEMO_SOURCE).toContain("export const DEMO_CAMPAIGNS");
+    expect(DEMO_SOURCE).toContain("DEMO_CAMPAIGNS.map((campaign) => [campaign.id, campaign.label])");
   });
 
   it("does not clamp connector copy into an unreadable stub", () => {

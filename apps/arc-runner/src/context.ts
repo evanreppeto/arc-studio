@@ -1,7 +1,7 @@
 import type { ArcBusinessContext } from "./business-context";
 import type { ArcMediaConfig } from "./media-config";
 import { ARC_PERSONAS } from "./personas";
-import type { ArcHistoryTurn, MarkMention } from "./types";
+import type { ArcHistoryTurn, ArcMediaPick, MarkMention } from "./types";
 import type { RecallItem } from "./recall";
 import type { ArcSkill } from "./skills";
 import type { WorkspaceSummary } from "./workspace-summary";
@@ -44,6 +44,8 @@ export type ArcTurnContext = {
   assistantTone?: string;
   assistantResponseStyle?: string;
   approvalStrictness?: string;
+  /** The operator's model pick for THIS turn, resolved app-side. Beats mediaConfig. */
+  mediaPick?: ArcMediaPick | null;
   skill?: ArcSkill | null;
 };
 
@@ -258,24 +260,35 @@ function workspaceStateBlock(s: WorkspaceSummary | null | undefined): string | n
  * recommendation Arc may override when a task calls for it. Only rendered in work
  * modes (the caller passes mediaConfig only for act/draft).
  */
-function mediaConfigBlock(config: ArcMediaConfig | null | undefined): string | null {
+function mediaConfigBlock(config: ArcMediaConfig | null | undefined, pick?: ArcMediaPick | null): string | null {
   if (!config) return null;
-  const line = (label: string, d: ArcMediaConfig["defaults"]["image"]) => {
+  // A composer pick applies to ONE category, and only Higgsfield's models are
+  // chosen here — a Gemini pick is pinned server-side on the generate endpoints,
+  // so naming it in this block would only invite Arc to pass a model id that
+  // Higgsfield has never heard of.
+  const turnPick = pick && pick.engine === "higgsfield" ? pick : null;
+
+  const line = (label: string, d: ArcMediaConfig["defaults"]["image"], category: string) => {
+    if (turnPick && turnPick.category === category) {
+      return `- ${label}: pass model: "${turnPick.id}" (${turnPick.label}) — the operator chose this model for THIS message. Use it.`;
+    }
     if (!d) return `- ${label}: no model available`;
     return d.explicit
-      ? `- ${label}: use "${d.id}" (${d.label} · ${d.provider}) — operator-locked default; use it unless the task truly needs another model`
-      : `- ${label}: Arc's pick "${d.id}" (${d.label}) — recommended default, override when a task calls for it`;
+      ? `- ${label}: pass model: "${d.id}" (${d.label} · ${d.provider}) — the operator locked this model for the workspace. Use it unless they name another in this message.`
+      : `- ${label}: pass model: "${d.id}" (${d.label}) — Arc's pick; choose another from the catalog when the task calls for it.`;
   };
   const lines = [
-    "MEDIA MODEL DEFAULTS (operator settings — when generating via Higgsfield/mcp__higgsfield, use these models):",
-    line("Image", config.defaults.image),
+    // `model` is a REQUIRED argument on Higgsfield's generate_* tools, so this is
+    // an argument value Arc must supply, not a preference it may absorb.
+    "MEDIA MODEL DEFAULTS (operator settings). Higgsfield's generate_* tools take a REQUIRED `model` argument — these are the values to pass:",
+    line("Image", config.defaults.image, "image"),
   ];
   if (config.allowVideo) {
-    lines.push(line("Video", config.defaults.video));
+    lines.push(line("Video", config.defaults.video, "video"));
   } else {
     lines.push("- Video: DISABLED by the operator — do not generate video; offer an image or storyboard instead");
   }
-  lines.push(line("Audio", config.defaults.audio));
+  lines.push(line("Audio", config.defaults.audio, "audio"));
   lines.push(`- Default aspect ratio: ${config.defaultAspect} (per-platform overrides still apply)`);
   lines.push(
     config.preferRealMedia
@@ -294,7 +307,7 @@ export function buildSystemPrompt(base: string, ctx: ArcTurnContext): string {
     memoryBlock(ctx.memory),
     personasBlock(ctx.business),
     modeBlock(ctx.mode),
-    mediaConfigBlock(ctx.mediaConfig),
+    mediaConfigBlock(ctx.mediaConfig, ctx.mediaPick),
     skillBlock(ctx.skill),
     styleBlock(ctx),
     scopeBlock(ctx.scope),

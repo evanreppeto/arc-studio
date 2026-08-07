@@ -13,48 +13,52 @@ export type DemoLiveWork = {
   rows: DemoRunRow[];
 };
 
-const SUBJECT_STOP_WORDS = new Set([
-  "a",
-  "about",
-  "an",
-  "and",
-  "arc",
-  "ask",
-  "can",
-  "could",
-  "create",
-  "explain",
-  "find",
-  "for",
-  "from",
-  "i",
-  "in",
-  "it",
-  "me",
-  "of",
-  "on",
-  "our",
-  "please",
-  "the",
-  "this",
-  "to",
-  "we",
-  "why",
-  "with",
-  "write",
-  "you",
-]);
+/**
+ * The polite opening a request starts with, which the trace is about to say for
+ * itself. "Draft an email for X" under a row already labelled "Preparing the
+ * email draft" only needs to carry "X".
+ *
+ * Nothing past the opening is touched. An earlier version filtered a stopword
+ * list across the *whole* sentence and kept the first six survivors, which
+ * deleted prepositions out of the middle of the operator's own words: "Build a
+ * multi-channel win-back campaign for stalled demo accounts" came back as
+ * "Build multi-channel win-back campaign stalled demo", and the row read
+ * "Preparing the campaign package for Build multi-channel win-back campaign
+ * stalled demo". Its tests asserted the mangled strings, so it stayed green.
+ */
+const REQUEST_OPENER =
+  /^(?:(?:please|hey|hi)\s+)*(?:(?:can|could|would)\s+you\s+)?(?:(?:i\s+(?:need|want)\s+(?:you\s+to\s+)?)|(?:let'?s\s+)|(?:go\s+ahead\s+and\s+))?(?:draft|write|rewrite|revise|create|make|build|compose|generate|design|put\s+together|prepare|find|search\s+for|look\s+up|research|show\s+me|give\s+me|tell\s+me|explain|analy[sz]e|compare|rank|score|summari[sz]e|review|check)\s+(?:me\s+)?(?:an|a|the|some|our|my)?\s*/iu;
 
+/** Longest subject a single-line trace row reads comfortably at 11.5px. */
+const SUBJECT_MAX = 64;
+
+/**
+ * The operator's own words, in their own order — the request with its opening
+ * verb removed and nothing else changed. Always rendered inside quotation
+ * marks by the callers below, so it never has to parse as a grammatical
+ * continuation of our sentence.
+ */
 function requestSubject(request: string): string {
-  const words = request
-    .replace(/^\s*\/[\w-]+\s*/u, "")
-    .replace(/[^\p{L}\p{N}'-]+/gu, " ")
-    .trim()
-    .split(/\s+/u)
-    .filter((word) => word.length > 1 && !SUBJECT_STOP_WORDS.has(word.toLowerCase()))
-    .slice(0, 6);
+  const normalized = request.replace(/\s+/gu, " ").trim().replace(/[.?!]+$/u, "");
+  const cleaned = normalized.replace(/^\/[\w-]+\s*/u, "");
+  if (!cleaned) return "your request";
+  // A skill supplies the verb, so what follows it opens on a bare determiner —
+  // "/draft-email a note about…" leaves "a note about…" dangling.
+  const fromCommand = cleaned !== normalized;
 
-  return words.length > 0 ? words.join(" ") : "your request";
+  const trimmed = cleaned
+    .replace(REQUEST_OPENER, "")
+    .replace(fromCommand ? /^(?:an|a|the|some|our|my)\s+/iu : /(?!)/u, "")
+    .trim();
+  // A request that is *only* its opening verb ("summarize") keeps that verb —
+  // an empty subject would read worse than a terse one.
+  const subject = trimmed || cleaned;
+  if (subject.length <= SUBJECT_MAX) return subject;
+
+  // Cut on a word boundary, never mid-word.
+  const clipped = subject.slice(0, SUBJECT_MAX);
+  const lastSpace = clipped.lastIndexOf(" ");
+  return `${(lastSpace > 24 ? clipped.slice(0, lastSpace) : clipped).trimEnd()}…`;
 }
 
 function sourcePlan(normalized: string): Array<{ id: string; label: string; detail: string; kind: DemoRunKind }> {
@@ -80,14 +84,16 @@ function sourcePlan(normalized: string): Array<{ id: string; label: string; deta
   return sources.slice(0, 2);
 }
 
-function requestedChannel(normalized: string): string {
-  if (/\bsms\b|text message/u.test(normalized)) return "SMS draft";
-  if (/\bemail\b/u.test(normalized)) return "email draft";
-  if (/landing page/u.test(normalized)) return "landing-page draft";
-  if (/social|post/u.test(normalized)) return "social draft";
-  if (/\bad\b|advert/u.test(normalized)) return "ad draft";
-  if (/campaign/u.test(normalized)) return "campaign package";
-  return "draft";
+/** The article travels with the noun — "a SMS draft" and "a email draft" are
+ *  the tell of a label assembled by string concatenation. */
+function requestedChannel(normalized: string): { label: string; article: string } {
+  if (/\bsms\b|text message/u.test(normalized)) return { label: "SMS draft", article: "an" };
+  if (/\bemail\b/u.test(normalized)) return { label: "email draft", article: "an" };
+  if (/landing page/u.test(normalized)) return { label: "landing-page draft", article: "a" };
+  if (/social|post/u.test(normalized)) return { label: "social draft", article: "a" };
+  if (/\bad\b|advert/u.test(normalized)) return { label: "ad draft", article: "an" };
+  if (/campaign/u.test(normalized)) return { label: "campaign package", article: "a" };
+  return { label: "draft", article: "a" };
 }
 
 /**
@@ -115,13 +121,16 @@ export function buildDemoLiveWork(request?: string | null): DemoLiveWork {
     const channel = requestedChannel(normalized);
     rows.push({
       id: "produce",
-      label: `Preparing the ${channel} for ${subject}`,
+      // No subject here. The row above already quoted the request, and naming it
+      // twice produced "Preparing the email draft for email for the spring
+      // property-manager campaign".
+      label: `Preparing the ${channel.label}`,
       detail: "Review-ready and held behind approval",
       status: "queued",
       kind: "draft",
     });
     return {
-      commentary: `I’m preparing a ${channel} for ${subject}. I’ll ground it in the relevant workspace evidence, follow the approved voice and claims, and leave the result ready for review.`,
+      commentary: `I’m preparing ${channel.article} ${channel.label} for “${subject}”. I’ll ground it in the relevant workspace evidence, follow the approved voice and claims, and leave the result ready for review.`,
       rows,
     };
   }
@@ -129,26 +138,26 @@ export function buildDemoLiveWork(request?: string | null): DemoLiveWork {
   if (/(search|find|look up|research|which|who|audience|lead|compare)/u.test(normalized)) {
     rows.push({
       id: "synthesize",
-      label: `Ranking findings for ${subject}`,
+      label: `Ranking findings for “${subject}”`,
       detail: "Confidence and source quality included",
       status: "queued",
       kind: "match",
     });
     return {
-      commentary: `I’m researching ${subject} across the sources that fit this request. I’ll keep confirmed findings distinct from inference and show what supports the result.`,
+      commentary: `I’m researching “${subject}” across the sources that fit this request. I’ll keep confirmed findings distinct from inference and show what supports the result.`,
       rows,
     };
   }
 
   rows.push({
     id: "answer",
-    label: `Preparing a grounded answer about ${subject}`,
+    label: `Preparing a grounded answer about “${subject}”`,
     detail: "Concise, source-aware, and specific to this conversation",
     status: "queued",
     kind: "draft",
   });
   return {
-    commentary: `I’m working through ${subject} using the active conversation and the most relevant workspace context. I’ll keep the reasoning focused on this request and make any assumptions visible.`,
+    commentary: `I’m working through “${subject}” using the active conversation and the most relevant workspace context. I’ll keep the reasoning focused on this request and make any assumptions visible.`,
     rows,
   };
 }

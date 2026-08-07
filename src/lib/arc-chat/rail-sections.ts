@@ -21,16 +21,27 @@
  * of 4 and one row under it looks like.
  */
 
-/** Campaign folders the rail carries. Three headers is the most that can sit
- *  above the unattached chats without the folders becoming the whole list. */
-export const RAIL_FOLDER_LIMIT = 3;
+/**
+ * Campaign folders the rail carries.
+ *
+ * Was three, on the reasoning that more headers would crowd out the unattached
+ * chats — sound while the Arc drawer still held a second, complete conversation
+ * list to fall back to. That list is gone: the rail is the only place a
+ * conversation is listed now, so a campaign past this limit would have a folder
+ * nowhere in the app rather than one further down a panel.
+ *
+ * The crowding it guarded against is handled by the list scrolling and by
+ * folders past the first collapsing shut, not by refusing to carry them.
+ */
+export const RAIL_FOLDER_LIMIT = 12;
 /** Chats kept per folder. More than a folder shows collapsed, so "Show N more"
  *  has something to reveal without a second server round-trip. */
 export const RAIL_FOLDER_CHATS = 6;
 /** Chats rendered inside an OPEN folder before it offers "Show N more". */
 export const RAIL_FOLDER_ROWS = 3;
-/** Unattached chats below the folders — the old flat list, unchanged in size. */
-export const RAIL_LOOSE_LIMIT = 5;
+/** Unattached chats below the folders. Bounded on purpose even now: this read
+ *  ships inside the layout on every route, and search reaches what it can't. */
+export const RAIL_LOOSE_LIMIT = 12;
 
 type RailConversation = {
   id: string;

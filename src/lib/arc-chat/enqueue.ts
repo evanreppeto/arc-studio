@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { type ArcMention } from "@/domain";
+import { resolveMediaPick, type ArcMention } from "@/domain";
 import { type ApprovalStrictness, type AssistantResponseStyle, type AssistantTone } from "@/lib/settings/store";
 import { type ArcSkillId } from "@/lib/arc-skills/catalog";
 
@@ -23,6 +23,8 @@ export type EnqueueChatTaskInput = {
   operator: string;
   /** Model-routing hint for the external runner; routine chat defaults to "fast". */
   route?: "fast" | "standard";
+  /** The operator's media-model pick for this turn, engine-qualified. */
+  mediaModel?: string | null;
   /** Operator stance for this message; the worker decides what Arc may do. */
   mode?: "ask" | "act" | "draft";
   /** Structured slash command id (e.g. "find-leads"), or null for plain chat. */
@@ -99,6 +101,7 @@ export async function enqueueArcChatTask(
         project_id: input.projectId ?? null,
         campaign_id: input.campaignId ?? null,
         model_route: input.route ?? "fast",
+        media_model: input.mediaModel ?? null,
         mode: input.mode ?? "act",
         assistant_tone: input.assistantTone ?? "direct",
         response_style: input.assistantResponseStyle ?? "balanced",
@@ -159,6 +162,7 @@ export async function enqueueArcChatTask(
       mentions: input.mentions,
       operator: input.operator,
       route: input.route ?? "fast",
+      mediaPick: resolveMediaPick(input.mediaModel),
       mode: input.mode ?? "act",
       command: input.command ?? null,
       skillId: input.skillId ?? null,
