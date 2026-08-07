@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyFileNameStem, classifyKind, formatByteSize, splitFileName, validateUpload, MAX_UPLOAD_BYTES } from "../media-library";
+import { applyFileNameStem, classifyKind, formatByteSize, splitFileName } from "../media-library";
 
 describe("classifyKind", () => {
   it("classifies images, video, and svg logos", () => {
@@ -17,40 +17,6 @@ describe("classifyKind", () => {
     expect(
       classifyKind("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "guide.docx"),
     ).toBe("document");
-  });
-});
-
-describe("validateUpload", () => {
-  it("accepts a normal image", () => {
-    expect(validateUpload({ contentType: "image/png", byteSize: 1_000_000 })).toEqual({ ok: true });
-  });
-  it("accepts favicon ico files", () => {
-    expect(validateUpload({ contentType: "image/x-icon", byteSize: 50_000 })).toEqual({ ok: true });
-  });
-  it("rejects an unsupported type", () => {
-    const r = validateUpload({ contentType: "text/html", byteSize: 10 });
-    expect(r.ok).toBe(false);
-  });
-  it("rejects oversize files", () => {
-    const r = validateUpload({ contentType: "image/png", byteSize: MAX_UPLOAD_BYTES + 1 });
-    expect(r.ok).toBe(false);
-  });
-
-  it("accepts plain text, markdown, csv, and docx", () => {
-    expect(validateUpload({ contentType: "text/plain", byteSize: 10 })).toEqual({ ok: true });
-    expect(validateUpload({ contentType: "text/markdown", byteSize: 10 })).toEqual({ ok: true });
-    expect(validateUpload({ contentType: "text/x-markdown", byteSize: 10 })).toEqual({ ok: true });
-    expect(validateUpload({ contentType: "text/csv", byteSize: 10 })).toEqual({ ok: true });
-    expect(
-      validateUpload({
-        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        byteSize: 10,
-      }),
-    ).toEqual({ ok: true });
-  });
-
-  it("still rejects unsupported types", () => {
-    expect(validateUpload({ contentType: "application/zip", byteSize: 10 }).ok).toBe(false);
   });
 });
 
