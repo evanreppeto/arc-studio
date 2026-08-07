@@ -36,7 +36,15 @@ beforeEach(() => {
 });
 
 describe("getActivationState", () => {
-  it("returns all-false signals and an empty checklist when Supabase is not configured", async () => {
+  /**
+   * This used to assert `showChecklist: true` here, which is what shipped the
+   * bug: with no backend none of the six signals are READ, and every one
+   * defaults to false. The offline preview fills the rest of Home from demo
+   * fixtures, so the checklist rendered "Bring in your records — until there are
+   * some, every screen stays empty" directly above a screen showing records,
+   * media, opportunities and campaigns. Six unread signals are not six zeroes.
+   */
+  it("does not render a checklist built from signals it never read", async () => {
     configured.mockReturnValue(false);
 
     const state = await getActivationState("org-1", "ws-1");
@@ -50,8 +58,11 @@ describe("getActivationState", () => {
       hasApprovedCampaign: false,
       hasTeammate: false,
     });
+    // The signals stay all-false — callers other than the panel may still read
+    // them, and inventing values would be the worse lie.
     expect(state.checklist.coreDone).toBe(false);
-    expect(state.checklist.showChecklist).toBe(true);
+    // But nothing is SHOWN on the strength of them.
+    expect(state.checklist.showChecklist).toBe(false);
   });
 
   it("derives signals from the onboarding row and existence counts", async () => {
@@ -206,5 +217,31 @@ describe("getActivationState", () => {
     const state = await getActivationState("org-1", "ws-1");
 
     expect(state.signals.brandCaptured).toBe(false);
+  });
+});
+
+/**
+ * The panel's whole job is telling a real new workspace what to do first, and
+ * every step is a claim about state. A claim built from a read that did not
+ * happen is the one thing it must never make.
+ */
+describe("the checklist never asserts a state nobody checked", () => {
+  it("still guides a genuinely empty workspace that DID answer", async () => {
+    // The distinction that matters: all-false because the reads came back empty
+    // is a real new workspace and must still be helped.
+    configured.mockReturnValue(true);
+    getAdmin.mockReturnValue(fakeDb({}) as never);
+
+    const state = await getActivationState("org-1", "ws-1");
+
+    expect(state.signals.hasRecords).toBe(false);
+    expect(state.checklist.showChecklist).toBe(true);
+    expect(state.checklist.nextStep).toBe("records");
+  });
+
+  it("stays silent when there was no backend to answer", async () => {
+    configured.mockReturnValue(false);
+    const state = await getActivationState("org-1", "ws-1");
+    expect(state.checklist.showChecklist).toBe(false);
   });
 });
