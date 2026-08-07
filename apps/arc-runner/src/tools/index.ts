@@ -1,5 +1,6 @@
 import type { ArcClient } from "../arc-client";
 import { crmReadTools } from "./crm";
+import { customObjectReadTools, customObjectWriteTools } from "./custom-objects";
 import { brainReadTools, brainWriteTools } from "./brain";
 import { campaignReadTools, campaignReviseTools } from "./campaigns";
 import { approvalReadTools, approvalWriteTools } from "./approvals";
@@ -42,6 +43,9 @@ function readTools(client: ArcClient, step: StepFn, sink: TurnSink) {
     ...appMapTools(client, step),
     ...settingsReadTools(client, step),
     ...crmReadTools(client, step),
+    // The workspace's own record types, discovery-first: the keys are
+    // per-workspace, so there is nothing to hardcode against.
+    ...customObjectReadTools(client, step),
     ...brainReadTools(client, step),
     ...campaignReadTools(client, step),
     ...approvalReadTools(client, step),
@@ -59,6 +63,7 @@ function readTools(client: ArcClient, step: StepFn, sink: TurnSink) {
 function writeTools(client: ArcClient, step: StepFn) {
   return [
     ...crmWriteTools(client, step),
+    ...customObjectWriteTools(client, step),
     ...brainWriteTools(client, step),
     ...interactionWriteTools(client, step),
     ...libraryWriteTools(client, step),
