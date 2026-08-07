@@ -21,7 +21,9 @@ const ACTIONS: QuickAction[] = [
   {
     key: "c",
     label: "New campaign",
-    href: "/campaigns",
+    // Opens the New-campaign modal, rather than dropping you on the board to go
+    // find the button. "Quick action" should mean the action.
+    href: "/campaigns?new=1",
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden>
         <path d="M12 5v14M5 12h14" />
@@ -31,7 +33,9 @@ const ACTIONS: QuickAction[] = [
   {
     key: "l",
     label: "Add a lead",
-    href: "/crm",
+    // Leads, with the Add modal open. Pointing at `/crm` landed on Contacts
+    // with nothing open — the wrong tab AND no action.
+    href: "/crm?o=leads&add=1",
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden>
         <circle cx="12" cy="8" r="3.2" />

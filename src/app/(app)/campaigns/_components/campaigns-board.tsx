@@ -245,6 +245,7 @@ export function CampaignsBoard({
   undecidedCount = 0,
   personaOptions,
   loadError = null,
+  openNew = false,
 }: {
   rows: CampaignRow[];
   /** Deliverables with no decision recorded, across every campaign — the size of
@@ -259,9 +260,18 @@ export function CampaignsBoard({
    * behind a green guardrail (BSR-542).
    */
   loadError?: string | null;
+  /**
+   * Open the New-campaign modal on arrival (`/campaigns?new=1`).
+   *
+   * Home's "New campaign" quick action pointed at `/campaigns` and stopped
+   * there, so an action named for a thing merely put you near it — you still
+   * had to find and press the real button. The modal lives on this board, so
+   * the link opens it rather than the board hosting a second entry point.
+   */
+  openNew?: boolean;
 }) {
   const [open, setOpen] = useState<string | null>(null);
-  const [newOpen, setNewOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(openNew);
   // Draft rows created this session, shown until a real write revalidates.
   const [localRows, setLocalRows] = useState<CampaignRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -655,7 +665,16 @@ export function CampaignsBoard({
         key={newOpen ? "open" : "closed"}
         open={newOpen}
         personaOptions={personaOptions}
-        onClose={() => setNewOpen(false)}
+        onClose={() => {
+          setNewOpen(false);
+          // Drop the marker so a reload doesn't reopen a modal the operator
+          // just dismissed. replaceState, not push — this is not a step back.
+          if (typeof window !== "undefined" && window.location.search.includes("new=")) {
+            const params = new URLSearchParams(window.location.search);
+            params.delete("new");
+            window.history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params}` : ""}`);
+          }
+        }}
         onSubmit={handleCreate}
       />
     </div>
