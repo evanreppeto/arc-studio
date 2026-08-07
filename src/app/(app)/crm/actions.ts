@@ -16,6 +16,7 @@ import { archiveCrmRecords, restoreCrmRecords } from "@/lib/crm/archive";
 import { getCustomObjectByKey } from "@/lib/custom-objects/definitions";
 import { createCustomRecord, listCustomRecords, setCustomRecordsArchived } from "@/lib/custom-objects/records";
 import { customRecordToRow } from "./_data/custom-row-vm";
+import { importCustomObjectCsv, planCustomImport } from "@/lib/custom-objects/import";
 
 import { toRow } from "./_data/row-vm";
 import { type CrmRowVM } from "./_components/crm-board";
@@ -406,4 +407,49 @@ export async function listArchivedCustomObjectRecords(objectKey: string): Promis
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not load archived records." };
   }
+}
+
+export type CustomImportPlanResult =
+  | { ok: true; plan: import("@/lib/custom-objects/import").CustomImportPlan }
+  | { ok: false; error: string };
+
+/** What a CSV would do to a tenant-defined record type — writes nothing. */
+export async function planCustomObjectImport(input: {
+  objectKey: string;
+  csvText: string;
+  titleHeader?: string;
+}): Promise<CustomImportPlanResult> {
+  await requireOperator();
+  const scope = await resolveObject(input.objectKey);
+  if ("error" in scope) return { ok: false, error: scope.error };
+  return planCustomImport(input.csvText, input.titleHeader);
+}
+
+export type CustomImportRunResult =
+  | { ok: true; created: number; skipped: number; fieldsCreated: string[]; fieldsReused: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Import CSV rows into a tenant-defined record type.
+ *
+ * Internal only — importing records never reaches a customer. Provisions a
+ * custom field per unmapped column through the same helper the CSV wizard uses,
+ * so an imported field is indistinguishable from one made by hand.
+ */
+export async function importCustomObjectRecords(input: {
+  objectKey: string;
+  csvText: string;
+  titleHeader?: string;
+}): Promise<CustomImportRunResult> {
+  await requireOperator();
+  const scope = await resolveObject(input.objectKey);
+  if ("error" in scope) return { ok: false, error: scope.error };
+
+  const result = await importCustomObjectCsv(scope.orgId, scope.object, input.csvText, input.titleHeader);
+  if (!result.ok) return result;
+
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${input.objectKey}`);
+  revalidatePath("/settings");
+  return result;
 }

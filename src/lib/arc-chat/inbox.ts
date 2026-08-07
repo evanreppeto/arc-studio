@@ -294,6 +294,15 @@ export async function settleChatTask(
   client: SupabaseClient = getSupabaseAdminClient(),
   scope?: ArcChatTaskScope,
 ): Promise<void> {
-  const { error } = await applyScope(client.from("agent_tasks").update({ status }).eq("id", agentTaskId), scope);
+  // `completed_at` is stamped here because nothing else does it for chat: the
+  // runner never calls the /tasks/[id]/complete route (that path serves
+  // agent_tasks-style work), so this is the only settle a chat turn goes
+  // through. Measured on prod 2026-08-07, all 54 completed arc_chat_message
+  // rows carried a null completed_at, which left the most common task type with
+  // no duration data at all.
+  const { error } = await applyScope(
+    client.from("agent_tasks").update({ status, completed_at: new Date().toISOString() }).eq("id", agentTaskId),
+    scope,
+  );
   assertOk("agent_tasks settle", error);
 }

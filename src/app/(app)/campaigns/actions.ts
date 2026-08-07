@@ -40,8 +40,16 @@ export async function createCampaign(input: NewCampaignInput): Promise<CreateCam
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false };
 
   const ctx = await getCurrentWorkspaceContext();
-  if (!isAllowedPersona(persona, await getOrgPersonaKeys(ctx.orgId))) {
-    return { ok: false, error: "Choose a persona for this campaign." };
+  // Two different failures wore the same sentence. "Choose a persona" is right
+  // when nothing was picked (checked above); here the operator DID pick, and the
+  // key simply isn't one this workspace has — which reads as the app ignoring
+  // them. Say which it is, and what to do about it.
+  const allowedKeys = await getOrgPersonaKeys(ctx.orgId);
+  if (allowedKeys.length === 0) {
+    return { ok: false, error: "This workspace has no personas yet — add one on the Personas page, then create the campaign." };
+  }
+  if (!isAllowedPersona(persona, allowedKeys)) {
+    return { ok: false, error: "That persona isn't in this workspace. Pick one from the list, or add it on the Personas page." };
   }
   try {
     const { campaignId } = await createCampaignShell({
