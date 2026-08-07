@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ChangeEvent, type CSSProperties, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { type ChangeEvent, type CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { type CreativeLayoutOverride } from "@/domain";
 
@@ -90,6 +90,30 @@ const ItemMedia = ({ item }: { item: Item }) =>
   );
 
 /**
+ * One tile in the Sources rail.
+ *
+ * Module scope and memoised on purpose — this used to be declared inside
+ * StudioView, and that is what made the whole rail blink on every keystroke.
+ * A component defined in a render body is a NEW component type each render, so
+ * React cannot reconcile it: it unmounts the old subtree and mounts a fresh one.
+ * Every `AppImage` therefore remounted with `loadedSrc = null`, which paints
+ * `data-loaded="false"` — the shimmer sweep — and then runs the 260ms opacity
+ * fade back in. Typing one character into the Arc composer calls `setMsg`, so
+ * all 15 tiles ran that skeleton→fade cycle per keypress.
+ *
+ * `Section` below already carries this exact warning; `Tile` was the copy that
+ * never got it. Keep both at module scope.
+ */
+const Tile = memo(function Tile({ item, index, selected, onPick }: { item: Item; index: number; selected: boolean; onPick: (index: number, item: Item) => void }) {
+  return (
+    <button type="button" className={`mtile${selected ? " on" : ""}`} aria-pressed={selected} onClick={() => onPick(index, item)}>
+      <span className="mt"><ItemMedia item={item} /><span className={`pv ${item.p}`}>{PVLABEL[item.p]}</span></span>
+      <span className="ml">{item.l}</span>
+    </button>
+  );
+});
+
+/**
  * The stage toolbar — the controls that act on the CANVAS.
  *
  * - `focus` — scrolls the Design pane to the section that control belongs to
@@ -164,6 +188,12 @@ function Section({ id, title, tag, open = true, children }: { id: string; title:
  * button" are craft words a roofer has no reason to know, and the Edit-copy
  * panel taught a SECOND one ("eyebrow") for the same element.
  */
+/** The two glyphs the layer rows use — a photo well, and a run of copy. */
+const LAYER_ICON = {
+  background: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 15l4-3 3 2 4-3 5 4"/>',
+  text: '<path d="M5 8h14M5 12h9"/>',
+};
+
 const LAYER_LABEL: Record<string, string> = {
   Background: "Photo",
   Logo: "Logo",
@@ -172,6 +202,39 @@ const LAYER_LABEL: Record<string, string> = {
   Subhead: "Supporting line",
   "CTA button": "Button",
 };
+
+/**
+ * One row of "Parts of this ad" — pick the layer, or toggle its visibility.
+ *
+ * Two controls, so two buttons, side by side. It used to be a `div role="button"
+ * tabIndex={0}` with a **second** `span role="button" tabIndex={0}` nested
+ * inside it for the eye. Nesting one button inside another is invalid — the
+ * inner control is not reliably reachable, and a screen reader is handed a
+ * button whose accessible name contains another button's. Both also hand-rolled
+ * the Enter/Space handling that a real <button> gets from the UA.
+ *
+ * Module scope, for the reason `Tile` and `Section` are: a component declared in
+ * a render body remounts its whole subtree on every keystroke.
+ */
+const LayerRow = memo(function LayerRow({ icon, label, detail, selected, visible, onSelect, onToggle }: { icon: string; label: string; detail: string; selected: boolean; visible: boolean; onSelect: () => void; onToggle: () => void }) {
+  return (
+    <div className={`layer${selected ? " sel" : ""}`} style={visible ? undefined : { opacity: 0.5 }}>
+      {/* Named explicitly: without it the accessible name is the label and the
+          detail run together ("Headline The one line that has to land"), which
+          says what the row contains but not what pressing it does. */}
+      <button type="button" className="layerpick" aria-pressed={selected} aria-label={`Select ${label} layer`} onClick={onSelect}>
+        <span className="li"><svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: icon }} /></span>
+        <span className="lb">
+          <span className="lt">{label}</span>
+          <span className="ld">{detail}</span>
+        </span>
+      </button>
+      <button type="button" className="eye" aria-pressed={visible} title={visible ? "Hide layer" : "Show layer"} aria-label={`${visible ? "Hide" : "Show"} ${label} layer`} onClick={onToggle}>
+        {visible ? "◉" : "◎"}
+      </button>
+    </div>
+  );
+});
 
 const FORMATS = [
   { ar: "1 / 1", dim: "1080 × 1080", label: "Square", r: "1:1", use: "Feed post" },
@@ -1023,12 +1086,9 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
     shortMark: brandTokens?.shortMark ?? logoInitial,
   };
 
-  const Tile = ({ item, i }: { item: Item; i: number }) => (
-    <div className={`mtile${selTile === i ? " on" : ""}`} onClick={() => { setSelTile(i); setBg(item); }}>
-      <div className="mt"><ItemMedia item={item} /><span className={`pv ${item.p}`}>{PVLABEL[item.p]}</span></div>
-      <div className="ml">{item.l}</div>
-    </div>
-  );
+  // Stable identity, so a memoised Tile is not invalidated by every render of
+  // this component. Both setters are React state setters and never change.
+  const pickTile = useCallback((index: number, item: Item) => { setSelTile(index); setBg(item); }, []);
 
   return (
     <div className="arc-studio">
@@ -1071,17 +1131,24 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
         {/* SOURCES */}
         <aside className="sources">
           <div className="seyl">Sources</div>
-          <div className="stabs">
+          {/* `aria-pressed`, matching the Design pane's swatches and template
+              tiles (#1017): the repo's convention for a mutually exclusive
+              selection. These were `<span onClick>` at tabIndex -1 — the list
+              could not be changed from a keyboard at all. */}
+          <div className="stabs" role="group" aria-label="Media sources">
             {["library", "ai", "uploads", "stock"].map((s) => (
-              <span key={s} className={`stab${srcTab === s ? " on" : ""}`} onClick={() => { setSrcTab(s); setSelTile(-1); }}>
+              <button type="button" key={s} className={`stab${srcTab === s ? " on" : ""}`} aria-pressed={srcTab === s} onClick={() => { setSrcTab(s); setSelTile(-1); }}>
                 {s === "ai" ? "AI" : s.charAt(0).toUpperCase() + s.slice(1)}
-              </span>
+              </button>
             ))}
           </div>
           <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUploadFiles} style={{ display: "none" }} />
-          <div className="drop" onClick={() => { if (live) fileRef.current?.click(); }} style={live ? { cursor: "pointer" } : undefined} {...(!live ? { "data-soon": "Connect a workspace to import art" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><div className="dt">{uploading ? "Uploading…" : "Upload or import art"}</div><div className="dd">{uploadNote ?? "Bring in art from Canva, Midjourney, DALL·E — anything"}</div></div>
+          <button type="button" className="drop" onClick={() => { if (live) fileRef.current?.click(); }} style={live ? { cursor: "pointer" } : undefined} {...(!live ? { "data-soon": "Connect a workspace to import art" } : {})}><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg><span className="dt">{uploading ? "Uploading…" : "Upload or import art"}</span><span className="dd">{uploadNote ?? "Bring in art from Canva, Midjourney, DALL·E — anything"}</span></button>
           <div className="srchead"><span className="st">{sources[srcTab].title}</span><span className="sc">{sources[srcTab].items.length} items</span></div>
-          <div className="mgrid2">{sources[srcTab].items.map((it, i) => <Tile key={i} item={it} i={i} />)}</div>
+          {/* Keyed by the asset, not the index: the tabs render different lists
+              into the same slots, so an index key made React reuse tile 0's
+              <img> across a tab switch and swap its src in place. */}
+          <div className="mgrid2">{sources[srcTab].items.map((it, i) => <Tile key={it.id ?? it.url ?? `${srcTab}-${i}`} item={it} index={i} selected={selTile === i} onPick={pickTile} />)}</div>
           {srcTab === "library" && sources.library.items.length === 0 ? (
             <div className="srcempty">No approved media yet. Upload real photos in the <a href="/library">Library</a> and mark them available to Arc.</div>
           ) : null}
@@ -1133,34 +1200,32 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
           </div>
 
           <div className="formats">
-            <div className="modeseg">
-              <span className={mode === "image" ? "on" : ""} onClick={() => setMode("image")}><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-4 4 3 3-2 5 4" /></svg>Image</span>
-              <span className={mode === "video" ? "on" : ""} onClick={() => setMode("video")}><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3" /></svg>Video</span>
+            <div className="modeseg" role="group" aria-label="What you are making">
+              <button type="button" className={mode === "image" ? "on" : ""} aria-pressed={mode === "image"} onClick={() => setMode("image")}><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-4 4 3 3-2 5 4" /></svg>Image</button>
+              <button type="button" className={mode === "video" ? "on" : ""} aria-pressed={mode === "video"} onClick={() => setMode("video")}><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3" /></svg>Video</button>
             </div>
             <span className="fmdiv" />
-            <span className="fl">Format</span>
+            <span className="fl" id="studio-format-label">Format</span>
             {FORMATS.map((f, i) => (
-              <span key={f.r} className={`fchip${fmt === i ? " on" : ""}`} title={`${f.use} · ${f.dim} px`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></span>
+              <button type="button" key={f.r} className={`fchip${fmt === i ? " on" : ""}`} aria-pressed={fmt === i} aria-describedby="studio-format-label" title={`${f.use} · ${f.dim} px`} onClick={() => setFmt(i)}>{f.label} <span className="fr">{f.r}</span></button>
             ))}
             {/* Only offered once something has been moved — an always-present
                 "Reset layout" on an untouched canvas is noise. */}
             {nudged && (
-              <span
+              <button
+                type="button"
                 className="szbtn"
-                role="button"
-                tabIndex={0}
                 onClick={() => setLayoutOverride({})}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLayoutOverride({}); } }}
                 title="Put the copy back where the template puts it"
               >
                 <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" /></svg>
                 Reset layout
-              </span>
+              </button>
             )}
             <span className="fspacer" />
             {/* "Zoom 100%" sat here: a static string, no zoom control anywhere,
                 permanently reading 100% whatever the artboard was doing. */}
-            <span className={`szbtn${safe ? " on" : ""}`} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Keep text clear of edges</span>
+            <button type="button" className={`szbtn${safe ? " on" : ""}`} aria-pressed={safe} onClick={() => setSafe((s) => !s)}><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 8h16M4 16h16" /></svg>Keep text clear of edges</button>
           </div>
 
           {/* A stage-wide mode banner, not a caption on the artboard: keeping it
@@ -1269,14 +1334,13 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 <span className="sl" style={{ textTransform: "none", letterSpacing: 0 }}>Nothing rendered yet</span>
               ) : (
                 allDrafts.slice(0, 8).map((d) => (
-                  <span
+                  <button
+                    type="button"
                     key={d.assetId}
                     className={`vthumb${preview?.assetId === d.assetId ? " on" : ""}`}
-                    role="button"
-                    tabIndex={0}
+                    aria-pressed={preview?.assetId === d.assetId}
                     title={`${d.title} · ${d.format}`}
                     onClick={() => setPreview(d)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPreview(d); } }}
                   >
                     {d.kind === "video" ? (
                       <video src={d.url} muted playsInline preload="metadata" />
@@ -1284,18 +1348,18 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                       <AppImage src={d.url} alt="" />
                     )}
                     <span className="vtag">{d.format}</span>
-                  </span>
+                  </button>
                 ))
               )
             ) : (
               <>
                 {SESSION.slice(0, 3).map((v) => (
-                  <span key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></span>
+                  <button type="button" key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} aria-pressed={selSession === v.id} title={v.item.l} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></button>
                 ))}
                 <span className="vsdiv" />
                 <span className="sl">Drafts · 3 awaiting</span>
                 {SESSION.slice(3).map((v) => (
-                  <span key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></span>
+                  <button type="button" key={v.id} className={`vthumb${selSession === v.id ? " on" : ""}`} aria-pressed={selSession === v.id} title={v.item.l} onClick={() => { setSelSession(v.id); setBg(v.item); }}><Raw html={v.item.s} /><span className="vtag">{v.tag}</span></button>
                 ))}
               </>
             )}
@@ -1381,9 +1445,26 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                 )}
 
                 <Section id="sec-parts" title="Parts of this ad">
-                  <div className={`layer${selectedLayer === "Background" ? " sel" : ""}`} role="button" tabIndex={0} onClick={() => setSelectedLayer("Background")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer("Background"); } }} style={shown("Background") ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 15l4-3 3 2 4-3 5 4" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL.Background}</div><div className="ld">{bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}</div></div><span className="eye" role="button" tabIndex={0} title={shown("Background") ? "Hide layer" : "Show layer"} aria-label={`${shown("Background") ? "Hide" : "Show"} Background layer`} onClick={() => toggleLayer("Background")} style={{ cursor: "pointer" }}>{shown("Background") ? "◉" : "◎"}</span></div>
-                  {[["Kicker", kicker], ["Headline", headline], ["Subhead", sub], ["CTA button", cta], ["Logo", brandName]].map(([lt, ld]) => (
-                    <div className={`layer${selectedLayer === lt ? " sel" : ""}`} key={lt} role="button" tabIndex={0} onClick={() => setSelectedLayer(lt as CanvasLayer)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedLayer(lt as CanvasLayer); } }} style={shown(lt) ? { cursor: "pointer" } : { opacity: 0.5, cursor: "pointer" }}><span className="li"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h9" /></svg></span><div style={{ minWidth: 0 }}><div className="lt">{LAYER_LABEL[lt as string] ?? lt}</div><div className="ld">{ld || "Empty"}</div></div><span className="eye" role="button" tabIndex={0} title={shown(lt) ? "Hide layer" : "Show layer"} aria-label={`${shown(lt) ? "Hide" : "Show"} ${lt} layer`} onClick={() => toggleLayer(lt)} style={{ cursor: "pointer" }}>{shown(lt) ? "◉" : "◎"}</span></div>
+                  <LayerRow
+                    icon={LAYER_ICON.background}
+                    label={LAYER_LABEL.Background}
+                    detail={bg ? `${bg.l} · ${provShort(bg.p)}` : "No media selected"}
+                    selected={selectedLayer === "Background"}
+                    visible={shown("Background")}
+                    onSelect={() => setSelectedLayer("Background")}
+                    onToggle={() => toggleLayer("Background")}
+                  />
+                  {([["Kicker", kicker], ["Headline", headline], ["Subhead", sub], ["CTA button", cta], ["Logo", brandName]] as const).map(([lt, ld]) => (
+                    <LayerRow
+                      key={lt}
+                      icon={LAYER_ICON.text}
+                      label={LAYER_LABEL[lt] ?? lt}
+                      detail={ld || "Empty"}
+                      selected={selectedLayer === lt}
+                      visible={shown(lt)}
+                      onSelect={() => setSelectedLayer(lt as CanvasLayer)}
+                      onToggle={() => toggleLayer(lt)}
+                    />
                   ))}
                 </Section>
 
@@ -1482,23 +1563,22 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                         disabled={videoBusy}
                       />
                     </div>
-                    {/* role + tabIndex + Enter/Space, not a bare onClick div: the
-                        surrounding .exrow controls are the keyboard-unreachable
-                        debt BSR-664 ratchets down, and a new control must not add
-                        to it. */}
-                    <div
+                    {/* Was `role` + `tabIndex` + a hand-written Enter/Space
+                        handler, written that way because .exrow was a clickable
+                        div at the time. #1017 made those real buttons; this was
+                        the one left reimplementing what the UA already does. */}
+                    <button
+                      type="button"
                       className="exrow gold"
-                      role="button"
-                      tabIndex={videoGate || videoBusy ? -1 : 0}
-                      aria-disabled={Boolean(videoGate) || videoBusy}
                       onClick={runVideo}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); runVideo(); } }}
-                      style={!videoGate && !videoBusy ? { cursor: "pointer" } : { opacity: 0.55 }}
+                      disabled={Boolean(videoGate) || videoBusy}
+                      aria-busy={videoBusy}
+                      title={videoGate ?? undefined}
                       {...(videoGate ? { "data-soon": videoGate } : {})}
                     >
                       <svg viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2" /><path d="M17 9l4-2v10l-4-2" /></svg>
                       {videoBusy ? "Rendering video…" : `Generate video · ${videoAspect}`}
-                    </div>
+                    </button>
                     <div className="scapt">
                       {videoNote
                         ? videoNote

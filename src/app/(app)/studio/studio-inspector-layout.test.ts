@@ -234,6 +234,162 @@ describe("arStyle", () => {
 });
 
 /**
+ * No component may be declared inside StudioView's render body.
+ *
+ * Reported as "every time I type, the images on the left keep blinking". `Tile`
+ * — the Sources rail tile — was a `const Tile = ({item, i}) => …` declared in
+ * the render body, so it was a NEW component type on every render. React cannot
+ * reconcile across a changed type: it unmounts the old subtree and mounts a
+ * fresh one. Each tile's `AppImage` therefore remounted at `loadedSrc = null`,
+ * which paints `data-loaded="false"` — the infinite shimmer sweep — and then
+ * runs the 260ms opacity fade back in. One keystroke in the Arc composer calls
+ * `setMsg`, so all fifteen tiles ran a full skeleton→fade cycle per character.
+ *
+ * The hazard was already known here: `Section` carries a comment saying exactly
+ * this, added when the copy inputs were dropping focus mid-word. `Tile` was the
+ * instance that never got the same treatment, and a comment is not a guard.
+ *
+ * PascalCase is the signal — a capitalised binding at the component's own indent
+ * is a component by React's own convention, and it is the shape that regresses.
+ */
+describe("StudioView declares no components in its render body", () => {
+  const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+
+  it("hoists every child component to module scope", () => {
+    const body = view.match(/export function StudioView\([\s\S]*$/)?.[0] ?? "";
+    expect(body).not.toBe("");
+    // Two-space indent = StudioView's own body, not a nested callback.
+    const declared = [...body.matchAll(/^ {2}(?:const|let|function)\s+([A-Z]\w*)/gm)].map((m) => m[1]);
+    expect(declared).toEqual([]);
+  });
+
+  it("keeps the rail tile memoised, so typing does not re-render fifteen images", () => {
+    expect(view).toMatch(/const Tile = memo\(function Tile\(/);
+    // A fresh inline arrow here would defeat the memo on every render.
+    expect(view).toMatch(/const pickTile = useCallback\(/);
+    expect(view).toMatch(/onPick=\{pickTile\}/);
+  });
+
+  it("keys the tiles by asset, not by index", () => {
+    // The four source tabs render different lists into the same slots; an index
+    // key made React reuse tile 0's <img> across a tab switch and swap its src.
+    expect(view).toMatch(/key=\{it\.id \?\? it\.url \?\?/);
+  });
+});
+
+/**
+ * Every control on Studio is a real control — not just the Design pane's.
+ *
+ * A runtime hit-test of the live page (2026-08-06) found 21 elements carrying an
+ * `onClick` that were `<span>`/`<div>`: all four Sources tabs, the dropzone, the
+ * four media tiles, the Image/Video toggle, the four format chips, "Keep text
+ * clear of edges" and the five version thumbs. Every one sat at `tabIndex = -1`
+ * with no role and no pressed state — unreachable by keyboard, announced as
+ * nothing, and invisible to a screen reader as anything actionable.
+ *
+ * This is the same defect #1017 fixed for the swatches, template tiles and
+ * `.exrow`s. That pass stopped at the Design pane boundary and left the stage
+ * toolbar and the Sources rail untouched, which is exactly how a fixed bug class
+ * survives: the fix was scoped to where it was noticed, not to where it applied.
+ *
+ * `aria-pressed` rather than a tablist, matching what #1017 established as this
+ * repo's convention for a mutually exclusive selection.
+ */
+describe("no clickable non-buttons anywhere in Studio", () => {
+  const view = readFileSync(join(__dirname, "_components", "studio-view.tsx"), "utf8");
+  /**
+   * Comments stripped, like the CSS above. These assertions search for a code
+   * SHAPE, and the comments here describe the very shapes being banned — the
+   * first run of this guard failed on its own prose explaining what it replaced.
+   */
+  const code = view.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("has no onClick on a span or div", () => {
+    // The shape that regressed: reaching for a <span> because it is shorter.
+    const offenders = [...code.matchAll(/<(span|div)\b[^>]*\sonClick=/g)].map((m) => m[0].slice(0, 70));
+    expect(offenders).toEqual([]);
+  });
+
+  it("has no hand-rolled button — role+tabIndex+keyDown is a <button> spelled long", () => {
+    // Four of these existed: "Reset layout", the live version thumb, the video
+    // generate row, and both layer rows. Each reimplemented Enter/Space by hand,
+    // which a real <button> gets from the UA for free.
+    expect(code).not.toMatch(/role="button"[\s\S]{0,120}tabIndex=\{0\}/);
+    expect(code).not.toMatch(/onKeyDown=\{\(e\) => \{ if \(e\.key === "Enter" \|\| e\.key === " "\)/);
+  });
+
+  /**
+   * The eye toggle sat INSIDE the layer row's own `role="button"`. A button
+   * inside a button is invalid: the inner control is not reliably reachable, and
+   * the outer one's accessible name swallows the inner one's.
+   */
+  it("puts the layer's two actions side by side, not one inside the other", () => {
+    const row = code.match(/const LayerRow = memo\([\s\S]*?\n\}\);/)?.[0] ?? "";
+    expect(row).not.toBe("");
+    expect(row).toMatch(/className="layerpick"/);
+    expect(row).toMatch(/className="eye"/);
+    // Two buttons that both close before the next opens — siblings, not nested.
+    expect(row.match(/<button/g) ?? []).toHaveLength(2);
+    expect(row).toMatch(/<\/button>[\s\S]*<button/);
+  });
+
+  it.each([
+    ["stab", "srcTab === s"],
+    ["fchip", "fmt === i"],
+    ["mtile", "selected"],
+    ["vthumb", "selSession === v.id"],
+  ])("reports which %s is chosen", (cls, state) => {
+    const re = new RegExp(`className=\\{\`${cls}\\$\\{[^\`]*\`\\}[^>]*aria-pressed=\\{${state.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\}`);
+    expect(view).toMatch(re);
+  });
+
+  it("keeps every converted control looking like it did", () => {
+    // A <button> inherits none of the page's type and brings its own chrome, so
+    // each rule that used to style a span has to reset the UA defaults. Missing
+    // `font-family: inherit` is the one that shows — the control silently drops
+    // to the browser's system font.
+    for (const sel of [".stab", ".drop", ".mtile", ".fchip", ".szbtn", ".vthumb", ".modeseg button"]) {
+      expect(rule(sel), sel).toMatch(/font-family:\s*inherit|color:\s*inherit/);
+      expect(rule(sel), sel).toMatch(/cursor:\s*pointer/);
+    }
+  });
+
+  it("gives every converted control a visible focus ring", () => {
+    for (const sel of [".stab", ".drop", ".mtile", ".fchip", ".szbtn", ".vthumb", ".modeseg button"]) {
+      expect(CSS, sel).toMatch(
+        new RegExp(`\\.arc-studio ${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:focus-visible\\s*\\{[^}]*outline:`),
+      );
+    }
+  });
+
+  /**
+   * `.mtile .mt > svg` matched NOTHING. The demo art is wrapped in Raw's
+   * positioned <span>, so the child combinator never applied and the sample
+   * tiles' SVG sized off its own intrinsic box, overflowing the 70px media well
+   * and pushing the caption out of the tile's `overflow: hidden`. Two of the
+   * four tiles rendered with no visible label. Same class as #1019 — a rule
+   * written against a DOM shape the component does not produce.
+   */
+  it("reaches the tile and thumb art through a descendant, not a child, combinator", () => {
+    expect(CSS).not.toMatch(/\.mtile \.mt > svg/);
+    expect(CSS).not.toMatch(/\.vthumb > svg/);
+    expect(CSS).toMatch(/\.arc-studio \.mtile \.mt svg\s*\{/);
+    expect(CSS).toMatch(/\.arc-studio \.vthumb svg/);
+  });
+
+  /** A <button> is display:inline-block; the tile and dropzone were block boxes. */
+  it("keeps the block-level controls block-level", () => {
+    for (const sel of [".mtile", ".drop"]) {
+      expect(rule(sel), sel).toMatch(/display:\s*block/);
+      expect(rule(sel), sel).toMatch(/width:\s*100%/);
+    }
+    // The tile's children were <div>s and are now <span>s inside the button.
+    expect(rule(".mtile .mt")).toMatch(/display:\s*block/);
+    expect(rule(".mtile .ml")).toMatch(/display:\s*block/);
+  });
+});
+
+/**
  * The Design pane's controls are real buttons.
  *
  * A live audit of prod (2026-08-05) hit-tested every element in the pane and
