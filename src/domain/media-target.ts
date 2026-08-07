@@ -49,6 +49,9 @@ export type GenerationModel = {
   category: MediaCategory;
   /** The engine's default pick for this category. Exactly one per engine+category. */
   recommended?: boolean;
+  /** Capability tags — what `media-intent.ts` matches a job against. Higgsfield's
+   *  come verbatim from its catalog; Gemini's are assigned below by hand. */
+  tags?: readonly string[];
 };
 
 /**
@@ -61,12 +64,19 @@ export type GenerationModel = {
  * it is informational, because an auto target deliberately leaves that chain
  * (level → env → built-in default) alone rather than pinning a model.
  */
+//
+// ⚠️ The `tags` here are ASSIGNED BY US, not published by Google — unlike the
+// Higgsfield roster, whose tags are copied verbatim and drift-tested against the
+// catalog. Nothing upstream will correct them if they are wrong, so they are
+// conservative: only capabilities the model's own docs state. Two vocabularies
+// meeting in one table is a real seam, and this is the side without a source of
+// truth behind it.
 const GEMINI_MODELS: Array<Omit<GenerationModel, "engine" | "key">> = [
-  { id: "gemini-3-pro-image", label: "Gemini 3 Pro Image", provider: "Google", category: "image" },
-  { id: "gemini-3.1-flash-image", label: "Gemini 3.1 Flash Image", provider: "Google", category: "image", recommended: true },
-  { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image", provider: "Google", category: "image" },
-  { id: "veo-3.1-generate-preview", label: "Veo 3.1", provider: "Google", category: "video" },
-  { id: "veo-3.1-fast-generate-preview", label: "Veo 3.1 Fast", provider: "Google", category: "video", recommended: true },
+  { id: "gemini-3-pro-image", label: "Gemini 3 Pro Image", provider: "Google", category: "image", tags: ["photorealistic", "high-quality", "4k", "versatile", "text-to-image", "image-to-image", "editing"] },
+  { id: "gemini-3.1-flash-image", label: "Gemini 3.1 Flash Image", provider: "Google", category: "image", recommended: true, tags: ["fast", "versatile", "text-to-image", "image-to-image", "editing"] },
+  { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image", provider: "Google", category: "image", tags: ["fast", "budget", "text-to-image", "image-to-image", "editing"] },
+  { id: "veo-3.1-generate-preview", label: "Veo 3.1", provider: "Google", category: "video", tags: ["cinematic", "high-quality", "text-to-video", "image-to-video", "start-frame"] },
+  { id: "veo-3.1-fast-generate-preview", label: "Veo 3.1 Fast", provider: "Google", category: "video", recommended: true, tags: ["fast", "text-to-video", "image-to-video", "start-frame"] },
 ];
 
 function qualify(engine: MediaEngine, id: string): string {
@@ -85,6 +95,7 @@ export const GENERATION_MODELS: GenerationModel[] = [
     provider: m.provider,
     category: m.category as MediaCategory,
     ...(m.recommended ? { recommended: true as const } : {}),
+    ...(m.tags ? { tags: m.tags } : {}),
   })),
 ];
 

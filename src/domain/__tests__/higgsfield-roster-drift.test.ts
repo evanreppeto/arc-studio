@@ -18,13 +18,13 @@ import { HIGGSFIELD_MODELS } from "../higgsfield-models";
  * to the SOURCE catches it, which is what the snapshot is for.
  *
  * Refresh: re-run the Higgsfield MCP `models_explore(action:"list", limit:100)`
- * and write `{captured_at, source, count, models:[{id,type,name,provider}]}` to
- * the fixture. It is a snapshot, not a live call: CI has no Higgsfield
+ * and write `{captured_at, source, count, models:[{id,type,name,provider,tags}]}`
+ * to the fixture. It is a snapshot, not a live call: CI has no Higgsfield
  * credential, and a test that needs the network is a test that goes flaky and
  * then gets skipped.
  */
 
-type CatalogModel = { id: string; type: string; name: string; provider: string };
+type CatalogModel = { id: string; type: string; name: string; provider: string; tags?: string[] };
 const catalog = JSON.parse(
   readFileSync(new URL("../__fixtures__/higgsfield-catalog.json", import.meta.url), "utf8"),
 ) as { captured_at: string; count: number; models: CatalogModel[] };
@@ -119,6 +119,27 @@ describe("the roster matches the upstream catalog", () => {
     // Otherwise the exclusion list rots into a record of a catalog that is gone.
     const stale = Object.keys(NOT_OFFERED).filter((id) => !live.has(id));
     expect(stale, "NOT_OFFERED entries with no upstream model — delete them").toEqual([]);
+  });
+
+  it("carries the upstream tags verbatim", () => {
+    // The tags are not decoration — `media-intent.ts` RANKS on them, so a
+    // hand-edited tag is a hand-edited model pick. They were injected into the
+    // roster by a script reading this same fixture, which means the only thing
+    // standing between them and the ids' fate (three that did not exist, for
+    // months) is this comparison.
+    const drifted = HIGGSFIELD_MODELS.filter((m) => {
+      const upstream = [...(live.get(m.id)?.tags ?? [])].sort();
+      return JSON.stringify([...(m.tags ?? [])].sort()) !== JSON.stringify(upstream);
+    }).map((m) => `${m.id}: ours=[${m.tags ?? []}] upstream=[${live.get(m.id)?.tags ?? []}]`);
+    expect(drifted, "roster tags that disagree with the catalog — re-run the injection, don't hand-edit").toEqual([]);
+  });
+
+  it("leaves no offered model untagged", () => {
+    // An untagged model scores zero against every look and every priority, so
+    // intent can never surface it. It would still be in the raw dropdown —
+    // present, and unreachable by the control anyone actually uses.
+    const untagged = HIGGSFIELD_MODELS.filter((m) => !m.tags?.length).map((m) => `${m.id} (${m.label})`);
+    expect(untagged, "offered models with no tags — intent can never rank these").toEqual([]);
   });
 
   it("keeps exactly one recommended model per offered category", () => {
