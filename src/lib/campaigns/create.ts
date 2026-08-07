@@ -1,6 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
-import { type ParsedCampaignDraft, type ViralityScore, channelForAssetType, deriveCampaignTheme, normalizeCampaignAssetType, normalizeHandoffNote, normalizeRestorationFocus, parseConsideredAudiences, resolveCampaignCta } from "@/domain";
+import { type CampaignKind, type ParsedCampaignDraft, type ViralityScore, channelForAssetType, deriveCampaignTheme, normalizeCampaignAssetType, normalizeHandoffNote, normalizeRestorationFocus, parseConsideredAudiences, resolveCampaignCta } from "@/domain";
 
 import { getSupabaseAdminClient, type TypedSupabaseClient } from "../supabase/server";
 import { type AgentTaskTenantFields } from "../agent-tasks/scope";
@@ -307,6 +307,13 @@ export type CreateCampaignShellInput = {
   restorationFocus?: string;
   /** Configured agent display name, threaded from the caller for the audit-log detail. */
   agentName?: string;
+  /**
+   * What this campaign IS, when the caller knows. Omit and the column stays
+   * NULL, which means "work it out from the deliverables" — the behaviour every
+   * existing row has. Only pass it from a route whose whole purpose fixes the
+   * answer; a guess written here outranks the derivation forever.
+   */
+  kind?: CampaignKind;
   client?: SupabaseClient;
   tenant?: AgentTaskTenantFields;
 };
@@ -330,6 +337,10 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
     launch_locked: true,
     owner: input.operator,
     source_system: "arc_saved",
+    // Undeclared stays NULL rather than defaulting to 'campaign': "nobody said"
+    // and "somebody said campaign" have to stay distinguishable, or the
+    // derivation can never answer again.
+    ...(input.kind ? { kind: input.kind } : {}),
   });
   await insertNoReturn(client, "campaign_events", {
     ...workspaceScopeFields(input.tenant),
@@ -438,6 +449,10 @@ export type ResolveOrCreateCampaignInput = {
   campaignTheme?: string | null;
   /** Legacy restoration enum retained for older callers during migration. */
   restorationFocus?: string | null;
+  /** Passed through to `createCampaignShell` when this CREATES a campaign.
+   *  Ignored when attaching to an existing one — that row already has a kind,
+   *  and the caller attaching to it does not get to reclassify it. */
+  kind?: CampaignKind;
   agentName?: string;
   client?: SupabaseClient;
   tenant?: AgentTaskTenantFields;
@@ -473,6 +488,7 @@ export async function resolveOrCreateCampaign(input: ResolveOrCreateCampaignInpu
     campaignTheme,
     restorationFocus: input.restorationFocus ?? undefined,
     agentName: input.agentName ?? "Arc",
+    kind: input.kind,
     client: input.client,
     tenant: input.tenant,
   });

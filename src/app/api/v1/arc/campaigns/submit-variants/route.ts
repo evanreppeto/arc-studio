@@ -130,6 +130,11 @@ export async function POST(request: Request) {
         campaignTheme: body.campaign_theme,
         restorationFocus: body.restoration_focus,
         agentName: "Arc",
+        // Declared, because this route's whole purpose fixes the answer: it
+        // submits generated variants, so a campaign it CREATES holds creative
+        // and nothing else. Ignored when `campaign_id` is given — attaching
+        // variants to an existing campaign does not reclassify that campaign.
+        kind: "creative_batch",
         tenant,
       }));
     } catch (error) {
