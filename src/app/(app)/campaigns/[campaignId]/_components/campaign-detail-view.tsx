@@ -55,6 +55,7 @@ import {
   type ReviewSummary,
 } from "./review-summary";
 import { applyFindingFixAction, attachCampaignMediaAction, decideCampaignAsset, decideCampaignMediaAction, editCampaignDraftAction, launchCampaignAction, reopenCampaignAsset, requestCampaignRevision, retryCampaignRevision } from "../actions";
+import { announce } from "../../../_components/announcer";
 import {
   getCampaignSharingStateAction,
   setCampaignSharingAction,
@@ -1280,7 +1281,17 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
         setAssetStatus(asset.id, prev);
         setOpenCards((current) => new Set(current).add(asset.id));
         setErr(res.error);
+        announce(`Could not ${decision === "approved" ? "approve" : "decline"}: ${asset.title}. ${res.error}`, "assertive");
+        return;
       }
+      // The card folds away and a count ticks over — both invisible to a screen
+      // reader, on the one action the whole outbound gate turns on.
+      //
+      // Outcome first, title second. Titles here are whole sentences ("Water in
+      // your home? We respond in 60 minutes."), so appending the verb produced
+      // "…60 minutes. approved." — and made the listener wait through the title
+      // to learn what happened.
+      announce(`${decision === "approved" ? "Approved" : "Declined"}: ${asset.title}`);
     });
   }
 
@@ -1300,14 +1311,19 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     startTransition(async () => {
       const results = await Promise.all(targets.map((t) => decideCampaignAsset(campaign.id, t.id, "approved")));
       const failed = targets.filter((_, i) => !results[i].ok);
-      if (failed.length === 0) return;
+      if (failed.length === 0) {
+        announce(`${targets.length} ${targets.length === 1 ? "deliverable" : "deliverables"} approved.`);
+        return;
+      }
       // Put back only what actually failed — a partial success must not look
       // like a total one, and must not roll back the approvals that landed.
       failed.forEach((t) => setAssetStatus(t.id, t.status));
       const firstError = results.find((r) => !r.ok);
-      setErr(
-        `${failed.length} of ${targets.length} could not be approved${firstError && !firstError.ok ? `: ${firstError.error}` : ""}. The rest went through.`,
-      );
+      const message = `${failed.length} of ${targets.length} could not be approved${firstError && !firstError.ok ? `: ${firstError.error}` : ""}. The rest went through.`;
+      setErr(message);
+      // Assertive: a partial success looks identical to a full one on screen
+      // until you count the cards.
+      announce(message, "assertive");
     });
   }
 

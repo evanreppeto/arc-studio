@@ -97,6 +97,7 @@ import { WorkspaceIdentityModal, type WorkspaceIdentityValue } from "./workspace
 import { sendTestOpsAlert } from "../alert-actions";
 
 import { toStatus, type SaveStatus, type SettingsWriteResult } from "./save-status";
+import { announce } from "../../_components/announcer";
 
 /**
  * Roles an owner/admin may actually assign, straight from the catalog the server
@@ -234,9 +235,29 @@ function Seg({ opts, active, value, onChange }: { opts: string[]; active?: strin
   );
 }
 
-// Small inline save-status line, styled like the other feedback spans in this file.
-
+/**
+ * Small inline save-status line, styled like the other feedback spans in this
+ * file — and now also spoken.
+ *
+ * All 19 call sites render it as `{status ? <div className="cxm-statusline">…`,
+ * so the element only exists once there is something to say. That is the shape
+ * a live region cannot rely on: several screen readers announce changes to a
+ * region they were already observing, and a region that appears already holding
+ * its text has not changed. So every "Saved" and every "Couldn't save" in
+ * Settings was silent, from Team through Connections to Records.
+ *
+ * The visible span is untouched. The announcement goes to the shell's permanent
+ * region instead, which sidesteps the problem rather than betting on the timing.
+ * A failure is assertive: it means the thing the operator just asked for did not
+ * happen, and finding that out at the next natural pause is too late to be
+ * useful.
+ */
 function Status({ status }: { status: SaveStatus }) {
+  const text = status?.text ?? "";
+  const tone = status?.tone;
+  useEffect(() => {
+    if (text) announce(text, tone === "ok" ? "polite" : "assertive");
+  }, [text, tone]);
   if (!status) return null;
   return <span style={{ fontSize: 12, color: status.tone === "ok" ? "var(--ok-text)" : "var(--red-text)" }}>{status.text}</span>;
 }

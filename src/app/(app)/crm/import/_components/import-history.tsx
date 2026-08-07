@@ -103,7 +103,7 @@ export function ImportHistory({ runs }: { runs: ImportRunSummary[] }) {
           )}
 
           {result?.id === run.id && (
-            <p className={result.ok ? "imp-note" : "imp-err"}>{result.text}</p>
+            <p className={result.ok ? "imp-note" : "imp-err"} role="status">{result.text}</p>
           )}
         </li>
       ))}

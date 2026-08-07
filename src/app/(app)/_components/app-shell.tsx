@@ -11,6 +11,7 @@ import { getProductLanguage, type ObjectLabelSettings } from "@/lib/product-lang
 import { AccountMenu } from "./account-menu";
 import { BillingNoticeBar } from "./billing-notice";
 import { DemoDataBar } from "./demo-data-bar";
+import { Announcer } from "./announcer";
 import { ComingSoonToasts } from "./coming-soon";
 import { CommandPalette, type CommandItem } from "./command-palette";
 import { IdentifierLeakCheck } from "./identifier-leak-check";
@@ -551,6 +552,9 @@ export function AppShell({
         </div>
       </div>
       <ComingSoonToasts />
+      {/* Mounted once, for the life of the shell, so a live region is already
+          being observed when a message arrives — see announcer.tsx. */}
+      <Announcer />
       {/* Host for every overlay that means to cover the whole shell (see
           overlay-portal.tsx). It has to live here — inside `.arc-app` for the
           design tokens, outside `.app` and `.page-enter` so no transformed
