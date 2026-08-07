@@ -68,6 +68,7 @@ export * from "./nws-weather";
 export * from "./rss-signals";
 export * from "./news-search";
 export * from "./review-signals";
+export * from "./local-seo";
 export * from "./competitor-ads";
 export * from "./crm-import";
 export * from "./csv-import";
