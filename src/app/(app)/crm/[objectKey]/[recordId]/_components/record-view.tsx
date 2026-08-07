@@ -402,13 +402,15 @@ export function RecordView({
         )}
       </div>
 
-      <div className="rectabs">
+      {/* Was a row of clickable divs at tabIndex -1 — a record's tabs could not
+          be reached from a keyboard. */}
+      <div className="rectabs" role="tablist" aria-label="Record sections">
         {TABS.map((t) => (
-          <div key={t[0]} className={`rectab${tab === t[0] ? " on" : ""}`} onClick={() => setTab(t[0])}>
+          <button type="button" role="tab" key={t[0]} className={`rectab${tab === t[0] ? " on" : ""}`} aria-selected={tab === t[0]} onClick={() => setTab(t[0])}>
             {svg(t[2])}
             {t[1]}
             {tabCount[t[0]] > 0 && <span className="cnt">{tabCount[t[0]]}</span>}
-          </div>
+          </button>
         ))}
       </div>
 
@@ -483,11 +485,11 @@ export function RecordView({
 
           {tab === "activity" && (
             <div>
-              <div className="tabsmini">
+              <div className="tabsmini" role="tablist" aria-label="Activity view">
                 {(["timeline", "tasks", "notes"] as const).map((m) => (
-                  <span key={m} className={`tabmini${actView === m ? " on" : ""}`} onClick={() => setActView(m)}>
+                  <button type="button" role="tab" key={m} className={`tabmini${actView === m ? " on" : ""}`} aria-selected={actView === m} onClick={() => setActView(m)}>
                     {m.charAt(0).toUpperCase() + m.slice(1)}
-                  </span>
+                  </button>
                 ))}
               </div>
 

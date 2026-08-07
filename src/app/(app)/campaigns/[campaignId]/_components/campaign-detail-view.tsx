@@ -1574,12 +1574,14 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
         />
       </div>
 
-      <div className="ctabs">
+      {/* Was a row of clickable divs at tabIndex -1 — the campaign's sections
+          could not be reached from a keyboard at all. */}
+      <div className="ctabs" role="tablist" aria-label="Campaign sections">
         {TABS.map(([key, label]) => (
-          <div key={key} className={`ctab${tab === key ? " on" : ""}`} onClick={() => setTab(key)}>
+          <button type="button" role="tab" key={key} className={`ctab${tab === key ? " on" : ""}`} aria-selected={tab === key} onClick={() => setTab(key)}>
             {label}
             {key === "deliverables" && <span className="cnt">{assets.length}</span>}
-          </div>
+          </button>
         ))}
       </div>
 

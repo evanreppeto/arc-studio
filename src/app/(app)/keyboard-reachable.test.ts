@@ -38,10 +38,22 @@ const APP_DIR = new URL(".", import.meta.url).pathname;
  * A file absent from this map must have zero.
  */
 const BASELINE: Record<string, number> = {
-  // Was 19. The folder rail moved to folder-tree.tsx and became a real ARIA
-  // tree on the way, which took nine of them with it: every folder row, its
-  // rename input wrapper and its two manage buttons used to be click-spans.
-  "library/_components/library-view.tsx": 10,
+  // Was 19, then 10, now 2. The folder rail moved to folder-tree.tsx and became
+  // a real ARIA tree on the way, taking nine with it; the 2026-08-06 sweep took
+  // the remaining eight — the collection and kind filters, the Arc-suggestion
+  // Dismiss, the bulk "Make available to Arc" and its campaign picker (whose
+  // options were `<span role="menuitem">`, a role claiming what nothing could
+  // focus), Clear, the detail panel's close, and the Available-to-Arc switch.
+  //
+  // The 2 that remain are the grid card's `<div onClick>` and the list row's
+  // `<tr onClick>`, honest for the same reason as crm-board below: both are
+  // redundant convenience targets over a real `<button aria-label="Open …">`,
+  // so a keyboard user loses nothing. That was NOT true when this baseline was
+  // written — the grid's overlay is `opacity: 0` and revealed on `:hover` only,
+  // so its four controls sat in the tab order while being invisible to whoever
+  // was tabbing through them. `:focus-within` now reveals it, which is what
+  // makes leaving these two honest rather than convenient.
+  "library/_components/library-view.tsx": 2,
   // The rail's disclosure chevron, and honest at 1 for the same reason as
   // crm-board below: it is a redundant convenience target. Expanding and
   // collapsing is already on the row itself as ArrowRight/ArrowLeft, which is
@@ -50,8 +62,24 @@ const BASELINE: Record<string, number> = {
   // count here would make the component worse for the people it is counted on
   // behalf of.
   "library/_components/folder-tree.tsx": 1,
-  "studio/_components/studio-view.tsx": 18,
-  "crm/[objectKey]/[recordId]/_components/record-view.tsx": 2,
+  // studio-view.tsx was 18 and is now ZERO — entry removed, per the rule above.
+  //
+  // This is the entry the doc-comment's "I could not visually verify that many
+  // controls to a standard worth trusting" was written about. A runtime hit-test
+  // of the live page (2026-08-06) enumerated them: the four Sources tabs, the
+  // dropzone, the media tiles, the Image/Video toggle, the four format chips,
+  // "Keep text clear of edges", the version thumbs, both layer rows and the
+  // video generate row. All are real <button>s now, each rule that styled a span
+  // reset for the UA button defaults, and the page re-hit-tested to zero dead
+  // controls, zero nested buttons and zero unnamed buttons in three states
+  // (image+Design, image+Arc, video). See studio-inspector-layout.test.ts, which
+  // guards the shape so it cannot come back.
+  // record-view.tsx (was 2), campaign-detail-view.tsx (was 1) and brand-view.tsx
+  // (was 1) are GONE from this map — all three are zero. Each was the same
+  // thing: a tab strip, or a palette swatch, built from clickable divs. The tab
+  // strips are `role="tablist"` with real `role="tab"` buttons now; the swatch
+  // is a button with `aria-pressed`. A record's tabs, a campaign's sections and
+  // the brand palette could not be operated from a keyboard at all before.
   // Was 2, now 1. "Clear" became a <button>, and the record name became a real
   // <Link> — previously the row's <tr onClick> was the ONLY way to open a
   // record, so it was unreachable by keyboard, unannounced as a link, and
@@ -63,9 +91,13 @@ const BASELINE: Record<string, number> = {
   // they expect, and adding a role= to quieten the count would be marking the
   // problem instead of fixing it. One is the honest number.
   "crm/_components/crm-board.tsx": 1,
+  // Not a control at all, and deliberately left alone: the dialog card's only
+  // handler is `stopPropagation`, there to stop a click INSIDE the dialog from
+  // reaching the backdrop that dismisses it. There is nothing here to press, so
+  // making it a button — or giving it a role to quieten the count — would invent
+  // a control rather than fix one. The check cannot tell this apart from a real
+  // click target; 1 is the honest number.
   "_components/share-dialog.tsx": 1,
-  "brand/_components/brand-view.tsx": 1,
-  "campaigns/[campaignId]/_components/campaign-detail-view.tsx": 1,
   // The review queue's backdrop `<div onClick>`, which dismisses the dialog.
   //
   // Honest at 1, and deliberately not "fixed". Escape already does exactly what
@@ -157,19 +189,53 @@ describe("controls are reachable from a keyboard", () => {
     expect(stale, "these files are fixed; remove them from BASELINE").toEqual([]);
   });
 
+  /**
+   * `openingTagAttrs`, not `<button\b([^>]*)>`.
+   *
+   * The naive form has the identical bug this file already documents for
+   * `unreachableCount`: `[^>]*` stops at the first `>` in the source, and
+   * `onClick={(e) =>` contains one. So for any icon-only button with an arrow
+   * handler, `attrs` was truncated at the arrow — an `aria-label` written after
+   * `onClick` could not be seen — and `body` swallowed the rest of the handler,
+   * whose `openDetail(a)` matched the `.\w+` "renders text" heuristic and marked
+   * the button as having a visible label. Every such button was exempt.
+   *
+   * It was fixed for the other check and left here, which is how a fix scoped to
+   * where a bug was noticed leaves the same bug standing one function away.
+   */
   it("labels every icon-only button", () => {
     const offenders: string[] = [];
     for (const file of tsxFiles(APP_DIR)) {
       const src = readFileSync(file, "utf8");
-      for (const m of src.matchAll(/<button\b([^>]*)>([\s\S]{0,400}?)<\/button>/g)) {
-        const [, attrs, body] = m;
+      for (const open of src.matchAll(/<button\b/g)) {
+        const attrs = openingTagAttrs(src, open.index + open[0].length);
+        const bodyStart = open.index + open[0].length + attrs.length + 1;
+        const close = src.indexOf("</button>", bodyStart);
+        if (close === -1) continue;
+        const body = src.slice(bodyStart, close);
+        const m = { index: open.index };
         const withoutTags = body.replace(/<[^>]*>/g, "");
-        // `{cond ? "A" : "B"}` renders text; `{x.title}` might too, so both count.
+        // `{cond ? "A" : "B"}` renders text; `{x.title}` might too; and so does a
+        // bare `{firstName}` / `{brand}` / `{sortLabel}` — which this missed,
+        // reporting three properly-labelled buttons as icon-only. Requiring a
+        // quote or a `.property` assumed labels are never plain locals.
+        //
+        // The trade-off is deliberate: a button whose only child is an icon held
+        // in a variable now reads as labelled. That direction is the safe one —
+        // a false positive here pushes someone to add an `aria-label` duplicating
+        // text the button already shows, which breaks WCAG's label-in-name rule
+        // to satisfy a checker.
         const expressionText = [...withoutTags.matchAll(/\{([^}]*)\}/g)]
-          .map(([, expr]) => (/["'`][^"'`]+["'`]|\.\w+/.test(expr) ? "text" : ""))
+          .map(([, expr]) => (/["'`][^"'`]+["'`]|\.\w+|^\s*\w+\s*$/.test(expr) ? "text" : ""))
           .join("");
         const text = (withoutTags.replace(/\{[^}]*\}/g, "") + expressionText).replace(/\s+/g, " ").trim();
-        const iconOnly = text.length === 0 && /<svg|size=\{/.test(body);
+        // `<Ico`/`<Icon` as well as a literal `<svg`: the Library grid's three
+        // quick actions per card render through `<Ico>`, so this check reported
+        // them clean while all three were icon-only with nothing but a `title`.
+        // A screen-reader user tabbing that grid heard "Open, Open, Open…" with
+        // no way to tell which asset they were on. A blind spot in a checker
+        // reads as a pass, which is worse than a number that admits the problem.
+        const iconOnly = text.length === 0 && /<svg|size=\{|<Ico\b|<Icon\b/.test(body);
         if (iconOnly && !/aria-label=/.test(attrs)) {
           offenders.push(`${file.replace(APP_DIR, "")}:${src.slice(0, m.index).split("\n").length}`);
         }
