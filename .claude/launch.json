@@ -2,6 +2,17 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "arc-sandbox",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "dev",
+        "--port",
+        "6001"
+      ],
+      "port": 6001,
+      "autoPort": false
+    },
+    {
       "name": "arc-dev",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [

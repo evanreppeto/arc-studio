@@ -165,6 +165,25 @@ describe("POST /api/v1/arc/crm/objects/[key]", () => {
     expect(body.record).toMatchObject({ id: "new-1", href: "/crm/equipment/new-1" });
   });
 
+  /**
+   * `origin` was hardcoded to "operator" one layer down, so a record Arc
+   * created claimed a person had typed it — and the board attributes the row's
+   * owner from this very column.
+   */
+  it("stamps the record as the agent's work, not the operator's", async () => {
+    await POST(
+      req("objects/equipment", { method: "POST", body: JSON.stringify({ title: "Dehumidifier" }) }),
+      { params: Promise.resolve({ key: "equipment" }) },
+    );
+
+    expect(createCustomRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      { origin: "agent" },
+    );
+  });
+
   it("refuses a record with no name, in the tenant's own word", async () => {
     const res = await POST(
       req("objects/equipment", { method: "POST", body: JSON.stringify({}) }),

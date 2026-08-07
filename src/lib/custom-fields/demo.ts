@@ -86,8 +86,11 @@ const DEMO_FIELDS: Partial<Record<CustomFieldObjectKey, CustomFieldDefinition[]>
   // jobs and outcomes intentionally have none — see the note above.
 };
 
-export function demoFieldDefinitions(objectKey: CustomFieldObjectKey): CustomFieldDefinition[] {
-  return DEMO_FIELDS[objectKey] ?? [];
+// Takes a plain string: the preview may be asked for a tenant-defined type's
+// key, which has no fixtures — an empty list is the right answer, not a type
+// error at the call site.
+export function demoFieldDefinitions(objectKey: string): CustomFieldDefinition[] {
+  return DEMO_FIELDS[objectKey as CustomFieldObjectKey] ?? [];
 }
 
 export function allDemoFieldDefinitions(): CustomFieldDefinition[] {

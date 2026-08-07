@@ -136,10 +136,14 @@ export default async function CrmPage() {
   // The workspace's OWN object types, appended after the six. A failed read is
   // reported rather than swallowed: returning none silently removes tabs the
   // operator created, which reads as data loss.
-  const customObjects = await listCustomObjects(orgId).catch((error) => {
+  // Archived types come back too: they get no tab, but the record-types modal
+  // is the only place they can be restored from, so omitting them here would
+  // make an archive irreversible from the CRM.
+  const allCustomObjects = await listCustomObjects(orgId, { includeArchived: true }).catch((error) => {
     reportDegraded(error, { scope: "crm.listCustomObjects", surface: "primary", detail: { orgId } });
     return [];
   });
+  const customObjects = allCustomObjects.filter((o) => o.active);
 
   for (const object of customObjects) {
     try {
@@ -211,5 +215,5 @@ export default async function CrmPage() {
     );
   }
 
-  return <CrmBoard loadError={loadError} objects={objects} rowsByKey={rowsByKey} defaultKey="contacts" kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} customColumnsByKey={customColumnsByKey} customFieldDefsByKey={customFieldDefsByKey} stageOptions={stageOptions} />;
+  return <CrmBoard loadError={loadError} objects={objects} rowsByKey={rowsByKey} defaultKey="contacts" kpis={kpis} personaOptions={personaOptions} campaigns={campaigns} customColumnsByKey={customColumnsByKey} customFieldDefsByKey={customFieldDefsByKey} customObjects={allCustomObjects} stageOptions={stageOptions} />;
 }
