@@ -434,7 +434,15 @@ export async function planCustomObjectImport(input: {
 }
 
 export type CustomImportRunResult =
-  | { ok: true; created: number; skipped: number; fieldsCreated: string[]; fieldsReused: string[] }
+  | {
+      ok: true;
+      created: number;
+      skipped: number;
+      fieldsCreated: string[];
+      fieldsReused: string[];
+      /** Columns that could not become fields, by spreadsheet heading. */
+      fieldsFailed: Array<{ label: string; error: string }>;
+    }
   | { ok: false; error: string };
 
 /**
