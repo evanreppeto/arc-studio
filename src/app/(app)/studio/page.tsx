@@ -7,6 +7,8 @@ import { resolveMediaGeneration } from "@/lib/media/enablement";
 import { getWorkspaceMediaConfig } from "@/lib/media-config/read-model";
 import { resolveWorkspaceEngines } from "@/lib/media-config/target";
 import { getMediaSpendMeter } from "@/lib/media/spend-meter";
+import { getAppSettings } from "@/lib/settings/store";
+import { getMediaPromptExamples } from "@/lib/product-language";
 import { getMediaLibraryData } from "@/lib/media-library/read-model";
 import type { MediaAssetView } from "@/lib/media-library/types";
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
@@ -125,6 +127,12 @@ export default async function StudioPage({
       ])
     : [DEFAULT_MEDIA_CONFIG, { gemini: mediaAccess.enabled, higgsfield: false }];
 
+  // The prompt placeholders teach by example, so they have to be THIS
+  // workspace's kind of example — a service van is a non-sequitur to a clinic
+  // or a law firm. Same resolution as every other label: workspace industry →
+  // template → general.
+  const promptExamples = getMediaPromptExamples((await getAppSettings(ctx?.orgId ?? null).catch(() => null))?.industry);
+
   // Spend meter: what generation has cost this period and what the next job
   // costs, shown here rather than only in Settings (BSR-515). Never throws.
   const spendMeter = await getMediaSpendMeter();
@@ -154,6 +162,7 @@ export default async function StudioPage({
       brandPalette={brandPalette}
       mediaConfig={mediaConfig}
       mediaEngines={mediaEngines}
+      promptExamples={promptExamples}
       />
     </>
   );
