@@ -344,7 +344,14 @@ const EMPTY_COPY = { kicker: "", headline: "", sub: "", cta: "" };
  */
 const NO_MEDIA_ENGINES: EngineAvailability = { gemini: false, higgsfield: false };
 
-export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null, mediaConfig = DEFAULT_MEDIA_CONFIG, mediaEngines = NO_MEDIA_ENGINES, initialAssetId = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null; /** The workspace default the server would resolve anyway — the picker opens on it. */ mediaConfig?: MediaConfig; /** Which engines this workspace can reach; the picker offers only these. */ mediaEngines?: EngineAvailability; /** ?asset=<media_assets uuid> — Library deep-links here so "Edit in Studio" opens on the asset the operator clicked rather than on whatever happens to be first. */ initialAssetId?: string | null }) {
+/** Vertical-neutral fallback, for the backend-less preview and any caller that
+ *  doesn't know the workspace's industry. Never a specific trade. */
+const NEUTRAL_PROMPT_EXAMPLES = {
+  image: "A bright, welcoming workspace photographed at eye level in natural light",
+  video: "A bright workspace in natural light, slow steady camera move across the room",
+};
+
+export function StudioView({ brandName, libraryItems, live = false, campaigns = [], mediaEnabled = false, mediaOffReason = null, brandPalette = [], brandTokens = null, mediaConfig = DEFAULT_MEDIA_CONFIG, mediaEngines = NO_MEDIA_ENGINES, promptExamples = NEUTRAL_PROMPT_EXAMPLES, initialAssetId = null }: { brandName: string; libraryItems?: Item[]; live?: boolean; campaigns?: CampaignRef[]; mediaEnabled?: boolean; /** Why generation is off, from `resolveMediaGeneration` — already names Settings → Connections. */ mediaOffReason?: string | null; brandPalette?: string[]; brandTokens?: CanvasBrand | null; /** The workspace default the server would resolve anyway — the picker opens on it. */ mediaConfig?: MediaConfig; /** Which engines this workspace can reach; the picker offers only these. */ mediaEngines?: EngineAvailability; /** Example scenes for this workspace's industry — placeholders teach by example, so they must not teach another vertical's. */ promptExamples?: { image: string; video: string }; /** ?asset=<media_assets uuid> — Library deep-links here so "Edit in Studio" opens on the asset the operator clicked rather than on whatever happens to be first. */ initialAssetId?: string | null }) {
   const startingCopy = live ? EMPTY_COPY : SAMPLE_COPY;
   // The "Approved media" source shows the workspace's real media_assets. Live, it
   // shows ONLY those — never the built-in samples, which would present stock art as
@@ -1770,7 +1777,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                         className="input"
                         rows={2}
                         style={{ resize: "vertical", lineHeight: 1.45 }}
-                        placeholder="e.g. A clean service van pulls into a suburban driveway on a bright morning, slow steady camera"
+                        placeholder={`e.g. ${promptExamples.video}`}
                         value={videoPrompt}
                         onChange={(e) => setVideoPrompt(e.target.value)}
                         disabled={videoBusy}
@@ -1818,7 +1825,7 @@ export function StudioView({ brandName, libraryItems, live = false, campaigns = 
                         className="input"
                         rows={2}
                         style={{ resize: "vertical", lineHeight: 1.45 }}
-                        placeholder="e.g. A clean service van in a suburban driveway on a bright morning"
+                        placeholder={`e.g. ${promptExamples.image}`}
                         value={scenePrompt}
                         onChange={(e) => setScenePrompt(e.target.value)}
                         disabled={gen}
