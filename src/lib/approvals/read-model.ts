@@ -250,6 +250,7 @@ export async function countActiveApprovals(
  */
 export async function countApprovalsWaitingOnOperator(
   orgId?: string,
+  workspaceId?: string | null,
   providedClient?: SupabaseClient,
 ): Promise<number> {
   // The live path was fixed; the OFFLINE path still wore the bug this comment
@@ -269,6 +270,7 @@ export async function countApprovalsWaitingOnOperator(
     orgId,
     providedClient ?? getSupabaseAdminClient(),
     "countApprovalsWaitingOnOperator",
+    workspaceId,
   );
 }
 
@@ -277,10 +279,11 @@ async function countApprovalsByStatus(
   orgId: string | undefined,
   client: SupabaseClient,
   label: string,
+  workspaceId?: string | null,
 ): Promise<number> {
-  const { count, error } = await applyOrgScope(
-    client.from("approval_items").select("id", { count: "exact", head: true }),
-    orgId,
+  const { count, error } = await applyWorkspaceScope(
+    applyOrgScope(client.from("approval_items").select("id", { count: "exact", head: true }), orgId),
+    workspaceId,
   ).in("status", statuses);
 
   if (error) {
@@ -471,6 +474,25 @@ async function fetchAgentOutputs(client: SupabaseClient, approvalItemIds: string
 function applyOrgScope<Query>(query: Query, orgId?: string): Query {
   if (!orgId) return query;
   return (query as { eq(column: string, value: string): Query }).eq("org_id", orgId);
+}
+
+/**
+ * Narrow a read to one workspace — conditionally, exactly like `applyOrgScope`.
+ *
+ * `approval_items.workspace_id` is NOT NULL in the database, so every row
+ * belongs to a workspace; it was the READS that only ever scoped by org. That
+ * is invisible today because each org has exactly one workspace, and it stops
+ * being invisible the moment one has two: the rail would badge the whole org
+ * beside a Campaigns page showing a single workspace.
+ *
+ * No workspace means NO filter, not an impossible one. `WorkspaceContext.workspaceId`
+ * is `string | null`, and a caller that cannot resolve one — a bearer-token API
+ * route, the offline preview — must keep the org-wide answer it has always had
+ * rather than silently reading zero rows.
+ */
+function applyWorkspaceScope<Query>(query: Query, workspaceId?: string | null): Query {
+  if (!workspaceId) return query;
+  return (query as { eq(column: string, value: string): Query }).eq("workspace_id", workspaceId);
 }
 
 function mapApprovalCard(input: {
