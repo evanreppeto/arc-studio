@@ -141,14 +141,24 @@ function stillOpen<T extends { evidence?: OpportunityEvidence | null }>(rows: T[
 export async function listOpenOpportunities(
   client?: SupabaseClient,
   orgId?: string,
+  workspaceId?: string | null,
 ): Promise<OpportunityRecord[]> {
-  return (await readOpenOpportunities(client, orgId)).records;
+  return (await readOpenOpportunities(client, orgId, workspaceId)).records;
 }
 
-/** As `listOpenOpportunities`, but says whether the read actually succeeded. */
+/**
+ * As `listOpenOpportunities`, but says whether the read actually succeeded.
+ *
+ * `workspaceId` narrows the read to one workspace. It is OPTIONAL and skipped
+ * when absent, not turned into an impossible filter: `opportunities.workspace_id`
+ * is NOT NULL so every row has one, but a bearer-token API route and the offline
+ * preview have no workspace to resolve, and both must keep the org-wide answer
+ * they have always returned rather than reading zero rows.
+ */
 export async function readOpenOpportunities(
   client?: SupabaseClient,
   orgId?: string,
+  workspaceId?: string | null,
 ): Promise<{ records: OpportunityRecord[]; failed: string | null }> {
   // Guard BEFORE touching the admin client — a default arg of
   // `getSupabaseAdminClient()` would throw during arg evaluation, before this
@@ -161,10 +171,11 @@ export async function readOpenOpportunities(
   const nowIso = new Date().toISOString();
   const { client: db, orgId: handleOrgId } = client ? { client, orgId: null } : await resolveTenantReadHandle();
   const resolvedOrgId = orgId ?? handleOrgId ?? (await getCurrentOrgId());
-  const { data, error } = await db
+  const scoped = db
     .from("opportunities")
     .select("id, subject_type, subject_id, title, summary, confidence, urgency, status, recommended_action, campaign_id, evidence")
-    .eq("org_id", resolvedOrgId)
+    .eq("org_id", resolvedOrgId);
+  const { data, error } = await (workspaceId ? scoped.eq("workspace_id", workspaceId) : scoped)
     .or(openOrWokenFilter(OPEN_STATUSES, nowIso))
     .order("created_at", { ascending: false })
     .limit(INBOX_LIMIT);
