@@ -71,26 +71,35 @@ function flagsFor(kind: StageKind): Pick<PipelineStage, "isTerminal" | "isWon" |
 }
 
 export type PipelineStagesPanelProps = {
-  stagesByObject: Record<PipelineObjectKey, PipelineStage[]>;
+  stagesByObject: Record<string, PipelineStage[]>;
   /** How many records sit in each stage, keyed by stage key, per object. */
-  occupancyByObject: Record<PipelineObjectKey, Record<string, number>>;
+  occupancyByObject: Record<string, Record<string, number>>;
   /**
    * The tenant's own word for each pipeline. A firm manages stages on "Matters",
    * not on "Jobs" — this screen must not be the one place the product reverts to
    * our internal vocabulary.
    */
-  objectLabels: Record<PipelineObjectKey, string>;
+  objectLabels: Record<string, string>;
+  /**
+   * The workspace's own record types, in display order. They appear alongside
+   * the three built-in pipelines because a tenant-defined type has a lifecycle
+   * too — and one with no stages yet is listed as empty rather than hidden, or
+   * the feature would be reachable only by workspaces that already had it.
+   */
+  customObjectKeys?: readonly string[];
   /** CRM object a deep link arrived pointing at — narrows this editor to it. */
   focusObject?: string | null;
 };
 
 export function PipelineStagesPanel({
   stagesByObject,
+  customObjectKeys = [],
   occupancyByObject,
   objectLabels,
   focusObject,
 }: PipelineStagesPanelProps) {
-  const [openObject, setOpenObject] = useState<PipelineObjectKey | null>(null);
+  // A key here can be a built-in pipeline OR a tenant-defined type.
+  const [openObject, setOpenObject] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -108,14 +117,20 @@ export function PipelineStagesPanel({
   // A deep link naming a pipeline narrows the list to it. "Show all" is a one-way
   // local override, so navigating elsewhere in Settings (which clears
   // focusObject) widens it again on its own.
-  const scoped = !showAll && focusObject && isPipelineObjectKey(focusObject) ? focusObject : null;
-  const shownKeys = scoped ? [scoped] : PIPELINE_OBJECT_KEYS;
+  // A deep link may name a built-in pipeline or one of this workspace's own
+  // types; both are legitimate scopes for this editor.
+  const scoped =
+    !showAll && focusObject && (isPipelineObjectKey(focusObject) || customObjectKeys.includes(focusObject))
+      ? focusObject
+      : null;
+  const allKeys = [...PIPELINE_OBJECT_KEYS, ...customObjectKeys];
+  const shownKeys = scoped ? [scoped] : allKeys;
 
   return (
     <div className="panel">
       <div className="panel-h">
         <h3>Pipeline stages</h3>
-        <span className="tg">{PIPELINE_OBJECT_KEYS.length} pipelines</span>
+        <span className="tg">{allKeys.length} pipelines</span>
       </div>
       <div className="panel-b">
         <p className="cxm-hint" style={{ marginBottom: 14 }}>
@@ -219,7 +234,7 @@ function StageRow({
   run,
 }: {
   stage: PipelineStage;
-  objectKey: PipelineObjectKey;
+  objectKey: string;
   occupants: number;
   moveTargets: { key: string; label: string }[];
   isFirst: boolean;
