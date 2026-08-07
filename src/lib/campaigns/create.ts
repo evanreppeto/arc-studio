@@ -314,6 +314,17 @@ export type CreateCampaignShellInput = {
    * answer; a guess written here outranks the derivation forever.
    */
   kind?: CampaignKind;
+  /**
+   * The brief, when the caller has one.
+   *
+   * `createCampaignFromOpportunity` has always written these; this shell has
+   * not, so every campaign Arc created from a chat landed with a theme and
+   * nothing else. On prod that is Chicago Flood — the biggest live campaign —
+   * with no objective and no audience recorded, under a Brief step that
+   * reports "Set".
+   */
+  objective?: string | null;
+  audienceSummary?: string | null;
   client?: SupabaseClient;
   tenant?: AgentTaskTenantFields;
 };
@@ -341,6 +352,10 @@ export async function createCampaignShell(input: CreateCampaignShellInput): Prom
     // and "somebody said campaign" have to stay distinguishable, or the
     // derivation can never answer again.
     ...(input.kind ? { kind: input.kind } : {}),
+    // Omitted rather than written as null, so a caller that has no brief does
+    // not overwrite one a later call might supply.
+    ...(input.objective?.trim() ? { objective: input.objective.trim() } : {}),
+    ...(input.audienceSummary?.trim() ? { audience_summary: input.audienceSummary.trim() } : {}),
   });
   await insertNoReturn(client, "campaign_events", {
     ...workspaceScopeFields(input.tenant),
@@ -453,6 +468,10 @@ export type ResolveOrCreateCampaignInput = {
    *  Ignored when attaching to an existing one — that row already has a kind,
    *  and the caller attaching to it does not get to reclassify it. */
   kind?: CampaignKind;
+  /** The brief, passed through on create. Same rule: ignored when attaching to
+   *  an existing campaign, which already has its own. */
+  objective?: string | null;
+  audienceSummary?: string | null;
   agentName?: string;
   client?: SupabaseClient;
   tenant?: AgentTaskTenantFields;
@@ -489,6 +508,8 @@ export async function resolveOrCreateCampaign(input: ResolveOrCreateCampaignInpu
     restorationFocus: input.restorationFocus ?? undefined,
     agentName: input.agentName ?? "Arc",
     kind: input.kind,
+    objective: input.objective,
+    audienceSummary: input.audienceSummary,
     client: input.client,
     tenant: input.tenant,
   });

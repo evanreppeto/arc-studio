@@ -1175,6 +1175,11 @@ export function CampaignDetailView({ detail, performance, audience, attachableMe
     hasBrief: Boolean(
       campaign.objective?.trim() || campaign.campaignTheme?.trim() || campaign.audienceSummary?.trim(),
     ),
+    // A theme and nothing else. Every campaign Arc created from a chat looked
+    // like this, and the step said "Set" about all of them.
+    briefIsThin: Boolean(
+      campaign.campaignTheme?.trim() && !campaign.objective?.trim() && !campaign.audienceSummary?.trim(),
+    ),
     requiredCount: launchState.requiredCount,
     approvedCount: launchState.approvedCount,
     pendingCount: launchState.pendingCount,
