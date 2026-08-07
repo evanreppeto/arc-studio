@@ -197,4 +197,29 @@ describe("settleChatTask", () => {
     expect(eqCalls(supabase)).toContainEqual(["eq", "org_id", "org-1"]);
     expect(eqCalls(supabase)).toContainEqual(["eq", "workspace_id", "workspace-1"]);
   });
+
+  /**
+   * Nothing else stamps it for chat: the runner never calls /tasks/[id]/complete,
+   * so this settle is the only one a chat turn goes through. Measured on prod
+   * 2026-08-07, all 54 completed arc_chat_message rows had a null completed_at,
+   * leaving the most common task type with no duration data.
+   */
+  it("stamps completed_at so the turn has a duration", async () => {
+    const supabase = createSupabaseQueryMock({ agent_tasks: { data: null, error: null } });
+
+    await settleChatTask("t1", "completed", supabase);
+
+    const update = calls(supabase, "update").find((u) => u.status === "completed");
+    expect(update?.completed_at).toEqual(expect.any(String));
+    expect(Number.isNaN(Date.parse(String(update?.completed_at)))).toBe(false);
+  });
+
+  it("stamps it on a failed settle too — a failure still ended at a time", async () => {
+    const supabase = createSupabaseQueryMock({ agent_tasks: { data: null, error: null } });
+
+    await settleChatTask("t1", "failed", supabase);
+
+    const update = calls(supabase, "update").find((u) => u.status === "failed");
+    expect(update?.completed_at).toEqual(expect.any(String));
+  });
 });

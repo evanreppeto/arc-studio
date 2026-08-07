@@ -1,8 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createSupabaseQueryMock } from "@/lib/repos/__tests__/test-helpers";
+import { createSupabaseQueryMock, type MockSupabase } from "@/lib/repos/__tests__/test-helpers";
 
 import { enqueueArcChatTask } from "./enqueue";
+
+function calls(supabase: MockSupabase, method: string): Array<Record<string, unknown>> {
+  return supabase.calls.filter(([m]) => m === method).map(([, arg]) => arg as Record<string, unknown>);
+}
+
+function eqCalls(supabase: MockSupabase): Array<[string, ...unknown[]]> {
+  return supabase.calls.filter(([m]) => m === "eq");
+}
 
 const { notifyArcWebhook } = vi.hoisted(() => ({ notifyArcWebhook: vi.fn() }));
 vi.mock("./notify", () => ({ notifyArcWebhook }));
@@ -117,6 +125,60 @@ describe("enqueueArcChatTask", () => {
         mode: "act",
       }),
     );
+  });
+
+  /**
+   * `delivered` existed from the start and its doc always said the caller uses it
+   * "to decide whether to claim the task now (push path)". The caller only logged
+   * it, so a task Arc was actively working read `queued` with a null started_at —
+   * byte for byte identical to one the wake never reached. 54 of 54 completed
+   * chat tasks on prod had never been marked running.
+   */
+  it("claims the task when the wake was delivered, so in-flight is distinguishable", async () => {
+    notifyArcWebhook.mockResolvedValueOnce(true);
+    const supabase = createSupabaseQueryMock({
+      agents: { data: { id: "agent-1" }, error: null },
+      agent_tasks: { data: { id: "task-1" }, error: null },
+      agent_task_inputs: { data: null, error: null },
+      arc_conversations: { data: { org_id: "org-1" }, error: null },
+      arc_messages: { data: PENDING_BUBBLE_ROW, error: null },
+    });
+
+    await enqueueArcChatTask(
+      { conversationId: "conversation-1", messageId: "message-1", message: "Hi Arc", mentions: [], operator: "Operator" },
+      supabase,
+    );
+
+    const claim = calls(supabase, "update").find((u) => u.status === "running");
+    expect(claim).toBeDefined();
+    expect(claim?.started_at).toEqual(expect.any(String));
+    // Compare-and-set on `queued`: if the runner already settled this turn while
+    // the wake POST was open, the claim must match nothing rather than resurrect
+    // a finished task back to `running`.
+    expect(eqCalls(supabase)).toContainEqual(["eq", "status", "queued"]);
+  });
+
+  /**
+   * A task the wake never reached genuinely has not been picked up, and leaving
+   * it `queued` is what lets the inbox fallback find it. Claiming here would
+   * strand it: `running` drops out of listQueuedChatTasks.
+   */
+  it("does NOT claim when the wake was not delivered", async () => {
+    notifyArcWebhook.mockResolvedValueOnce(false);
+    const supabase = createSupabaseQueryMock({
+      agents: { data: { id: "agent-1" }, error: null },
+      agent_tasks: { data: { id: "task-1" }, error: null },
+      agent_task_inputs: { data: null, error: null },
+      arc_conversations: { data: { org_id: "org-1" }, error: null },
+      arc_messages: { data: PENDING_BUBBLE_ROW, error: null },
+    });
+
+    await enqueueArcChatTask(
+      { conversationId: "conversation-1", messageId: "message-1", message: "Hi Arc", mentions: [], operator: "Operator" },
+      supabase,
+    );
+
+    expect(calls(supabase, "update").some((u) => u.status === "running")).toBe(false);
   });
 
   it("still returns the task id when the wake fails — a wake error must not fail the send", async () => {

@@ -188,3 +188,56 @@ describe("highlightClaims", () => {
     expect(highlightClaims(body, [])).toEqual([{ text: body, findingIndex: null }]);
   });
 });
+
+/**
+ * `claimsReviewed` is `recommendation?.agent === "draft-critic"` — a string
+ * comparison against one agent's name. `unchecked` used to additionally require
+ * the absence of any recommendation, so a review written by any OTHER agent
+ * suppressed the gray tone while leaving claims unchecked, and a finding-free
+ * draft rendered as a green "Nothing flagged".
+ *
+ * `draft-critic` is the only agent writing recommendations today (11 rows on
+ * prod, all of them its), so nothing reaches it — which is exactly why it is
+ * worth pinning now rather than after a second reviewer ships.
+ */
+describe("an unreviewed draft never borrows the colour of one that passed", () => {
+  const base = { findings: [], blockedPhrases: [], claimsReviewed: false };
+
+  it("stays gray when another agent reviewed it but claims were not checked", () => {
+    const summary = summarizeReview({
+      ...base,
+      recommendation: { agent: "some-future-critic", verdict: "approve", rationale: "", riskFlags: [], suggestedEdits: "" },
+    });
+    expect(summary.tone).toBe("gray");
+    expect(summary.headline).toBe("Not checked yet");
+    expect(summary.chip).not.toBe("Nothing flagged");
+  });
+
+  it("still says nothing flagged when claims WERE checked and nothing came up", () => {
+    const summary = summarizeReview({
+      ...base,
+      claimsReviewed: true,
+      recommendation: { agent: "draft-critic", verdict: "approve", rationale: "", riskFlags: [], suggestedEdits: "" },
+    });
+    expect(summary.tone).toBe("ok");
+    expect(summary.headline).toBe("Nothing flagged");
+  });
+
+  it("keeps blockers ahead of the unchecked state", () => {
+    // An unchecked draft that nonetheless carries a blocker must read red, not
+    // gray — the worse news wins.
+    const summary = summarizeReview({
+      ...base,
+      blockedPhrases: ["guaranteed"],
+      recommendation: { agent: "some-future-critic", verdict: "approve", rationale: "", riskFlags: [], suggestedEdits: "" },
+    });
+    expect(summary.tone).toBe("red");
+    expect(summary.blockers).toBe(1);
+  });
+
+  it("refuses bulk approval regardless of who reviewed it", () => {
+    // The gate that actually protects the approval path, unchanged.
+    expect(isCleanForBulkApproval({ ...base })).toBe(false);
+    expect(isCleanForBulkApproval({ ...base, claimsReviewed: true })).toBe(true);
+  });
+});
