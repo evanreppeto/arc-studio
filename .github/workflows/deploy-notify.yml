@@ -92,7 +92,7 @@ jobs:
             echo "COMMIT_MESSAGE_EOF"
           } >>"$GITHUB_OUTPUT"
 
-      - name: Post to #arc-deploys
+      - name: "Post to #arc-deploys"
         env:
           SLACK_DEPLOY_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}
           RUNNER_TOUCHED: ${{ steps.commit.outputs.runner_touched }}
