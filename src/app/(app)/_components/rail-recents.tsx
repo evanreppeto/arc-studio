@@ -52,10 +52,20 @@ type Props = {
 
 type HoverCard = { conversation: ArcRecentConversationVM; top: number; left: number };
 
-/** How long a finished run says so before the row settles back to its
- *  timestamp. Long enough to catch on returning to the tab; short enough that
- *  the rail is not still claiming "Done" about something you have since read. */
-const DONE_VISIBLE_MS = 10_000;
+/**
+ * How long a finished run says so before the row settles back to its timestamp.
+ *
+ * 30s, up from 10. Ten seconds only covers the case where you happened to be
+ * looking at the rail as the run ended — but the whole point of announcing a
+ * finish is the case where you were NOT: heads-down on another screen, coming
+ * back when you reach a pause. A window that expires before you look up
+ * announces nothing to the person who needed it.
+ *
+ * Still bounded, and deliberately. The row's real content is its timestamp, and
+ * a rail that keeps saying "Done" about work you read minutes ago is stale
+ * rather than informative.
+ */
+const DONE_VISIBLE_MS = 30_000;
 
 export function RailRecents({ conversations, openConversationId, onNavigate }: Props) {
   // ONE card, owned here rather than per row. Per-row state let two sit on

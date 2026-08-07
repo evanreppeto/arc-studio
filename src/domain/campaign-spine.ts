@@ -41,6 +41,17 @@ export type CampaignSpineStep = {
 export type CampaignSpineInput = {
   /** The campaign says what it is for — an objective, theme or audience. */
   hasBrief: boolean;
+  /**
+   * There is SOMETHING, but only the theme — no objective and no audience.
+   *
+   * Reported rather than treated as missing. Marking the step not-done would
+   * make Brief the current step on most campaigns and push Review out of focus,
+   * which is worse than a thin brief. But "Set" on a campaign carrying one line
+   * is the claim that hid this: every campaign Arc created from a chat had a
+   * theme and nothing else, because the route read an objective off the request
+   * and dropped it.
+   */
+  briefIsThin?: boolean;
   /** Non-archived deliverables. */
   requiredCount: number;
   approvedCount: number;
@@ -67,7 +78,7 @@ export function deriveCampaignSpine(input: CampaignSpineInput): CampaignSpineSte
       key: "brief",
       label: "Brief",
       done: hasBrief,
-      detail: hasBrief ? "Set" : "Not set yet",
+      detail: !hasBrief ? "Not set yet" : input.briefIsThin ? "Theme only" : "Set",
     },
     {
       key: "review",
