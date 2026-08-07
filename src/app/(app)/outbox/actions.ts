@@ -25,12 +25,35 @@ export type OutboxActionResult =
   | { ok: true; persisted: boolean; status?: DispatchStatus }
   | { ok: false; error: string };
 
-const ALLOWED_TARGET: ReadonlySet<DispatchStatus> = new Set(DISPATCH_STATUS_ORDER);
+/**
+ * Statuses the bookkeeping action may set — every one EXCEPT `sent`.
+ *
+ * `sent` is a claim that mail left the building, and only `executeResendDispatch`
+ * is in a position to make it: it re-checks the approval gate and the
+ * ARC_SEND_ENABLED kill-switch, talks to Resend, and records the provider id.
+ * `transitionDispatch` does none of that — it stamps the status, sets
+ * `dispatched_at`, and writes a "dispatch sent" campaign event.
+ *
+ * The UI never asked for it (`ACTION_TARGET` routes queued/scheduled through
+ * `sendDispatchAction` instead), but a server action is a public endpoint: any
+ * authenticated operator could POST `to: "sent"` and get a dispatch marked sent,
+ * timestamped, and entered in the audit trail without a single email being
+ * delivered. That is a false entry in the one ledger the outbound posture rests
+ * on — and it would be indistinguishable afterwards from a real send.
+ */
+const ALLOWED_TARGET: ReadonlySet<DispatchStatus> = new Set(
+  DISPATCH_STATUS_ORDER.filter((status) => status !== "sent"),
+);
 
 export async function transitionDispatchAction(dispatchId: string, to: DispatchStatus): Promise<OutboxActionResult> {
   await requireOperator();
 
   if (!dispatchId) return { ok: false, error: "Missing dispatch." };
+  if (to === "sent") {
+    // Named separately from "unknown status" — this one is a real status being
+    // refused on purpose, and a caller deserves to know which.
+    return { ok: false, error: "A dispatch becomes sent by sending it, not by being marked sent." };
+  }
   if (!ALLOWED_TARGET.has(to)) return { ok: false, error: "Unknown dispatch status." };
 
   if (!isSupabaseAdminConfigured()) return { ok: true, persisted: false, status: to };
