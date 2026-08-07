@@ -46,6 +46,19 @@ export type CrmPipelineRow = {
 };
 
 export type CrmWorkspaceStat = {
+  /**
+   * Which CRM object this stat counts, when it counts one.
+   *
+   * The label below is a FALLBACK. This read-model has no workspace vocabulary,
+   * so it cannot know that `companies` is "Organizations" here and "Accounts"
+   * there — and hardcoding a noun put "Companies" in the header directly above a
+   * tab reading "Organizations", the same number under two different names.
+   * BSR-656 made the header count the same records as the tabs; this makes it
+   * call them the same thing. The page relabels from `getProductLanguage`.
+   */
+  objectKey?: CrmObjectKey;
+  /** Word after the object noun, if any: "Leads **found**", "Projects **tracked**". */
+  qualifier?: string;
   label: string;
   value: number | string;
   delta: string;
@@ -205,7 +218,6 @@ export type CrmRecordData = {
   relationships: CrmRecordRelationship[];
   missingFields: string[];
   /** Headline metric chips rendered in the record header band. Additive. */
-  headerMetrics: CrmRecordMetric[];
   /** Larger KPI strip shown above the detail body (companies/jobs/outcomes). Additive. */
   quickStats: CrmRecordMetric[];
   /** Score bars (lead / relationship / revenue signal) for the intelligence rail. Additive. */
@@ -1105,6 +1117,8 @@ function buildOverviewFromBundle(data: CrmBundleShape): Extract<CrmOverviewData,
     status: "live",
     stats: [
         {
+          objectKey: "leads",
+          qualifier: "found",
           label: "Leads found",
           value: data.leads.length,
           delta: `${data.leads.filter((lead) => {
@@ -1117,12 +1131,15 @@ function buildOverviewFromBundle(data: CrmBundleShape): Extract<CrmOverviewData,
           forecast: "New lead records appear here before routing or approval.",
         },
         {
+          objectKey: "companies",
           label: "Companies",
           value: data.companies.length,
           delta: `${data.companies.filter((company) => company.partner_tier).length} partner-tiered`,
           forecast: "Partners, referral sources, customers, and targets stay organized by object.",
         },
         {
+          objectKey: "jobs",
+          qualifier: "tracked",
           label: "Projects tracked",
           value: data.jobs.length,
           delta: `${data.jobs.filter((job) => isWonStatus(data.stages.jobs, job.status)).length} ${wonWord(data.stages.jobs, "completed")}`,
@@ -1380,7 +1397,6 @@ function buildRecordDataFromBundle(key: CrmObjectKey, recordId: string, data: Cr
       fields: fieldsForRecord(key, record),
       relationships: relationshipsForRecord(key, record, data),
       missingFields: missingFieldsForRecord(key, record, evidence),
-      headerMetrics: headerMetricsForRecord(key, record, metadata, scoreSet, data),
       quickStats: quickStatsForRecord(key, record, data, scoreSet),
       scoreBars: scoreBarsForRecord(key, scoreSet),
       engagement: engagementForRecord(key, record, data, metadata),
@@ -2087,7 +2103,16 @@ function fieldsForRecord(key: CrmObjectKey, record: AnyCrmRecord): CrmRecordFiel
       ["Persona", titleize(contact.persona ?? "unassigned")],
       ["Email", contact.email],
       ["Phone", contact.phone],
-      ["Company id", contact.company_id],
+      // Rehomed from the removed header metric strip: the only value it carried
+      // that was not already on this page. Distinct from At a glance's lifecycle
+      // "Stage" — two different things, so they keep two different labels.
+      ["Relationship stage", relationshipStageOf(contact)],
+      // A raw "Company id" row lived here, printing a database identifier
+      // ("demo-co-northside-plumbing") to an owner-operator.
+      // `relationshipsForRecord` already resolves the same link to the record's
+      // NAME with an href, so the row was both unreadable and a duplicate of one
+      // already on screen in better form. Same for "Contact id" on properties
+      // and "Project id" on outcomes.
     ]);
   }
   if (key === "properties") {
@@ -2098,7 +2123,7 @@ function fieldsForRecord(key: CrmObjectKey, record: AnyCrmRecord): CrmRecordFiel
       ["City", property.city],
       ["State", property.state],
       ["ZIP", property.postal_code],
-      ["Contact id", property.contact_id],
+      // Raw "Contact id" row removed — see the note on contacts above.
     ]);
   }
   if (key === "leads") {
@@ -2110,6 +2135,8 @@ function fieldsForRecord(key: CrmObjectKey, record: AnyCrmRecord): CrmRecordFiel
       ["Source", lead.source],
       ["Lead score", typeof lead.lead_score === "number" ? `${lead.lead_score}/100` : null],
       ["Routing", lead.routing_recommendation],
+      // Rehomed from the removed header metric strip.
+      ["Received", lead.received_at ? formatDateOnly(lead.received_at) : null],
     ]);
   }
   if (key === "jobs") {
@@ -2128,7 +2155,7 @@ function fieldsForRecord(key: CrmObjectKey, record: AnyCrmRecord): CrmRecordFiel
     ["Revenue", formatMoney(outcome.gross_revenue_cents ?? 0)],
     ["Margin", formatMoney(outcome.gross_margin_cents ?? 0)],
     ["Closed", outcome.closed_at ? formatDateOnly(outcome.closed_at) : null],
-    ["Project id", outcome.job_id],
+    // Raw "Project id" row removed — see the note on contacts above.
   ]);
 }
 
@@ -2216,6 +2243,12 @@ function missingFieldsForRecord(key: CrmObjectKey, record: AnyCrmRecord, evidenc
   return missing;
 }
 
+/** A contact's relationship stage, which lives in free-form metadata. */
+function relationshipStageOf(contact: ContactRow): string | null {
+  const raw = getString(asRecord(contact.metadata).relationship_stage);
+  return raw ? titleize(raw) : null;
+}
+
 function compactFields(items: Array<[string, string | null | undefined]>): CrmRecordField[] {
   return items.map(([label, value]) => ({ label, value: value || "Missing" }));
 }
@@ -2245,61 +2278,9 @@ function scoreToneFor(value: number | null): "ok" | "amber" | "red" {
   return "red";
 }
 
-function headerMetricsForRecord(
-  key: CrmObjectKey,
-  record: AnyCrmRecord,
-  metadata: Record<string, unknown>,
-  scores: ReturnType<typeof getScores>,
-  data: CrmBundle,
-): CrmRecordMetric[] {
-  const metrics: CrmRecordMetric[] = [];
-
-  if (key === "leads") {
-    const lead = record as LeadRow;
-    metrics.push({ label: "Source", value: titleize(lead.source ?? "Unknown") });
-    metrics.push({ label: "Routing", value: titleize(lead.routing_recommendation ?? "Unrouted") });
-    metrics.push({ label: "Received", value: lead.received_at ? formatDateOnly(lead.received_at) : "—" });
-    metrics.push({ label: "Confidence", value: confidenceValue(metadata) });
-  } else if (key === "companies") {
-    const company = record as CompanyRow;
-    metrics.push({ label: "Persona", value: titleize(company.persona ?? "Unassigned") });
-    metrics.push({ label: "Partner tier", value: company.partner_tier ? `Tier ${company.partner_tier}` : "Untiered", tone: company.partner_tier === "A" ? "ok" : company.partner_tier ? "amber" : "neutral" });
-    metrics.push({ label: "Status", value: titleize(company.status ?? "active") });
-    metrics.push({ label: "Phone", value: company.phone ?? company.email ?? "—" });
-  } else if (key === "contacts") {
-    const contact = record as ContactRow;
-    metrics.push({ label: "Title", value: contact.title ?? "—" });
-    metrics.push({ label: "Persona", value: titleize(contact.persona ?? "Unassigned") });
-    // "Relationship stage", not "Stage": At a glance already shows a lifecycle
-    // "Stage", and two different values under one label read as a contradiction.
-    // Unset stays "—" (like the sibling metrics) rather than asserting "Engaged"
-    // for a contact nobody has engaged yet.
-    const relationshipStage = getString(metadata.relationship_stage);
-    metrics.push({ label: "Relationship stage", value: relationshipStage ? titleize(relationshipStage) : "—" });
-    metrics.push({ label: "Email", value: contact.email ?? contact.phone ?? "—" });
-  } else if (key === "properties") {
-    const property = record as PropertyRow;
-    metrics.push({ label: "Type", value: titleize(property.property_type ?? "property") });
-    metrics.push({ label: "City", value: property.city ?? "—" });
-    metrics.push({ label: "ZIP", value: property.postal_code ?? "—" });
-    metrics.push({ label: "State", value: property.state ?? "—" });
-  } else if (key === "jobs") {
-    const job = record as JobRow;
-    metrics.push({ label: "Project", value: job.job_number ?? `MRD-${shortId(job.id)}` });
-    metrics.push({ label: "Status", value: stageLabel(data.stages.jobs, job.status, "pending"), tone: isWonStatus(data.stages.jobs, job.status) ? "ok" : "accent" });
-    metrics.push({ label: "Est. revenue", value: formatMoney(job.estimated_revenue_cents ?? 0) });
-    metrics.push({ label: "Scheduled", value: job.scheduled_at ? formatDateOnly(job.scheduled_at) : "—" });
-  } else {
-    const outcome = record as OutcomeRow;
-    metrics.push({ label: "Result", value: stageLabel(data.stages.outcomes, outcome.status, "pending"), tone: isWonStatus(data.stages.outcomes, outcome.status) ? "ok" : isLostStatus(data.stages.outcomes, outcome.status) ? "red" : "neutral" });
-    metrics.push({ label: "Revenue", value: formatMoney(outcome.gross_revenue_cents ?? 0) });
-    metrics.push({ label: "Margin", value: formatMoney(outcome.gross_margin_cents ?? 0) });
-    metrics.push({ label: "Closed", value: outcome.closed_at ? formatDateOnly(outcome.closed_at) : "—" });
-  }
-
-  void scores;
-  return metrics;
-}
+// `headerMetricsForRecord` lived here. It fed a four-cell strip on the record
+// page that restated fields shown elsewhere on the same screen; the strip is
+// gone and its three non-duplicate values moved into `fieldsForRecord`.
 
 function quickStatsForRecord(
   key: CrmObjectKey,

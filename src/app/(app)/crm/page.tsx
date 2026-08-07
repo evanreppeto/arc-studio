@@ -99,10 +99,19 @@ export default async function CrmPage() {
   // Count-style metrics with no time series, which is what these are: the
   // `delta` line here is a qualifier ("3 need review"), not a percentage
   // change, so it belongs in `sublabel` rather than the trend slot.
+  //
+  // The NOUNS come from the same place the tabs get theirs. BSR-656 made the
+  // header count the same records as the tabs; it still called them something
+  // else, because the read-model has no vocabulary and hardcoded ours. Live,
+  // that printed "Companies 8" directly above a tab reading "Organizations 8" —
+  // one number, two names, and no way to tell they were the same thing. Every
+  // industry template mismatched on at least one stat.
   const kpis: KpiCell[] =
     overview.status === "live"
       ? overview.stats.map((stat) => ({
-          label: stat.label,
+          label: stat.objectKey
+            ? [productLanguage.crmObjects[stat.objectKey].label, stat.qualifier].filter(Boolean).join(" ")
+            : stat.label,
           value: typeof stat.value === "number" ? stat.value.toLocaleString() : stat.value,
           sublabel: stat.delta,
         }))
@@ -185,9 +194,18 @@ export default async function CrmPage() {
             for (const e of entries) if (e.display) map[e.definition.key] = e.display;
             if (Object.keys(map).length > 0) row.customFields = map;
           }
-        } catch {
+        } catch (error) {
           // A missing/unavailable field layer must never take the CRM board
-          // down — the board is the product's front door.
+          // down — the board is the product's front door. But it must not go
+          // quiet either: swallowing this renders the tenant's OWN schema as
+          // simply absent, which reads as data loss rather than an outage. Keep
+          // degrading, stop asserting — the same call the settings field panel
+          // makes with the same read.
+          reportDegraded(error, {
+            scope: "crm.customFields",
+            surface: "secondary",
+            detail: { orgId, object: key },
+          });
         }
       }),
     );

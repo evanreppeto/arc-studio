@@ -407,13 +407,42 @@ function csvCell(value: string | number | null | undefined): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** The current view (already filtered + sorted) as CSV text. Exports what the
- *  operator sees — a generic, object-agnostic column set. */
-function rowsToCsv(rows: CrmRowVM[]): string {
-  const header = ["Name", "Company", "Persona", "Status", "Owner", "Last activity", "Score", "Tasks"];
-  const body = rows.map((r) =>
-    [r.name, r.company, r.persona, r.statusLabel, r.owner, r.updatedRel, r.score ?? "", r.tasks].map(csvCell).join(","),
-  );
+/** Value for one column of one row, matching what the table renders. */
+function csvValue(col: Col, r: CrmRowVM): string | number {
+  if (col.k.startsWith("cf:")) return r.customFields?.[col.k.slice(3)] ?? "";
+  switch (col.k) {
+    case "primary": return r.name;
+    case "company": return r.company;
+    case "persona": return r.persona;
+    case "status": return r.statusLabel;
+    case "score": return r.score ?? "";
+    case "tier": return r.tier;
+    case "routing": return r.routing;
+    case "value": return r.value;
+    case "last": return r.updatedTime || r.updatedRel;
+    case "tasks": return r.tasks;
+    default: return "";
+  }
+}
+
+/**
+ * The current view (already filtered + sorted) as CSV text.
+ *
+ * Driven by the SAME column list the table renders, so the file matches the
+ * screen. It used to be a fixed eight-column set for every object, which is why
+ * exporting Outcomes lost Revenue, Jobs lost Est. value, Companies lost Tier,
+ * Leads lost Routing — and every object lost the tenant's own custom fields,
+ * the columns they added themselves and could see while clicking Export. The
+ * comment above it claimed it exported what the operator sees.
+ *
+ * Owner is appended rather than taken from `cols`: the table shows it as a
+ * filter, not a column, but it is worth having in a file you open in a
+ * spreadsheet. `sel`/`act` are chrome and carry no value.
+ */
+function rowsToCsv(rows: CrmRowVM[], cols: Col[], headerFor: (c: Col) => string): string {
+  const dataCols = cols.filter((c) => !LOCKED_COLUMNS.has(c.k) || c.k === "primary");
+  const header = [...dataCols.map(headerFor), "Owner"];
+  const body = rows.map((r) => [...dataCols.map((c) => csvValue(c, r)), r.owner].map(csvCell).join(","));
   return [header.join(","), ...body].join("\n");
 }
 
@@ -439,8 +468,39 @@ const COLS: Record<string, Col[]> = {
  */
 const CUSTOM_OBJECT_COLS: Col[] = [{ k: "sel" }, { k: "primary", t: "Name" }, { k: "last", t: "Updated" }, { k: "act" }];
 
+/**
+ * Objects the CSV importer can actually write.
+ *
+ * Mirrors the wizard's kinds: `contacts` (which creates a lead with a contact
+ * and company attached), `companies`, and `deals` → jobs. The button used to
+ * render for every built-in object, so on Sites and Outcomes it opened a wizard
+ * with no option that could accept them — a dead end reached from the primary
+ * toolbar. Keep this in step with ImportWizard's KINDS; the guard test does.
+ */
+export const IMPORTABLE_OBJECTS = new Set(["contacts", "companies", "leads", "jobs"]);
+
 function nx(v: string) {
   return v ? v : "—";
+}
+
+/**
+ * A column heading, in this workspace's words.
+ *
+ * Only `primary` was ever relabelled, so the People table carried a hardcoded
+ * "Company" heading while that object was called "Organizations" in the tab
+ * above it, in the KPI strip, and on its own page. `company` is the one built-in
+ * column that names a DIFFERENT object, so it has to borrow that object's noun
+ * rather than ours; the rest ("Status", "Persona", "Last activity") describe an
+ * attribute and are not tenant vocabulary.
+ */
+export function headerLabel(
+  col: Col,
+  active: { nameHeader: string },
+  objects: ReadonlyArray<{ key: string; nameHeader: string }>,
+): string {
+  if (col.k === "primary") return active.nameHeader;
+  if (col.k === "company") return objects.find((o) => o.key === "companies")?.nameHeader ?? col.t ?? "";
+  return col.t ?? "";
 }
 
 function cellClass(k: string) {
@@ -1057,7 +1117,11 @@ export function CrmBoard({
 
   const exportCsv = () => {
     if (filteredAll.length === 0) return;
-    const blob = new Blob([rowsToCsv(filteredAll)], { type: "text/csv;charset=utf-8;" });
+    // `allCols`, not the visible `cols`: column visibility is a per-object
+    // display preference living in localStorage, and letting invisible state
+    // silently shape a file is the worse failure of the two. Hiding a column to
+    // read the table should not quietly delete it from the export.
+    const blob = new Blob([rowsToCsv(filteredAll, allCols, (c) => headerLabel(c, active, objects))], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1143,8 +1207,8 @@ export function CrmBoard({
           </div>
         </div>
         <div className="sp">
-          {!active.isCustom && (
-          <Link className="gbtn" href="/crm/import" title="Import contacts from a CSV">
+          {IMPORTABLE_OBJECTS.has(active.key) && (
+          <Link className="gbtn" href={`/crm/import?as=${active.key}`} title={`Import ${active.noun} from a CSV`}>
             <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
             Import
           </Link>
@@ -1384,7 +1448,7 @@ export function CrmBoard({
                       {CHECK}
                     </button>
                   ) : (
-                    c.k === "primary" ? active.nameHeader : c.t ?? ""
+                    headerLabel(c, active, objects)
                   )}
                 </th>
               ))}
