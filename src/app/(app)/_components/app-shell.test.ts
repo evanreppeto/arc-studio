@@ -116,6 +116,31 @@ describe("app shell navigation contract", () => {
     expect(APP_SHELL_CSS).toContain("& .grp { font-size: 10.5px; font-weight: 600; letter-spacing: 0.11em; color: color-mix(in srgb, var(--muted) 72%, var(--text-2)); padding: 16px 10px 6px; }");
   });
 
+  /**
+   * One scroll in the rail, and it is `.navwrap`'s.
+   *
+   * The chat list briefly had its own: a 216px viewport over 262px of chats, so
+   * the last unattached chat sat behind a 6px scrollbar that reads as a hairline
+   * against the rail. A list whose final item is invisible AND whose
+   * scrollability is invisible is one you believe you have finished reading.
+   * Nesting it again would not look broken, which is why this is a test.
+   */
+  it("scrolls the rail as one, with no nested scroll region in the chat list", () => {
+    const list = APP_SHELL_CSS.slice(APP_SHELL_CSS.indexOf("& .rail-recents-list {")).split("}")[0];
+    expect(list).not.toContain("overflow");
+    expect(list).not.toContain("flex:");
+    const section = APP_SHELL_CSS.slice(APP_SHELL_CSS.indexOf("& .rail-recents {")).split("}")[0];
+    expect(section).not.toContain("min-height");
+    expect(section).not.toContain("flex:");
+    // No scrollbar styling for a box that no longer scrolls.
+    expect(APP_SHELL_CSS).not.toContain(".rail-recents-list::-webkit-scrollbar");
+    // The rule shipped duplicated verbatim once already — identical, so nothing
+    // rendered wrong, but a later edit to one copy would have looked inert.
+    expect(APP_SHELL_CSS.split("& .rail-recents-list {").length - 1).toBe(1);
+    // The rail's own scroll stays.
+    expect(APP_SHELL_CSS).toContain("overflow-y: auto; overflow-x: hidden;");
+  });
+
   it("keeps mobile shell controls at a touch-friendly size", () => {
     expect(APP_SHELL_CSS).toContain("& .menubtn { display: inline-grid; width: 44px; height: 44px; }");
     expect(APP_SHELL_CSS).toContain("& .topav { width: 44px; height: 44px; }");
