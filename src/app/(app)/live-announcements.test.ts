@@ -84,11 +84,18 @@ describe("outcomes that are otherwise invisible get announced", () => {
 
   it("announces a deliverable decision — the action the outbound gate turns on", () => {
     const src = read("campaigns", "[campaignId]", "_components", "campaign-detail-view.tsx");
-    expect(src).toMatch(/announce\(`\$\{decision === "approved" \? "Approved" : "Declined"\}/);
+    // Scoped to the deliverable decision — this file holds a second `decide`
+    // for the media lightbox.
+    const decide = src.match(/function decide\(\s*\n\s*asset: CampaignWorkspaceAsset[\s\S]*?\n  \}/)?.[0] ?? "";
+    expect(decide, "the deliverable decide function").not.toBe("");
+    expect(decide).toMatch(/"Approved" : "Declined"/);
+    expect(decide).toMatch(/announce\(/);
     // Outcome first: titles here are whole sentences, so appending the verb
     // produced "…60 minutes. approved." and made the listener wait through the
-    // title to learn what happened.
-    expect(src).not.toMatch(/announce\(`\$\{asset\.title\} \$\{decision/);
+    // title to learn what happened. Asserted as "the announcement does not START
+    // with the title", which survives the wording moving into a variable — the
+    // earlier form pinned the whole interpolation and broke the moment it did.
+    expect(decide).not.toMatch(/announce\(`\$\{asset\.title\}/);
   });
 
   it("says how a bulk approve actually went, including a partial failure", () => {
@@ -100,7 +107,15 @@ describe("outcomes that are otherwise invisible get announced", () => {
     // fail when the string moved to `countOf(..., ASSET_NOUN)` — the shared
     // vocabulary helper the noun rule requires — which is the same claim said
     // properly, not a regression.
-    expect(bulk, "the all-succeeded case").toMatch(/announce\(`[^`]*targets\.length/);
+    // Scoped to the all-succeeded branch and asserted as two facts — the count
+    // comes from `targets`, and the branch announces — rather than as one
+    // interpolation. This has now been re-pinned twice by ordinary refactors
+    // (`countOf(...)`, then hoisting it to a `const`), each time to say the same
+    // thing a different way.
+    const success = bulk.match(/if \(failed\.length === 0\) \{[\s\S]*?\n      \}/)?.[0] ?? "";
+    expect(success, "the all-succeeded branch").not.toBe("");
+    expect(success).toMatch(/targets\.length/);
+    expect(success).toMatch(/announce\(/);
     // A partial success looks identical to a full one until you count the cards.
     expect(bulk, "the partial-failure case").toMatch(/announce\(message, "assertive"\)/);
   });

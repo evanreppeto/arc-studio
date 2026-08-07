@@ -76,6 +76,11 @@
 .arc-campaign .csnap { position: sticky; top: 56px; align-self: start; max-height: calc(100dvh - 150px); overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
 
 .arc-campaign .cerr { font-size: 12px; color: var(--red-text); background: var(--red-soft); border: 1px solid var(--red-border); border-radius: var(--r-md); padding: 9px 12px; margin-bottom: 14px; }
+/* Same shape as .cerr, deliberately NOT its colour. "Shown here, not saved" is
+   the preview working as designed, not a failure — and DESIGN.md reserves red
+   for destructive and priority. Slate says "read this" without saying "something
+   went wrong". */
+.arc-campaign .cnotice { font-size: 12px; color: var(--slate-text); background: var(--slate-soft); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 9px 12px; margin-bottom: 14px; }
 
 .arc-campaign .csec { margin-bottom: 26px; }
 .arc-campaign .csh { font-family: var(--serif); font-weight: 500; font-size: 14.5px; letter-spacing: -0.01em; margin: 0 0 13px; display: flex; align-items: center; gap: 9px; }
