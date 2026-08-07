@@ -29,7 +29,12 @@ export type CustomFieldEntry = {
 
 export type SaveValuesResult =
   | { ok: true; saved: number }
-  | { ok: false; error: string; fieldKey?: string };
+  /**
+   * `reason` separates "you named a field that doesn't exist" from "the value
+   * you gave doesn't fit the field". A caller recovers from those differently:
+   * the first by listing the fields, the second by fixing the value.
+   */
+  | { ok: false; error: string; fieldKey?: string; reason?: "unknown_field" | "invalid_value" };
 
 /**
  * Every active custom field for one record, in display order, including fields
@@ -40,7 +45,8 @@ export type SaveValuesResult =
  */
 export async function getCustomFieldsForRecord(
   orgId: string,
-  objectKey: CustomFieldObjectKey,
+  // Per-org: a tenant-defined record type's key is not one of the six.
+  objectKey: string,
   recordId: string,
   opts: { client?: SupabaseClient } = {},
 ): Promise<CustomFieldEntry[]> {
@@ -86,7 +92,8 @@ export async function getCustomFieldsForRecord(
  */
 export async function getCustomFieldsForRecords(
   orgId: string,
-  objectKey: CustomFieldObjectKey,
+  // Per-org: a tenant-defined record type's key is not one of the six.
+  objectKey: string,
   recordIds: string[],
   opts: { client?: SupabaseClient } = {},
 ): Promise<Map<string, CustomFieldEntry[]>> {
@@ -144,31 +151,66 @@ export async function getCustomFieldsForRecords(
  * Validate and persist custom field values for one record.
  *
  * `raw` is keyed by the field's machine key, which is what a form, the API, and
- * Arc all address a field by. Unknown keys are ignored rather than rejected: a
- * stale form posting a field that was archived mid-edit should not fail the
- * whole save.
+ * Arc all address a field by.
+ *
+ * A key naming an ARCHIVED field is ignored — that's a stale form posting a
+ * field someone removed mid-edit, and failing the whole save over it would be
+ * user-hostile. A key naming NOTHING is refused: see below.
  *
  * All-or-nothing on validation — nothing is written unless every supplied value
  * coerces, so a record can't end up half-updated.
  */
 export async function saveCustomFieldValues(
   orgId: string,
-  objectKey: CustomFieldObjectKey,
+  // Per-org: a tenant-defined record type's key is not one of the six.
+  objectKey: string,
   recordId: string,
   raw: Record<string, unknown>,
   opts: { client?: SupabaseClient } = {},
 ): Promise<SaveValuesResult> {
   const client = opts.client ?? getSupabaseAdminClient();
-  const definitions = await listFieldDefinitions(orgId, objectKey, { client });
-  if (definitions.length === 0) return { ok: true, saved: 0 };
+  // Archived definitions are loaded too, purely to tell "you removed this
+  // field" apart from "this field never existed". Only active ones are written.
+  const all = await listFieldDefinitions(orgId, objectKey, { client, includeArchived: true });
+  const definitions = all.filter((d) => d.active);
 
   const supplied = definitions.filter((d) => Object.prototype.hasOwnProperty.call(raw, d.key));
+
+  /*
+   * Naming a field that doesn't exist is an ERROR, not a no-op.
+   *
+   * This returned `{ ok: true, saved: 0 }` whenever the object had no matching
+   * definitions — so Arc could call save_custom_fields with two named fields,
+   * be told it succeeded, and write nothing. Verified against real Postgres:
+   * HTTP 200, `saved: 0`, zero rows. A caller cannot correct a mistake it is
+   * told is a success, and the whole point of these values is that Arc sets
+   * them, so the failure was invisible from both ends.
+   *
+   * An empty `values` object is still a legitimate no-op — that's a caller
+   * asking for nothing, not a caller asking for something that isn't there.
+   */
+  const unknown = Object.keys(raw).filter((k) => !all.some((d) => d.key === k));
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      error:
+        `No field named ${unknown.map((k) => `"${k}"`).join(", ")} on this record type. ` +
+        (definitions.length > 0
+          ? `Its fields are: ${definitions.map((d) => d.key).join(", ")}.`
+          : "It has no custom fields yet — add one before setting values on it."),
+      fieldKey: unknown[0],
+      reason: "unknown_field",
+    };
+  }
+
   if (supplied.length === 0) return { ok: true, saved: 0 };
 
   const rows: Array<Record<string, unknown>> = [];
   for (const definition of supplied) {
     const coerced = coerceCustomFieldValue(definition, raw[definition.key]);
-    if (!coerced.ok) return { ok: false, error: coerced.error, fieldKey: definition.key };
+    if (!coerced.ok) {
+      return { ok: false, error: coerced.error, fieldKey: definition.key, reason: "invalid_value" };
+    }
 
     rows.push({
       org_id: orgId,
@@ -197,7 +239,8 @@ export async function saveCustomFieldValues(
  */
 export async function getCustomFieldContextForRecord(
   orgId: string,
-  objectKey: CustomFieldObjectKey,
+  // Per-org: a tenant-defined record type's key is not one of the six.
+  objectKey: string,
   recordId: string,
   opts: { client?: SupabaseClient } = {},
 ): Promise<Record<string, { label: string; value: string }>> {
@@ -218,7 +261,8 @@ export async function getCustomFieldContextForRecord(
  */
 export async function findRecordIdsByCustomField(
   orgId: string,
-  objectKey: CustomFieldObjectKey,
+  // Per-org: a tenant-defined record type's key is not one of the six.
+  objectKey: string,
   fieldId: string,
   match: string,
   opts: { client?: SupabaseClient; limit?: number } = {},
@@ -262,7 +306,8 @@ export async function findRecordIdsByCustomField(
  */
 export async function validateCustomFieldValues(
   orgId: string,
-  objectKey: CustomFieldObjectKey,
+  // Per-org: a tenant-defined record type's key is not one of the six.
+  objectKey: string,
   raw: Record<string, unknown>,
   opts: { client?: SupabaseClient } = {},
 ): Promise<{ ok: true } | { ok: false; error: string; fieldKey?: string }> {

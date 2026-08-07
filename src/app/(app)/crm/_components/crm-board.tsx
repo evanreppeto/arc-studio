@@ -26,8 +26,9 @@ import { AddCustomRecordModal } from "./add-custom-record-modal";
 import { pageRangeLabel, pageWindow } from "./pagination";
 import { createStoredPreference } from "./stored-preference";
 import { KpiStrip, type KpiCell } from "../../_components/kpi-strip";
-import type { CustomFieldDefinition, CustomFieldObjectKey } from "@/domain";
+import type { CustomFieldDefinition, CustomObject } from "@/domain";
 import { ManageFieldsModal } from "./manage-fields-modal";
+import { RecordTypesModal } from "./record-types-modal";
 
 type FilterOption = { value: string; label: string; count: number };
 
@@ -697,6 +698,7 @@ export function CrmBoard({
   campaigns = [],
   customColumnsByKey = {},
   customFieldDefsByKey = {},
+  customObjects = [],
   stageOptions = {},
 }: {
   /** Why the read FAILED, vs returning nothing. Null when it succeeded. */
@@ -721,6 +723,11 @@ export function CrmBoard({
   customColumnsByKey?: Record<string, { key: string; label: string }[]>;
   /** Full definitions per object, for the Add-record form. */
   customFieldDefsByKey?: Record<string, CustomFieldDefinition[]>;
+  /**
+   * The tenant's own record types INCLUDING archived ones — the archived rows
+   * have no tab, so the modal is the only place they can be restored from.
+   */
+  customObjects?: CustomObject[];
 }) {
   const router = useRouter();
   const [activeKey, setActiveKey] = useState(defaultKey);
@@ -757,6 +764,7 @@ export function CrmBoard({
   const [localByKey, setLocalByKey] = useState<Record<string, CrmRowVM[]>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [fieldsOpen, setFieldsOpen] = useState(false);
+  const [typesOpen, setTypesOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
    * Records archived this session, per object, so the row leaves at once.
@@ -1264,6 +1272,18 @@ export function CrmBoard({
             {o.label} <span className="cnt">{countFor(o).toLocaleString()}</span>
           </button>
         ))}
+        {/* The control that creates a tab sits at the end of the tabs. Not a
+            `subtab` — it doesn't select anything, and styling it as one would
+            put a permanently-unselected tab in the row. */}
+        <button
+          type="button"
+          className="subtab-add"
+          onClick={() => setTypesOpen(true)}
+          title="Add or remove your own record types"
+          aria-label="Add or remove your own record types"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M12 5v14M5 12h14" /></svg>
+        </button>
       </div>
 
       <div className="gtoolbar">
@@ -1543,11 +1563,13 @@ export function CrmBoard({
       <div className="gfoot">
         <span className="arcnote">
           <i />
-          {/* Arc reads the six. It cannot see a tenant-defined type yet, so
-              claiming it maintains these — and scores them — would be a
-              promise the product does not keep. */}
+          {/* Arc CAN read and add to a tenant-defined type, and set its field
+              values (list_record_types / search_custom_records /
+              create_custom_record / read_custom_fields / save_custom_fields).
+              What it does not do is maintain them unprompted or score them the
+              way it does the six — so the line claims reading, not upkeep. */}
           {active.isCustom
-            ? `${active.label} are yours to maintain — Arc doesn't read them yet`
+            ? `${active.label} are yours to maintain — Arc can read them and add to them when you ask`
             : `Arc keeps ${active.noun} up to date, and keeps their lead scores current`}
         </span>
         <div className="pager">
@@ -1601,9 +1623,15 @@ export function CrmBoard({
       <ManageFieldsModal
         open={fieldsOpen}
         onClose={() => setFieldsOpen(false)}
-        objectKey={active.key as CustomFieldObjectKey}
+        objectKey={active.key}
         objectLabel={active.label}
         definitions={customFieldDefsByKey[active.key] ?? []}
+      />
+
+      <RecordTypesModal
+        open={typesOpen}
+        onClose={() => setTypesOpen(false)}
+        objects={customObjects}
       />
 
       {/* AddRecordModal is keyed to the six — it looks up a per-object config
