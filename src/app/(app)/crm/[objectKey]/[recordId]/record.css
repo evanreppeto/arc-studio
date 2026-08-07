@@ -107,7 +107,9 @@
 .arc-record .connrow .cmeta { margin-left: auto; text-align: right; flex-shrink: 0; }
 .arc-record .connrow .cmeta .cv { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
 .arc-record .connrow .go { margin-left: 6px; color: var(--muted); opacity: 0; transition: opacity var(--dur-base); }
-.arc-record .connrow:hover .go { opacity: 1; color: var(--accent); }
+/* Same cue on focus as on hover — .connrow is a Link and the arrow is what
+   says so. */
+.arc-record .connrow:hover .go, .arc-record .connrow:focus-visible .go { opacity: 1; color: var(--accent); }
 .arc-record .relgraph { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: radial-gradient(120% 120% at 50% 40%, rgba(200, 162, 74, 0.05), transparent 60%), var(--panel); padding: 8px; }
 .arc-record .relgraph svg { width: 100%; height: auto; display: block; }
 .arc-record .qbar { height: 8px; border-radius: var(--r-full); background: var(--inset); overflow: hidden; margin: 10px 0 8px; }
@@ -158,7 +160,10 @@
 .arc-record .tev .tts { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-top: 6px; }
 .arc-record .trow { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .arc-record .trow:last-child { border-bottom: none; }
-.arc-record .tcheck { width: 17px; height: 17px; border-radius: var(--r-sm); border: 1.5px solid var(--line-3); flex-shrink: 0; margin-top: 1px; cursor: pointer; display: grid; place-items: center; }
+/* A real <button> now (was a `<span role="button">` at tabIndex -1), so the
+   UA defaults are reset to keep the 17px square identical. */
+.arc-record .tcheck { width: 17px; height: 17px; padding: 0; background: transparent; font: inherit; border-radius: var(--r-sm); border: 1.5px solid var(--line-3); flex-shrink: 0; margin-top: 1px; cursor: pointer; display: grid; place-items: center; }
+.arc-record .tcheck:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-record .tcheck.done { background: var(--ok-soft); border-color: var(--ok-border); }
 .arc-record .tcheck svg { width: 11px; height: 11px; stroke: var(--ok); fill: none; stroke-width: 2.4; opacity: 0; }
 .arc-record .tcheck.done svg { opacity: 1; }

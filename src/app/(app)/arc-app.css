@@ -348,7 +348,15 @@
   /* Rename in place — the row becomes the field, so the title never moves. */
   & .rail-recent-rename { display: block; width: 100%; min-height: 30px; padding: 5px 8px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--inset); color: var(--text); font: 500 11.5px/1.3 var(--sans); outline: 0; }
   & .rail-recent-more { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 0; border-radius: var(--r-sm); background: var(--panel); color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
-  & .rail-recent-wrap:hover .rail-recent-more, & .rail-recent-more[aria-expanded="true"] { display: inline-flex; }
+  /* `:focus-within` on the WRAP, and it is the only thing that makes this button
+     reachable. At `display: none` the control is not merely invisible — it is
+     out of the tab order entirely, so a keyboard user could not archive or
+     delete a chat at all, and the `[aria-expanded="true"]` clause could never
+     fire because nothing could focus the button to press it. Focusing the row's
+     link now reveals it, which puts it in the tab order in time to be tabbed to.
+     This is rail chrome, so it was true on every screen in the app. */
+  & .rail-recent-wrap:hover .rail-recent-more, & .rail-recent-wrap:focus-within .rail-recent-more, & .rail-recent-more[aria-expanded="true"] { display: inline-flex; }
+  & .rail-recent-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   & .rail-recent-more:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
   & .rail-recent-menu { position: absolute; top: calc(100% - 2px); right: 4px; z-index: 60; min-width: 152px; padding: 4px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); display: grid; gap: 1px; }
   & .rail-recent-menu button { width: 100%; padding: 6px 8px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
@@ -2217,7 +2225,10 @@ a.cmp-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px
 .arc-app .arc-grid .dt tbody td.ccompany { white-space: normal; overflow: hidden; max-width: 170px; line-height: 1.25; }
 .arc-app .arc-grid .rowact { color: var(--muted); font-size: 15px; }
 /* Selection checkbox — verbatim from build-crm.html .ck */
-.arc-app .arc-grid .ck { width: 16px; height: 16px; border-radius: var(--r-sm); border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; transition: var(--dur-fast); flex-shrink: 0; }
+/* A real <button> now (it was a `<span role="checkbox">` at tabIndex -1), so the
+   UA button defaults are reset to keep the 16px square exactly as it was. */
+.arc-app .arc-grid .ck { width: 16px; height: 16px; padding: 0; background: transparent; font: inherit; border-radius: var(--r-sm); border: 1.5px solid var(--line-3); display: inline-grid; place-items: center; cursor: pointer; transition: var(--dur-fast); flex-shrink: 0; }
+.arc-app .arc-grid .ck:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .arc-app .arc-grid .ck:hover { border-color: var(--accent-border); }
 .arc-app .arc-grid .ck.on { background: var(--accent); border-color: var(--accent); }
 .arc-app .arc-grid .ck svg { width: 11px; height: 11px; stroke: #201808; fill: none; stroke-width: 3; opacity: 0; }
