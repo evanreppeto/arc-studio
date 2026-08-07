@@ -1,5 +1,6 @@
 import { arcGuard, fail, ok } from "@/app/api/v1/arc/_lib/http";
 import { isCustomFieldObjectKey, type CustomFieldObjectKey } from "@/domain";
+import { getCustomObjectByKey } from "@/lib/custom-objects/definitions";
 import { listFieldDefinitions } from "@/lib/custom-fields/definitions";
 import { getCustomFieldContextForRecord, saveCustomFieldValues } from "@/lib/custom-fields/values";
 
@@ -22,6 +23,25 @@ import { getCustomFieldContextForRecord, saveCustomFieldValues } from "@/lib/cus
  * fields invites it to fill them in with plausible inventions, which is the
  * failure the provenance work exists to prevent.
  */
+/**
+ * Is `object` a record type this workspace actually has?
+ *
+ * The six built-ins are tables and always valid. A tenant-defined type is a row
+ * in custom_objects, so validity is per-workspace and cannot be answered from a
+ * constant — which is what the old `isCustomFieldObjectKey` check did, and why
+ * custom objects could hold fields that Arc was then refused permission to
+ * read. Their fields ARE their shape, so that refusal made them opaque.
+ */
+async function resolveObjectKey(orgId: string, object: unknown): Promise<string | null> {
+  if (typeof object !== "string" || !object) return null;
+  if (isCustomFieldObjectKey(object)) return object;
+  const custom = await getCustomObjectByKey(orgId, object).catch(() => null);
+  return custom ? custom.key : null;
+}
+
+const INVALID_OBJECT =
+  "`object` must be one of companies, contacts, properties, leads, jobs, outcomes, or one of this workspace's own record types (GET /api/v1/arc/crm/object-types).";
+
 export async function GET(request: Request) {
   const allowed = await arcGuard(request);
   if (!allowed.ok) return allowed.response;
@@ -30,23 +50,22 @@ export async function GET(request: Request) {
   const object = url.searchParams.get("object");
   const recordId = url.searchParams.get("record_id");
 
-  if (!isCustomFieldObjectKey(object)) {
-    return fail("invalid_object", "`object` must be one of companies, contacts, properties, leads, jobs, outcomes.", 400);
-  }
+  const objectKey = await resolveObjectKey(allowed.scope.orgId, object);
+  if (!objectKey) return fail("invalid_object", INVALID_OBJECT, 400);
 
   try {
     if (recordId) {
       const fields = await getCustomFieldContextForRecord(
         allowed.scope.orgId,
-        object as CustomFieldObjectKey,
+        objectKey as CustomFieldObjectKey,
         recordId,
       );
-      return ok({ object, record_id: recordId, fields });
+      return ok({ object: objectKey, record_id: recordId, fields });
     }
 
-    const definitions = await listFieldDefinitions(allowed.scope.orgId, object as CustomFieldObjectKey);
+    const definitions = await listFieldDefinitions(allowed.scope.orgId, objectKey as CustomFieldObjectKey);
     return ok({
-      object,
+      object: objectKey,
       definitions: definitions.map((d) => ({
         key: d.key,
         label: d.label,
@@ -76,9 +95,8 @@ export async function POST(request: Request) {
   const recordId = typeof body.record_id === "string" ? body.record_id.trim() : "";
   const values = body.values;
 
-  if (!isCustomFieldObjectKey(object)) {
-    return fail("invalid_object", "`object` must be one of companies, contacts, properties, leads, jobs, outcomes.", 400);
-  }
+  const objectKey = await resolveObjectKey(allowed.scope.orgId, object);
+  if (!objectKey) return fail("invalid_object", INVALID_OBJECT, 400);
   if (!recordId) {
     return fail("invalid_record", "`record_id` is required.", 400);
   }
@@ -89,7 +107,7 @@ export async function POST(request: Request) {
   try {
     const result = await saveCustomFieldValues(
       allowed.scope.orgId,
-      object as CustomFieldObjectKey,
+      objectKey as CustomFieldObjectKey,
       recordId,
       values as Record<string, unknown>,
     );

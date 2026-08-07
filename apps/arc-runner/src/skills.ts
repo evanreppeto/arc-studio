@@ -94,6 +94,14 @@ export const ARC_SKILLS: readonly ArcSkill[] = [
       "search_jobs",
       "search_outcomes",
       "search_properties",
+      // The six built-ins are not the whole CRM. A workspace that models its own
+      // record types did so because that data matters to how it works — an
+      // opportunity survey that enumerates all six tables and cannot see
+      // "Equipment" is confidently partial. Read-only, matching this skill's
+      // propose_only policy; create_custom_record is deliberately absent, as no
+      // skill here carries a write.
+      "list_record_types",
+      "search_custom_records",
       "query_brain",
       "list_opportunities",
       "read_persona_intelligence",
