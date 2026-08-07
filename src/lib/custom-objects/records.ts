@@ -4,7 +4,6 @@ import { parseCustomRecord, type CustomObject } from "@/domain";
 
 import { getSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { isDemoDataEnabled } from "@/lib/demo/demo-mode";
-import { resolveWorkspaceId } from "@/lib/tenancy/resolve-workspace";
 
 import { demoCustomRecords } from "./demo";
 
@@ -133,18 +132,12 @@ export async function createCustomRecord(
   if (!opts.client && !isSupabaseAdminConfigured()) return { ok: true, persisted: false };
 
   const client = opts.client ?? getSupabaseAdminClient();
-  // workspace_id is NOT NULL on this table by design. `workspaceIdFields` omits
-  // the column when it cannot resolve one, which on a NOT NULL column is a
-  // write that fails at Postgres rather than a row scoped to nothing — so
-  // resolve it explicitly and refuse up front with a sentence instead.
-  const workspaceId = await resolveWorkspaceId(client, orgId).catch(() => null);
-  if (!workspaceId) return { ok: false, error: "Could not resolve your workspace." };
-
+  // Org-scoped, no workspace_id: these are customer/business records like the
+  // six, which are all "org" in the tenancy contract.
   const { data, error } = await client
     .from(TABLE)
     .insert({
       org_id: orgId,
-      workspace_id: workspaceId,
       object_id: object.id,
       title: parsed.value.title,
       subtitle: parsed.value.subtitle,

@@ -66,9 +66,12 @@ create unique index if not exists custom_objects_org_key_idx
 create table if not exists public.custom_object_records (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null,
-  -- NOT NULL like the other 48 tables. Resolved at write time; a row that
-  -- cannot name its workspace is refused rather than written unscoped.
-  workspace_id uuid not null,
+  -- ORG-owned, no workspace_id — matching companies/contacts/leads/jobs/
+  -- properties/outcomes, which are all "org" in supabase/tenancy-contract.mjs.
+  -- The rule (BSR-637): a row is workspace-owned only if two workspaces in one
+  -- company could legitimately DISAGREE about it. Two workspaces disagreeing
+  -- about whether a piece of equipment exists means one of them is wrong, so
+  -- the org owns it — same as it owns the contact record.
   object_id uuid not null references public.custom_objects (id) on delete restrict,
   -- What the row is called in a list. Every object needs one identifying
   -- string; everything else the tenant defines is a custom field.
