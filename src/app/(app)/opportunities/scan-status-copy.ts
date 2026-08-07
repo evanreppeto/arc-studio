@@ -54,7 +54,32 @@ export function reasonOnly(detail: string | null): string | null {
     .replace(/^Opportunity scan complete\s*[—-]\s*proposed\s+\d+\s+opportunit(?:y|ies)\(?i?e?s?\)?\.?\s*/i, "")
     .replace(/^Arc's reason:\s*/i, "")
     .trim();
-  return stripped || null;
+  return stripStatusMarkdown(stripped) || null;
+}
+
+/**
+ * Arc writes markdown; this line renders text.
+ *
+ * On production a third of the stored scan reasons carry inline emphasis, and
+ * the operator reads it raw — "especially the **property-manager** persona".
+ * Stripping beats rendering here: this is a one-line status, not a document, and
+ * a markdown renderer in it would be a much larger surface for one word of bold.
+ *
+ * Single underscores are deliberately LEFT ALONE. `_x_` is valid markdown
+ * emphasis and also the middle of every snake_case identifier this product
+ * emits — "arc_opportunity_scan" contains `_opportunity_`, and stripping that
+ * pair yields "arcopportunityscan". A cosmetic fix that corrupts an identifier
+ * is worse than the asterisks.
+ */
+export function stripStatusMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    // Emphasis only when the content does not begin or end with a space, which
+    // is the markdown rule and keeps a stray "*" in prose intact.
+    .replace(/\*(\S(?:[^*]*\S)?)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
 }
 
 /**

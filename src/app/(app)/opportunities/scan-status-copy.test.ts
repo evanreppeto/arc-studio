@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reasonOnly, relativeTime, scanStatusLine } from "./scan-status-copy";
+import { reasonOnly, relativeTime, scanStatusLine, stripStatusMarkdown } from "./scan-status-copy";
 import type { ScanStatus } from "@/lib/opportunities/scan-status";
 
 const NOW = Date.parse("2026-08-04T16:00:00Z");
@@ -148,5 +148,48 @@ describe("a scan nobody could look up is not a scan that never happened", () => 
     for (const outcome of ["never", "running", "stalled", "failed", "added", "empty"] as const) {
       expect(scanStatusLine(status({ outcome }), NOW), outcome).not.toBeNull();
     }
+  });
+});
+
+/**
+ * Arc writes markdown; this line renders text. On production a third of the
+ * stored scan reasons carry inline emphasis (5 of 15 with `**bold**`, 3 with
+ * single `*`, 2 with backticks), and the operator read it raw:
+ * "especially the **property-manager** persona".
+ */
+describe("stripStatusMarkdown", () => {
+  it("removes the emphasis the operator was reading literally", () => {
+    expect(stripStatusMarkdown("especially the **property-manager** persona")).toBe(
+      "especially the property-manager persona",
+    );
+  });
+
+  it("handles single emphasis and inline code", () => {
+    expect(stripStatusMarkdown("the *standout* gap")).toBe("the standout gap");
+    expect(stripStatusMarkdown("check `agent_tasks` first")).toBe("check agent_tasks first");
+  });
+
+  it("LEAVES snake_case alone", () => {
+    // `_opportunity_` is valid markdown emphasis and also the middle of an
+    // identifier this product emits constantly. Stripping it would render
+    // "arcopportunityscan" — a cosmetic fix that corrupts a name is worse than
+    // the asterisks it removed.
+    expect(stripStatusMarkdown("ran arc_opportunity_scan")).toBe("ran arc_opportunity_scan");
+    expect(stripStatusMarkdown("the persona_property_manager key")).toBe("the persona_property_manager key");
+  });
+
+  it("leaves a lone asterisk in prose intact", () => {
+    // Markdown emphasis cannot open or close against whitespace.
+    expect(stripStatusMarkdown("3 * 4 conversions")).toBe("3 * 4 conversions");
+  });
+
+  it("runs on the way through reasonOnly, after the prefix is stripped", () => {
+    expect(
+      reasonOnly("Opportunity scan complete — proposed 0 opportunity(ies). Arc's reason: the **property-manager** gap"),
+    ).toBe("the property-manager gap");
+  });
+
+  it("still returns null when there was nothing but the prefix", () => {
+    expect(reasonOnly("Opportunity scan complete — proposed 1 opportunity(ies).")).toBeNull();
   });
 });
